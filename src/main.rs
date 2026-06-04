@@ -1,16 +1,5 @@
-#![allow(irrefutable_let_patterns)]
-
-mod capture;
-mod encode;
-mod grabs;
-mod handlers;
-mod headless;
-mod input;
-mod sink;
-mod state;
-
 use smithay::reexports::{calloop::EventLoop, wayland_server::Display};
-pub use state::Wado;
+use wado::{Wado, headless};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_logging();
