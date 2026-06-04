@@ -6,8 +6,13 @@ edition = "2024"
 [dependencies]
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 bitflags = "2"
+x264 = "0.5"
 
 [dependencies.smithay]
 git = "https://github.com/Smithay/smithay.git"
 default-features = false
-features = ["backend_winit", "wayland_frontend", "desktop"]
+features = [
+    "renderer_gl",
+    "wayland_frontend",
+    "desktop",
+]

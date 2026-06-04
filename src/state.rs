@@ -1,6 +1,10 @@
 use std::{ffi::OsString, sync::Arc};
 
 use smithay::{
+    backend::renderer::{
+        damage::OutputDamageTracker,
+        gles::{GlesRenderbuffer, GlesRenderer},
+    },
     desktop::{PopupManager, Space, Window, WindowSurfaceType},
     input::{Seat, SeatState},
     reexports::{
@@ -22,6 +26,8 @@ use smithay::{
     },
 };
 
+use crate::{encode::x264enc::X264Encoder, sink::FrameSink};
+
 pub struct Wado {
     pub start_time: std::time::Instant,
     pub socket_name: OsString,
@@ -30,6 +36,7 @@ pub struct Wado {
     pub space: Space<Window>,
     pub loop_signal: LoopSignal,
 
+    // Smithay protocol state
     pub compositor_state: CompositorState,
     pub xdg_shell_state: XdgShellState,
     pub shm_state: ShmState,
@@ -37,8 +44,14 @@ pub struct Wado {
     pub seat_state: SeatState<Wado>,
     pub data_device_state: DataDeviceState,
     pub popups: PopupManager,
-
     pub seat: Seat<Self>,
+
+    // Headless rendering pipeline (set by headless::init_headless)
+    pub renderer: Option<GlesRenderer>,
+    pub renderbuffer: Option<GlesRenderbuffer>,
+    pub damage_tracker: Option<OutputDamageTracker>,
+    pub encoder: Option<X264Encoder>,
+    pub frame_sink: Option<Box<dyn FrameSink>>,
 }
 
 impl Wado {
@@ -51,31 +64,24 @@ impl Wado {
         let xdg_shell_state = XdgShellState::new::<Self>(&dh);
         let shm_state = ShmState::new::<Self>(&dh, vec![]);
         let popups = PopupManager::default();
-
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&dh);
-
         let data_device_state = DataDeviceState::new::<Self>(&dh);
 
         let mut seat_state = SeatState::new();
-        let mut seat: Seat<Self> = seat_state.new_wl_seat(&dh, "winit");
-
+        let mut seat: Seat<Self> = seat_state.new_wl_seat(&dh, "headless");
         seat.add_keyboard(Default::default(), 200, 25).unwrap();
         seat.add_pointer();
 
         let space = Space::default();
-
         let socket_name = Self::init_wayland_listener(display, event_loop);
-
         let loop_signal = event_loop.get_signal();
 
         Self {
             start_time,
             display_handle: dh,
-
             space,
             loop_signal,
             socket_name,
-
             compositor_state,
             xdg_shell_state,
             shm_state,
@@ -84,13 +90,17 @@ impl Wado {
             data_device_state,
             popups,
             seat,
+            renderer: None,
+            renderbuffer: None,
+            damage_tracker: None,
+            encoder: None,
+            frame_sink: None,
         }
     }
 
     fn init_wayland_listener(display: Display<Wado>, event_loop: &mut EventLoop<Self>) -> OsString {
         let listening_socket = ListeningSocketSource::new_auto().unwrap();
         let socket_name = listening_socket.socket_name().to_os_string();
-
         let loop_handle = event_loop.handle();
 
         loop_handle
