@@ -1,10 +1,13 @@
 #![allow(irrefutable_let_patterns)]
 
+mod capture;
+mod encode;
 mod grabs;
 mod handlers;
+mod headless;
 mod input;
+mod sink;
 mod state;
-mod winit;
 
 use smithay::reexports::{calloop::EventLoop, wayland_server::Display};
 pub use state::Wado;
@@ -13,12 +16,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_logging();
 
     let mut event_loop: EventLoop<Wado> = EventLoop::try_new()?;
-
     let display: Display<Wado> = Display::new()?;
-
     let mut state = Wado::new(&mut event_loop, display);
 
-    crate::winit::init_winit(&mut event_loop, &mut state)?;
+    headless::init_headless(&mut event_loop, &mut state)?;
 
     unsafe { std::env::set_var("WAYLAND_DISPLAY", &state.socket_name) };
 
