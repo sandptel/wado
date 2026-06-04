@@ -24,9 +24,9 @@ use crate::{
 };
 
 /// Logical output resolution for M1. M5 will make this per-client.
-const WIDTH: u32 = 1280;
-const HEIGHT: u32 = 720;
-const FPS: u32 = 60;
+pub const WIDTH: u32 = 1280;
+pub const HEIGHT: u32 = 720;
+pub const FPS: u32 = 60;
 
 pub fn init_headless(
     event_loop: &mut EventLoop<Wado>,
