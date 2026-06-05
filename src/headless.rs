@@ -12,16 +12,16 @@ use smithay::{
         },
     },
     output::{Mode, Output, PhysicalProperties, Subpixel},
-    reexports::calloop::{EventLoop, timer::{TimeoutAction, Timer}},
+    reexports::calloop::timer::{TimeoutAction, Timer},
     utils::{Buffer, Size, Transform},
 };
 
 use crate::{
     Wado,
     capture::mem::capture_frame,
-    conf::{SinkTarget, WadoConfig},
+    conf::{EncoderConfig, SinkTarget, WadoConfig},
     encode::x264enc::X264Encoder,
-    sink::{FrameSink, file::FileSink, webrtc::WebRtcSink},
+    sink::{FrameSink, file::FileSink},
 };
 
 /// Backward-compat aliases — prefer `WadoConfig::default().encoder.*` in new code.
@@ -29,14 +29,31 @@ pub const WIDTH: u32 = crate::conf::DEFAULT_WIDTH;
 pub const HEIGHT: u32 = crate::conf::DEFAULT_HEIGHT;
 pub const FPS: u32 = crate::conf::DEFAULT_FPS;
 
+/// Eager, standalone setup for the examples: build the configured sink and start a
+/// session immediately. The live path uses `website` + `start_session` instead.
 pub fn init_headless(
-    event_loop: &mut EventLoop<Wado>,
     state: &mut Wado,
     config: &WadoConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     config.print_summary();
+    let sink: Box<dyn FrameSink> = match &config.output.sink {
+        SinkTarget::File(path) => Box::new(FileSink::create(path)?),
+    };
+    start_session(state, &config.encoder, sink)
+}
 
-    let ec = &config.encoder;
+/// Bring up the headless render pipeline for one session: EGL/GLES renderer, an
+/// offscreen target, a client-sized `Output`, the encoder, and the render timer.
+/// Stores everything on `state` and marks the session active. Does NOT launch the
+/// session's application — the caller does that (see `spawn_session_command`).
+pub fn start_session(
+    state: &mut Wado,
+    ec: &EncoderConfig,
+    sink: Box<dyn FrameSink>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if state.session_active {
+        return Err("a session is already active".into());
+    }
 
     // ── EGL / GLES renderer ───────────────────────────────────────────────────
     let egl_display = unsafe { EGLDisplay::new(EGLSurfacelessDisplay)? };
@@ -47,7 +64,7 @@ pub fn init_headless(
     let buf_size: Size<i32, Buffer> = (ec.width as i32, ec.height as i32).into();
     let renderbuffer: GlesRenderbuffer = renderer.create_buffer(Fourcc::Abgr8888, buf_size)?;
 
-    // ── Logical Output (no physical display) ─────────────────────────────────
+    // ── Logical Output (no physical display), sized to the client ─────────────
     let mode = Mode {
         size: (ec.width as i32, ec.height as i32).into(),
         refresh: (ec.fps * 1000) as i32,
@@ -62,7 +79,7 @@ pub fn init_headless(
             serial_number: "0".into(),
         },
     );
-    let _global = output.create_global::<Wado>(&state.display_handle);
+    let global = output.create_global::<Wado>(&state.display_handle);
     output.change_current_state(Some(mode), Some(Transform::Normal), None, Some((0, 0).into()));
     output.set_preferred(mode);
     state.space.map_output(&output, (0, 0));
@@ -79,41 +96,85 @@ pub fn init_headless(
         ec.preset,
     )?;
 
-    // ── Sink ──────────────────────────────────────────────────────────────────
-    // No explicit header send here — every IDR frame already carries SPS+PPS inline
-    // (Fix 2 in x264enc). A late-joining client will sync on the next IDR.
-    let sink: Box<dyn FrameSink> = match &config.output.sink {
-        SinkTarget::WebRtc { http_addr } => Box::new(WebRtcSink::new(http_addr, ec.fps)?),
-        SinkTarget::File(path) => Box::new(FileSink::create(path)?),
-    };
-
     state.renderer = Some(renderer);
     state.renderbuffer = Some(renderbuffer);
     state.damage_tracker = Some(damage_tracker);
     state.encoder = Some(encoder);
     state.frame_sink = Some(sink);
+    state.output = Some(output);
+    state.output_global = Some(global);
+    state.session_active = true;
 
-    // ── 60 fps render timer ───────────────────────────────────────────────────
+    // ── Render timer ──────────────────────────────────────────────────────────
     let (w, h) = (ec.width, ec.height);
-    let frame_nanos = 1_000_000_000 / ec.fps as u64;
-    event_loop
-        .handle()
-        .insert_source(Timer::immediate(), move |deadline, _, state: &mut Wado| {
-            if let Err(e) = render_tick(state, &output, w, h) {
+    let frame_nanos = 1_000_000_000 / ec.fps.max(1) as u64;
+    let token = state.loop_handle.insert_source(
+        Timer::immediate(),
+        move |deadline, _, state: &mut Wado| {
+            if let Err(e) = render_tick(state, w, h) {
                 eprintln!("render_tick error: {e}");
             }
             TimeoutAction::ToInstant(deadline + Duration::from_nanos(frame_nanos))
-        })?;
+        },
+    )?;
+    state.render_timer_token = Some(token);
 
     Ok(())
 }
 
-fn render_tick(
-    state: &mut Wado,
-    output: &Output,
-    width: u32,
-    height: u32,
-) -> Result<(), Box<dyn std::error::Error>> {
+/// Spawn the session's application (free-form command, space-split into program +
+/// args) and remember the child so `stop_session` can kill it. `WAYLAND_DISPLAY` is
+/// already set process-wide in `main`.
+pub fn spawn_session_command(state: &mut Wado, command: &str) {
+    let mut parts = command.split_whitespace();
+    let Some(program) = parts.next() else {
+        eprintln!("[headless] empty session command — nothing to launch");
+        return;
+    };
+    let args: Vec<&str> = parts.collect();
+    match std::process::Command::new(program).args(&args).spawn() {
+        Ok(child) => state.app_process = Some(child),
+        Err(e) => eprintln!("[headless] failed to launch {program:?}: {e}"),
+    }
+}
+
+/// Tear down the active session and free its resources. Idempotent.
+pub fn stop_session(state: &mut Wado) {
+    if !state.session_active {
+        return;
+    }
+
+    if let Some(token) = state.render_timer_token.take() {
+        state.loop_handle.remove(token);
+    }
+    if let Some(mut child) = state.app_process.take() {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+    if let Some(output) = state.output.take() {
+        state.space.unmap_output(&output);
+    }
+    if let Some(global) = state.output_global.take() {
+        state.display_handle.remove_global::<Wado>(global);
+    }
+    state.renderer = None;
+    state.renderbuffer = None;
+    state.damage_tracker = None;
+    state.encoder = None;
+    state.frame_sink = None;
+    state.session_active = false;
+
+    eprintln!("[headless] session stopped — resources released");
+}
+
+fn render_tick(state: &mut Wado, width: u32, height: u32) -> Result<(), Box<dyn std::error::Error>> {
+    if !state.session_active {
+        return Ok(());
+    }
+    let Some(output) = state.output.clone() else {
+        return Ok(());
+    };
+
     let renderer = state.renderer.as_mut().unwrap();
     let renderbuffer = state.renderbuffer.as_mut().unwrap();
     let damage_tracker = state.damage_tracker.as_mut().unwrap();
@@ -126,7 +187,7 @@ fn render_tick(
         _,
         _,
     >(
-        output,
+        &output,
         renderer,
         &mut fb,
         1.0,
@@ -139,7 +200,7 @@ fn render_tick(
 
     state.space.elements().for_each(|window| {
         window.send_frame(
-            output,
+            &output,
             state.start_time.elapsed(),
             Some(Duration::ZERO),
             |_, _| Some(output.clone()),

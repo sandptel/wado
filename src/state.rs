@@ -7,11 +7,15 @@ use smithay::{
     },
     desktop::{PopupManager, Space, Window, WindowSurfaceType},
     input::{Seat, SeatState},
+    output::Output,
     reexports::{
-        calloop::{EventLoop, Interest, LoopSignal, Mode, PostAction, generic::Generic},
+        calloop::{
+            EventLoop, Interest, LoopHandle, LoopSignal, Mode, PostAction, RegistrationToken,
+            generic::Generic,
+        },
         wayland_server::{
             Display, DisplayHandle,
-            backend::{ClientData, ClientId, DisconnectReason},
+            backend::{ClientData, ClientId, DisconnectReason, GlobalId},
             protocol::wl_surface::WlSurface,
         },
     },
@@ -35,6 +39,9 @@ pub struct Wado {
 
     pub space: Space<Window>,
     pub loop_signal: LoopSignal,
+    /// Handle for inserting/removing event sources at runtime (e.g. the per-session
+    /// render timer). Captured from the event loop in [`Wado::new`].
+    pub loop_handle: LoopHandle<'static, Wado>,
 
     // Smithay protocol state
     pub compositor_state: CompositorState,
@@ -46,16 +53,27 @@ pub struct Wado {
     pub popups: PopupManager,
     pub seat: Seat<Self>,
 
-    // Headless rendering pipeline (set by headless::init_headless)
+    // Headless rendering pipeline — present only while a session is active
+    // (set by headless::start_session, cleared by headless::stop_session).
     pub renderer: Option<GlesRenderer>,
     pub renderbuffer: Option<GlesRenderbuffer>,
     pub damage_tracker: Option<OutputDamageTracker>,
     pub encoder: Option<X264Encoder>,
     pub frame_sink: Option<Box<dyn FrameSink>>,
+    pub output: Option<Output>,
+    /// The output's wl_output global, removed on session stop so a fresh session
+    /// doesn't leave stale outputs advertised.
+    pub output_global: Option<GlobalId>,
+    /// Token for the render timer source, so it can be removed on session stop.
+    pub render_timer_token: Option<RegistrationToken>,
+    /// The application process launched inside the active session.
+    pub app_process: Option<std::process::Child>,
+    /// True between start_session and stop_session.
+    pub session_active: bool,
 }
 
 impl Wado {
-    pub fn new(event_loop: &mut EventLoop<Self>, display: Display<Self>) -> Self {
+    pub fn new(event_loop: &mut EventLoop<'static, Self>, display: Display<Self>) -> Self {
         let start_time = std::time::Instant::now();
 
         let dh = display.handle();
@@ -75,12 +93,14 @@ impl Wado {
         let space = Space::default();
         let socket_name = Self::init_wayland_listener(display, event_loop);
         let loop_signal = event_loop.get_signal();
+        let loop_handle = event_loop.handle();
 
         Self {
             start_time,
             display_handle: dh,
             space,
             loop_signal,
+            loop_handle,
             socket_name,
             compositor_state,
             xdg_shell_state,
@@ -95,6 +115,11 @@ impl Wado {
             damage_tracker: None,
             encoder: None,
             frame_sink: None,
+            output: None,
+            output_global: None,
+            render_timer_token: None,
+            app_process: None,
+            session_active: false,
         }
     }
 

@@ -1,13 +1,17 @@
 /// Full compositor with per-second diagnostic stats piped to stderr.
 ///
+/// Standalone, eager diagnostic harness: brings up a full compositor that records
+/// H.264 to a file (captures/wado.h264) and logs per-second encode stats. The live
+/// WebRTC streaming path is the main binary + the `website` control plane; this
+/// example exists purely to profile render/encode throughput without a viewer.
+///
 /// Usage:
 ///   cargo run --example view_compositor
-///   then open http://localhost:8080 in a browser and click "Connect".
+///   ffplay -f h264 captures/wado.h264   # to inspect the recording afterwards
 ///
 /// What to look for:
 ///   [diag] lines show fps≈60, NAL size in the hundreds of bytes per frame.
 ///   If fps drops well below 60, the render or encode step is the bottleneck.
-///   If no video appears, check chrome://webrtc-internals for the codec/packet loss.
 use std::time::{Duration, Instant};
 
 use smithay::reexports::{calloop::EventLoop, wayland_server::Display};
@@ -22,8 +26,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_logging();
 
     eprintln!("[view_compositor] resolution={}x{}  fps={}", WIDTH, HEIGHT, FPS);
-    eprintln!("[view_compositor] stream viewer: open http://localhost:8080 in a browser");
+    eprintln!("[view_compositor] recording to captures/wado.h264 (inspect with ffplay)");
     eprintln!();
+
+    std::fs::create_dir_all("captures")?;
 
     let mut event_loop: EventLoop<Wado> = EventLoop::try_new()?;
     let display: Display<Wado> = Display::new()?;
@@ -31,10 +37,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     eprintln!("[view_compositor] Wayland socket: {:?}", state.socket_name);
 
-    headless::init_headless(&mut event_loop, &mut state, &WadoConfig::default())?;
-    eprintln!("[view_compositor] EGL context, headless output, x264 encoder, WebRTC sink — OK");
+    headless::init_headless(&mut state, &WadoConfig::default())?;
+    eprintln!("[view_compositor] EGL context, headless output, x264 encoder, file sink — OK");
 
-    // Inject the diagnostic wrapper around the existing WebRTC sink.
+    // Inject the diagnostic wrapper around the file sink.
     let inner = state
         .frame_sink
         .take()
