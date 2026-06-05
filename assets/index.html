@@ -11,7 +11,7 @@
     body { display: flex; }
     #panel { width: 320px; flex: 0 0 320px; padding: 16px; box-sizing: border-box;
       background: #181818; border-right: 1px solid #2a2a2a; overflow-y: auto; }
-    #stage { flex: 1; display: flex; flex-direction: column; }
+    #stage { flex: 1; display: flex; flex-direction: column; min-width: 0; }
     h1 { font-size: 18px; margin: 0 0 4px; }
     .hint { font-size: 12px; color: #888; margin: 0 0 16px; }
     label { display: block; font-size: 12px; color: #aaa; margin: 12px 0 4px; }
@@ -28,8 +28,17 @@
     #start { background: #2a7; } #stop { background: #a33; }
     button:disabled { background: #444; color: #888; cursor: default; }
     #status { font-size: 12px; color: #8c8; margin-top: 12px; min-height: 1em; }
-    video { flex: 1; width: 100%; min-height: 0; object-fit: contain; background: #000; }
     #stagebar { padding: 6px 12px; font-size: 12px; color: #888; background: #151515; }
+    #video { flex: 1; width: 100%; min-height: 0; object-fit: contain; background: #000; }
+    /* Live log panel */
+    #logs { border-top: 1px solid #2a2a2a; background: #0d0d0d; }
+    #logs > summary { padding: 6px 12px; user-select: none; }
+    #logwrap { height: 200px; overflow-y: auto; padding: 4px 12px 8px;
+      font-family: ui-monospace, monospace; font-size: 11.5px; line-height: 1.45; }
+    .logline { white-space: pre-wrap; word-break: break-word; }
+    .lts { color: #666; }
+    .l-ERROR { color: #f66; } .l-WARN { color: #fd6; }
+    .l-INFO { color: #9c9; } .l-DEBUG, .l-TRACE { color: #789; }
   </style>
 </head>
 <body>
@@ -97,16 +106,49 @@
   <div id="stage">
     <div id="stagebar">No session.</div>
     <video id="video" autoplay playsinline muted></video>
+    <details id="logs">
+      <summary>Logs</summary>
+      <div id="logwrap"></div>
+    </details>
   </div>
 
   <script>
     const $ = (id) => document.getElementById(id);
     const statusEl = $("status"), stagebar = $("stagebar"), videoEl = $("video");
     const startBtn = $("start"), stopBtn = $("stop");
+    const logwrap = $("logwrap"), logsPanel = $("logs");
+
     let pc = null;
+    let reconnectAttempts = 0;
+    const MAX_RECONNECTS = 3;
+    let sessionOn = false;
 
     function setStatus(s) { statusEl.textContent = s; }
 
+    // ── live logs (SSE) ──────────────────────────────────────────────────────
+    function addLog(line) {
+      // wire format: LEVEL|HH:MM:SS|text
+      const i1 = line.indexOf("|"), i2 = line.indexOf("|", i1 + 1);
+      let level = "INFO", ts = "", text = line;
+      if (i1 > 0 && i2 > i1) { level = line.slice(0, i1); ts = line.slice(i1 + 1, i2); text = line.slice(i2 + 1); }
+      const div = document.createElement("div");
+      div.className = "logline l-" + level.trim();
+      div.innerHTML = `<span class="lts">${ts}</span> ${escapeHtml(text)}`;
+      const atBottom = logwrap.scrollHeight - logwrap.scrollTop - logwrap.clientHeight < 30;
+      logwrap.appendChild(div);
+      while (logwrap.childElementCount > 500) logwrap.removeChild(logwrap.firstChild);
+      if (atBottom) logwrap.scrollTop = logwrap.scrollHeight;
+    }
+    function escapeHtml(s) {
+      return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+    }
+    function connectLogs() {
+      const es = new EventSource("/events");
+      es.onmessage = (ev) => addLog(ev.data);
+      es.onerror = () => { /* EventSource auto-reconnects */ };
+    }
+
+    // ── form → config ────────────────────────────────────────────────────────
     $("res").addEventListener("change", (e) => {
       $("customRes").style.display = e.target.value === "custom" ? "flex" : "none";
     });
@@ -123,43 +165,53 @@
         [w, h] = $("res").value.split("x").map((n) => parseInt(n, 10));
       }
       const q = $("quality").value;
-      let quality;
-      if (q === "custom") quality = { custom: { bitrate_kbps: parseInt($("bitrate").value, 10) } };
-      else quality = q; // "reactivity" | "balanced" | "quality"
-
-      const cfg = {
-        width: w, height: h,
-        fps: parseInt($("fps").value, 10),
-        quality,
-        command: $("command").value,
-      };
+      const quality = q === "custom"
+        ? { custom: { bitrate_kbps: parseInt($("bitrate").value, 10) } }
+        : q;
+      const cfg = { width: w, height: h, fps: parseInt($("fps").value, 10), quality, command: $("command").value };
       if ($("preset").value) cfg.preset = $("preset").value;
       if ($("kf").value) cfg.keyframe_interval = parseInt($("kf").value, 10);
       return cfg;
     }
 
+    // ── lifecycle ────────────────────────────────────────────────────────────
     async function start() {
       startBtn.disabled = true;
       setStatus("starting session…");
-
-      const res = await fetch("/session/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(buildConfig()),
-      });
-      if (!res.ok) {
-        setStatus("start failed: " + (await res.text()));
-        startBtn.disabled = false;
-        return;
+      try {
+        const res = await fetch("/session/start", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(buildConfig()),
+        });
+        if (!res.ok) { setStatus("start failed: " + (await res.text())); startBtn.disabled = false; return; }
+        sessionOn = true;
+        reconnectAttempts = 0;
+        stagebar.textContent = "Session running — connecting video…";
+        await connectWebRTC();
+        stopBtn.disabled = false;
+      } catch (e) {
+        setStatus("error: " + e.message);
+        logsPanel.open = true;
+        onStopped();
       }
-      stagebar.textContent = "Session running — connecting video…";
+    }
 
-      pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+    // Build a fresh peer connection + offer. The server makes a new pc per offer,
+    // so reconnection is a full re-offer (not an ICE restart on the same pc).
+    async function connectWebRTC() {
+      if (pc) { try { pc.close(); } catch (_) {} }
+      pc = new RTCPeerConnection();
       pc.addTransceiver("video", { direction: "recvonly" });
-      pc.ontrack = (ev) => { videoEl.srcObject = ev.streams[0]; stagebar.textContent = "Streaming."; };
+      pc.ontrack = (ev) => {
+        videoEl.srcObject = ev.streams[0];
+        stagebar.textContent = "Streaming.";
+        reconnectAttempts = 0;
+      };
       pc.oniceconnectionstatechange = () => setStatus("ICE: " + pc.iceConnectionState);
       pc.onconnectionstatechange = () => {
-        if (["failed", "closed", "disconnected"].includes(pc.connectionState)) onStopped();
+        // Only `failed` is terminal. `disconnected` is transient and usually
+        // recovers on its own, so we never tear down on it.
+        if (pc && pc.connectionState === "failed") handleFailure();
       };
 
       const offer = await pc.createOffer();
@@ -167,32 +219,47 @@
       await new Promise((resolve) => {
         if (pc.iceGatheringState === "complete") return resolve();
         const check = () => {
-          if (pc.iceGatheringState === "complete") {
-            pc.removeEventListener("icegatheringstatechange", check); resolve();
-          }
+          if (pc.iceGatheringState === "complete") { pc.removeEventListener("icegatheringstatechange", check); resolve(); }
         };
         pc.addEventListener("icegatheringstatechange", check);
       });
 
       const resp = await fetch("/offer", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(pc.localDescription),
       });
-      if (!resp.ok) { setStatus("offer rejected: HTTP " + resp.status); onStopped(); return; }
+      if (!resp.ok) throw new Error("offer rejected: HTTP " + resp.status);
       await pc.setRemoteDescription(await resp.json());
       setStatus("connected");
-      stopBtn.disabled = false;
+    }
+
+    // Retry the WebRTC connection with backoff; the compositor session keeps running.
+    function handleFailure() {
+      if (!sessionOn) return;
+      if (reconnectAttempts >= MAX_RECONNECTS) {
+        setStatus("connection lost — giving up");
+        logsPanel.open = true;
+        stop();
+        return;
+      }
+      reconnectAttempts++;
+      const delay = 500 * Math.pow(2, reconnectAttempts - 1);
+      setStatus(`connection lost — reconnecting (${reconnectAttempts}/${MAX_RECONNECTS})…`);
+      setTimeout(() => {
+        if (!sessionOn) return;
+        connectWebRTC().catch(() => handleFailure());
+      }, delay);
     }
 
     async function stop() {
       stopBtn.disabled = true;
-      await fetch("/session/stop", { method: "POST" });
-      if (pc) { pc.close(); pc = null; }
+      sessionOn = false;
+      try { await fetch("/session/stop", { method: "POST" }); } catch (_) {}
       onStopped();
     }
 
     function onStopped() {
+      sessionOn = false;
       if (pc) { try { pc.close(); } catch (_) {} pc = null; }
       videoEl.srcObject = null;
       stagebar.textContent = "No session.";
@@ -203,6 +270,12 @@
 
     startBtn.addEventListener("click", start);
     stopBtn.addEventListener("click", stop);
+    // Free server resources promptly if the tab is closed mid-session.
+    window.addEventListener("pagehide", () => {
+      if (sessionOn) navigator.sendBeacon("/session/stop");
+    });
+
+    connectLogs();
   </script>
 </body>
 </html>

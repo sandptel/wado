@@ -4,7 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+thiserror = "1"
 bitflags = "2"
 x264 = "0.5"
 # WebRTC video transport. Pinned to the 0.17.x stable line — 0.20.0-alpha.1 is the
