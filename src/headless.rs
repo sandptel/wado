@@ -16,13 +16,20 @@ use smithay::{
     utils::{Buffer, Size, Transform},
 };
 
+use tracing::{debug, info, warn};
+
 use crate::{
-    Wado,
+    Wado, WadoError,
     capture::mem::capture_frame,
     conf::{EncoderConfig, SinkTarget, WadoConfig},
     encode::x264enc::X264Encoder,
     sink::{FrameSink, file::FileSink},
 };
+
+/// Map any displayable renderer/EGL error into [`WadoError::Renderer`].
+fn renderer_err<E: std::fmt::Display>(ctx: &str) -> impl FnOnce(E) -> WadoError + '_ {
+    move |e| WadoError::Renderer(format!("{ctx}: {e}"))
+}
 
 /// Backward-compat aliases — prefer `WadoConfig::default().encoder.*` in new code.
 pub const WIDTH: u32 = crate::conf::DEFAULT_WIDTH;
@@ -31,10 +38,7 @@ pub const FPS: u32 = crate::conf::DEFAULT_FPS;
 
 /// Eager, standalone setup for the examples: build the configured sink and start a
 /// session immediately. The live path uses `website` + `start_session` instead.
-pub fn init_headless(
-    state: &mut Wado,
-    config: &WadoConfig,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn init_headless(state: &mut Wado, config: &WadoConfig) -> crate::Result<()> {
     config.print_summary();
     let sink: Box<dyn FrameSink> = match &config.output.sink {
         SinkTarget::File(path) => Box::new(FileSink::create(path)?),
@@ -50,19 +54,30 @@ pub fn start_session(
     state: &mut Wado,
     ec: &EncoderConfig,
     sink: Box<dyn FrameSink>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> crate::Result<()> {
     if state.session_active {
-        return Err("a session is already active".into());
+        return Err(WadoError::SessionAlreadyActive);
     }
+    debug!(
+        width = ec.width,
+        height = ec.height,
+        fps = ec.fps,
+        bitrate_kbps = ec.bitrate_kbps,
+        "starting compositor session — building EGL/GLES + encoder"
+    );
 
     // ── EGL / GLES renderer ───────────────────────────────────────────────────
-    let egl_display = unsafe { EGLDisplay::new(EGLSurfacelessDisplay)? };
-    let egl_context = EGLContext::new(&egl_display)?;
-    let mut renderer = unsafe { GlesRenderer::new(egl_context)? };
+    let egl_display =
+        unsafe { EGLDisplay::new(EGLSurfacelessDisplay).map_err(renderer_err("EGLDisplay::new"))? };
+    let egl_context = EGLContext::new(&egl_display).map_err(renderer_err("EGLContext::new"))?;
+    let mut renderer =
+        unsafe { GlesRenderer::new(egl_context).map_err(renderer_err("GlesRenderer::new"))? };
 
     // ── Offscreen render target ───────────────────────────────────────────────
     let buf_size: Size<i32, Buffer> = (ec.width as i32, ec.height as i32).into();
-    let renderbuffer: GlesRenderbuffer = renderer.create_buffer(Fourcc::Abgr8888, buf_size)?;
+    let renderbuffer: GlesRenderbuffer = renderer
+        .create_buffer(Fourcc::Abgr8888, buf_size)
+        .map_err(renderer_err("create_buffer"))?;
 
     // ── Logical Output (no physical display), sized to the client ─────────────
     let mode = Mode {
@@ -108,17 +123,23 @@ pub fn start_session(
     // ── Render timer ──────────────────────────────────────────────────────────
     let (w, h) = (ec.width, ec.height);
     let frame_nanos = 1_000_000_000 / ec.fps.max(1) as u64;
-    let token = state.loop_handle.insert_source(
-        Timer::immediate(),
-        move |deadline, _, state: &mut Wado| {
-            if let Err(e) = render_tick(state, w, h) {
-                eprintln!("render_tick error: {e}");
-            }
-            TimeoutAction::ToInstant(deadline + Duration::from_nanos(frame_nanos))
-        },
-    )?;
+    let token = state
+        .loop_handle
+        .insert_source(
+            Timer::immediate(),
+            move |deadline, _, state: &mut Wado| {
+                if let Err(e) = render_tick(state, w, h) {
+                    // Transient per-frame failure: log and keep the timer alive so
+                    // the pipeline can recover on the next tick.
+                    tracing::warn!("render tick failed: {e}");
+                }
+                TimeoutAction::ToInstant(deadline + Duration::from_nanos(frame_nanos))
+            },
+        )
+        .map_err(|e| WadoError::Other(format!("insert render timer: {e}")))?;
     state.render_timer_token = Some(token);
 
+    info!(width = ec.width, height = ec.height, fps = ec.fps, "compositor session active");
     Ok(())
 }
 
@@ -128,13 +149,17 @@ pub fn start_session(
 pub fn spawn_session_command(state: &mut Wado, command: &str) {
     let mut parts = command.split_whitespace();
     let Some(program) = parts.next() else {
-        eprintln!("[headless] empty session command — nothing to launch");
+        warn!("empty session command — nothing to launch");
         return;
     };
     let args: Vec<&str> = parts.collect();
     match std::process::Command::new(program).args(&args).spawn() {
-        Ok(child) => state.app_process = Some(child),
-        Err(e) => eprintln!("[headless] failed to launch {program:?}: {e}"),
+        Ok(child) => {
+            info!(pid = child.id(), command, "launched session application");
+            state.app_process = Some(child);
+        }
+        // Not fatal to the session: the stream still runs, the window is just empty.
+        Err(e) => tracing::error!("failed to launch session app {program:?}: {e}"),
     }
 }
 
@@ -164,10 +189,19 @@ pub fn stop_session(state: &mut Wado) {
     state.frame_sink = None;
     state.session_active = false;
 
-    eprintln!("[headless] session stopped — resources released");
+    info!("compositor session stopped — resources released");
 }
 
-fn render_tick(state: &mut Wado, width: u32, height: u32) -> Result<(), Box<dyn std::error::Error>> {
+/// Request that the next encoded frame be a forced IDR keyframe. Called when a new
+/// viewer connects or the browser sends a PLI/FIR (picture loss). No-op if idle.
+pub fn force_keyframe(state: &mut Wado) {
+    if let Some(encoder) = state.encoder.as_mut() {
+        encoder.force_idr_next();
+        debug!("forced IDR keyframe requested");
+    }
+}
+
+fn render_tick(state: &mut Wado, width: u32, height: u32) -> crate::Result<()> {
     if !state.session_active {
         return Ok(());
     }
@@ -179,7 +213,7 @@ fn render_tick(state: &mut Wado, width: u32, height: u32) -> Result<(), Box<dyn 
     let renderbuffer = state.renderbuffer.as_mut().unwrap();
     let damage_tracker = state.damage_tracker.as_mut().unwrap();
 
-    let mut fb = renderer.bind(renderbuffer)?;
+    let mut fb = renderer.bind(renderbuffer).map_err(renderer_err("bind"))?;
 
     smithay::desktop::space::render_output::<
         _,
@@ -196,7 +230,8 @@ fn render_tick(state: &mut Wado, width: u32, height: u32) -> Result<(), Box<dyn 
         &[],
         damage_tracker,
         [0.1, 0.1, 0.1, 1.0],
-    )?;
+    )
+    .map_err(renderer_err("render_output"))?;
 
     state.space.elements().for_each(|window| {
         window.send_frame(

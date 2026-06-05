@@ -18,10 +18,12 @@ pub fn capture_frame(
     renderer: &mut GlesRenderer,
     framebuffer: &GlesTarget<'_>,
     size: Size<i32, Buffer>,
-) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+) -> crate::Result<Vec<u8>> {
     let region = Rectangle::new((0, 0).into(), size);
 
-    let mapping = renderer.copy_framebuffer(framebuffer, region, Fourcc::Abgr8888)?;
+    let mapping = renderer
+        .copy_framebuffer(framebuffer, region, Fourcc::Abgr8888)
+        .map_err(|e| crate::WadoError::Capture(format!("copy_framebuffer: {e}")))?;
 
     // flipped()=true means "y-axis is flipped compared to lower-left=(0,0)" — i.e. the
     // buffer origin IS already at the upper-left (screen convention, row 0 = display top).
@@ -29,7 +31,9 @@ pub fn capture_frame(
     // returns rows in screen order.  We only need to un-flip when flipped()==false, which
     // would mean the data is still in GL lower-left convention.
     let flipped = mapping.flipped();
-    let raw = renderer.map_texture(&mapping)?;
+    let raw = renderer
+        .map_texture(&mapping)
+        .map_err(|e| crate::WadoError::Capture(format!("map_texture: {e}")))?;
     let bytes = raw.to_vec();
 
     if !flipped {

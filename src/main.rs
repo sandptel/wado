@@ -1,12 +1,16 @@
 use smithay::reexports::{calloop::EventLoop, wayland_server::Display};
-use wado::{Wado, website};
+use tracing_subscriber::{EnvFilter, fmt, prelude::*};
+use wado::{
+    Wado,
+    website::{self, logbus::LogBus},
+};
 
 /// Where the control server listens. Bound to localhost because the session launch
 /// command is free-form (an RCE surface); LAN exposure waits on the security gate.
 const DEFAULT_CONTROL_ADDR: &str = "127.0.0.1:8080";
 
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    init_logging();
+    let log_bus = init_logging();
 
     let mut event_loop: EventLoop<Wado> = EventLoop::try_new()?;
     let display: Display<Wado> = Display::new()?;
@@ -19,18 +23,23 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // loop exists until the web client triggers one — wado sits ~idle until then.
     let control_addr =
         std::env::args().nth(1).unwrap_or_else(|| DEFAULT_CONTROL_ADDR.to_string());
-    website::start(state.loop_handle.clone(), &control_addr)?;
-    eprintln!("[wado] idle — open http://{control_addr} to configure and start a session");
+    website::start(state.loop_handle.clone(), &control_addr, log_bus)?;
+    tracing::info!("wado idle — open http://{control_addr} to configure and start a session");
 
     event_loop.run(None, &mut state, move |_| {})?;
 
     Ok(())
 }
 
-fn init_logging() {
-    if let Ok(env_filter) = tracing_subscriber::EnvFilter::try_from_default_env() {
-        tracing_subscriber::fmt().with_env_filter(env_filter).init();
-    } else {
-        tracing_subscriber::fmt().init();
-    }
+/// Install tracing: the console fmt layer, plus the [`LogBus`] layer that feeds the
+/// web client's live log panel. Returns the bus so it can be handed to the server.
+fn init_logging() -> LogBus {
+    let log_bus = LogBus::new();
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(fmt::layer())
+        .with(log_bus.clone())
+        .init();
+    log_bus
 }

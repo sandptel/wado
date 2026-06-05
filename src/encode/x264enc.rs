@@ -25,7 +25,7 @@ impl X264Encoder {
         bitrate_kbps: u32,
         keyframe_interval: u32,
         preset: Preset,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    ) -> crate::Result<Self> {
         let w = width as usize;
         let h = height as usize;
         let mut encoder = build_encoder(w, h, fps, bitrate_kbps, keyframe_interval, preset)?;
@@ -94,7 +94,7 @@ impl X264Encoder {
                 // pts intentionally NOT reset — decoder cares about continuity of DTS, not
                 // absolute values, and our zero_latency config has no B-frame reordering.
             }
-            Err(e) => eprintln!("[x264] encoder rebuild failed: {e}"),
+            Err(e) => tracing::error!("x264 encoder rebuild failed: {e}"),
         }
     }
 
@@ -146,7 +146,7 @@ fn build_encoder(
     bitrate_kbps: u32,
     keyframe_interval: u32,
     preset: Preset,
-) -> Result<Encoder, Box<dyn std::error::Error>> {
+) -> crate::Result<Encoder> {
     let ki = keyframe_interval as i32;
     // zero_latency=true → no B-frames, no lookahead delay, flush every frame.
     // scenecut_threshold(0) disables scene-cut detection so IDR timing is exactly
@@ -161,7 +161,7 @@ fn build_encoder(
         .scenecut_threshold(0)
         .annexb(true)
         .build(Colorspace::I420, width as i32, height as i32)
-        .map_err(|_| "x264 encoder build failed")?;
+        .map_err(|e| crate::WadoError::Encoder(format!("x264 build: {e:?}")))?;
     Ok(encoder)
 }
 
