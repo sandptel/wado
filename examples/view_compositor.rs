@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 use smithay::reexports::{calloop::EventLoop, wayland_server::Display};
 use wado::{
     Wado,
+    conf::WadoConfig,
     headless::{self, FPS, HEIGHT, WIDTH},
     sink::FrameSink,
 };
@@ -30,7 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     eprintln!("[view_compositor] Wayland socket: {:?}", state.socket_name);
 
-    headless::init_headless(&mut event_loop, &mut state)?;
+    headless::init_headless(&mut event_loop, &mut state, &WadoConfig::default())?;
     eprintln!("[view_compositor] EGL context, headless output, x264 encoder, UDP sink — OK");
 
     // Inject the diagnostic wrapper around the existing UDP sink.

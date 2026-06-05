@@ -24,16 +24,14 @@ use smithay::{
 };
 use wado::{
     capture::mem::capture_frame,
+    conf::{OutputConfig, SinkTarget, WadoConfig},
     headless::{self, FPS, HEIGHT, WIDTH},
-    sink::{file::FileSink, FrameSink},
     Wado,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     fs::create_dir_all("captures")?;
-    let ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)?
-        .as_secs();
+    let ts = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
     let h264_path = format!("captures/wado_{}.h264", ts);
 
     eprintln!("[capture_to_disk] resolution={}x{}  fps={}", WIDTH, HEIGHT, FPS);
@@ -46,21 +44,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let display: Display<Wado> = Display::new()?;
     let mut state = Wado::new(&mut event_loop, display);
 
-    headless::init_headless(&mut event_loop, &mut state)?;
+    // Override the sink to write directly to a file; all other params stay at default.
+    let config = WadoConfig {
+        output: OutputConfig {
+            sink: SinkTarget::File(h264_path.clone()),
+            log_encode_stats: false,
+        },
+        ..WadoConfig::default()
+    };
+    headless::init_headless(&mut event_loop, &mut state, &config)?;
     eprintln!("[capture_to_disk] compositor ready, socket: {:?}", state.socket_name);
-
-    // Grab a fresh set of SPS+PPS for the file (init_headless already sent them
-    // to the UDP sink; we need them again for the new FileSink).
-    let headers = state.encoder.as_mut().unwrap().headers();
-    let mut file_sink = FileSink::create(&h264_path)?;
-    file_sink.send(&headers);
-    state.frame_sink = Some(Box::new(CountingSink::new(file_sink)));
 
     unsafe { std::env::set_var("WAYLAND_DISPLAY", &state.socket_name) };
     std::process::Command::new("weston-terminal").spawn().ok();
 
-    // The idle callback fires between calloop event batches — close enough to
-    // a periodic timer for snapshot purposes.
     let buf_size: Size<i32, Buffer> = (WIDTH as i32, HEIGHT as i32).into();
     let mut last_snap = Instant::now();
     let mut snap_n = 0u32;
@@ -72,9 +69,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         last_snap = Instant::now();
         snap_n += 1;
 
-        // Rebind the renderbuffer to read back the last rendered frame.
-        // By this point render_tick has already dropped its GlesTarget, so
-        // the renderbuffer is free to bind again.
         let (Some(renderer), Some(renderbuffer)) =
             (state.renderer.as_mut(), state.renderbuffer.as_mut())
         else {
@@ -102,7 +96,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Write a PPM (P6) image from ABGR8888 bytes.
-/// PPM is a trivial format: ASCII header + packed RGB bytes — no crate needed.
 fn save_ppm(abgr: &[u8], width: usize, height: usize, path: &str) {
     let Ok(mut f) = fs::File::create(path) else {
         eprintln!("[snap] could not create {path}");
@@ -120,27 +113,3 @@ fn save_ppm(abgr: &[u8], width: usize, height: usize, path: &str) {
     eprintln!("[snap] saved {path}");
 }
 
-/// Wraps FileSink and logs the first frame + periodic progress.
-struct CountingSink {
-    inner: FileSink,
-    count: u64,
-}
-
-impl CountingSink {
-    fn new(inner: FileSink) -> Self {
-        Self { inner, count: 0 }
-    }
-}
-
-impl FrameSink for CountingSink {
-    fn send(&mut self, nal_data: &[u8]) {
-        self.count += 1;
-        if self.count == 1 {
-            eprintln!("[capture_to_disk] first frame written ({} B)", nal_data.len());
-        } else if self.count % 300 == 0 {
-            // Every ~5 s at 60fps
-            eprintln!("[capture_to_disk] frame {}", self.count);
-        }
-        self.inner.send(nal_data);
-    }
-}

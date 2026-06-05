@@ -1,5 +1,5 @@
 use smithay::reexports::{calloop::EventLoop, wayland_server::Display};
-use wado::{Wado, headless};
+use wado::{Wado, conf::WadoConfig, headless};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_logging();
@@ -8,7 +8,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let display: Display<Wado> = Display::new()?;
     let mut state = Wado::new(&mut event_loop, display);
 
-    headless::init_headless(&mut event_loop, &mut state)?;
+    headless::init_headless(&mut event_loop, &mut state, &WadoConfig::default())?;
 
     unsafe { std::env::set_var("WAYLAND_DISPLAY", &state.socket_name) };
 

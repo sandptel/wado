@@ -2,7 +2,7 @@ use std::net::UdpSocket;
 
 use super::FrameSink;
 
-/// Streams H.264 Annex-B frames over UDP with a 4-byte big-endian length prefix.
+/// Streams raw H.264 Annex-B frames over UDP.
 /// Receive with: ffplay -f h264 -i udp://127.0.0.1:5555
 pub struct UdpSink {
     socket: UdpSocket,
@@ -19,14 +19,9 @@ impl UdpSink {
 
 impl FrameSink for UdpSink {
     fn send(&mut self, nal_data: &[u8]) {
-        // Split into MTU-sized chunks with a 4-byte length prefix on the first chunk.
-        // For M1 correctness we send in one shot; M2 adds proper RTP packetization.
-        let len = (nal_data.len() as u32).to_be_bytes();
-        let mut packet = Vec::with_capacity(4 + nal_data.len());
-        packet.extend_from_slice(&len);
-        packet.extend_from_slice(nal_data);
-
+        // Raw Annex-B bytes, no framing prefix. ffplay -f h264 expects this format.
         // UDP datagrams > ~64 KB will be fragmented at IP layer — fine for M1.
-        let _ = self.socket.send_to(&packet, self.dest);
+        // M2 adds proper RTP packetization and MTU-aware splitting.
+        let _ = self.socket.send_to(nal_data, self.dest);
     }
 }
