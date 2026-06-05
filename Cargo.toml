@@ -7,6 +7,12 @@ edition = "2024"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 bitflags = "2"
 x264 = "0.5"
+# WebRTC video transport. Pinned to the 0.17.x stable line — 0.20.0-alpha.1 is the
+# Sans-IO migration and must NOT be used (see WADO_PLAN.md §3.4 Gotchas).
+webrtc = "0.17"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "net", "io-util", "time", "macros"] }
+serde_json = "1"
+bytes = "1"
 
 [dependencies.smithay]
 git = "https://github.com/Smithay/smithay.git"

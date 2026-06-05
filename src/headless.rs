@@ -21,7 +21,7 @@ use crate::{
     capture::mem::capture_frame,
     conf::{SinkTarget, WadoConfig},
     encode::x264enc::X264Encoder,
-    sink::{FrameSink, file::FileSink, udp::UdpSink},
+    sink::{FrameSink, file::FileSink, webrtc::WebRtcSink},
 };
 
 /// Backward-compat aliases — prefer `WadoConfig::default().encoder.*` in new code.
@@ -83,7 +83,7 @@ pub fn init_headless(
     // No explicit header send here — every IDR frame already carries SPS+PPS inline
     // (Fix 2 in x264enc). A late-joining client will sync on the next IDR.
     let sink: Box<dyn FrameSink> = match &config.output.sink {
-        SinkTarget::Udp(addr) => Box::new(UdpSink::bind(addr)?),
+        SinkTarget::WebRtc { http_addr } => Box::new(WebRtcSink::new(http_addr, ec.fps)?),
         SinkTarget::File(path) => Box::new(FileSink::create(path)?),
     };
 

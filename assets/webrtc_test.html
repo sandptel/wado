@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>wado — WebRTC stream</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #111; color: #ddd;
+      font-family: system-ui, sans-serif; }
+    #bar { padding: 8px 12px; font-size: 14px; display: flex; gap: 12px; align-items: center; }
+    #status { color: #8c8; }
+    video { display: block; width: 100vw; height: calc(100vh - 40px);
+      object-fit: contain; background: #000; }
+    button { background: #2a2; color: #fff; border: 0; padding: 6px 14px;
+      border-radius: 4px; cursor: pointer; font-size: 14px; }
+    button:disabled { background: #555; cursor: default; }
+  </style>
+</head>
+<body>
+  <div id="bar">
+    <button id="connect">Connect</button>
+    <span id="status">idle</span>
+  </div>
+  <video id="video" autoplay playsinline muted></video>
+
+  <script>
+    const statusEl = document.getElementById("status");
+    const videoEl = document.getElementById("video");
+    const connectBtn = document.getElementById("connect");
+
+    function setStatus(s) { statusEl.textContent = s; }
+
+    async function connect() {
+      connectBtn.disabled = true;
+      setStatus("creating peer connection…");
+
+      const pc = new RTCPeerConnection({
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      });
+
+      // We only want to receive video.
+      pc.addTransceiver("video", { direction: "recvonly" });
+
+      pc.ontrack = (ev) => {
+        setStatus("track received — playing");
+        videoEl.srcObject = ev.streams[0];
+      };
+      pc.oniceconnectionstatechange = () => {
+        setStatus("ICE: " + pc.iceConnectionState);
+      };
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      // Wait for ICE gathering to finish (non-trickle, matches the server).
+      await new Promise((resolve) => {
+        if (pc.iceGatheringState === "complete") return resolve();
+        const check = () => {
+          if (pc.iceGatheringState === "complete") {
+            pc.removeEventListener("icegatheringstatechange", check);
+            resolve();
+          }
+        };
+        pc.addEventListener("icegatheringstatechange", check);
+      });
+
+      setStatus("sending offer…");
+      const resp = await fetch("/offer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(pc.localDescription),
+      });
+      if (!resp.ok) {
+        setStatus("offer rejected: HTTP " + resp.status);
+        connectBtn.disabled = false;
+        return;
+      }
+      const answer = await resp.json();
+      await pc.setRemoteDescription(answer);
+      setStatus("answer applied — negotiating…");
+    }
+
+    connectBtn.addEventListener("click", connect);
+  </script>
+</body>
+</html>

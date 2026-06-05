@@ -28,10 +28,11 @@ pub struct EncoderConfig {
 /// Where encoded H.264 frames are delivered.
 #[derive(Debug, Clone)]
 pub enum SinkTarget {
-    /// Raw Annex-B bytes to a UDP socket. Test with:
-    ///   ffplay -f h264 -i udp://127.0.0.1:5555
-    Udp(String),
-    /// Raw Annex-B bytes appended to a file.
+    /// Stream over WebRTC (DTLS-SRTP). `http_addr` is the built-in signaling
+    /// endpoint — open it in a browser to view the stream. The browser POSTs an
+    /// SDP offer to `POST /offer` and `GET /` serves a test page.
+    WebRtc { http_addr: String },
+    /// Raw Annex-B bytes appended to a file. Debug / recording path.
     File(String),
 }
 
@@ -54,7 +55,7 @@ impl Default for WadoConfig {
                 preset: Preset::Ultrafast,
             },
             output: OutputConfig {
-                sink: SinkTarget::Udp("127.0.0.1:5555".to_string()),
+                sink: SinkTarget::WebRtc { http_addr: "0.0.0.0:8080".to_string() },
                 log_encode_stats: false,
             },
         }
@@ -69,7 +70,9 @@ impl WadoConfig {
             e.width, e.height, e.fps, e.bitrate_kbps, e.keyframe_interval, e.preset
         );
         match &self.output.sink {
-            SinkTarget::Udp(addr) => eprintln!("[wado] config: sink=udp://{}", addr),
+            SinkTarget::WebRtc { http_addr } => {
+                eprintln!("[wado] config: sink=webrtc  signaling=http://{}", http_addr)
+            }
             SinkTarget::File(path) => eprintln!("[wado] config: sink=file://{}", path),
         }
     }

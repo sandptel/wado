@@ -1,13 +1,13 @@
 /// Full compositor with per-second diagnostic stats piped to stderr.
 ///
 /// Usage:
-///   In terminal 1: ffplay -f h264 -i udp://127.0.0.1:5555
-///   In terminal 2: cargo run --example view_compositor
+///   cargo run --example view_compositor
+///   then open http://localhost:8080 in a browser and click "Connect".
 ///
 /// What to look for:
 ///   [diag] lines show fps≈60, NAL size in the hundreds of bytes per frame.
 ///   If fps drops well below 60, the render or encode step is the bottleneck.
-///   If no frames appear in ffplay, check that nothing else is bound to :5555.
+///   If no video appears, check chrome://webrtc-internals for the codec/packet loss.
 use std::time::{Duration, Instant};
 
 use smithay::reexports::{calloop::EventLoop, wayland_server::Display};
@@ -22,7 +22,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_logging();
 
     eprintln!("[view_compositor] resolution={}x{}  fps={}", WIDTH, HEIGHT, FPS);
-    eprintln!("[view_compositor] stream viewer: ffplay -f h264 -i udp://127.0.0.1:5555");
+    eprintln!("[view_compositor] stream viewer: open http://localhost:8080 in a browser");
     eprintln!();
 
     let mut event_loop: EventLoop<Wado> = EventLoop::try_new()?;
@@ -32,9 +32,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("[view_compositor] Wayland socket: {:?}", state.socket_name);
 
     headless::init_headless(&mut event_loop, &mut state, &WadoConfig::default())?;
-    eprintln!("[view_compositor] EGL context, headless output, x264 encoder, UDP sink — OK");
+    eprintln!("[view_compositor] EGL context, headless output, x264 encoder, WebRTC sink — OK");
 
-    // Inject the diagnostic wrapper around the existing UDP sink.
+    // Inject the diagnostic wrapper around the existing WebRTC sink.
     let inner = state
         .frame_sink
         .take()
