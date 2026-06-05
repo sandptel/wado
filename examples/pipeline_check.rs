@@ -60,7 +60,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for i in 0..FRAMES {
         let frame = make_test_pattern(WIDTH, HEIGHT, i);
         let t = Instant::now();
-        let result = encoder.encode_abgr(&frame);
+        let result = encoder.encode_rgba(&frame);
         let dur = ms(t);
 
         match result {
@@ -118,10 +118,11 @@ fn make_test_pattern(width: u32, height: u32, frame: u32) -> Vec<u8> {
             let hue = (phase + col as f32 / w as f32 * 120.0) % 360.0;
             let sat = 0.4 + 0.6 * row as f32 / h as f32;
             let (r, g, b) = hsv_to_rgb(hue, sat, 1.0);
-            data[base] = 255; // A
-            data[base + 1] = b; // B  (ABGR layout from Mesa)
-            data[base + 2] = g; // G
-            data[base + 3] = r; // R
+            // Fourcc::Abgr8888 on LE = [R,G,B,A] in memory (GL_RGBA order)
+            data[base]     = r;
+            data[base + 1] = g;
+            data[base + 2] = b;
+            data[base + 3] = 255; // A
         }
     }
     data

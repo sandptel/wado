@@ -9,8 +9,11 @@ use smithay::{
     utils::{Buffer, Rectangle, Size},
 };
 
-/// Read pixels from the currently-bound GlesRenderer framebuffer into a
-/// plain `Vec<u8>` in ABGR8888 order, with the GL y-flip corrected.
+/// Read pixels from the currently-bound GlesRenderer framebuffer.
+///
+/// Returns a `Vec<u8>` in Fourcc::Abgr8888 wire format — which on little-endian
+/// is [R, G, B, A] per pixel in memory (GL_RGBA + GL_UNSIGNED_BYTE order).
+/// The GL y-flip is corrected so row 0 is the top of the image.
 pub fn capture_frame(
     renderer: &mut GlesRenderer,
     framebuffer: &GlesTarget<'_>,
@@ -20,11 +23,16 @@ pub fn capture_frame(
 
     let mapping = renderer.copy_framebuffer(framebuffer, region, Fourcc::Abgr8888)?;
 
+    // flipped()=true means "y-axis is flipped compared to lower-left=(0,0)" — i.e. the
+    // buffer origin IS already at the upper-left (screen convention, row 0 = display top).
+    // Smithay's render() bakes a flip180 into the GL projection so that glReadPixels
+    // returns rows in screen order.  We only need to un-flip when flipped()==false, which
+    // would mean the data is still in GL lower-left convention.
     let flipped = mapping.flipped();
     let raw = renderer.map_texture(&mapping)?;
     let bytes = raw.to_vec();
 
-    if flipped {
+    if !flipped {
         Ok(flip_rows(bytes, size.w as usize, size.h as usize))
     } else {
         Ok(bytes)

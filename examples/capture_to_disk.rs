@@ -109,12 +109,12 @@ fn save_ppm(abgr: &[u8], width: usize, height: usize, path: &str) {
         return;
     };
     let _ = write!(f, "P6\n{} {}\n255\n", width, height);
-    // ABGR layout: [A=0, B=1, G=2, R=3] per pixel
+    // Fourcc::Abgr8888 memory layout on LE: [R=0, G=1, B=2, A=3] (GL_RGBA order)
     let mut rgb = Vec::with_capacity(width * height * 3);
     for px in abgr.chunks_exact(4) {
-        rgb.push(px[3]); // R
-        rgb.push(px[2]); // G
-        rgb.push(px[1]); // B
+        rgb.push(px[0]); // R
+        rgb.push(px[1]); // G
+        rgb.push(px[2]); // B
     }
     let _ = f.write_all(&rgb);
     eprintln!("[snap] saved {path}");

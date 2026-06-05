@@ -131,7 +131,7 @@ fn render_tick(state: &mut Wado, output: &Output) -> Result<(), Box<dyn std::err
     let pixels = capture_frame(renderer, &fb, buf_size)?;
 
     let encoder = state.encoder.as_mut().unwrap();
-    if let Some(nal_bytes) = encoder.encode_abgr(&pixels) {
+    if let Some(nal_bytes) = encoder.encode_rgba(&pixels) {
         if let Some(sink) = state.frame_sink.as_mut() {
             sink.send(&nal_bytes);
         }
