@@ -4,34 +4,98 @@ pub struct X264Encoder {
     encoder: Encoder,
     width: usize,
     height: usize,
+    fps: u32,
+    bitrate_kbps: u32,
+    keyframe_interval: u32,
+    preset: Preset,
     pts: i64,
+    /// SPS + PPS NALs, prepended to every IDR frame so the stream is self-contained.
+    headers: Vec<u8>,
+    /// Set by force_idr_next(); cleared after the encoder is rebuilt.
+    force_idr: bool,
 }
 
 impl X264Encoder {
     /// Create an x264 encoder configured for zero-latency streaming.
     /// `width` and `height` must be even (required by I420 chroma subsampling).
-    pub fn new(width: u32, height: u32, fps: u32) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(
+        width: u32,
+        height: u32,
+        fps: u32,
+        bitrate_kbps: u32,
+        keyframe_interval: u32,
+        preset: Preset,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let w = width as usize;
         let h = height as usize;
-
-        // zero_latency=true → no B-frames, no lookahead delay, flush every frame.
-        let encoder = Setup::preset(Preset::Ultrafast, Tune::None, false, true)
-            .fps(fps, 1)
-            .bitrate(4000)
-            .baseline()
-            .max_keyframe_interval(30)
-            .annexb(true)
-            .build(Colorspace::I420, w as i32, h as i32)
-            .map_err(|_| "x264 encoder build failed")?;
-
-        Ok(Self { encoder, width: w, height: h, pts: 0 })
+        let mut encoder = build_encoder(w, h, fps, bitrate_kbps, keyframe_interval, preset)?;
+        let headers = encoder
+            .headers()
+            .ok()
+            .map(|d| d.entirety().to_vec())
+            .unwrap_or_default();
+        Ok(Self {
+            encoder,
+            width: w,
+            height: h,
+            fps,
+            bitrate_kbps,
+            keyframe_interval,
+            preset,
+            pts: 0,
+            headers,
+            force_idr: false,
+        })
     }
 
     /// Encode one frame in the pixel format returned by GlesRenderer::copy_framebuffer
     /// (Fourcc::Abgr8888 — memory layout [R,G,B,A] on little-endian, i.e. GL_RGBA).
     pub fn encode_rgba(&mut self, rgba: &[u8]) -> Option<Vec<u8>> {
+        if self.force_idr {
+            self.force_idr = false;
+            self.rebuild();
+        }
         let i420 = rgba_to_i420(rgba, self.width, self.height);
         self.encode_i420(&i420)
+    }
+
+    /// Request that the next encoded frame be a forced IDR keyframe.
+    ///
+    /// Useful when a new client connects mid-stream and needs to sync immediately
+    /// rather than waiting up to `keyframe_interval` frames for the next scheduled IDR.
+    /// Implemented by rebuilding the encoder; the pts counter is not reset.
+    pub fn force_idr_next(&mut self) {
+        self.force_idr = true;
+    }
+
+    /// SPS + PPS header bytes — send these before the first frame of a new session.
+    /// For ongoing streams, headers are automatically prepended to every IDR frame.
+    pub fn headers(&mut self) -> Vec<u8> {
+        self.headers.clone()
+    }
+
+    fn rebuild(&mut self) {
+        match build_encoder(
+            self.width,
+            self.height,
+            self.fps,
+            self.bitrate_kbps,
+            self.keyframe_interval,
+            self.preset,
+        ) {
+            Ok(mut enc) => {
+                let new_headers = enc
+                    .headers()
+                    .ok()
+                    .map(|d| d.entirety().to_vec())
+                    .unwrap_or_default();
+                self.encoder = enc;
+                self.headers = new_headers;
+                // pts intentionally NOT reset — decoder cares about continuity of DTS, not
+                // absolute values, and our zero_latency config has no B-frame reordering.
+            }
+            Err(e) => eprintln!("[x264] encoder rebuild failed: {e}"),
+        }
     }
 
     fn encode_i420(&mut self, i420: &[u8]) -> Option<Vec<u8>> {
@@ -56,15 +120,49 @@ impl X264Encoder {
         let pts = self.pts;
         self.pts += 1;
 
-        let (data, _picture) = self.encoder.encode(pts, image).ok()?;
-        let bytes = data.entirety().to_vec();
-        if bytes.is_empty() { None } else { Some(bytes) }
-    }
+        let (data, picture) = self.encoder.encode(pts, image).ok()?;
+        let nal_bytes = data.entirety();
+        if nal_bytes.is_empty() {
+            return None;
+        }
 
-    /// SPS + PPS header bytes — send these once before the first frame.
-    pub fn headers(&mut self) -> Vec<u8> {
-        self.encoder.headers().ok().map(|h| h.entirety().to_vec()).unwrap_or_default()
+        // Prepend SPS+PPS before every IDR so a late-joining client can sync
+        // without waiting for the next out-of-band header send.
+        if picture.keyframe() {
+            let mut out = Vec::with_capacity(self.headers.len() + nal_bytes.len());
+            out.extend_from_slice(&self.headers);
+            out.extend_from_slice(nal_bytes);
+            Some(out)
+        } else {
+            Some(nal_bytes.to_vec())
+        }
     }
+}
+
+fn build_encoder(
+    width: usize,
+    height: usize,
+    fps: u32,
+    bitrate_kbps: u32,
+    keyframe_interval: u32,
+    preset: Preset,
+) -> Result<Encoder, Box<dyn std::error::Error>> {
+    let ki = keyframe_interval as i32;
+    // zero_latency=true → no B-frames, no lookahead delay, flush every frame.
+    // scenecut_threshold(0) disables scene-cut detection so IDR timing is exactly
+    // keyframe_interval frames — gives late clients a bounded, predictable sync window.
+    // min_keyframe_interval = max_keyframe_interval enforces the fixed cadence.
+    let encoder = Setup::preset(preset, Tune::None, false, true)
+        .fps(fps, 1)
+        .bitrate(bitrate_kbps as i32)
+        .baseline()
+        .max_keyframe_interval(ki)
+        .min_keyframe_interval(ki)
+        .scenecut_threshold(0)
+        .annexb(true)
+        .build(Colorspace::I420, width as i32, height as i32)
+        .map_err(|_| "x264 encoder build failed")?;
+    Ok(encoder)
 }
 
 /// Convert a pixel buffer in Fourcc::Abgr8888 format to I420 planar YUV.
@@ -111,7 +209,6 @@ fn rgba_to_i420(rgba: &[u8], width: usize, height: usize) -> Vec<u8> {
                     b_sum += rgba[base + 2] as i32;
                 }
             }
-            // Divide by 4 via right-shift, then apply chroma coefficients.
             let r = r_sum >> 2;
             let g = g_sum >> 2;
             let b = b_sum >> 2;

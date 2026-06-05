@@ -1,6 +1,7 @@
 #![allow(irrefutable_let_patterns)]
 
 pub mod capture;
+pub mod conf;
 pub mod encode;
 pub mod grabs;
 pub mod handlers;

@@ -19,32 +19,38 @@ use smithay::{
 use crate::{
     Wado,
     capture::mem::capture_frame,
+    conf::{SinkTarget, WadoConfig},
     encode::x264enc::X264Encoder,
-    sink::{FrameSink, udp::UdpSink},
+    sink::{FrameSink, file::FileSink, udp::UdpSink},
 };
 
-/// Logical output resolution for M1. M5 will make this per-client.
-pub const WIDTH: u32 = 1280;
-pub const HEIGHT: u32 = 720;
-pub const FPS: u32 = 60;
+/// Backward-compat aliases — prefer `WadoConfig::default().encoder.*` in new code.
+pub const WIDTH: u32 = crate::conf::DEFAULT_WIDTH;
+pub const HEIGHT: u32 = crate::conf::DEFAULT_HEIGHT;
+pub const FPS: u32 = crate::conf::DEFAULT_FPS;
 
 pub fn init_headless(
     event_loop: &mut EventLoop<Wado>,
     state: &mut Wado,
+    config: &WadoConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    config.print_summary();
+
+    let ec = &config.encoder;
+
     // ── EGL / GLES renderer ───────────────────────────────────────────────────
     let egl_display = unsafe { EGLDisplay::new(EGLSurfacelessDisplay)? };
     let egl_context = EGLContext::new(&egl_display)?;
     let mut renderer = unsafe { GlesRenderer::new(egl_context)? };
 
     // ── Offscreen render target ───────────────────────────────────────────────
-    let buf_size: Size<i32, Buffer> = (WIDTH as i32, HEIGHT as i32).into();
+    let buf_size: Size<i32, Buffer> = (ec.width as i32, ec.height as i32).into();
     let renderbuffer: GlesRenderbuffer = renderer.create_buffer(Fourcc::Abgr8888, buf_size)?;
 
     // ── Logical Output (no physical display) ─────────────────────────────────
     let mode = Mode {
-        size: (WIDTH as i32, HEIGHT as i32).into(),
-        refresh: (FPS * 1000) as i32,
+        size: (ec.width as i32, ec.height as i32).into(),
+        refresh: (ec.fps * 1000) as i32,
     };
     let output = Output::new(
         "HEADLESS-1".to_string(),
@@ -63,13 +69,23 @@ pub fn init_headless(
 
     let damage_tracker = OutputDamageTracker::from_output(&output);
 
-    // ── Encoder + Sink ────────────────────────────────────────────────────────
-    let mut encoder = X264Encoder::new(WIDTH, HEIGHT, FPS)?;
-    let headers = encoder.headers();
+    // ── Encoder ───────────────────────────────────────────────────────────────
+    let encoder = X264Encoder::new(
+        ec.width,
+        ec.height,
+        ec.fps,
+        ec.bitrate_kbps,
+        ec.keyframe_interval,
+        ec.preset,
+    )?;
 
-    // UDP: test with `ffplay -f h264 -i udp://127.0.0.1:5555`
-    let mut sink: Box<dyn FrameSink> = Box::new(UdpSink::bind("127.0.0.1:5555")?);
-    sink.send(&headers);
+    // ── Sink ──────────────────────────────────────────────────────────────────
+    // No explicit header send here — every IDR frame already carries SPS+PPS inline
+    // (Fix 2 in x264enc). A late-joining client will sync on the next IDR.
+    let sink: Box<dyn FrameSink> = match &config.output.sink {
+        SinkTarget::Udp(addr) => Box::new(UdpSink::bind(addr)?),
+        SinkTarget::File(path) => Box::new(FileSink::create(path)?),
+    };
 
     state.renderer = Some(renderer);
     state.renderbuffer = Some(renderbuffer);
@@ -78,19 +94,26 @@ pub fn init_headless(
     state.frame_sink = Some(sink);
 
     // ── 60 fps render timer ───────────────────────────────────────────────────
+    let (w, h) = (ec.width, ec.height);
+    let frame_nanos = 1_000_000_000 / ec.fps as u64;
     event_loop
         .handle()
         .insert_source(Timer::immediate(), move |deadline, _, state: &mut Wado| {
-            if let Err(e) = render_tick(state, &output) {
+            if let Err(e) = render_tick(state, &output, w, h) {
                 eprintln!("render_tick error: {e}");
             }
-            TimeoutAction::ToInstant(deadline + Duration::from_nanos(1_000_000_000 / FPS as u64))
+            TimeoutAction::ToInstant(deadline + Duration::from_nanos(frame_nanos))
         })?;
 
     Ok(())
 }
 
-fn render_tick(state: &mut Wado, output: &Output) -> Result<(), Box<dyn std::error::Error>> {
+fn render_tick(
+    state: &mut Wado,
+    output: &Output,
+    width: u32,
+    height: u32,
+) -> Result<(), Box<dyn std::error::Error>> {
     let renderer = state.renderer.as_mut().unwrap();
     let renderbuffer = state.renderbuffer.as_mut().unwrap();
     let damage_tracker = state.damage_tracker.as_mut().unwrap();
@@ -126,8 +149,7 @@ fn render_tick(state: &mut Wado, output: &Output) -> Result<(), Box<dyn std::err
     state.popups.cleanup();
     let _ = state.display_handle.flush_clients();
 
-    // ExportMem capture → encode → send
-    let buf_size: Size<i32, Buffer> = (WIDTH as i32, HEIGHT as i32).into();
+    let buf_size: Size<i32, Buffer> = (width as i32, height as i32).into();
     let pixels = capture_frame(renderer, &fb, buf_size)?;
 
     let encoder = state.encoder.as_mut().unwrap();
