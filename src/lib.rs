@@ -9,5 +9,6 @@ pub mod headless;
 pub mod input;
 pub mod sink;
 pub mod state;
+pub mod website;
 
 pub use state::Wado;

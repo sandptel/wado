@@ -2562,6 +2562,7 @@ version = "0.1.0"
 dependencies = [
  "bitflags 2.12.1",
  "bytes",
+ "serde",
  "serde_json",
  "smithay",
  "tokio",

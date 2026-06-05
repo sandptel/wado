@@ -1,18 +1,26 @@
 use smithay::reexports::{calloop::EventLoop, wayland_server::Display};
-use wado::{Wado, conf::WadoConfig, headless};
+use wado::{Wado, website};
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// Where the control server listens. Bound to localhost because the session launch
+/// command is free-form (an RCE surface); LAN exposure waits on the security gate.
+const DEFAULT_CONTROL_ADDR: &str = "127.0.0.1:8080";
+
+fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     init_logging();
 
     let mut event_loop: EventLoop<Wado> = EventLoop::try_new()?;
     let display: Display<Wado> = Display::new()?;
     let mut state = Wado::new(&mut event_loop, display);
 
-    headless::init_headless(&mut event_loop, &mut state, &WadoConfig::default())?;
-
+    // Apps spawned later (on session start) connect to this socket.
     unsafe { std::env::set_var("WAYLAND_DISPLAY", &state.socket_name) };
 
-    spawn_client();
+    // Start the idle control plane only. No compositor session, encoder, or render
+    // loop exists until the web client triggers one — wado sits ~idle until then.
+    let control_addr =
+        std::env::args().nth(1).unwrap_or_else(|| DEFAULT_CONTROL_ADDR.to_string());
+    website::start(state.loop_handle.clone(), &control_addr)?;
+    eprintln!("[wado] idle — open http://{control_addr} to configure and start a session");
 
     event_loop.run(None, &mut state, move |_| {})?;
 
@@ -24,20 +32,5 @@ fn init_logging() {
         tracing_subscriber::fmt().with_env_filter(env_filter).init();
     } else {
         tracing_subscriber::fmt().init();
-    }
-}
-
-fn spawn_client() {
-    let mut args = std::env::args().skip(1);
-    let flag = args.next();
-    let arg = args.next();
-
-    match (flag.as_deref(), arg) {
-        (Some("-c") | Some("--command"), Some(command)) => {
-            std::process::Command::new(command).spawn().ok();
-        }
-        _ => {
-            std::process::Command::new("weston-terminal").spawn().ok();
-        }
     }
 }

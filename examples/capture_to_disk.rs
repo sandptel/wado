@@ -52,7 +52,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         ..WadoConfig::default()
     };
-    headless::init_headless(&mut event_loop, &mut state, &config)?;
+    headless::init_headless(&mut state, &config)?;
     eprintln!("[capture_to_disk] compositor ready, socket: {:?}", state.socket_name);
 
     unsafe { std::env::set_var("WAYLAND_DISPLAY", &state.socket_name) };
