@@ -6,6 +6,7 @@
 //! app) that talks to these endpoints over CORS. The endpoints are:
 //!   - `POST /session/start` — body is a `wado_protocol::SessionConfig` (JSON).
 //!   - `POST /session/stop`  — tear the active session down.
+//!   - `POST /session/launch`— JSON-encoded command string → spawn it into the running session.
 //!   - `POST /offer`         — WebRTC SDP offer → answer (JSON).
 //!   - `GET  /events`        — live tracing logs as Server-Sent Events.
 //!   - `OPTIONS *`           — CORS preflight (204).
@@ -271,6 +272,20 @@ async fn handle_conn(mut stream: TcpStream, ctx: Arc<ServerCtx>) -> crate::Resul
             let _ = ctx.cmd_tx.send(CompositorCommand::Stop);
             write_response(&mut stream, "200 OK", "text/plain", b"stopped").await?;
         }
+        ("POST", "/session/launch") => match serde_json::from_slice::<String>(&body) {
+            Ok(command) if !command.trim().is_empty() => {
+                let _ = ctx.cmd_tx.send(CompositorCommand::Launch { command });
+                write_response(&mut stream, "200 OK", "text/plain", b"launched").await?;
+            }
+            Ok(_) => {
+                write_response(&mut stream, "400 Bad Request", "text/plain", b"empty command")
+                    .await?
+            }
+            Err(e) => {
+                warn!("launch rejected: {e}");
+                write_response(&mut stream, "400 Bad Request", "text/plain", b"bad command").await?
+            }
+        },
         ("POST", "/offer") => {
             let offer_json = String::from_utf8_lossy(&body);
             match handle_offer(&ctx, &offer_json).await {

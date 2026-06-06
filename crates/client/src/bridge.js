@@ -6,7 +6,7 @@
 // SSE log stream, and the pagehide beacon — because a MediaStream can only be
 // attached from JS and the WebRTC handshake is inherently DOM-bound.
 //
-// It exposes `window.__wado.{start,stopSession,connectLogs}` for the Rust side to
+// It exposes `window.__wado.{start,stopSession,connectLogs,launch}` for the Rust side to
 // call (via tiny one-shot evals) and reports state back to Rust through `dioxus.send`,
 // captured here as `emit`. Messages are `{type, ...}` objects:
 //   {type:"status",      text} – short status line
@@ -14,6 +14,7 @@
 //   {type:"log",         line} – one SSE log line (LEVEL|HH:MM:SS|text)
 //   {type:"startFailed"}       – /session/start rejected or threw
 //   {type:"giveup"}            – WebRTC failed past the retry budget; tear the session down
+//   {type:"stats", fps, ping}  – once/sec live decode FPS + transport RTT (ms); either may be null
 
 window.__wado = window.__wado || {};
 const W = window.__wado;
@@ -23,6 +24,7 @@ W.server = "";
 W.sessionOn = false;
 W.reconnectAttempts = 0;
 W.MAX_RECONNECTS = 3;
+W.statsTimer = null;
 
 const emit = (msg) => { try { dioxus.send(msg); } catch (_) {} };
 const status = (text) => emit({ type: "status", text });
@@ -42,6 +44,7 @@ W.connectLogs = (server) => {
 // reconnection is a full re-offer (not an ICE restart on the same pc).
 W.connectWebRTC = async () => {
   const server = W.server;
+  W.stopStats();
   if (W.pc) { try { W.pc.close(); } catch (_) {} }
   const pc = new RTCPeerConnection();
   W.pc = pc;
@@ -51,6 +54,7 @@ W.connectWebRTC = async () => {
     if (v) v.srcObject = ev.streams[0];
     stagebar("Streaming.");
     W.reconnectAttempts = 0;
+    W.startStats(pc);
   };
   pc.oniceconnectionstatechange = () => status("ICE: " + pc.iceConnectionState);
   pc.onconnectionstatechange = () => {
@@ -79,6 +83,50 @@ W.connectWebRTC = async () => {
   if (!resp.ok) throw new Error("offer rejected: HTTP " + resp.status);
   await pc.setRemoteDescription(await resp.json());
   status("connected");
+};
+
+// Poll RTCPeerConnection.getStats() once a second and report live decode FPS +
+// transport round-trip time to Rust. FPS comes from the video inbound-rtp report
+// (`framesPerSecond`, or computed from the `framesDecoded` delta as a fallback);
+// ping is the selected ICE candidate-pair's `currentRoundTripTime` (the remote
+// inbound-rtp `roundTripTime` is a fallback). Either may be null until populated.
+W.startStats = (pc) => {
+  W.stopStats();
+  let lastFrames = null, lastTs = null;
+  W.statsTimer = setInterval(async () => {
+    // Bail if this pc is no longer the active one (e.g. after a reconnect).
+    if (!W.pc || W.pc !== pc) { W.stopStats(); return; }
+    let stats;
+    try { stats = await pc.getStats(); } catch (_) { return; }
+    let fps = null, ping = null;
+    stats.forEach((r) => {
+      if (r.type === "inbound-rtp" && (r.kind === "video" || r.mediaType === "video")) {
+        if (typeof r.framesPerSecond === "number") {
+          fps = r.framesPerSecond;
+        } else if (typeof r.framesDecoded === "number" && typeof r.timestamp === "number") {
+          if (lastFrames !== null && r.timestamp > lastTs) {
+            fps = ((r.framesDecoded - lastFrames) * 1000) / (r.timestamp - lastTs);
+          }
+          lastFrames = r.framesDecoded;
+          lastTs = r.timestamp;
+        }
+      } else if (r.type === "candidate-pair" && (r.nominated || r.state === "succeeded")) {
+        if (typeof r.currentRoundTripTime === "number") ping = r.currentRoundTripTime * 1000;
+      }
+    });
+    if (ping === null) {
+      stats.forEach((r) => {
+        if (r.type === "remote-inbound-rtp" && typeof r.roundTripTime === "number") {
+          ping = r.roundTripTime * 1000;
+        }
+      });
+    }
+    emit({ type: "stats", fps, ping });
+  }, 1000);
+};
+
+W.stopStats = () => {
+  if (W.statsTimer) { clearInterval(W.statsTimer); W.statsTimer = null; }
 };
 
 // Retry the WebRTC connection with backoff; the compositor session keeps running.
@@ -124,8 +172,24 @@ W.start = async (server, config) => {
   }
 };
 
+// Launch a command into the running session in realtime (callable repeatedly).
+W.launch = async (command) => {
+  if (!W.sessionOn) { status("launch ignored — no session"); return; }
+  try {
+    const res = await fetch(W.server + "/session/launch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(command),
+    });
+    if (!res.ok) status("launch failed: " + (await res.text()));
+  } catch (e) {
+    status("launch error: " + (e && e.message ? e.message : e));
+  }
+};
+
 W.stopSession = async () => {
   W.sessionOn = false;
+  W.stopStats();
   if (W.pc) { try { W.pc.close(); } catch (_) {} W.pc = null; }
   const v = document.getElementById("wado-video");
   if (v) v.srcObject = null;

@@ -157,20 +157,21 @@ pub fn start_session(
     Ok(())
 }
 
-/// Spawn the session's application (free-form command, space-split into program +
-/// args) and remember the child so `stop_session` can kill it. `WAYLAND_DISPLAY` is
-/// already set process-wide in `main`.
-pub fn spawn_session_command(state: &mut Wado, command: &str) {
+/// Launch a command (free-form, space-split into program + args) into the session and
+/// remember the child so `stop_session` can kill it. Callable both at session start
+/// (the optional initial command) and at runtime — any number of times, so a session
+/// can host many apps. `WAYLAND_DISPLAY` is already set process-wide by `build`.
+pub fn launch_command(state: &mut Wado, command: &str) {
     let mut parts = command.split_whitespace();
     let Some(program) = parts.next() else {
-        warn!("empty session command — nothing to launch");
+        warn!("empty command — nothing to launch");
         return;
     };
     let args: Vec<&str> = parts.collect();
     match std::process::Command::new(program).args(&args).spawn() {
         Ok(child) => {
             info!(pid = child.id(), command, "launched session application");
-            state.app_process = Some(child);
+            state.app_processes.push(child);
         }
         // Not fatal to the session: the stream still runs, the window is just empty.
         Err(e) => tracing::error!("failed to launch session app {program:?}: {e}"),
@@ -186,7 +187,7 @@ pub fn stop_session(state: &mut Wado) {
     if let Some(token) = state.render_timer_token.take() {
         state.loop_handle.remove(token);
     }
-    if let Some(mut child) = state.app_process.take() {
+    for mut child in state.app_processes.drain(..) {
         let _ = child.kill();
         let _ = child.wait();
     }

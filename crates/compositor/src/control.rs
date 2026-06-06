@@ -33,6 +33,9 @@ pub enum CompositorCommand {
     },
     /// Tear down the active session (idempotent).
     Stop,
+    /// Launch a command into the *running* session (in realtime, any number of times).
+    /// Ignored with a warning when no session is active.
+    Launch { command: String },
     /// Make the next encoded frame a forced IDR keyframe. Sent when a viewer
     /// connects or the browser requests one via RTCP PLI/FIR.
     ForceKeyframe,
@@ -46,6 +49,13 @@ pub fn handle_command(state: &mut Wado, cmd: CompositorCommand, frame_tx: &mpsc:
             let _ = reply.send(start(state, &config, frame_tx));
         }
         CompositorCommand::Stop => headless::stop_session(state),
+        CompositorCommand::Launch { command } => {
+            if state.session_active {
+                headless::launch_command(state, &command);
+            } else {
+                tracing::warn!("launch ignored — no active session");
+            }
+        }
         CompositorCommand::ForceKeyframe => headless::force_keyframe(state),
     }
 }
@@ -62,8 +72,11 @@ fn start(
     let frame_dur = Duration::from_nanos(1_000_000_000 / encoder.fps.max(1) as u64);
     let sink = Box::new(ChannelSink::new(frame_tx.clone(), frame_dur));
 
-    // start_session and spawn_session_command emit their own tracing logs.
+    // start_session and launch_command emit their own tracing logs.
     headless::start_session(state, &encoder, sink).map_err(|e| e.to_string())?;
-    headless::spawn_session_command(state, &config.command);
+    // Optional initial command (empty → blank session; launch more at runtime).
+    if !config.command.trim().is_empty() {
+        headless::launch_command(state, &config.command);
+    }
     Ok(())
 }

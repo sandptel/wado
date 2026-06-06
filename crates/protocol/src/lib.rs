@@ -15,6 +15,9 @@ pub mod endpoints {
     pub const SESSION_START: &str = "/session/start";
     /// `POST` (empty) to tear the active session down.
     pub const SESSION_STOP: &str = "/session/stop";
+    /// `POST` a JSON-encoded command string to spawn into the *running* session
+    /// (in addition to any started ones). Lets the client launch apps in realtime.
+    pub const SESSION_LAUNCH: &str = "/session/launch";
     /// `POST` a WebRTC SDP offer (JSON); the answer comes back as JSON.
     pub const OFFER: &str = "/offer";
     /// `GET` the live tracing log stream as Server-Sent Events.
@@ -44,7 +47,9 @@ pub struct SessionConfig {
     pub height: u32,
     pub fps: u32,
     pub quality: Quality,
-    /// Free-form command to launch inside the session (program + args, space-split).
+    /// Optional initial command launched when the session starts (program + args,
+    /// space-split). Empty means start a blank session; more commands can be spawned
+    /// at runtime via [`endpoints::SESSION_LAUNCH`].
     pub command: String,
     /// Advanced override: x264 preset name ("ultrafast".."veryfast"). Falls back to
     /// the quality preset's default when absent.

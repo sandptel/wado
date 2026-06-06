@@ -53,6 +53,9 @@ fn App() -> Element {
     let mut stagebar = use_signal(|| "No session.".to_string());
     let mut logs = use_signal(Vec::<LogLine>::new);
     let mut logs_open = use_signal(|| false);
+    // Live stream telemetry from the WebRTC bridge (None until reported / when idle).
+    let mut stat_fps = use_signal(|| Option::<f64>::None);
+    let mut stat_ping = use_signal(|| Option::<f64>::None);
 
     // ── bridge: run the JS bridge once, connect logs, drain events into signals ──
     use_future(move || async move {
@@ -72,6 +75,10 @@ fn App() -> Element {
             match kind {
                 "status" => status.set(text()),
                 "stagebar" => stagebar.set(text()),
+                "stats" => {
+                    stat_fps.set(msg.get("fps").and_then(|v| v.as_f64()));
+                    stat_ping.set(msg.get("ping").and_then(|v| v.as_f64()));
+                }
                 "log" => {
                     let line = msg.get("line").and_then(|v| v.as_str()).unwrap_or("");
                     let mut buf = logs.write();
@@ -84,10 +91,14 @@ fn App() -> Element {
                 "startFailed" => {
                     session_on.set(false);
                     logs_open.set(true);
+                    stat_fps.set(None);
+                    stat_ping.set(None);
                 }
                 "giveup" => {
                     session_on.set(false);
                     logs_open.set(true);
+                    stat_fps.set(None);
+                    stat_ping.set(None);
                     let _ = document::eval("window.__wado.stopSession();").await;
                     status.set("idle".to_string());
                 }
@@ -142,8 +153,21 @@ fn App() -> Element {
         });
     };
 
+    // Spawn the current command into the running session (realtime, repeatable).
+    let launch = move |_| {
+        let c = command();
+        if c.trim().is_empty() {
+            return;
+        }
+        spawn(async move {
+            let _ = document::eval(&format!("window.__wado.launch({});", js(&c))).await;
+        });
+    };
+
     let stop = move |_| {
         session_on.set(false);
+        stat_fps.set(None);
+        stat_ping.set(None);
         spawn(async move {
             let _ = document::eval("window.__wado.stopSession();").await;
             status.set("idle".to_string());
@@ -155,6 +179,8 @@ fn App() -> Element {
     let show_custom_res = res() == "custom";
     let show_custom_q = quality() == "custom";
     let log_items = logs.read().clone();
+    let fps_text = stat_fps().map(|f| format!("{f:.0} fps")).unwrap_or_else(|| "— fps".into());
+    let ping_text = stat_ping().map(|p| format!("{p:.0} ms")).unwrap_or_else(|| "— ms".into());
 
     rsx! {
         document::Stylesheet { href: asset!("/assets/main.css") }
@@ -223,12 +249,22 @@ fn App() -> Element {
                 }
             }
 
-            label { "Application to launch" }
+            label { "Command" }
+            p { class: "hint", style: "margin:4px 0 0;",
+                "Launched at Start (optional), or spawned live into a running session — as many as you like."
+            }
             input {
                 r#type: "text",
                 value: "{command}",
-                placeholder: "e.g. mpv --fullscreen video.mp4",
+                placeholder: "e.g. weston-terminal",
                 oninput: move |e| command.set(e.value()),
+            }
+            button {
+                id: "launch",
+                style: "width:100%; margin-top:8px;",
+                disabled: !on || command().trim().is_empty(),
+                onclick: launch,
+                "Launch into session"
             }
 
             details {
@@ -259,7 +295,12 @@ fn App() -> Element {
         }
 
         div { id: "stage",
-            div { id: "stagebar", "{stagebar}" }
+            div { id: "stagebar",
+                span { "{stagebar}" }
+                if on {
+                    span { class: "stats", "{fps_text} · {ping_text}" }
+                }
+            }
             video { id: "wado-video", autoplay: true, playsinline: true, muted: true }
             details { id: "logs", open: logs_open(),
                 summary { "Logs" }
