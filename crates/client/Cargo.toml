@@ -2,6 +2,7 @@
 name = "wado-client"
 version = "0.1.0"
 edition = "2021"
+license = "AGPL-3.0-only"
 description = "wado web client — a Dioxus (WASM) app that configures, starts, and views a wado streaming session."
 
 [dependencies]

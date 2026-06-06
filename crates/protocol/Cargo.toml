@@ -2,6 +2,7 @@
 name = "wado-protocol"
 version = "0.1.0"
 edition = "2021"
+license = "AGPL-3.0-only"
 description = "Shared wire types between the wado server and its clients."
 
 [dependencies]
