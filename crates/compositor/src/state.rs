@@ -89,7 +89,10 @@ impl Wado {
         let mut seat_state = SeatState::new();
         let mut seat: Seat<Self> = seat_state.new_wl_seat(&dh, "headless");
         seat.add_keyboard(Default::default(), 200, 25).unwrap();
+        // Touch is the primary remote input (see input/remote.rs). Pointer capability is
+        // kept (harmless) but never driven — wado has no on-screen cursor.
         seat.add_pointer();
+        seat.add_touch();
 
         let space = Space::default();
         let socket_name = Self::init_wayland_listener(display, event_loop);

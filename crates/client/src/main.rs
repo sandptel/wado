@@ -295,7 +295,12 @@ fn App() -> Element {
 
         div { id: "stage",
             div { id: "stagebar",
-                span { "{stagebar}" }
+                span {
+                    "{stagebar}"
+                    if on {
+                        span { class: "kbdhint", " — tap the video to type" }
+                    }
+                }
                 if on {
                     span { class: "stats", "{fps_text} · {ping_text}" }
                 }

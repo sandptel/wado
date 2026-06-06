@@ -1,2 +1,2 @@
 pub mod physical;
-pub mod virtual_input;
+pub mod remote;

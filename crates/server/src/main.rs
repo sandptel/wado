@@ -12,16 +12,16 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // server's WebRTC frame pump owns frame_rx. The command Sender flows the other way.
     let (frame_tx, frame_rx) = tokio::sync::mpsc::channel(FRAME_CHANNEL_CAPACITY);
 
-    // Build the compositor (event loop + state + command Sender). `build` claims the
-    // Wayland socket and exports WAYLAND_DISPLAY for apps spawned into the session.
-    let (mut event_loop, mut state, cmd_tx) = wado_compositor::build(frame_tx)?;
+    // Build the compositor (event loop + state + control/input channels). `build` claims
+    // the Wayland socket and exports WAYLAND_DISPLAY for apps spawned into the session.
+    let (mut event_loop, mut state, handles) = wado_compositor::build(frame_tx)?;
 
     // Start the idle control plane only. No compositor session, encoder, or render
     // loop exists until a client triggers one — wado sits ~idle until then. The server
-    // holds only the command Sender + frame Receiver; it never touches Wado/Smithay.
+    // holds only the command + input Senders and the frame Receiver; never Wado/Smithay.
     let control_addr =
         std::env::args().nth(1).unwrap_or_else(|| DEFAULT_CONTROL_ADDR.to_string());
-    website::start(cmd_tx, frame_rx, &control_addr, log_bus)?;
+    website::start(handles.commands, handles.input, frame_rx, &control_addr, log_bus)?;
     tracing::info!("wado server idle on http://{control_addr} — connect with the wado-client app");
 
     event_loop.run(None, &mut state, move |_| {})?;

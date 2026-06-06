@@ -47,11 +47,24 @@ pub use control::CompositorCommand;
 pub use error::{CompositorError, Result};
 pub use sink::channel::FrameMsg;
 pub use state::Wado;
+pub use wado_protocol::InputEvent;
 
 /// The `Send`able sender for [`CompositorCommand`]s into the calloop loop. Re-exported
 /// (as an alias over the calloop type) so the server can name and use it without
 /// depending on smithay/calloop itself.
 pub type CommandSender = Sender<CompositorCommand>;
+/// The `Send`able sender for remote [`InputEvent`]s into the calloop loop. A **separate**
+/// channel from commands (input never rides behind control or video — invariant #1).
+pub type InputSender = Sender<InputEvent>;
+
+/// Channels the server uses to drive the compositor, returned by [`build`]. The server
+/// holds these and nothing else of the compositor — no Smithay type crosses the boundary.
+pub struct CompositorHandles {
+    /// Session lifecycle: Start / Stop / Launch / ForceKeyframe.
+    pub commands: CommandSender,
+    /// Remote touch + keyboard events (separate, low-latency channel).
+    pub input: InputSender,
+}
 
 /// Build the compositor: create the event loop, display, and [`Wado`] state, claim the
 /// Wayland socket (exported via `WAYLAND_DISPLAY` for apps spawned into the session),
@@ -62,7 +75,7 @@ pub type CommandSender = Sender<CompositorCommand>;
 /// the server owns the matching receiver (the WebRTC frame pump).
 pub fn build(
     frame_tx: mpsc::Sender<FrameMsg>,
-) -> Result<(EventLoop<'static, Wado>, Wado, CommandSender)> {
+) -> Result<(EventLoop<'static, Wado>, Wado, CompositorHandles)> {
     let mut event_loop: EventLoop<'static, Wado> =
         EventLoop::try_new().map_err(|e| CompositorError::Other(format!("event loop: {e}")))?;
     let display: Display<Wado> =
@@ -91,5 +104,23 @@ pub fn build(
         })
         .map_err(|e| CompositorError::Other(format!("insert control source: {e}")))?;
 
-    Ok((event_loop, state, cmd_tx))
+    // Separate input channel (touch + keyboard). Same panic guard: a panic while
+    // synthesizing input must not abort the process. We do NOT reset the session here —
+    // a bad input event shouldn't kill a working stream; we just drop it and log.
+    let (input_tx, input_channel) = channel::<InputEvent>();
+    event_loop
+        .handle()
+        .insert_source(input_channel, move |event, _, state: &mut Wado| {
+            if let ChannelEvent::Msg(ev) = event {
+                let caught = std::panic::catch_unwind(AssertUnwindSafe(|| {
+                    state.handle_remote_input(ev);
+                }));
+                if caught.is_err() {
+                    tracing::error!("compositor panicked handling an input event — dropped");
+                }
+            }
+        })
+        .map_err(|e| CompositorError::Other(format!("insert input source: {e}")))?;
+
+    Ok((event_loop, state, CompositorHandles { commands: cmd_tx, input: input_tx }))
 }
