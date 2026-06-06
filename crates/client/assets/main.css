@@ -1,7 +1,10 @@
 :root { color-scheme: dark; }
 html, body { margin: 0; height: 100%; background: #111; color: #ddd;
   font-family: system-ui, sans-serif; }
-body { display: flex; }
+/* The Dioxus app mounts into a root element, so make the two columns side-by-side
+   here (the old `body { display:flex }` no longer reaches them). 100vh keeps it
+   independent of the mount node's own height. */
+.app { display: flex; height: 100vh; overflow: hidden; }
 #panel { width: 320px; flex: 0 0 320px; padding: 16px; box-sizing: border-box;
   background: #181818; border-right: 1px solid #2a2a2a; overflow-y: auto; }
 #stage { flex: 1; display: flex; flex-direction: column; min-width: 0; }
