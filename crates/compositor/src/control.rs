@@ -72,11 +72,8 @@ fn start(
     let frame_dur = Duration::from_nanos(1_000_000_000 / encoder.fps.max(1) as u64);
     let sink = Box::new(ChannelSink::new(frame_tx.clone(), frame_dur));
 
-    // start_session and launch_command emit their own tracing logs.
+    // Sessions always start blank; apps are spawned at runtime via CompositorCommand::Launch.
+    // start_session emits its own tracing logs.
     headless::start_session(state, &encoder, sink).map_err(|e| e.to_string())?;
-    // Optional initial command (empty → blank session; launch more at runtime).
-    if !config.command.trim().is_empty() {
-        headless::launch_command(state, &config.command);
-    }
     Ok(())
 }
