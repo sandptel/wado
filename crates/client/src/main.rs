@@ -159,6 +159,7 @@ fn App() -> Element {
     rsx! {
         document::Stylesheet { href: asset!("/assets/main.css") }
 
+        div { class: "app",
         div { id: "panel",
             h1 { "wado" }
             p { class: "hint", "Configure and start a streaming session." }
@@ -271,6 +272,7 @@ fn App() -> Element {
                     }
                 }
             }
+        }
         }
     }
 }
