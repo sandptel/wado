@@ -2,6 +2,7 @@
 name = "wado-compositor"
 version = "0.1.0"
 edition = "2024"
+license = "AGPL-3.0-only"
 description = "wado's headless Smithay compositor: Wayland protocol state, GLES render pipeline, x264 encode, and the typed command/frame boundary the server drives it through."
 
 [dependencies]
