@@ -49,6 +49,8 @@ fn App() -> Element {
 
     // ── runtime state ────────────────────────────────────────────────────────
     let mut session_on = use_signal(|| false);
+    // "Move window" mode: while on, dragging the video moves the window under it.
+    let mut move_mode = use_signal(|| false);
     let mut status = use_signal(|| "idle".to_string());
     let mut stagebar = use_signal(|| "No session.".to_string());
     let mut logs = use_signal(Vec::<LogLine>::new);
@@ -165,16 +167,28 @@ fn App() -> Element {
 
     let stop = move |_| {
         session_on.set(false);
+        move_mode.set(false);
         stat_fps.set(None);
         stat_ping.set(None);
         spawn(async move {
+            let _ = document::eval("window.__wado.setMoveMode(false);").await;
             let _ = document::eval("window.__wado.stopSession();").await;
             status.set("idle".to_string());
             stagebar.set("No session.".to_string());
         });
     };
 
+    // Toggle "Move window" mode in the bridge.
+    let toggle_move = move |_| {
+        let next = !move_mode();
+        move_mode.set(next);
+        spawn(async move {
+            let _ = document::eval(&format!("window.__wado.setMoveMode({next});")).await;
+        });
+    };
+
     let on = session_on();
+    let mv = move_mode();
     let show_custom_res = res() == "custom";
     let show_custom_q = quality() == "custom";
     let log_items = logs.read().clone();
@@ -266,6 +280,19 @@ fn App() -> Element {
                 "Launch into session"
             }
 
+            label { "Input" }
+            button {
+                id: "movemode",
+                class: if mv { "active" } else { "" },
+                style: "width:100%;",
+                disabled: !on,
+                onclick: toggle_move,
+                if mv { "Move window: ON — drag to move" } else { "Move window: off" }
+            }
+            p { class: "hint", style: "margin:4px 0 0;",
+                "Drag = touch · wheel = scroll · long-press = right-click (or drag to move). Toggle above to move windows by dragging."
+            }
+
             details {
                 summary { "Advanced" }
                 label { "x264 preset" }
@@ -298,7 +325,7 @@ fn App() -> Element {
                 span {
                     "{stagebar}"
                     if on {
-                        span { class: "kbdhint", " — tap the video to type" }
+                        span { class: "kbdhint", " — tap to type · drag/scroll/long-press supported" }
                     }
                 }
                 if on {

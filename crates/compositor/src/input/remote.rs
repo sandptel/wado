@@ -2,28 +2,34 @@
 //! from the WebRTC input data channel) into real Wayland `wl_touch` / `wl_keyboard`
 //! events on the seat.
 //!
-//! **Touch + keyboard only, no cursor.** wado never synthesizes pointer motion and
-//! renders no cursor — `wl_touch`/`wl_keyboard` are cursorless, which removes the
-//! network-cursor-sync problem entirely. This iteration handles a **single** touch
-//! contact (down/motion/up/frame); multi-touch, scrolling, and dragging come later
-//! (the wire format already carries a contact `id`). See `INPUT_CHALLENGES.md`.
+//! **No on-screen cursor.** wado never renders a cursor. `Touch`/`Key` map to
+//! `wl_touch`/`wl_keyboard`. Scrolling and the long-press right-click go through
+//! `wl_pointer` (the only Wayland path for axis/secondary-click) — we focus the surface
+//! under the point and emit the event, but still draw no cursor. `WindowDrag` is a
+//! compositor-managed interactive window move (long-press-drag or "move mode") and never
+//! reaches the app. Multi-touch contacts pass through per-`id`. See `INPUT_CHALLENGES.md`.
 //!
 //! Coordinates arrive normalized 0..1 (the client maps them against the displayed
 //! video rect) and are scaled here to the output's logical geometry, so taps land 1:1.
 //! Keyboard `code` is a Linux evdev keycode; xkb wants evdev+8 (see `Keycode::new`).
 
 use smithay::{
-    backend::input::KeyState,
+    backend::input::{Axis, AxisSource, ButtonState, KeyState},
     input::{
         keyboard::{FilterResult, Keycode},
+        pointer::{AxisFrame, ButtonEvent, MotionEvent as PointerMotionEvent},
         touch::{DownEvent, MotionEvent, UpEvent},
     },
     utils::{Logical, Point, SERIAL_COUNTER},
 };
 
-use wado_protocol::{InputEvent, TouchPhase};
+use wado_protocol::{InputEvent, PointerButton, TouchPhase};
 
-use crate::Wado;
+use crate::{Wado, state::WindowMove};
+
+/// `BTN_RIGHT` from Linux `input-event-codes.h`; the secondary mouse button apps expect
+/// for context menus. The long-press gesture emulates it (see [`Wado::handle_remote_input`]).
+const BTN_RIGHT: u32 = 0x111;
 
 impl Wado {
     /// Apply one remote input event to the seat. No-op when no session is active (there
@@ -75,6 +81,85 @@ impl Wado {
                     TouchPhase::Up => {
                         touch.up(self, &UpEvent { slot, serial, time });
                         touch.frame(self);
+                    }
+                }
+            }
+            InputEvent::CancelTouch { .. } => {
+                // wl_touch cancel is global (all live contacts) — fine for our single-primary
+                // gesture takeover; documented as a multi-touch caveat.
+                self.seat.get_touch().unwrap().cancel(self);
+            }
+            InputEvent::Scroll { x, y, dx, dy } => {
+                let Some(loc) = self.touch_location(x, y) else {
+                    return;
+                };
+                let pointer = self.seat.get_pointer().unwrap();
+                // Focus the surface under the wheel position (no cursor is rendered) so the
+                // axis frame is delivered to the right client.
+                let under = self.surface_under(loc);
+                pointer.motion(self, under, &PointerMotionEvent { location: loc, serial, time });
+
+                // Browser wheel deltas are pixels; forward as continuous axis values plus a
+                // v120 discrete step (one notch = 120) so both smooth and stepped scrollers work.
+                let mut frame = AxisFrame::new(time).source(AxisSource::Wheel);
+                if dx != 0.0 {
+                    frame = frame.value(Axis::Horizontal, dx);
+                    frame = frame.v120(Axis::Horizontal, (dx.signum() * 120.0) as i32);
+                }
+                if dy != 0.0 {
+                    frame = frame.value(Axis::Vertical, dy);
+                    frame = frame.v120(Axis::Vertical, (dy.signum() * 120.0) as i32);
+                }
+                pointer.axis(self, frame);
+                pointer.frame(self);
+            }
+            InputEvent::Button { x, y, button, pressed } => {
+                let Some(loc) = self.touch_location(x, y) else {
+                    return;
+                };
+                let code = match button {
+                    PointerButton::Right => BTN_RIGHT,
+                };
+                let state = if pressed { ButtonState::Pressed } else { ButtonState::Released };
+                // Raise + focus the target on press, then deliver the button via the pointer
+                // focused at `loc` (still no rendered cursor).
+                if pressed {
+                    self.focus_window_at(loc, serial);
+                }
+                let pointer = self.seat.get_pointer().unwrap();
+                let under = self.surface_under(loc);
+                pointer.motion(self, under, &PointerMotionEvent { location: loc, serial, time });
+                pointer.button(self, &ButtonEvent { button: code, state, serial, time });
+                pointer.frame(self);
+            }
+            InputEvent::WindowDrag { phase, x, y } => {
+                let Some(loc) = self.touch_location(x, y) else {
+                    return;
+                };
+                match phase {
+                    TouchPhase::Down => {
+                        if let Some((window, _)) =
+                            self.space.element_under(loc).map(|(w, l)| (w.clone(), l))
+                        {
+                            self.space.raise_element(&window, true);
+                            self.focus_window_at(loc, serial);
+                            let start_win = self
+                                .space
+                                .element_location(&window)
+                                .unwrap_or_else(|| (0, 0).into());
+                            self.window_move = Some(WindowMove { window, start_ptr: loc, start_win });
+                        }
+                    }
+                    TouchPhase::Motion => {
+                        if let Some(mv) = &self.window_move {
+                            let delta = loc - mv.start_ptr;
+                            let new_loc = (mv.start_win.to_f64() + delta).to_i32_round();
+                            let window = mv.window.clone();
+                            self.space.map_element(window, new_loc, true);
+                        }
+                    }
+                    TouchPhase::Up => {
+                        self.window_move = None;
                     }
                 }
             }

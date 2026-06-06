@@ -29,6 +29,8 @@ W.inputDC = null;            // reliable+ordered data channel carrying InputEven
 W.pressedKeys = new Set();   // evdev codes currently down (for release-on-blur)
 W.activePointers = new Set();// pointerIds currently down (so we only send motion when held)
 W.inputCaptureReady = false; // DOM listeners attached once
+W.moveMode = false;          // "Move window" toggle: a drag moves the window, not the app
+W.gesture = null;            // FSM for the primary contact: {id,state,startClientX,startClientY,holdTimer}
 
 const emit = (msg) => { try { dioxus.send(msg); } catch (_) {} };
 const status = (text) => emit({ type: "status", text });
@@ -44,15 +46,23 @@ W.connectLogs = (server) => {
   es.onerror = () => {}; // EventSource auto-reconnects
 };
 
-// ── Remote input (touch + keyboard only; no mouse SYSTEM, no cursor) ────────────────
+// ── Remote input (no on-screen cursor) ──────────────────────────────────────────────
 //
-// We capture **Pointer Events** (`pointerdown/move/up`), which unify mouse + touch + pen,
-// and translate every one into a `wl_touch` contact — so a desktop mouse click becomes a
-// touch tap (there is no separate mouse path and no cursor). Coords are normalized 0..1
-// against the *displayed video content rect* (object-fit:contain letterbox math done here,
-// where we know the element geometry) so the server scales 1:1 to the output. Keyboard
-// sends Linux evdev keycodes from KeyboardEvent.code (compositor applies the xkb +8). See
-// INPUT_CHALLENGES.md.
+// We capture **Pointer Events** (`pointerdown/move/up`), which unify mouse + touch + pen.
+// A small per-primary-contact gesture FSM decides what each becomes:
+//   • plain press/drag        → `wl_touch` contact (a desktop mouse click is a touch tap)
+//   • press-hold ~500ms still  → the contact is retracted (CancelTouch) and then:
+//        – drag    → a compositor window move (WindowDrag)
+//        – release → a right-click (Button right, down+up)
+//   • "Move mode" on           → any drag is a window move (no keyboard needed)
+//   • mouse wheel              → `wl_pointer` axis (Scroll); the only Wayland scroll path
+// Secondary simultaneous contacts pass straight through as `wl_touch` (multi-touch).
+// Coords are normalized 0..1 against the *displayed video content rect* (object-fit:contain
+// letterbox math done here) so the server scales 1:1 to the output. Keyboard sends Linux
+// evdev keycodes from KeyboardEvent.code (compositor applies the xkb +8). See Challanges.md.
+
+const HOLD_MS = 500;          // press-hold duration that promotes a contact to a gesture
+const MOVE_THRESHOLD = 8;     // client-px movement that commits a contact to drag vs hold
 
 const INPUT_CHANNEL = "wado-input"; // must match wado_protocol::INPUT_CHANNEL
 
@@ -82,6 +92,10 @@ W.sendInput = (obj) => {
   }
 };
 
+// Toggle "Move window" mode (called from the Rust UI). While on, a primary drag moves the
+// window under it instead of touching the app — no keyboard/long-press needed.
+W.setMoveMode = (on) => { W.moveMode = !!on; };
+
 // Normalize a client point to 0..1 within the video's rendered (letterboxed) content rect.
 const normPoint = (clientX, clientY, video) => {
   const r = video.getBoundingClientRect();
@@ -95,9 +109,10 @@ const normPoint = (clientX, clientY, video) => {
   return { x: clamp((clientX - offX) / cw), y: clamp((clientY - offY) / ch) };
 };
 
-// Attach pointer + keyboard listeners to the <video> once. Pointer events cover mouse,
-// touch and pen; each becomes a wl_touch contact. Keyboard fires only while the video is
-// focused (tabindex) so the rest of the page stays usable; a click/tap focuses it.
+// Attach pointer + wheel + keyboard listeners to the <video> once. Pointer events cover
+// mouse, touch and pen. The first live contact is the "primary" and runs the gesture FSM
+// (tap/touch/hold/move); further contacts pass through as plain wl_touch. Keyboard fires
+// only while the video is focused (tabindex) so the rest of the page stays usable.
 W.setupInputCapture = () => {
   if (W.inputCaptureReady) return;
   const video = document.getElementById("wado-video");
@@ -107,31 +122,113 @@ W.setupInputCapture = () => {
   video.tabIndex = 0;
   video.style.touchAction = "none"; // stop browser pan/zoom so we get raw pointer events
 
-  const sendPoint = (id, phase, clientX, clientY) => {
+  // Send a wl_touch contact at a client point (normalized against the video content rect).
+  const touchAt = (id, phase, clientX, clientY) => {
     const n = normPoint(clientX, clientY, video);
     if (n) W.sendInput({ t: "touch", id: id >>> 0, phase, x: n.x, y: n.y });
   };
+  // Send a compositor window-move event at a client point.
+  const dragAt = (phase, clientX, clientY) => {
+    const n = normPoint(clientX, clientY, video);
+    if (n) W.sendInput({ t: "window_drag", phase, x: n.x, y: n.y });
+  };
+
+  // Primary-contact hold timer fired: retract the tap and arm hold (→ move or right-click).
+  const onHold = () => {
+    const g = W.gesture;
+    if (!g || g.state !== "tap") return;
+    g.state = "held";
+    g.holdTimer = null;
+    W.sendInput({ t: "cancel_touch", id: g.id >>> 0 });
+  };
+
   video.addEventListener("pointerdown", (e) => {
     e.preventDefault();
     video.focus();
     try { video.setPointerCapture(e.pointerId); } catch (_) {}
     W.activePointers.add(e.pointerId);
-    sendPoint(e.pointerId, "down", e.clientX, e.clientY);
+
+    if (W.gesture === null) {
+      // This contact becomes the primary; decide its fate as it evolves.
+      const g = { id: e.pointerId, startClientX: e.clientX, startClientY: e.clientY, holdTimer: null };
+      if (W.moveMode) {
+        g.state = "move";
+        dragAt("down", e.clientX, e.clientY);
+      } else {
+        g.state = "tap";
+        touchAt(e.pointerId, "down", e.clientX, e.clientY);
+        g.holdTimer = setTimeout(onHold, HOLD_MS);
+      }
+      W.gesture = g;
+    } else {
+      // Secondary contact: straight wl_touch passthrough (multi-touch).
+      touchAt(e.pointerId, "down", e.clientX, e.clientY);
+    }
   });
+
   video.addEventListener("pointermove", (e) => {
-    if (!W.activePointers.has(e.pointerId)) return; // only while a contact is down
+    if (!W.activePointers.has(e.pointerId)) return;
     e.preventDefault();
-    sendPoint(e.pointerId, "motion", e.clientX, e.clientY);
+    const g = W.gesture;
+    if (g && e.pointerId === g.id) {
+      const dist = Math.hypot(e.clientX - g.startClientX, e.clientY - g.startClientY);
+      if (g.state === "tap") {
+        if (dist > MOVE_THRESHOLD) {
+          if (g.holdTimer) { clearTimeout(g.holdTimer); g.holdTimer = null; }
+          g.state = "touch";
+          touchAt(g.id, "motion", e.clientX, e.clientY);
+        }
+      } else if (g.state === "touch") {
+        touchAt(g.id, "motion", e.clientX, e.clientY);
+      } else if (g.state === "held") {
+        if (dist > MOVE_THRESHOLD) {
+          g.state = "move";
+          // The move grabs the window under the original press point.
+          dragAt("down", g.startClientX, g.startClientY);
+          dragAt("motion", e.clientX, e.clientY);
+        }
+      } else if (g.state === "move") {
+        dragAt("motion", e.clientX, e.clientY);
+      }
+    } else {
+      touchAt(e.pointerId, "motion", e.clientX, e.clientY); // secondary passthrough
+    }
   });
+
   const end = (e) => {
     if (!W.activePointers.has(e.pointerId)) return;
     e.preventDefault();
     W.activePointers.delete(e.pointerId);
     try { video.releasePointerCapture(e.pointerId); } catch (_) {}
-    sendPoint(e.pointerId, "up", e.clientX, e.clientY);
+    const g = W.gesture;
+    if (g && e.pointerId === g.id) {
+      if (g.holdTimer) { clearTimeout(g.holdTimer); g.holdTimer = null; }
+      if (g.state === "tap" || g.state === "touch") {
+        touchAt(g.id, "up", e.clientX, e.clientY);
+      } else if (g.state === "move") {
+        dragAt("up", e.clientX, e.clientY);
+      } else if (g.state === "held") {
+        // Press-hold-release in place → right-click.
+        const n = normPoint(e.clientX, e.clientY, video);
+        if (n) {
+          W.sendInput({ t: "button", x: n.x, y: n.y, button: "right", pressed: true });
+          W.sendInput({ t: "button", x: n.x, y: n.y, button: "right", pressed: false });
+        }
+      }
+      W.gesture = null;
+    } else {
+      touchAt(e.pointerId, "up", e.clientX, e.clientY); // secondary passthrough
+    }
   };
   video.addEventListener("pointerup", end);
   video.addEventListener("pointercancel", end);
+
+  // Mouse wheel → wl_pointer axis (the only Wayland scroll path; no cursor is drawn).
+  video.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const n = normPoint(e.clientX, e.clientY, video);
+    if (n) W.sendInput({ t: "scroll", x: n.x, y: n.y, dx: e.deltaX, dy: e.deltaY });
+  }, { passive: false });
 
   // Keyboard at window level, but only forwarded while the video is focused.
   const sendKey = (e, pressed) => {
@@ -308,6 +405,8 @@ W.stopSession = async () => {
   W.inputDC = null;
   W.pressedKeys.clear();
   W.activePointers.clear();
+  if (W.gesture && W.gesture.holdTimer) clearTimeout(W.gesture.holdTimer);
+  W.gesture = null;
   if (W.pc) { try { W.pc.close(); } catch (_) {} W.pc = null; }
   const v = document.getElementById("wado-video");
   if (v) v.srcObject = null;

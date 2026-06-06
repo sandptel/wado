@@ -3,6 +3,7 @@ use smithay::{
     input::{
         Seat,
         pointer::{Focus, GrabStartData as PointerGrabStartData},
+        touch::GrabStartData as TouchGrabStartData,
     },
     reexports::{
         wayland_protocols::xdg::shell::server::xdg_toplevel,
@@ -23,7 +24,7 @@ use smithay::{
 
 use crate::{
     Wado,
-    grabs::{MoveSurfaceGrab, ResizeSurfaceGrab},
+    grabs::{MoveSurfaceGrab, ResizeSurfaceGrab, TouchMoveSurfaceGrab, TouchResizeSurfaceGrab},
 };
 
 impl XdgShellHandler for Wado {
@@ -55,24 +56,26 @@ impl XdgShellHandler for Wado {
         let seat = Seat::from_resource(&seat).unwrap();
         let wl_surface = surface.wl_surface();
 
+        let Some(window) = self
+            .space
+            .elements()
+            .find(|w| w.toplevel().unwrap().wl_surface() == wl_surface)
+            .cloned()
+        else {
+            return;
+        };
+        let initial_window_location = self.space.element_location(&window).unwrap();
+
+        // Honour the move whether the client started it from a pointer (e.g. a desktop
+        // mouse) or a touch contact. wado drives touch, so the touch path is the live one.
         if let Some(start_data) = check_grab(&seat, wl_surface, serial) {
             let pointer = seat.get_pointer().unwrap();
-
-            let window = self
-                .space
-                .elements()
-                .find(|w| w.toplevel().unwrap().wl_surface() == wl_surface)
-                .unwrap()
-                .clone();
-            let initial_window_location = self.space.element_location(&window).unwrap();
-
-            let grab = MoveSurfaceGrab {
-                start_data,
-                window,
-                initial_window_location,
-            };
-
+            let grab = MoveSurfaceGrab { start_data, window, initial_window_location };
             pointer.set_grab(self, grab, serial, Focus::Clear);
+        } else if let Some(start_data) = check_grab_touch(&seat, wl_surface, serial) {
+            let touch = seat.get_touch().unwrap();
+            let grab = TouchMoveSurfaceGrab { start_data, window, initial_window_location };
+            touch.set_grab(self, grab, serial);
         }
     }
 
@@ -86,32 +89,34 @@ impl XdgShellHandler for Wado {
         let seat = Seat::from_resource(&seat).unwrap();
         let wl_surface = surface.wl_surface();
 
+        let Some(window) = self
+            .space
+            .elements()
+            .find(|w| w.toplevel().unwrap().wl_surface() == wl_surface)
+            .cloned()
+        else {
+            return;
+        };
+        let initial_window_location = self.space.element_location(&window).unwrap();
+        let initial_window_size = window.geometry().size;
+        let initial_rect = Rectangle::new(initial_window_location, initial_window_size);
+
         if let Some(start_data) = check_grab(&seat, wl_surface, serial) {
             let pointer = seat.get_pointer().unwrap();
-
-            let window = self
-                .space
-                .elements()
-                .find(|w| w.toplevel().unwrap().wl_surface() == wl_surface)
-                .unwrap()
-                .clone();
-            let initial_window_location = self.space.element_location(&window).unwrap();
-            let initial_window_size = window.geometry().size;
-
             surface.with_pending_state(|state| {
                 state.states.set(xdg_toplevel::State::Resizing);
             });
-
             surface.send_pending_configure();
-
-            let grab = ResizeSurfaceGrab::start(
-                start_data,
-                window,
-                edges.into(),
-                Rectangle::new(initial_window_location, initial_window_size),
-            );
-
+            let grab = ResizeSurfaceGrab::start(start_data, window, edges.into(), initial_rect);
             pointer.set_grab(self, grab, serial, Focus::Clear);
+        } else if let Some(start_data) = check_grab_touch(&seat, wl_surface, serial) {
+            let touch = seat.get_touch().unwrap();
+            surface.with_pending_state(|state| {
+                state.states.set(xdg_toplevel::State::Resizing);
+            });
+            surface.send_pending_configure();
+            let grab = TouchResizeSurfaceGrab::start(start_data, window, edges.into(), initial_rect);
+            touch.set_grab(self, grab, serial);
         }
     }
 
@@ -130,6 +135,29 @@ fn check_grab(
     }
 
     let start_data = pointer.grab_start_data()?;
+
+    let (focus, _) = start_data.focus.as_ref()?;
+    if !focus.id().same_client_as(&surface.id()) {
+        return None;
+    }
+
+    Some(start_data)
+}
+
+/// Touch analogue of [`check_grab`]: validate that the move/resize request comes from the
+/// touch contact that currently holds the grab and is focused on this client's surface.
+fn check_grab_touch(
+    seat: &Seat<Wado>,
+    surface: &WlSurface,
+    serial: Serial,
+) -> Option<TouchGrabStartData<Wado>> {
+    let touch = seat.get_touch()?;
+
+    if !touch.has_grab(serial) {
+        return None;
+    }
+
+    let start_data = touch.grab_start_data()?;
 
     let (focus, _) = start_data.focus.as_ref()?;
     if !focus.id().same_client_as(&surface.id()) {

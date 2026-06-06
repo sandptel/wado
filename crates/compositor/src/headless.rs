@@ -203,6 +203,7 @@ pub fn stop_session(state: &mut Wado) {
     state.encoder = None;
     state.frame_sink = None;
     state.session_active = false;
+    state.window_move = None;
 
     info!("compositor session stopped — resources released");
 }
