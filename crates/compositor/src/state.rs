@@ -71,6 +71,21 @@ pub struct Wado {
     pub app_processes: Vec<std::process::Child>,
     /// True between start_session and stop_session.
     pub session_active: bool,
+    /// An in-progress compositor-managed window move (long-press-drag or "move mode"),
+    /// driven by [`wado_protocol::InputEvent::WindowDrag`]. `None` when not moving.
+    pub window_move: Option<WindowMove>,
+}
+
+/// Tracks a compositor-driven interactive window move. Unlike the app-initiated CSD grabs
+/// (see `grabs/touch_move_grab.rs`), this is a plain state machine fed by `WindowDrag`
+/// events — it never involves a Smithay touch grab, so it can't fight touch routing.
+pub struct WindowMove {
+    /// The window being dragged.
+    pub window: Window,
+    /// Pointer location (logical) at the start of the move.
+    pub start_ptr: Point<f64, Logical>,
+    /// Window location (logical) at the start of the move.
+    pub start_win: Point<i32, Logical>,
 }
 
 impl Wado {
@@ -124,6 +139,7 @@ impl Wado {
             render_timer_token: None,
             app_processes: Vec::new(),
             session_active: false,
+            window_move: None,
         }
     }
 

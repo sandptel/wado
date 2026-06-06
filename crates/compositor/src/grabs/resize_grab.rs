@@ -250,8 +250,10 @@ impl PointerGrab<Wado> for ResizeSurfaceGrab {
     fn unset(&mut self, _data: &mut Wado) {}
 }
 
+/// Per-surface resize state. Shared with the touch resize grab
+/// (`grabs/touch_resize_grab.rs`) so both grab kinds drive the same commit machinery.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Default)]
-enum ResizeSurfaceState {
+pub(crate) enum ResizeSurfaceState {
     #[default]
     Idle,
     Resizing {
@@ -265,7 +267,7 @@ enum ResizeSurfaceState {
 }
 
 impl ResizeSurfaceState {
-    fn with<F, T>(surface: &WlSurface, cb: F) -> T
+    pub(crate) fn with<F, T>(surface: &WlSurface, cb: F) -> T
     where
         F: FnOnce(&mut Self) -> T,
     {

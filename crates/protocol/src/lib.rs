@@ -31,15 +31,19 @@ pub const INPUT_CHANNEL: &str = "wado-input";
 
 /// One input event from the remote client, sent as JSON over the input data channel.
 ///
-/// Touch coordinates are **normalized 0..1** relative to the *displayed video content*
+/// All coordinates are **normalized 0..1** relative to the *displayed video content*
 /// rect (the client does the letterbox math); the compositor scales them to the output.
-/// Mouse/pointer input is intentionally absent — wado is touch + keyboard only, with no
-/// on-screen cursor.
+///
+/// wado renders **no on-screen cursor**. `Touch`/`Key` map straight to `wl_touch`/
+/// `wl_keyboard`. `Scroll`/`Button` are delivered via `wl_pointer` (the only Wayland
+/// mechanism for axis/secondary-click) by focusing the surface under the point — still
+/// without drawing a cursor. `WindowDrag` is a compositor-managed window move (it never
+/// reaches the app). See `INPUT_CHALLENGES.md`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "t", rename_all = "snake_case")]
 pub enum InputEvent {
-    /// A single touch contact. `id` identifies the contact (one finger this iteration;
-    /// multi-touch later). `phase` is the lifecycle; `x`/`y` are normalized 0..1.
+    /// A touch contact. `id` identifies the contact (multi-touch: several may be live at
+    /// once). `phase` is the lifecycle; `x`/`y` are normalized 0..1.
     Touch {
         id: u32,
         phase: TouchPhase,
@@ -49,6 +53,34 @@ pub enum InputEvent {
     /// A key press/release. `code` is the **Linux evdev keycode** (e.g. `KEY_A` = 30),
     /// *before* the xkb +8 offset (the compositor applies it).
     Key { code: u32, pressed: bool },
+    /// A scroll/wheel tick at (`x`,`y`). `dx`/`dy` are pixel deltas (browser `wheel`
+    /// `deltaX`/`deltaY`); the compositor turns them into a `wl_pointer` axis frame.
+    Scroll { x: f64, y: f64, dx: f64, dy: f64 },
+    /// A pointer button press/release at (`x`,`y`) — used for the long-press → right-click
+    /// gesture. Delivered via `wl_pointer` with focus set to the surface under the point.
+    Button {
+        x: f64,
+        y: f64,
+        button: PointerButton,
+        pressed: bool,
+    },
+    /// A compositor-managed window move (long-press-drag or the client's "move mode"). The
+    /// window under the `Down` point follows subsequent `Motion`s until `Up`. Handled
+    /// entirely by the compositor; never forwarded to the application.
+    WindowDrag { phase: TouchPhase, x: f64, y: f64 },
+    /// Retract an in-progress touch contact when a gesture takes over (e.g. a long-press
+    /// promotes to a window move/right-click), so the app sees a cancel, not a tap. Maps
+    /// to `wl_touch`'s **global** cancel (all live contacts), per the protocol.
+    CancelTouch { id: u32 },
+}
+
+/// Which pointer button a [`InputEvent::Button`] refers to. Only the secondary (right)
+/// button is emulated this iteration (long-press → right-click); left/middle are reserved.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PointerButton {
+    /// `BTN_RIGHT` (`0x111`).
+    Right,
 }
 
 /// Lifecycle phase of a touch contact (maps to `wl_touch` down / motion / up).
