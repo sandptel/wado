@@ -1,3 +1,4 @@
+use std::panic::AssertUnwindSafe;
 use std::time::Duration;
 
 use smithay::{
@@ -19,16 +20,16 @@ use smithay::{
 use tracing::{debug, info, warn};
 
 use crate::{
-    Wado, WadoError,
+    Wado, CompositorError,
     capture::mem::capture_frame,
     conf::{EncoderConfig, SinkTarget, WadoConfig},
     encode::x264enc::X264Encoder,
     sink::{FrameSink, file::FileSink},
 };
 
-/// Map any displayable renderer/EGL error into [`WadoError::Renderer`].
-fn renderer_err<E: std::fmt::Display>(ctx: &str) -> impl FnOnce(E) -> WadoError + '_ {
-    move |e| WadoError::Renderer(format!("{ctx}: {e}"))
+/// Map any displayable renderer/EGL error into [`CompositorError::Renderer`].
+fn renderer_err<E: std::fmt::Display>(ctx: &str) -> impl FnOnce(E) -> CompositorError + '_ {
+    move |e| CompositorError::Renderer(format!("{ctx}: {e}"))
 }
 
 /// Backward-compat aliases — prefer `WadoConfig::default().encoder.*` in new code.
@@ -56,7 +57,7 @@ pub fn start_session(
     sink: Box<dyn FrameSink>,
 ) -> crate::Result<()> {
     if state.session_active {
-        return Err(WadoError::SessionAlreadyActive);
+        return Err(CompositorError::SessionAlreadyActive);
     }
     debug!(
         width = ec.width,
@@ -128,15 +129,28 @@ pub fn start_session(
         .insert_source(
             Timer::immediate(),
             move |deadline, _, state: &mut Wado| {
-                if let Err(e) = render_tick(state, w, h) {
+                // Guard the render path: a panic here must tear down only the session,
+                // not abort the process (and the server with it). Only Rust unwinding
+                // panics are caught — a native segfault in EGL/GLES/x264 still aborts.
+                match std::panic::catch_unwind(AssertUnwindSafe(|| render_tick(state, w, h))) {
+                    Ok(Ok(())) => {}
                     // Transient per-frame failure: log and keep the timer alive so
                     // the pipeline can recover on the next tick.
-                    tracing::warn!("render tick failed: {e}");
+                    Ok(Err(e)) => tracing::warn!("render tick failed: {e}"),
+                    Err(_) => {
+                        tracing::error!("compositor panicked during render — stopping session");
+                        // We're inside this timer's own callback: take the token so
+                        // stop_session won't `remove()` the source we're about to drop
+                        // via the return value below (avoids a double-remove).
+                        let _ = state.render_timer_token.take();
+                        stop_session(state);
+                        return TimeoutAction::Drop;
+                    }
                 }
                 TimeoutAction::ToInstant(deadline + Duration::from_nanos(frame_nanos))
             },
         )
-        .map_err(|e| WadoError::Other(format!("insert render timer: {e}")))?;
+        .map_err(|e| CompositorError::Other(format!("insert render timer: {e}")))?;
     state.render_timer_token = Some(token);
 
     info!(width = ec.width, height = ec.height, fps = ec.fps, "compositor session active");

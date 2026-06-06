@@ -1,5 +1,17 @@
-//! Commands sent from the async control server (tokio) to the compositor
-//! (calloop main thread), and the handler that runs them with `&mut Wado`.
+//! Commands the server sends to the compositor, and the handler that runs them with
+//! `&mut Wado` on the calloop thread.
+//!
+//! This is the compositor's half of the server↔compositor boundary: the server holds
+//! the [`CompositorCommand`] `Sender` and never touches `Wado` or any Smithay type
+//! directly. The command source (with its panic guard) is inserted in [`crate::build`].
+//!
+//! ## Future: input
+//! Input (touch / pointer / keyboard from the remote client) will NOT be added as more
+//! `CompositorCommand` variants. Per wado's "input never rides behind video" invariant
+//! it gets its own, separate `calloop::channel` of `InputEvent`s — the server parses the
+//! WebRTC data channel into `InputEvent`s and the compositor synthesizes Smithay
+//! `PointerHandle`/`KeyboardHandle`/`TouchHandle` events on its `seat`. Keeping command
+//! and input on independent channels is deliberate; do not multiplex them.
 
 use std::time::Duration;
 
@@ -12,8 +24,8 @@ use crate::{
     sink::channel::{ChannelSink, FrameMsg},
 };
 
-/// A request from the web client / WebRTC layer, marshalled onto the compositor thread.
-pub enum ControlCommand {
+/// A request from the server, marshalled onto the compositor thread.
+pub enum CompositorCommand {
     /// Spin up a compositor session with the given config and launch its app.
     Start {
         config: SessionConfig,
@@ -28,17 +40,13 @@ pub enum ControlCommand {
 
 /// Run one command on the calloop thread. `frame_tx` is the pump sender, cloned
 /// into the new session's [`ChannelSink`].
-pub fn handle_command(
-    state: &mut Wado,
-    cmd: ControlCommand,
-    frame_tx: &mpsc::Sender<FrameMsg>,
-) {
+pub fn handle_command(state: &mut Wado, cmd: CompositorCommand, frame_tx: &mpsc::Sender<FrameMsg>) {
     match cmd {
-        ControlCommand::Start { config, reply } => {
+        CompositorCommand::Start { config, reply } => {
             let _ = reply.send(start(state, &config, frame_tx));
         }
-        ControlCommand::Stop => headless::stop_session(state),
-        ControlCommand::ForceKeyframe => headless::force_keyframe(state),
+        CompositorCommand::Stop => headless::stop_session(state),
+        CompositorCommand::ForceKeyframe => headless::force_keyframe(state),
     }
 }
 

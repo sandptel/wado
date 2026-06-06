@@ -22,7 +22,7 @@ use smithay::{
     reexports::{calloop::EventLoop, wayland_server::Display},
     utils::{Buffer, Size},
 };
-use wado::{
+use wado_compositor::{
     capture::mem::capture_frame,
     conf::{OutputConfig, SinkTarget, WadoConfig},
     headless::{self, FPS, HEIGHT, WIDTH},

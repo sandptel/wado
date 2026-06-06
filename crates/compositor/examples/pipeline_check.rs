@@ -9,7 +9,7 @@
 ///   ffplay -f h264 captures/pipeline_check.h264
 use std::{fs, time::Instant};
 
-use wado::{
+use wado_compositor::{
     conf::Preset,
     encode::x264enc::X264Encoder,
     sink::{file::FileSink, FrameSink},

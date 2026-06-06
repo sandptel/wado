@@ -15,7 +15,7 @@
 use std::time::{Duration, Instant};
 
 use smithay::reexports::{calloop::EventLoop, wayland_server::Display};
-use wado::{
+use wado_compositor::{
     Wado,
     conf::WadoConfig,
     headless::{self, FPS, HEIGHT, WIDTH},

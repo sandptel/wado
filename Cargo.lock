@@ -4351,18 +4351,16 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 name = "wado"
 version = "0.1.0"
 dependencies = [
- "bitflags 2.13.0",
  "bytes",
  "serde",
  "serde_json",
- "smithay",
  "thiserror 1.0.69",
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "wado-compositor",
  "wado-protocol",
  "webrtc",
- "x264",
 ]
 
 [[package]]
@@ -4375,6 +4373,21 @@ dependencies = [
  "serde_json",
  "wado-protocol",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "wado-compositor"
+version = "0.1.0"
+dependencies = [
+ "bitflags 2.13.0",
+ "bytes",
+ "smithay",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "wado-protocol",
+ "x264",
 ]
 
 [[package]]
