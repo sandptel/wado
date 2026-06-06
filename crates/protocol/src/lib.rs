@@ -24,6 +24,42 @@ pub mod endpoints {
     pub const EVENTS: &str = "/events";
 }
 
+/// Label of the WebRTC **data channel** the client opens to carry input
+/// ([`InputEvent`]s). Shared so the client (which creates it) and the server (which
+/// matches it in `on_data_channel`) cannot disagree.
+pub const INPUT_CHANNEL: &str = "wado-input";
+
+/// One input event from the remote client, sent as JSON over the input data channel.
+///
+/// Touch coordinates are **normalized 0..1** relative to the *displayed video content*
+/// rect (the client does the letterbox math); the compositor scales them to the output.
+/// Mouse/pointer input is intentionally absent — wado is touch + keyboard only, with no
+/// on-screen cursor.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "t", rename_all = "snake_case")]
+pub enum InputEvent {
+    /// A single touch contact. `id` identifies the contact (one finger this iteration;
+    /// multi-touch later). `phase` is the lifecycle; `x`/`y` are normalized 0..1.
+    Touch {
+        id: u32,
+        phase: TouchPhase,
+        x: f64,
+        y: f64,
+    },
+    /// A key press/release. `code` is the **Linux evdev keycode** (e.g. `KEY_A` = 30),
+    /// *before* the xkb +8 offset (the compositor applies it).
+    Key { code: u32, pressed: bool },
+}
+
+/// Lifecycle phase of a touch contact (maps to `wl_touch` down / motion / up).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TouchPhase {
+    Down,
+    Motion,
+    Up,
+}
+
 /// Image-quality preset chosen by the client (RustDesk's model). The server maps
 /// this to a concrete bitrate / x264 preset / keyframe interval.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]

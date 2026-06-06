@@ -52,6 +52,8 @@ use webrtc::api::interceptor_registry::register_default_interceptors;
 use webrtc::api::media_engine::{MIME_TYPE_H264, MediaEngine};
 use webrtc::api::setting_engine::SettingEngine;
 use webrtc::api::{API, APIBuilder};
+use webrtc::data_channel::RTCDataChannel;
+use webrtc::data_channel::data_channel_message::DataChannelMessage;
 use webrtc::interceptor::registry::Registry;
 use webrtc::media::Sample;
 use webrtc::peer_connection::RTCPeerConnection;
@@ -65,7 +67,8 @@ use webrtc::track::track_local::TrackLocal;
 use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
 
 use logbus::LogBus;
-use wado_compositor::{CommandSender, CompositorCommand, FrameMsg};
+use wado_compositor::{CommandSender, CompositorCommand, FrameMsg, InputEvent, InputSender};
+use wado_protocol::INPUT_CHANNEL;
 
 /// Bounded so encoded frames never pile up behind a slow/absent network.
 pub const FRAME_CHANNEL_CAPACITY: usize = 4;
@@ -82,6 +85,8 @@ struct ServerCtx {
     api: Arc<API>,
     track: Arc<TrackLocalStaticSample>,
     cmd_tx: CmdSender,
+    /// Sender for remote touch/keyboard events, fed by each viewer's input data channel.
+    input_tx: InputSender,
     log_bus: LogBus,
     /// The single active viewer's peer connection, kept alive here (not merely by
     /// the RTCP task) and cleared when it fails/closes.
@@ -97,6 +102,7 @@ struct ServerCtx {
 /// and handed to [`wado_compositor::build`] and here respectively.
 pub fn start(
     cmd_tx: CommandSender,
+    input_tx: InputSender,
     frame_rx: mpsc::Receiver<FrameMsg>,
     addr: &str,
     log_bus: LogBus,
@@ -113,7 +119,7 @@ pub fn start(
                 }
             };
             rt.block_on(async move {
-                if let Err(e) = run_server(addr, frame_rx, cmd_tx, log_bus).await {
+                if let Err(e) = run_server(addr, frame_rx, cmd_tx, input_tx, log_bus).await {
                     error!("control server exited: {e}");
                 }
             });
@@ -126,6 +132,7 @@ async fn run_server(
     addr: String,
     mut frame_rx: mpsc::Receiver<FrameMsg>,
     cmd_tx: CmdSender,
+    input_tx: InputSender,
     log_bus: LogBus,
 ) -> crate::Result<()> {
     let mut media_engine = MediaEngine::default();
@@ -174,6 +181,7 @@ async fn run_server(
         api,
         track,
         cmd_tx,
+        input_tx,
         log_bus,
         active_pc: Arc::new(Mutex::new(None)),
         generation: Arc::new(AtomicU64::new(0)),
@@ -334,6 +342,45 @@ async fn handle_offer(ctx: &ServerCtx, offer_json: &str) -> crate::Result<String
     let rtp_sender = pc
         .add_track(Arc::clone(&ctx.track) as Arc<dyn TrackLocal + Send + Sync>)
         .await?;
+
+    // Remote input: the browser opens a reliable data channel (label INPUT_CHANNEL) in
+    // its offer; each message is a JSON InputEvent we forward to the compositor on the
+    // separate input channel (never behind video — invariant #1). Bad frames are dropped.
+    {
+        let input_tx = ctx.input_tx.clone();
+        pc.on_data_channel(Box::new(move |dc: Arc<RTCDataChannel>| {
+            let input_tx = input_tx.clone();
+            Box::pin(async move {
+                let label = dc.label().to_string();
+                if label != INPUT_CHANNEL {
+                    info!("ignoring data channel {label:?} (expected {INPUT_CHANNEL:?})");
+                    return;
+                }
+                {
+                    let label = label.clone();
+                    dc.on_open(Box::new(move || {
+                        let label = label.clone();
+                        Box::pin(async move { info!("input data channel {label:?} open") })
+                    }));
+                }
+                let input_tx = input_tx.clone();
+                dc.on_message(Box::new(move |msg: DataChannelMessage| {
+                    let input_tx = input_tx.clone();
+                    Box::pin(async move {
+                        match serde_json::from_slice::<InputEvent>(&msg.data) {
+                            Ok(ev) => {
+                                tracing::debug!(?ev, "input event");
+                                if input_tx.send(ev).is_err() {
+                                    warn!("compositor input channel closed — dropping input");
+                                }
+                            }
+                            Err(e) => warn!("bad input event dropped: {e}"),
+                        }
+                    })
+                }));
+            })
+        }));
+    }
 
     // This viewer's generation; only this generation may auto-stop the session.
     let my_gen = ctx.generation.fetch_add(1, Ordering::SeqCst) + 1;
