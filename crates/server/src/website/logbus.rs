@@ -70,14 +70,11 @@ impl<S: Subscriber> Layer<S> for LogBus {
         let meta = event.metadata();
         let mut visitor = LineVisitor::default();
         event.record(&mut visitor);
-        let line = format!(
-            "{}|{}|{}: {}{}",
-            meta.level(),
-            hms(),
-            meta.target(),
-            visitor.message,
-            visitor.fields
-        );
+        // `text` is `target: message field=value …`; the wire delimiter contract
+        // (`LEVEL|HH:MM:SS|text`) lives in `wado_protocol::logfmt`, shared with the
+        // client's parser.
+        let text = format!("{}: {}{}", meta.target(), visitor.message, visitor.fields);
+        let line = wado_protocol::logfmt::format_line(&meta.level().to_string(), &hms(), &text);
         self.emit(line.replace('\n', " "));
     }
 }

@@ -1,0 +1,14 @@
+[package]
+name = "wado-client"
+version = "0.1.0"
+edition = "2021"
+description = "wado web client — a Dioxus (WASM) app that configures, starts, and views a wado streaming session."
+
+[dependencies]
+# Web (WASM) target. Native desktop/mobile can be added later from the same code.
+dioxus = { version = "0.7", features = ["web"] }
+wado-protocol = { path = "../protocol" }
+serde = "1"
+serde_json = "1"
+# Readable panics in the browser console during development.
+console_error_panic_hook = "0.1"

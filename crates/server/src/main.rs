@@ -20,11 +20,11 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     unsafe { std::env::set_var("WAYLAND_DISPLAY", &state.socket_name) };
 
     // Start the idle control plane only. No compositor session, encoder, or render
-    // loop exists until the web client triggers one — wado sits ~idle until then.
+    // loop exists until a client triggers one — wado sits ~idle until then.
     let control_addr =
         std::env::args().nth(1).unwrap_or_else(|| DEFAULT_CONTROL_ADDR.to_string());
     website::start(state.loop_handle.clone(), &control_addr, log_bus)?;
-    tracing::info!("wado idle — open http://{control_addr} to configure and start a session");
+    tracing::info!("wado server idle on http://{control_addr} — connect with the wado-client app");
 
     event_loop.run(None, &mut state, move |_| {})?;
 

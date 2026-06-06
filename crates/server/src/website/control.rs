@@ -50,7 +50,7 @@ fn start(
     if state.session_active {
         return Err("a session is already active".into());
     }
-    let encoder = config.to_encoder_config();
+    let encoder = crate::conf::to_encoder_config(config);
     let frame_dur = Duration::from_nanos(1_000_000_000 / encoder.fps.max(1) as u64);
     let sink = Box::new(ChannelSink::new(frame_tx.clone(), frame_dur));
 
