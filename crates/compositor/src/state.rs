@@ -66,8 +66,9 @@ pub struct Wado {
     pub output_global: Option<GlobalId>,
     /// Token for the render timer source, so it can be removed on session stop.
     pub render_timer_token: Option<RegistrationToken>,
-    /// The application process launched inside the active session.
-    pub app_process: Option<std::process::Child>,
+    /// Applications launched inside the active session (the optional initial command
+    /// plus any spawned at runtime). All are killed on session stop.
+    pub app_processes: Vec<std::process::Child>,
     /// True between start_session and stop_session.
     pub session_active: bool,
 }
@@ -118,7 +119,7 @@ impl Wado {
             output: None,
             output_global: None,
             render_timer_token: None,
-            app_process: None,
+            app_processes: Vec::new(),
             session_active: false,
         }
     }
