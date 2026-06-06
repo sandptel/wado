@@ -12,3 +12,7 @@ serde = "1"
 serde_json = "1"
 # Readable panics in the browser console during development.
 console_error_panic_hook = "0.1"
+
+# Yes I am going to pin this , because I wasn't able to compile
+# Will have to change when I update to the next version of dioxus, which will likely require a newer version of wasm-bindgen.
+wasm-bindgen = "=0.2.118"
