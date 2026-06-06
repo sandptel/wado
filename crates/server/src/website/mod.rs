@@ -1,11 +1,19 @@
-//! The wado control plane: an always-on HTTP server that serves the native web
-//! client, lets it configure and **trigger** compositor sessions on demand, carries
-//! the WebRTC video for the running session, and streams wado's logs to the client.
+//! The wado control plane: an always-on HTTP **API** that lets a client configure
+//! and **trigger** compositor sessions on demand, carries the WebRTC video for the
+//! running session, and streams wado's logs back to the client.
+//!
+//! This server is API-only — the UI is a separate app (`wado-client`, a Dioxus web
+//! app) that talks to these endpoints over CORS. The endpoints are:
+//!   - `POST /session/start` — body is a `wado_protocol::SessionConfig` (JSON).
+//!   - `POST /session/stop`  — tear the active session down.
+//!   - `POST /offer`         — WebRTC SDP offer → answer (JSON).
+//!   - `GET  /events`        — live tracing logs as Server-Sent Events.
+//!   - `OPTIONS *`           — CORS preflight (204).
 //!
 //! wado boots into this server only — no EGL, no encoder, no render loop — so an
-//! idle instance consumes ~no GPU/CPU. A session is created when the web client
-//! POSTs `/session/start`, and torn down on `/session/stop` or when the viewer's
-//! WebRTC connection truly fails.
+//! idle instance consumes ~no GPU/CPU. A session is created when the client POSTs
+//! `/session/start`, and torn down on `/session/stop` or when the viewer's WebRTC
+//! connection truly fails.
 //!
 //! ## Threading
 //! The HTTP server is async (tokio, on its own thread); the compositor session
@@ -186,7 +194,7 @@ async fn run_server(
     });
 
     let listener = TcpListener::bind(&addr).await?;
-    info!(%addr, "control server listening — open it in a browser");
+    info!(%addr, "control server listening — connect with the wado-client app");
 
     loop {
         let (stream, _peer) = listener.accept().await?;
@@ -240,6 +248,12 @@ async fn handle_conn(mut stream: TcpStream, ctx: Arc<ServerCtx>) -> crate::Resul
         return Ok(());
     }
 
+    // CORS preflight: the client is a separate origin, so browsers preflight the
+    // JSON POSTs. Answer any OPTIONS with the allowed methods/headers. No body.
+    if method == "OPTIONS" {
+        return write_preflight(&mut stream).await;
+    }
+
     // Live log stream is a long-lived response — handle before the normal path.
     if method == "GET" && path == "/events" {
         return serve_sse(stream, &ctx.log_bus).await;
@@ -257,9 +271,9 @@ async fn handle_conn(mut stream: TcpStream, ctx: Arc<ServerCtx>) -> crate::Resul
 
     match (method.as_str(), path.as_str()) {
         ("GET", "/") => {
-            let html = include_str!("../../assets/index.html");
-            write_response(&mut stream, "200 OK", "text/html; charset=utf-8", html.as_bytes())
-                .await?;
+            // No UI here anymore — the client is the separate `wado-client` app.
+            let msg = b"wado control server (API only). Run the wado-client app to connect.";
+            write_response(&mut stream, "200 OK", "text/plain", msg).await?;
         }
         ("POST", "/session/start") => match handle_session_start(&ctx, &body).await {
             Ok(()) => write_response(&mut stream, "200 OK", "text/plain", b"started").await?,
@@ -417,6 +431,20 @@ async fn serve_sse(mut stream: TcpStream, log_bus: &LogBus) -> crate::Result<()>
             }
         }
     }
+    Ok(())
+}
+
+/// Answer a CORS preflight (`OPTIONS`) with the methods/headers the client needs.
+async fn write_preflight(stream: &mut TcpStream) -> crate::Result<()> {
+    let header = "HTTP/1.1 204 No Content\r\n\
+         Access-Control-Allow-Origin: *\r\n\
+         Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n\
+         Access-Control-Allow-Headers: Content-Type\r\n\
+         Access-Control-Max-Age: 86400\r\n\
+         Content-Length: 0\r\n\
+         Connection: close\r\n\r\n";
+    stream.write_all(header.as_bytes()).await?;
+    stream.flush().await?;
     Ok(())
 }
 

@@ -1,4 +1,8 @@
-use serde::Deserialize;
+//! Server-side runtime configuration. The client-facing wire types
+//! ([`SessionConfig`], [`Quality`]) live in the `wado-protocol` crate and are
+//! re-exported here; this module owns the x264-coupled encoder mapping.
+
+pub use wado_protocol::{Quality, SessionConfig};
 pub use x264::Preset;
 
 pub const DEFAULT_WIDTH: u32 = 1280;
@@ -75,59 +79,26 @@ impl WadoConfig {
     }
 }
 
-/// Image-quality preset chosen by the web client (RustDesk's model). Maps to a
-/// bitrate + x264 preset + keyframe interval via [`SessionConfig::to_encoder_config`].
-#[derive(Debug, Clone, Copy, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Quality {
-    /// Lowest latency: low bitrate, fastest preset, short GOP.
-    Reactivity,
-    /// Middle ground (default).
-    Balanced,
-    /// Higher bitrate / better image at some CPU cost.
-    Quality,
-    /// Explicit CBR target in kbps.
-    Custom { bitrate_kbps: u32 },
-}
-
-/// One session's configuration, as sent by the web client (`POST /session/start`).
-#[derive(Debug, Clone, Deserialize)]
-pub struct SessionConfig {
-    pub width: u32,
-    pub height: u32,
-    pub fps: u32,
-    pub quality: Quality,
-    /// Free-form command to launch inside the session (program + args, space-split).
-    pub command: String,
-    /// Advanced override: x264 preset name ("ultrafast".."veryfast"). Falls back to
-    /// the quality preset's default when absent.
-    #[serde(default)]
-    pub preset: Option<String>,
-    /// Advanced override: frames between IDR keyframes. Falls back to the quality
-    /// preset's default when absent.
-    #[serde(default)]
-    pub keyframe_interval: Option<u32>,
-}
-
-impl SessionConfig {
-    /// Resolve the quality preset and any advanced overrides into concrete encoder
-    /// parameters.
-    pub fn to_encoder_config(&self) -> EncoderConfig {
-        let fps = self.fps.max(1);
-        let (bitrate_kbps, default_preset, default_kf) = match self.quality {
-            Quality::Reactivity => (2000, Preset::Ultrafast, fps), // ~1 s GOP
-            Quality::Balanced => (4000, Preset::Ultrafast, fps * 2),
-            Quality::Quality => (8000, Preset::Veryfast, fps * 2),
-            Quality::Custom { bitrate_kbps } => (bitrate_kbps, Preset::Ultrafast, fps * 2),
-        };
-        EncoderConfig {
-            width: self.width,
-            height: self.height,
-            fps,
-            bitrate_kbps,
-            keyframe_interval: self.keyframe_interval.unwrap_or(default_kf),
-            preset: self.preset.as_deref().map(parse_preset).unwrap_or(default_preset),
-        }
+/// Resolve a client-supplied [`SessionConfig`]'s quality preset and any advanced
+/// overrides into concrete encoder parameters.
+///
+/// A free function (not an inherent method) because `SessionConfig` is defined in
+/// the `wado-protocol` crate — the orphan rule forbids adding inherent impls here.
+pub fn to_encoder_config(config: &SessionConfig) -> EncoderConfig {
+    let fps = config.fps.max(1);
+    let (bitrate_kbps, default_preset, default_kf) = match config.quality {
+        Quality::Reactivity => (2000, Preset::Ultrafast, fps), // ~1 s GOP
+        Quality::Balanced => (4000, Preset::Ultrafast, fps * 2),
+        Quality::Quality => (8000, Preset::Veryfast, fps * 2),
+        Quality::Custom { bitrate_kbps } => (bitrate_kbps, Preset::Ultrafast, fps * 2),
+    };
+    EncoderConfig {
+        width: config.width,
+        height: config.height,
+        fps,
+        bitrate_kbps,
+        keyframe_interval: config.keyframe_interval.unwrap_or(default_kf),
+        preset: config.preset.as_deref().map(parse_preset).unwrap_or(default_preset),
     }
 }
 

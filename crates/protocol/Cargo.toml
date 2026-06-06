@@ -1,0 +1,8 @@
+[package]
+name = "wado-protocol"
+version = "0.1.0"
+edition = "2021"
+description = "Shared wire types between the wado server and its clients."
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }

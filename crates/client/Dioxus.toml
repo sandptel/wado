@@ -1,0 +1,8 @@
+[application]
+name = "wado-client"
+
+[web.app]
+title = "wado — control"
+
+[web.watcher]
+reload_html = true
