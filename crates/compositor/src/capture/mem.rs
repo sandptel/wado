@@ -23,7 +23,7 @@ pub fn capture_frame(
 
     let mapping = renderer
         .copy_framebuffer(framebuffer, region, Fourcc::Abgr8888)
-        .map_err(|e| crate::WadoError::Capture(format!("copy_framebuffer: {e}")))?;
+        .map_err(|e| crate::CompositorError::Capture(format!("copy_framebuffer: {e}")))?;
 
     // flipped()=true means "y-axis is flipped compared to lower-left=(0,0)" — i.e. the
     // buffer origin IS already at the upper-left (screen convention, row 0 = display top).
@@ -33,7 +33,7 @@ pub fn capture_frame(
     let flipped = mapping.flipped();
     let raw = renderer
         .map_texture(&mapping)
-        .map_err(|e| crate::WadoError::Capture(format!("map_texture: {e}")))?;
+        .map_err(|e| crate::CompositorError::Capture(format!("map_texture: {e}")))?;
     let bytes = raw.to_vec();
 
     if !flipped {

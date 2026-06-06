@@ -161,7 +161,7 @@ fn build_encoder(
         .scenecut_threshold(0)
         .annexb(true)
         .build(Colorspace::I420, width as i32, height as i32)
-        .map_err(|e| crate::WadoError::Encoder(format!("x264 build: {e:?}")))?;
+        .map_err(|e| crate::CompositorError::Encoder(format!("x264 build: {e:?}")))?;
     Ok(encoder)
 }
 

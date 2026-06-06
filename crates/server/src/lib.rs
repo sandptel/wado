@@ -1,16 +1,9 @@
-#![allow(irrefutable_let_patterns)]
+//! `wado` (server) — the always-on control plane: HTTP/WebRTC signaling, the WebRTC
+//! video frame pump, and the live-log SSE stream. The compositor itself lives in the
+//! `wado-compositor` crate; this crate drives it only through the typed command/frame
+//! boundary (see [`website::start`]).
 
-pub mod capture;
-pub mod conf;
-pub mod encode;
 pub mod error;
-pub mod grabs;
-pub mod handlers;
-pub mod headless;
-pub mod input;
-pub mod sink;
-pub mod state;
 pub mod website;
 
 pub use error::{Result, WadoError};
-pub use state::Wado;

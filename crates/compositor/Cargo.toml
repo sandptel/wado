@@ -1,0 +1,29 @@
+[package]
+name = "wado-compositor"
+version = "0.1.0"
+edition = "2024"
+description = "wado's headless Smithay compositor: Wayland protocol state, GLES render pipeline, x264 encode, and the typed command/frame boundary the server drives it through."
+
+[dependencies]
+wado-protocol = { path = "../protocol" }
+tracing = "0.1"
+thiserror = "1"
+bitflags = "2"
+x264 = "0.5"
+bytes = "1"
+# Only the `sync` channel types (mpsc/oneshot) used on the server<->compositor
+# boundary — no tokio runtime runs in this crate.
+tokio = { version = "1", features = ["sync"] }
+
+[dependencies.smithay]
+git = "https://github.com/Smithay/smithay.git"
+default-features = false
+features = [
+    "renderer_gl",
+    "wayland_frontend",
+    "desktop",
+]
+
+[dev-dependencies]
+# The standalone render examples set up their own console tracing subscriber.
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

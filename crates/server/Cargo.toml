@@ -5,11 +5,12 @@ edition = "2024"
 
 [dependencies]
 wado-protocol = { path = "../protocol" }
+# The compositor library. The server drives it only through the typed command/frame
+# boundary it exposes (build / CompositorCommand / FrameMsg) — no Smithay here.
+wado-compositor = { path = "../compositor" }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 thiserror = "1"
-bitflags = "2"
-x264 = "0.5"
 # WebRTC video transport. Pinned to the 0.17.x stable line — 0.20.0-alpha.1 is the
 # Sans-IO migration and must NOT be used (see WADO_PLAN.md §3.4 Gotchas).
 webrtc = "0.17"
@@ -17,12 +18,3 @@ tokio = { version = "1", features = ["rt-multi-thread", "sync", "net", "io-util"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 bytes = "1"
-
-[dependencies.smithay]
-git = "https://github.com/Smithay/smithay.git"
-default-features = false
-features = [
-    "renderer_gl",
-    "wayland_frontend",
-    "desktop",
-]

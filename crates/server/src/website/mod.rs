@@ -18,9 +18,9 @@
 //! ## Threading
 //! The HTTP server is async (tokio, on its own thread); the compositor session
 //! lives on the synchronous `calloop` main thread. They are bridged two ways:
-//!   - **control**: a `calloop::channel` carries [`ControlCommand`]s (`Start` /
-//!     `Stop` / `ForceKeyframe`) to the compositor; replies come back on a tokio
-//!     `oneshot`.
+//!   - **control**: a `calloop::channel` (owned by `wado_compositor`) carries
+//!     [`CompositorCommand`]s (`Start` / `Stop` / `ForceKeyframe`) to the compositor;
+//!     replies come back on a tokio `oneshot`.
 //!   - **frames**: a bounded drop-on-full `tokio::mpsc` carries encoded frames from
 //!     the session's `ChannelSink` to the WebRTC frame pump here.
 //!
@@ -36,7 +36,6 @@
 //! The launch command is free-form, so this server binds `127.0.0.1` by default.
 //! A password/approval gate (and only then LAN exposure) is the next step.
 
-pub mod control;
 pub mod logbus;
 
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -44,10 +43,6 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use bytes::Bytes;
-use smithay::reexports::calloop::{
-    LoopHandle,
-    channel::{Event as ChannelEvent, channel},
-};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, mpsc, oneshot};
@@ -68,20 +63,18 @@ use webrtc::rtp_transceiver::rtp_codec::RTCRtpCodecCapability;
 use webrtc::track::track_local::TrackLocal;
 use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
 
-use crate::Wado;
-use crate::sink::channel::FrameMsg;
-use control::ControlCommand;
 use logbus::LogBus;
+use wado_compositor::{CommandSender, CompositorCommand, FrameMsg};
 
 /// Bounded so encoded frames never pile up behind a slow/absent network.
-const FRAME_CHANNEL_CAPACITY: usize = 4;
+pub const FRAME_CHANNEL_CAPACITY: usize = 4;
 /// Reject oversized request bodies (SDP/config are tiny; this is a DoS guard).
 const MAX_BODY_BYTES: usize = 256 * 1024;
 /// How long `/session/start` waits for the compositor thread to reply.
 const START_REPLY_TIMEOUT: Duration = Duration::from_secs(3);
 
-/// `Send`able sender for [`ControlCommand`]s into the calloop loop.
-type CmdSender = smithay::reexports::calloop::channel::Sender<ControlCommand>;
+/// `Send`able sender for [`CompositorCommand`]s into the compositor's calloop loop.
+type CmdSender = CommandSender;
 
 /// Per-connection shared context for the HTTP handlers.
 struct ServerCtx {
@@ -96,25 +89,17 @@ struct ServerCtx {
     generation: Arc<AtomicU64>,
 }
 
-/// Start the control plane. Inserts the command source into `loop_handle` and
-/// spawns the tokio runtime (HTTP server + frame pump) on its own thread.
+/// Start the control plane: spawn the tokio runtime (HTTP server + frame pump) on its
+/// own thread. The compositor owns the calloop loop; this server only holds the command
+/// `Sender` (to drive sessions) and the frame `Receiver` (the WebRTC pump) — it never
+/// touches `Wado` or any Smithay type. Both channels are created by the caller (`main`)
+/// and handed to [`wado_compositor::build`] and here respectively.
 pub fn start(
-    loop_handle: LoopHandle<'static, Wado>,
+    cmd_tx: CommandSender,
+    frame_rx: mpsc::Receiver<FrameMsg>,
     addr: &str,
     log_bus: LogBus,
 ) -> crate::Result<()> {
-    let (frame_tx, frame_rx) = mpsc::channel::<FrameMsg>(FRAME_CHANNEL_CAPACITY);
-    let (cmd_tx, cmd_channel) = channel::<ControlCommand>();
-
-    // Compositor-side command handler (runs on the calloop thread, owns &mut Wado).
-    loop_handle
-        .insert_source(cmd_channel, move |event, _, state: &mut Wado| {
-            if let ChannelEvent::Msg(cmd) = event {
-                control::handle_command(state, cmd, &frame_tx);
-            }
-        })
-        .map_err(|e| crate::WadoError::Other(format!("insert control source: {e}")))?;
-
     let addr = addr.to_string();
     std::thread::Builder::new()
         .name("wado-website".into())
@@ -283,7 +268,7 @@ async fn handle_conn(mut stream: TcpStream, ctx: Arc<ServerCtx>) -> crate::Resul
             }
         },
         ("POST", "/session/stop") => {
-            let _ = ctx.cmd_tx.send(ControlCommand::Stop);
+            let _ = ctx.cmd_tx.send(CompositorCommand::Stop);
             write_response(&mut stream, "200 OK", "text/plain", b"stopped").await?;
         }
         ("POST", "/offer") => {
@@ -312,7 +297,7 @@ async fn handle_session_start(ctx: &ServerCtx, body: &[u8]) -> std::result::Resu
     let config = serde_json::from_slice(body).map_err(|e| format!("bad config: {e}"))?;
     let (reply_tx, reply_rx) = oneshot::channel();
     ctx.cmd_tx
-        .send(ControlCommand::Start { config, reply: reply_tx })
+        .send(CompositorCommand::Start { config, reply: reply_tx })
         .map_err(|_| "compositor unavailable".to_string())?;
     match tokio::time::timeout(START_REPLY_TIMEOUT, reply_rx).await {
         Ok(Ok(result)) => result,
@@ -350,7 +335,7 @@ async fn handle_offer(ctx: &ServerCtx, offer_json: &str) -> crate::Result<String
                         if any.downcast_ref::<PictureLossIndication>().is_some()
                             || any.downcast_ref::<FullIntraRequest>().is_some()
                         {
-                            let _ = cmd_tx_rtcp.send(ControlCommand::ForceKeyframe);
+                            let _ = cmd_tx_rtcp.send(CompositorCommand::ForceKeyframe);
                         }
                     }
                 }
@@ -367,13 +352,13 @@ async fn handle_offer(ctx: &ServerCtx, offer_json: &str) -> crate::Result<String
         match state {
             // Force an IDR so the new viewer gets a picture immediately.
             RTCPeerConnectionState::Connected => {
-                let _ = cmd_tx.send(ControlCommand::ForceKeyframe);
+                let _ = cmd_tx.send(CompositorCommand::ForceKeyframe);
             }
             // Only the current viewer tears the session down (generation guard).
             RTCPeerConnectionState::Failed | RTCPeerConnectionState::Closed => {
                 if generation.load(Ordering::SeqCst) == my_gen {
                     info!("viewer gone — stopping session");
-                    let _ = cmd_tx.send(ControlCommand::Stop);
+                    let _ = cmd_tx.send(CompositorCommand::Stop);
                     *active_pc.lock().unwrap() = None;
                 }
             }

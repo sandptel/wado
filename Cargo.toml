@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/server", "crates/protocol", "crates/client"]
+members = ["crates/server", "crates/compositor", "crates/protocol", "crates/client"]
 # Plain `cargo build` builds the host crates only. The client is WASM-only and is
 # built/served with the `dx` (dioxus-cli) tool, not host cargo.
-default-members = ["crates/server", "crates/protocol"]
+default-members = ["crates/server", "crates/compositor", "crates/protocol"]
