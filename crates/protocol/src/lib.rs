@@ -47,10 +47,6 @@ pub struct SessionConfig {
     pub height: u32,
     pub fps: u32,
     pub quality: Quality,
-    /// Optional initial command launched when the session starts (program + args,
-    /// space-split). Empty means start a blank session; more commands can be spawned
-    /// at runtime via [`endpoints::SESSION_LAUNCH`].
-    pub command: String,
     /// Advanced override: x264 preset name ("ultrafast".."veryfast"). Falls back to
     /// the quality preset's default when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]

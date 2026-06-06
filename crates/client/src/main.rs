@@ -140,7 +140,6 @@ fn App() -> Element {
             height,
             fps: fps(),
             quality: q,
-            command: command(),
             preset: Some(preset()).filter(|p| !p.is_empty()),
             keyframe_interval: keyframe().trim().parse().ok(),
         };
@@ -251,7 +250,7 @@ fn App() -> Element {
 
             label { "Command" }
             p { class: "hint", style: "margin:4px 0 0;",
-                "Launched at Start (optional), or spawned live into a running session — as many as you like."
+                "Spawn a command into the running session — as many as you like. Start a session first."
             }
             input {
                 r#type: "text",
