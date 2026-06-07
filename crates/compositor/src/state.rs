@@ -30,6 +30,8 @@ use smithay::{
     },
 };
 
+use wado_protocol::Placement;
+
 use crate::{encode::x264enc::X264Encoder, sink::FrameSink};
 
 pub struct Wado {
@@ -74,6 +76,15 @@ pub struct Wado {
     /// An in-progress compositor-managed window move (long-press-drag or "move mode"),
     /// driven by [`wado_protocol::InputEvent::WindowDrag`]. `None` when not moving.
     pub window_move: Option<WindowMove>,
+    /// New-window placement policy (from `SessionConfig.window.placement`, applied at start).
+    pub placement: Placement,
+    /// When true, pointer hover also moves keyboard focus (`SessionConfig.input`).
+    pub focus_follows_pointer: bool,
+    /// Toplevels mapped but awaiting placement (Center/Cascade need the post-commit size).
+    /// Drained by `Wado::apply_pending_placement`. See `placement.rs`.
+    pub pending_placement: Vec<Window>,
+    /// Running counter for `Placement::Cascade` step offsets.
+    pub cascade_count: u32,
 }
 
 /// Tracks a compositor-driven interactive window move. Unlike the app-initiated CSD grabs
@@ -140,6 +151,10 @@ impl Wado {
             app_processes: Vec::new(),
             session_active: false,
             window_move: None,
+            placement: Placement::default(),
+            focus_follows_pointer: false,
+            pending_placement: Vec::new(),
+            cascade_count: 0,
         }
     }
 

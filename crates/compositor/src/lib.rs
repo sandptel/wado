@@ -29,6 +29,7 @@ pub mod grabs;
 pub mod handlers;
 pub mod headless;
 pub mod input;
+pub mod placement;
 pub mod sink;
 pub mod state;
 
