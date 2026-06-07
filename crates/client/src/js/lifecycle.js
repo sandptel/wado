@@ -18,6 +18,14 @@ W.start = async (server, config) => {
       emit({ type: "startFailed" });
       return;
     }
+    // The server reports which encoder it actually opened (hardware vs software);
+    // surface it so the UI can show the software-encoding banner (invariant #5).
+    try {
+      const info = await res.json();
+      if (info && info.encoder && info.encoder.mode) {
+        emit({ type: "encoder", mode: info.encoder.mode });
+      }
+    } catch (_) {}
     W.sessionOn = true;
     W.reconnectAttempts = 0;
     stagebar("Session running — connecting video…");

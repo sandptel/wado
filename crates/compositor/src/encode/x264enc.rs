@@ -1,5 +1,7 @@
 use x264::{Colorspace, Encoder, Image, Plane, Preset, Setup, Tune};
 
+use crate::encode::encoder::VideoEncoder;
+
 pub struct X264Encoder {
     encoder: Encoder,
     width: usize,
@@ -136,6 +138,16 @@ impl X264Encoder {
         } else {
             Some(nal_bytes.to_vec())
         }
+    }
+}
+
+impl VideoEncoder for X264Encoder {
+    fn encode(&mut self, rgba: &[u8]) -> Option<Vec<u8>> {
+        self.encode_rgba(rgba)
+    }
+
+    fn force_idr_next(&mut self) {
+        X264Encoder::force_idr_next(self);
     }
 }
 

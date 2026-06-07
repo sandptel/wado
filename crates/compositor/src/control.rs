@@ -16,6 +16,7 @@
 use std::time::Duration;
 
 use tokio::sync::{mpsc, oneshot};
+use wado_protocol::SessionInfo;
 
 use crate::{
     Wado,
@@ -29,7 +30,7 @@ pub enum CompositorCommand {
     /// Spin up a compositor session with the given config and launch its app.
     Start {
         config: SessionConfig,
-        reply: oneshot::Sender<Result<(), String>>,
+        reply: oneshot::Sender<Result<SessionInfo, String>>,
     },
     /// Tear down the active session (idempotent).
     Stop,
@@ -64,7 +65,7 @@ fn start(
     state: &mut Wado,
     config: &SessionConfig,
     frame_tx: &mpsc::Sender<FrameMsg>,
-) -> Result<(), String> {
+) -> Result<SessionInfo, String> {
     if state.session_active {
         return Err("a session is already active".into());
     }
@@ -73,8 +74,8 @@ fn start(
     let sink = Box::new(ChannelSink::new(frame_tx.clone(), frame_dur));
 
     // Sessions always start blank; apps are spawned at runtime via CompositorCommand::Launch.
-    // start_session emits its own tracing logs.
-    headless::start_session(state, &encoder, sink).map_err(|e| e.to_string())?;
+    // start_session emits its own tracing logs and reports the encoder it actually opened.
+    let encoder_report = headless::start_session(state, &encoder, sink).map_err(|e| e.to_string())?;
 
     // Apply the per-domain behaviour settings (atomic sub-structs of SessionConfig).
     if let Some(keyboard) = state.seat.get_keyboard() {
@@ -82,5 +83,5 @@ fn start(
     }
     state.placement = config.window.placement;
     state.focus_follows_pointer = config.input.focus_follows_pointer;
-    Ok(())
+    Ok(SessionInfo { encoder: encoder_report })
 }

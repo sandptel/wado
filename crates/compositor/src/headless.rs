@@ -19,11 +19,13 @@ use smithay::{
 
 use tracing::{debug, info, warn};
 
+use wado_protocol::EncoderReport;
+
 use crate::{
     Wado, CompositorError,
     capture::mem::capture_frame,
     conf::{EncoderConfig, SinkTarget, WadoConfig},
-    encode::x264enc::X264Encoder,
+    encode::select::build_encoder,
     sink::{FrameSink, file::FileSink},
 };
 
@@ -44,7 +46,8 @@ pub fn init_headless(state: &mut Wado, config: &WadoConfig) -> crate::Result<()>
     let sink: Box<dyn FrameSink> = match &config.output.sink {
         SinkTarget::File(path) => Box::new(FileSink::create(path)?),
     };
-    start_session(state, &config.encoder, sink)
+    start_session(state, &config.encoder, sink)?;
+    Ok(())
 }
 
 /// Bring up the headless render pipeline for one session: EGL/GLES renderer, an
@@ -55,7 +58,7 @@ pub fn start_session(
     state: &mut Wado,
     ec: &EncoderConfig,
     sink: Box<dyn FrameSink>,
-) -> crate::Result<()> {
+) -> crate::Result<EncoderReport> {
     if state.session_active {
         return Err(CompositorError::SessionAlreadyActive);
     }
@@ -102,15 +105,13 @@ pub fn start_session(
 
     let damage_tracker = OutputDamageTracker::from_output(&output);
 
-    // ── Encoder ───────────────────────────────────────────────────────────────
-    let encoder = X264Encoder::new(
-        ec.width,
-        ec.height,
-        ec.fps,
-        ec.bitrate_kbps,
-        ec.keyframe_interval,
-        ec.preset,
-    )?;
+    // ── Encoder (hardware probe → VAAPI, else software x264) ──────────────────
+    let (encoder, encoder_report) = build_encoder(ec)?;
+    info!(
+        mode = ?encoder_report.mode,
+        backend = %encoder_report.backend,
+        "encoder selected"
+    );
 
     state.renderer = Some(renderer);
     state.renderbuffer = Some(renderbuffer);
@@ -154,7 +155,7 @@ pub fn start_session(
     state.render_timer_token = Some(token);
 
     info!(width = ec.width, height = ec.height, fps = ec.fps, "compositor session active");
-    Ok(())
+    Ok(encoder_report)
 }
 
 /// Launch a command (free-form, space-split into program + args) into the session and
@@ -267,7 +268,7 @@ fn render_tick(state: &mut Wado, width: u32, height: u32) -> crate::Result<()> {
     let pixels = capture_frame(renderer, &fb, buf_size)?;
 
     let encoder = state.encoder.as_mut().unwrap();
-    if let Some(nal_bytes) = encoder.encode_rgba(&pixels) {
+    if let Some(nal_bytes) = encoder.encode(&pixels) {
         if let Some(sink) = state.frame_sink.as_mut() {
             sink.send(&nal_bytes);
         }

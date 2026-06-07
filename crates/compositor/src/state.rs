@@ -32,7 +32,7 @@ use smithay::{
 
 use wado_protocol::Placement;
 
-use crate::{encode::x264enc::X264Encoder, sink::FrameSink};
+use crate::{encode::encoder::VideoEncoder, sink::FrameSink};
 
 pub struct Wado {
     pub start_time: std::time::Instant,
@@ -60,7 +60,7 @@ pub struct Wado {
     pub renderer: Option<GlesRenderer>,
     pub renderbuffer: Option<GlesRenderbuffer>,
     pub damage_tracker: Option<OutputDamageTracker>,
-    pub encoder: Option<X264Encoder>,
+    pub encoder: Option<Box<dyn VideoEncoder>>,
     pub frame_sink: Option<Box<dyn FrameSink>>,
     pub output: Option<Output>,
     /// The output's wl_output global, removed on session stop so a fresh session

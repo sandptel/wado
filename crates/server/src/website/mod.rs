@@ -68,7 +68,7 @@ use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSampl
 
 use logbus::LogBus;
 use wado_compositor::{CommandSender, CompositorCommand, FrameMsg, InputEvent, InputSender};
-use wado_protocol::INPUT_CHANNEL;
+use wado_protocol::{INPUT_CHANNEL, SessionInfo};
 
 /// Bounded so encoded frames never pile up behind a slow/absent network.
 pub const FRAME_CHANNEL_CAPACITY: usize = 4;
@@ -270,7 +270,10 @@ async fn handle_conn(mut stream: TcpStream, ctx: Arc<ServerCtx>) -> crate::Resul
             write_response(&mut stream, "200 OK", "text/plain", msg).await?;
         }
         ("POST", "/session/start") => match handle_session_start(&ctx, &body).await {
-            Ok(()) => write_response(&mut stream, "200 OK", "text/plain", b"started").await?,
+            Ok(info) => {
+                let body = serde_json::to_string(&info).unwrap_or_else(|_| "{}".into());
+                write_response(&mut stream, "200 OK", "application/json", body.as_bytes()).await?
+            }
             Err(e) => {
                 warn!("session start rejected: {e}");
                 write_response(&mut stream, "409 Conflict", "text/plain", e.as_bytes()).await?
@@ -316,7 +319,10 @@ async fn handle_conn(mut stream: TcpStream, ctx: Arc<ServerCtx>) -> crate::Resul
 
 /// Parse a `SessionConfig` and ask the compositor thread to start a session,
 /// bounded by a timeout so a wedged compositor can't hang the HTTP connection.
-async fn handle_session_start(ctx: &ServerCtx, body: &[u8]) -> std::result::Result<(), String> {
+async fn handle_session_start(
+    ctx: &ServerCtx,
+    body: &[u8],
+) -> std::result::Result<SessionInfo, String> {
     let config = serde_json::from_slice(body).map_err(|e| format!("bad config: {e}"))?;
     let (reply_tx, reply_rx) = oneshot::channel();
     ctx.cmd_tx

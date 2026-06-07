@@ -2,7 +2,7 @@
 //! ([`SessionConfig`], [`Quality`]) live in the `wado-protocol` crate and are
 //! re-exported here; this module owns the x264-coupled encoder mapping.
 
-pub use wado_protocol::{Quality, SessionConfig};
+pub use wado_protocol::{EncoderBackend, Quality, SessionConfig};
 pub use x264::Preset;
 
 pub const DEFAULT_WIDTH: u32 = 1280;
@@ -27,7 +27,12 @@ pub struct EncoderConfig {
     /// Maximum (and minimum with scenecut disabled) frames between IDR keyframes.
     /// A late-joining client syncs within this many frames. At 60fps, 30 → 0.5 s.
     pub keyframe_interval: u32,
+    /// x264 preset. **Software-path only** — the hardware (VAAPI) backend derives its rate
+    /// control from `bitrate_kbps` / `fps` / `keyframe_interval` and ignores this.
     pub preset: Preset,
+    /// Which encode backend to use (hardware/software/auto). Resolved by
+    /// [`crate::encode::select::build_encoder`].
+    pub backend: EncoderBackend,
 }
 
 /// Where encoded H.264 frames are delivered (for standalone examples).
@@ -57,6 +62,7 @@ impl Default for WadoConfig {
                 bitrate_kbps: 4000,
                 keyframe_interval: 30,
                 preset: Preset::Ultrafast,
+                backend: EncoderBackend::Auto,
             },
             output: OutputConfig {
                 sink: SinkTarget::File("captures/wado.h264".to_string()),
@@ -99,6 +105,7 @@ pub fn to_encoder_config(config: &SessionConfig) -> EncoderConfig {
         bitrate_kbps,
         keyframe_interval: config.keyframe_interval.unwrap_or(default_kf),
         preset: config.preset.as_deref().map(parse_preset).unwrap_or(default_preset),
+        backend: config.encoder.backend,
     }
 }
 

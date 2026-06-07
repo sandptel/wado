@@ -3,7 +3,7 @@ name = "wado-compositor"
 version = "0.1.0"
 edition = "2024"
 license = "AGPL-3.0-only"
-description = "wado's headless Smithay compositor: Wayland protocol state, GLES render pipeline, x264 encode, and the typed command/frame boundary the server drives it through."
+description = "wado's headless Smithay compositor: Wayland protocol state, GLES render pipeline, software (x264) + hardware (VAAPI via ffmpeg) H.264 encode behind one trait, and the typed command/frame boundary the server drives it through."
 
 [dependencies]
 wado-protocol = { path = "../protocol" }
@@ -11,6 +11,10 @@ tracing = "0.1"
 thiserror = "1"
 bitflags = "2"
 x264 = "0.5"
+# Hardware encode (M3): VAAPI/NVENC via ffmpeg. Pinned to the FFmpeg-8.1-compatible
+# release so it links the system libav* (8.1) in the dev shell. All ffmpeg FFI is
+# isolated under `encode/ffmpeg/` behind the `VideoEncoder` trait.
+ffmpeg-the-third = "5.0.0"
 bytes = "1"
 # Only the `sync` channel types (mpsc/oneshot) used on the server<->compositor
 # boundary — no tokio runtime runs in this crate.
