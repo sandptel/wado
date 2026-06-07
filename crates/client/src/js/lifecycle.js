@@ -23,7 +23,11 @@ W.start = async (server, config) => {
     try {
       const info = await res.json();
       if (info && info.encoder && info.encoder.mode) {
-        emit({ type: "encoder", mode: info.encoder.mode });
+        emit({
+          type: "encoder",
+          mode: info.encoder.mode,
+          pipeline: info.encoder.pipeline || "",
+        });
       }
     } catch (_) {}
     W.sessionOn = true;

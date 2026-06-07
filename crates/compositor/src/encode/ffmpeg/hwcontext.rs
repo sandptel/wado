@@ -8,7 +8,8 @@ use std::ptr;
 
 use ffmpeg_the_third::ffi::{
     AVBufferRef, AVHWDeviceType, AVHWFramesContext, AVPixelFormat, av_buffer_unref,
-    av_hwdevice_ctx_create, av_hwframe_ctx_alloc, av_hwframe_ctx_init,
+    av_hwdevice_ctx_create, av_hwdevice_ctx_create_derived, av_hwframe_ctx_alloc,
+    av_hwframe_ctx_init,
 };
 
 use crate::CompositorError;
@@ -64,6 +65,70 @@ pub fn create_vaapi_device(node: &str) -> crate::Result<DeviceRef> {
         )));
     }
     Ok(DeviceRef(dev))
+}
+
+/// Open a **DRM** hardware device on the given render node — the entry point for the
+/// zero-copy DMA-BUF import path (a VAAPI device is then *derived* from it so the imported
+/// dmabuf and the encoder share one GPU context).
+pub fn create_drm_device(node: &str) -> crate::Result<DeviceRef> {
+    let cnode =
+        CString::new(node).map_err(|e| CompositorError::Encoder(format!("bad node path: {e}")))?;
+    let mut dev: *mut AVBufferRef = ptr::null_mut();
+    let ret = unsafe {
+        av_hwdevice_ctx_create(&mut dev, AVHWDeviceType::DRM, cnode.as_ptr(), ptr::null_mut(), 0)
+    };
+    if ret < 0 || dev.is_null() {
+        return Err(CompositorError::Encoder(format!(
+            "av_hwdevice_ctx_create(DRM, {node}) failed: {ret}"
+        )));
+    }
+    Ok(DeviceRef(dev))
+}
+
+/// Derive a VAAPI device from an existing DRM device (same GPU), so dmabufs imported via
+/// DRM-PRIME map directly into VAAPI surfaces with no copy.
+pub fn derive_vaapi_device(drm: &DeviceRef) -> crate::Result<DeviceRef> {
+    let mut dev: *mut AVBufferRef = ptr::null_mut();
+    let ret = unsafe {
+        av_hwdevice_ctx_create_derived(&mut dev, AVHWDeviceType::VAAPI, drm.0, 0)
+    };
+    if ret < 0 || dev.is_null() {
+        return Err(CompositorError::Encoder(format!(
+            "av_hwdevice_ctx_create_derived(VAAPI from DRM) failed: {ret}"
+        )));
+    }
+    Ok(DeviceRef(dev))
+}
+
+/// Allocate and initialise a **DRM-PRIME** frames pool on `device` with the given software
+/// pixel format — the input frames context for the VPP filtergraph (each frame wraps an
+/// imported dmabuf descriptor).
+pub fn create_drm_prime_frames(
+    device: &DeviceRef,
+    sw_format: AVPixelFormat,
+    width: i32,
+    height: i32,
+) -> crate::Result<FramesRef> {
+    let frames = unsafe { av_hwframe_ctx_alloc(device.0) };
+    if frames.is_null() {
+        return Err(CompositorError::Encoder("av_hwframe_ctx_alloc(DRM) failed".into()));
+    }
+    unsafe {
+        let ctx = (*frames).data as *mut AVHWFramesContext;
+        (*ctx).format = AVPixelFormat::DRM_PRIME;
+        (*ctx).sw_format = sw_format;
+        (*ctx).width = width;
+        (*ctx).height = height;
+        let ret = av_hwframe_ctx_init(frames);
+        if ret < 0 {
+            let mut f = frames;
+            av_buffer_unref(&mut f);
+            return Err(CompositorError::Encoder(format!(
+                "av_hwframe_ctx_init(DRM) failed: {ret}"
+            )));
+        }
+    }
+    Ok(FramesRef(frames))
 }
 
 /// Allocate and initialise an NV12 VAAPI frames pool bound to `device`.

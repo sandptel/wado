@@ -29,7 +29,10 @@ use smithay::{
 
 use wado_protocol::Placement;
 
-use crate::{capture::CaptureTarget, encode::encoder::VideoEncoder, sink::FrameSink};
+use crate::{
+    capture::CaptureTarget, conf::EncoderConfig, encode::encoder::VideoEncoder,
+    encode::select::Tier, sink::FrameSink,
+};
 
 pub struct Wado {
     pub start_time: std::time::Instant,
@@ -61,6 +64,9 @@ pub struct Wado {
     pub capture: Option<Box<dyn CaptureTarget>>,
     pub damage_tracker: Option<OutputDamageTracker>,
     pub encoder: Option<Box<dyn VideoEncoder>>,
+    /// The active pipeline tier (for runtime downgrade-once) and the config used to build it.
+    pub current_tier: Option<Tier>,
+    pub encoder_config: Option<EncoderConfig>,
     pub frame_sink: Option<Box<dyn FrameSink>>,
     pub output: Option<Output>,
     /// The output's wl_output global, removed on session stop so a fresh session
@@ -145,6 +151,8 @@ impl Wado {
             capture: None,
             damage_tracker: None,
             encoder: None,
+            current_tier: None,
+            encoder_config: None,
             frame_sink: None,
             output: None,
             output_global: None,

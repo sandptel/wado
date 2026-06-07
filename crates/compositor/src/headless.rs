@@ -21,9 +21,14 @@ use wado_protocol::EncoderReport;
 
 use crate::{
     Wado, CompositorError,
-    capture::{CaptureTarget, MemTarget, gpu},
+    capture::{CaptureTarget, DmaTarget, MemTarget, gpu, gpu::Gbm},
     conf::{EncoderConfig, SinkTarget, WadoConfig},
-    encode::select::build_encoder,
+    encode::{
+        encoder::VideoEncoder,
+        ffmpeg::{FfmpegVaapiEncoder, hwcontext::first_render_node},
+        select::{Tier, tiers_for},
+        x264enc::X264Encoder,
+    },
     sink::{FrameSink, file::FileSink},
 };
 
@@ -74,10 +79,7 @@ pub fn start_session(
     let mut renderer =
         unsafe { GlesRenderer::new(egl_context).map_err(renderer_err("GlesRenderer::new"))? };
 
-    // ── Capture target (host-memory `ExportMem` — the robust fallback) ────────
-    // Step 2 selects a DMA-BUF target here when the zero-copy pipeline is chosen.
     let buf_size: Size<i32, Buffer> = (ec.width as i32, ec.height as i32).into();
-    let capture: Box<dyn CaptureTarget> = Box::new(MemTarget::new(&mut renderer, buf_size)?);
 
     // ── Logical Output (no physical display), sized to the client ─────────────
     let mode = Mode {
@@ -101,12 +103,15 @@ pub fn start_session(
 
     let damage_tracker = OutputDamageTracker::from_output(&output);
 
-    // ── Encoder (hardware probe → VAAPI, else software x264) ──────────────────
-    let (encoder, encoder_report) = build_encoder(ec)?;
+    // ── Pipeline tier (zero-copy DMA-BUF → CPU-upload VAAPI → x264) ───────────
+    // Tried top-down; the first that opens wins. Building the tier *is* the probe
+    // (invariant #6 — we actually open the encoder + capture target).
+    let (encoder, capture, encoder_report, tier) =
+        build_pipeline(&mut renderer, &gpu.gbm, ec, buf_size)?;
     info!(
-        mode = ?encoder_report.mode,
-        backend = %encoder_report.backend,
-        "encoder selected"
+        ?tier,
+        pipeline = %encoder_report.pipeline,
+        "pipeline selected"
     );
 
     state.renderer = Some(renderer);
@@ -114,6 +119,8 @@ pub fn start_session(
     state.capture = Some(capture);
     state.damage_tracker = Some(damage_tracker);
     state.encoder = Some(encoder);
+    state.current_tier = Some(tier);
+    state.encoder_config = Some(ec.clone());
     state.frame_sink = Some(sink);
     state.output = Some(output);
     state.output_global = Some(global);
@@ -199,6 +206,8 @@ pub fn stop_session(state: &mut Wado) {
     state.gbm = None;
     state.damage_tracker = None;
     state.encoder = None;
+    state.current_tier = None;
+    state.encoder_config = None;
     state.frame_sink = None;
     state.session_active = false;
     state.window_move = None;
@@ -223,6 +232,115 @@ pub fn snapshot_rgba(state: &mut Wado) -> Option<Vec<u8>> {
     }
 }
 
+/// Build the encoder + capture target for one pipeline tier. Building it *is* the probe
+/// (invariant #6): a failure here means the tier is unavailable and the caller tries the
+/// next one. `gbm` is required for the DMA tier.
+fn build_tier(
+    tier: Tier,
+    renderer: &mut smithay::backend::renderer::gles::GlesRenderer,
+    gbm: &Option<Gbm>,
+    ec: &EncoderConfig,
+    buf_size: Size<i32, Buffer>,
+) -> crate::Result<(Box<dyn VideoEncoder>, Box<dyn CaptureTarget>)> {
+    let node = || {
+        first_render_node()
+            .ok_or_else(|| CompositorError::Encoder("no DRM render node".into()))
+    };
+    match tier {
+        Tier::X264 => {
+            let enc = X264Encoder::new(
+                ec.width,
+                ec.height,
+                ec.fps,
+                ec.bitrate_kbps,
+                ec.keyframe_interval,
+                ec.preset,
+            )?;
+            let cap = MemTarget::new(renderer, buf_size)?;
+            Ok((Box::new(enc), Box::new(cap)))
+        }
+        Tier::VaapiCpu => {
+            let enc = FfmpegVaapiEncoder::new(
+                &node()?,
+                ec.width,
+                ec.height,
+                ec.fps,
+                ec.bitrate_kbps,
+                ec.keyframe_interval,
+            )?;
+            let cap = MemTarget::new(renderer, buf_size)?;
+            Ok((Box::new(enc), Box::new(cap)))
+        }
+        Tier::VaapiDma => {
+            let gbm = gbm
+                .clone()
+                .ok_or_else(|| CompositorError::Encoder("DMA tier needs a GBM device".into()))?;
+            let enc = FfmpegVaapiEncoder::new_dma(
+                &node()?,
+                ec.width,
+                ec.height,
+                ec.fps,
+                ec.bitrate_kbps,
+                ec.keyframe_interval,
+            )?;
+            let cap = DmaTarget::new(gbm, buf_size)?;
+            Ok((Box::new(enc), Box::new(cap)))
+        }
+    }
+}
+
+/// Pick the best pipeline tier that actually opens for the session's backend preference.
+fn build_pipeline(
+    renderer: &mut smithay::backend::renderer::gles::GlesRenderer,
+    gbm: &Option<Gbm>,
+    ec: &EncoderConfig,
+    buf_size: Size<i32, Buffer>,
+) -> crate::Result<(Box<dyn VideoEncoder>, Box<dyn CaptureTarget>, wado_protocol::EncoderReport, Tier)>
+{
+    let mut last_err = None;
+    for tier in tiers_for(ec.backend, gbm.is_some()) {
+        match build_tier(tier, renderer, gbm, ec, buf_size) {
+            Ok((enc, cap)) => return Ok((enc, cap, tier.report(), tier)),
+            Err(e) => {
+                warn!(?tier, "pipeline tier unavailable, trying next: {e}");
+                last_err = Some(e);
+            }
+        }
+    }
+    Err(last_err.unwrap_or_else(|| CompositorError::Encoder("no encoder tier available".into())))
+}
+
+/// Drop the active pipeline to the next tier down after a runtime encode failure
+/// (downgrade-once, repeated until a tier works or the ladder is exhausted). Forces an IDR
+/// so the new encoder's stream starts clean. The render loop keeps running throughout.
+fn downgrade_pipeline(state: &mut Wado) {
+    let Some(cur) = state.current_tier else { return };
+    let Some(ec) = state.encoder_config.clone() else { return };
+    let buf_size: Size<i32, Buffer> = (ec.width as i32, ec.height as i32).into();
+    let Some(renderer) = state.renderer.as_mut() else { return };
+
+    let mut next = cur.next();
+    while let Some(tier) = next {
+        match build_tier(tier, renderer, &state.gbm, &ec, buf_size) {
+            Ok((enc, cap)) => {
+                warn!(from = ?cur, to = ?tier, "pipeline downgraded after runtime encode failure");
+                state.encoder = Some(enc);
+                state.capture = Some(cap);
+                state.current_tier = Some(tier);
+                if let Some(e) = state.encoder.as_mut() {
+                    e.force_idr_next();
+                }
+                return;
+            }
+            Err(e) => {
+                warn!(?tier, "downgrade tier also failed: {e}");
+                next = tier.next();
+            }
+        }
+    }
+    tracing::error!("no fallback encoder tier left — session video is broken");
+}
+
 /// Request that the next encoded frame be a forced IDR keyframe. Called when a new
 /// viewer connects or the browser sends a PLI/FIR (picture loss). No-op if idle.
 pub fn force_keyframe(state: &mut Wado) {
@@ -244,7 +362,9 @@ fn render_tick(state: &mut Wado) -> crate::Result<()> {
     // The render itself is a closure so the capture target (`MemTarget`/`DmaTarget`) owns
     // the bind/export and the render tick stays capture-agnostic. Disjoint field borrows
     // (renderer / capture / damage_tracker / space / encoder) keep the borrow checker happy.
-    let nal = {
+    // Returns the encoder result (owned) so the `frame` borrow on `capture` is released
+    // before we may rebuild the pipeline on failure.
+    let result: crate::Result<Option<Vec<u8>>> = {
         let renderer = state.renderer.as_mut().unwrap();
         let capture = state.capture.as_mut().unwrap();
         let damage_tracker = state.damage_tracker.as_mut().unwrap();
@@ -262,14 +382,24 @@ fn render_tick(state: &mut Wado) -> crate::Result<()> {
             Ok(())
         };
 
-        let frame = capture.capture(renderer, &mut render)?;
-        let encoder = state.encoder.as_mut().unwrap();
-        encoder.submit(frame)?
+        match capture.capture(renderer, &mut render) {
+            Ok(frame) => state.encoder.as_mut().unwrap().submit(frame),
+            Err(e) => Err(e),
+        }
     };
 
-    if let Some(nal_bytes) = nal {
-        if let Some(sink) = state.frame_sink.as_mut() {
-            sink.send(&nal_bytes);
+    match result {
+        Ok(Some(nal_bytes)) => {
+            if let Some(sink) = state.frame_sink.as_mut() {
+                sink.send(&nal_bytes);
+            }
+        }
+        Ok(None) => {}
+        // Robustness: a runtime encode failure downgrades the pipeline one tier instead of
+        // failing every frame. The render loop continues; the next tick uses the new tier.
+        Err(e) => {
+            warn!("encode failed on tier {:?}: {e} — downgrading", state.current_tier);
+            downgrade_pipeline(state);
         }
     }
 

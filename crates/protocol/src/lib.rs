@@ -186,6 +186,10 @@ pub struct EncoderReport {
     pub codec: String,
     /// Concrete backend identifier, e.g. `"vaapi"` or `"x264"`.
     pub backend: String,
+    /// Active pipeline tier id — `"vaapi-dmabuf"` (zero-copy), `"vaapi-cpu"`, or `"x264-cpu"`.
+    /// Lets the client mark a *fallback* path. Defaults empty for older servers.
+    #[serde(default)]
+    pub pipeline: String,
 }
 
 /// Whether a running session is encoding in hardware or software.
