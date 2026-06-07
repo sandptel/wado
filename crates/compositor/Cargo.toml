@@ -27,6 +27,10 @@ features = [
     "renderer_gl",
     "wayland_frontend",
     "desktop",
+    # M3 Step 2: DMA-BUF zero-copy capture. `backend_gbm` pulls `backend_drm` + `gbm` +
+    # `drm` — the GBM allocator (dmabuf allocation) and an EGL display initialised from the
+    # GBM device (so `GlesRenderer` can `Bind<Dmabuf>`). Dev shell provides gbm + libdrm.
+    "backend_gbm",
 ]
 
 [dev-dependencies]
