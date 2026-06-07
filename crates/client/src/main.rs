@@ -10,7 +10,10 @@
 //! `dioxus.send`, and Rust kicks actions with tiny one-shot evals into `window.__wado.*`.
 
 use dioxus::prelude::*;
-use wado_protocol::{logfmt::LogLine, InputConfig, Placement, Quality, SessionConfig, WindowConfig};
+use wado_protocol::{
+    logfmt::LogLine, EncoderBackend, EncoderPref, InputConfig, Placement, Quality, SessionConfig,
+    WindowConfig,
+};
 
 /// The bridge script: assembled from the single-job `js/` files (concatenated in load order —
 /// `core` first, `lifecycle` last because of its trailing keep-alive await). Each file owns one
@@ -86,6 +89,11 @@ fn App() -> Element {
     let mut show_touches = use_signal(|| false);
     let mut show_fps = use_signal(|| true);
     let mut show_ping = use_signal(|| true);
+    // Force the software (x264) encoder at Start — exercises the fallback + banner.
+    let mut force_software = use_signal(|| false);
+    // Which encoder the server actually opened ("hardware"/"software"/""), from the
+    // /session/start response. Drives the persistent software-encoding banner (invariant #5).
+    let mut encoder_mode = use_signal(String::new);
     let mut status = use_signal(|| "idle".to_string());
     let mut stagebar = use_signal(|| "No session.".to_string());
     let mut logs = use_signal(Vec::<LogLine>::new);
@@ -116,6 +124,11 @@ fn App() -> Element {
                     stat_fps.set(msg.get("fps").and_then(|v| v.as_f64()));
                     stat_ping.set(msg.get("ping").and_then(|v| v.as_f64()));
                 }
+                "encoder" => {
+                    encoder_mode.set(
+                        msg.get("mode").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    );
+                }
                 "log" => {
                     let line = msg.get("line").and_then(|v| v.as_str()).unwrap_or("");
                     let mut buf = logs.write();
@@ -130,12 +143,14 @@ fn App() -> Element {
                     logs_open.set(true);
                     stat_fps.set(None);
                     stat_ping.set(None);
+                    encoder_mode.set(String::new());
                 }
                 "giveup" => {
                     session_on.set(false);
                     logs_open.set(true);
                     stat_fps.set(None);
                     stat_ping.set(None);
+                    encoder_mode.set(String::new());
                     let _ = document::eval("window.__wado.stopSession();").await;
                     status.set("idle".to_string());
                 }
@@ -178,6 +193,11 @@ fn App() -> Element {
             "maximized" => Placement::Maximized,
             _ => Placement::Center,
         };
+        let backend = if force_software() {
+            EncoderBackend::Software
+        } else {
+            EncoderBackend::Auto
+        };
         let cfg = SessionConfig {
             width,
             height,
@@ -191,9 +211,11 @@ fn App() -> Element {
                 focus_follows_pointer: focus_follows(),
             },
             window: WindowConfig { placement: place },
+            encoder: EncoderPref { backend },
         };
         let server = server_addr();
         session_on.set(true);
+        encoder_mode.set(String::new());
         status.set("starting session…".to_string());
         spawn(async move {
             let code = format!("window.__wado.start({}, {});", js(&server), js(&cfg));
@@ -216,6 +238,7 @@ fn App() -> Element {
         session_on.set(false);
         stat_fps.set(None);
         stat_ping.set(None);
+        encoder_mode.set(String::new());
         spawn(async move {
             let _ = document::eval("window.__wado.stopSession();").await;
             status.set("idle".to_string());
@@ -237,6 +260,9 @@ fn App() -> Element {
         parts.join(" · ")
     };
     let show_stats = on && (show_fps() || show_ping());
+    // Persistent banner whenever the server fell back to (or was forced onto) software
+    // encoding — invariant #5 (the END USER must be told).
+    let sw_encoding = on && encoder_mode() == "software";
 
     rsx! {
         document::Stylesheet { href: asset!("/assets/main.css") }
@@ -428,6 +454,13 @@ fn App() -> Element {
                     }
                     " Show ping"
                 }
+                label {
+                    input {
+                        r#type: "checkbox", checked: force_software(),
+                        onchange: move |e| force_software.set(e.checked()),
+                    }
+                    " Force software encoding (applies at Start)"
+                }
             }
 
             details {
@@ -458,6 +491,11 @@ fn App() -> Element {
         }
 
         div { id: "stage",
+            if sw_encoding {
+                div { class: "swbanner",
+                    "⚠ Software encoding — higher CPU use and latency"
+                }
+            }
             div { id: "stagebar",
                 span {
                     "{stagebar}"

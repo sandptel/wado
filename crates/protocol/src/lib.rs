@@ -138,6 +138,62 @@ pub struct SessionConfig {
     /// Window-management behaviour (new-window placement). Applied at session start.
     #[serde(default)]
     pub window: WindowConfig,
+    /// Encoder backend preference (hardware vs software). Applied at session start.
+    #[serde(default)]
+    pub encoder: EncoderPref,
+}
+
+/// Encoder-backend selection for a session (the "Compositor settings → encoder" group).
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct EncoderPref {
+    /// Which encode backend to use. Defaults to [`EncoderBackend::Auto`] (probe and pick).
+    #[serde(default)]
+    pub backend: EncoderBackend,
+}
+
+/// Which video-encode backend a session should use.
+///
+/// `Auto` probes for a working hardware encoder and silently falls back to software
+/// (with a user-facing banner — invariant #5). `Hardware` requires one (errors if none
+/// opens). `Software` forces the CPU path (useful to exercise the fallback/banner).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EncoderBackend {
+    /// Probe for a hardware encoder; fall back to software if none works.
+    #[default]
+    Auto,
+    /// Require a hardware encoder; fail session start if none opens.
+    Hardware,
+    /// Force the software (x264) encoder.
+    Software,
+}
+
+/// What the server actually started, returned as the JSON body of a successful
+/// `POST /session/start`. Lets the client surface the active encoder (e.g. a persistent
+/// "software encoding" banner — invariant #5) without scraping the log stream.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionInfo {
+    /// The encoder the server selected for this session.
+    pub encoder: EncoderReport,
+}
+
+/// Describes the encoder a running session actually opened.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EncoderReport {
+    /// Hardware or software — drives the client banner.
+    pub mode: EncoderMode,
+    /// Codec name, e.g. `"h264"`.
+    pub codec: String,
+    /// Concrete backend identifier, e.g. `"vaapi"` or `"x264"`.
+    pub backend: String,
+}
+
+/// Whether a running session is encoding in hardware or software.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EncoderMode {
+    Hardware,
+    Software,
 }
 
 /// Input-behaviour settings for a session (the "Compositor settings → input" group).
