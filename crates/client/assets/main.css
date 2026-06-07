@@ -36,6 +36,12 @@ details label input[type=checkbox] { width: auto; flex: 0 0 auto; margin: 0; }
 /* Persistent software-encoding warning banner over the stage (invariant #5). */
 .swbanner { background: #7a3b00; color: #ffd9a8; padding: 6px 12px; font-size: 12px;
   text-align: center; border-bottom: 1px solid #964900; }
+/* Stagebar pipeline badge: green = zero-copy, amber = HW cpu-copy fallback, red = software. */
+.pipebadge { font-family: ui-monospace, monospace; font-size: 11px; padding: 1px 6px;
+  border-radius: 3px; margin-right: 8px; }
+.pipebadge.badge-good { background: #14361f; color: #7fe0a0; border: 1px solid #2a7; }
+.pipebadge.badge-warn { background: #3a2c0a; color: #ffd97a; border: 1px solid #a80; }
+.pipebadge.badge-bad  { background: #3a1414; color: #ff9a9a; border: 1px solid #a33; }
 #wado-video:focus { outline: 2px solid #2a7; outline-offset: -2px; }
 #wado-video { flex: 1; width: 100%; min-height: 0; object-fit: contain; background: #000; }
 /* Live log panel */

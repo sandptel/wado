@@ -89,11 +89,13 @@ fn App() -> Element {
     let mut show_touches = use_signal(|| false);
     let mut show_fps = use_signal(|| true);
     let mut show_ping = use_signal(|| true);
-    // Force the software (x264) encoder at Start — exercises the fallback + banner.
-    let mut force_software = use_signal(|| false);
-    // Which encoder the server actually opened ("hardware"/"software"/""), from the
-    // /session/start response. Drives the persistent software-encoding banner (invariant #5).
+    // Requested encoder backend: "auto" | "hardware" | "software" (the panel picker).
+    let mut encoder_backend = use_signal(|| "auto".to_string());
+    // What the server actually opened, from the /session/start response: the hw/sw `mode`
+    // (drives the persistent software banner, invariant #5) and the `pipeline` tier id
+    // (drives the stagebar badge + fallback marker).
     let mut encoder_mode = use_signal(String::new);
+    let mut encoder_pipeline = use_signal(String::new);
     let mut status = use_signal(|| "idle".to_string());
     let mut stagebar = use_signal(|| "No session.".to_string());
     let mut logs = use_signal(Vec::<LogLine>::new);
@@ -128,6 +130,9 @@ fn App() -> Element {
                     encoder_mode.set(
                         msg.get("mode").and_then(|v| v.as_str()).unwrap_or("").to_string(),
                     );
+                    encoder_pipeline.set(
+                        msg.get("pipeline").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    );
                 }
                 "log" => {
                     let line = msg.get("line").and_then(|v| v.as_str()).unwrap_or("");
@@ -144,6 +149,7 @@ fn App() -> Element {
                     stat_fps.set(None);
                     stat_ping.set(None);
                     encoder_mode.set(String::new());
+                    encoder_pipeline.set(String::new());
                 }
                 "giveup" => {
                     session_on.set(false);
@@ -151,6 +157,7 @@ fn App() -> Element {
                     stat_fps.set(None);
                     stat_ping.set(None);
                     encoder_mode.set(String::new());
+                    encoder_pipeline.set(String::new());
                     let _ = document::eval("window.__wado.stopSession();").await;
                     status.set("idle".to_string());
                 }
@@ -193,10 +200,10 @@ fn App() -> Element {
             "maximized" => Placement::Maximized,
             _ => Placement::Center,
         };
-        let backend = if force_software() {
-            EncoderBackend::Software
-        } else {
-            EncoderBackend::Auto
+        let backend = match encoder_backend().as_str() {
+            "hardware" => EncoderBackend::Hardware,
+            "software" => EncoderBackend::Software,
+            _ => EncoderBackend::Auto,
         };
         let cfg = SessionConfig {
             width,
@@ -216,6 +223,7 @@ fn App() -> Element {
         let server = server_addr();
         session_on.set(true);
         encoder_mode.set(String::new());
+        encoder_pipeline.set(String::new());
         status.set("starting session…".to_string());
         spawn(async move {
             let code = format!("window.__wado.start({}, {});", js(&server), js(&cfg));
@@ -239,6 +247,7 @@ fn App() -> Element {
         stat_fps.set(None);
         stat_ping.set(None);
         encoder_mode.set(String::new());
+        encoder_pipeline.set(String::new());
         spawn(async move {
             let _ = document::eval("window.__wado.stopSession();").await;
             status.set("idle".to_string());
@@ -263,6 +272,15 @@ fn App() -> Element {
     // Persistent banner whenever the server fell back to (or was forced onto) software
     // encoding — invariant #5 (the END USER must be told).
     let sw_encoding = on && encoder_mode() == "software";
+    // Stagebar pipeline badge: label + CSS class per active tier. `fallback` marks a path
+    // below what the user asked for (requested hardware/auto but got cpu-copy or software).
+    let (badge_label, badge_class) = match encoder_pipeline().as_str() {
+        "vaapi-dmabuf" => ("⚡ zero-copy", "badge-good"),
+        "vaapi-cpu" => ("HW · cpu-copy", "badge-warn"),
+        "x264-cpu" => ("SW · x264", "badge-bad"),
+        _ => ("", ""),
+    };
+    let show_badge = on && !badge_label.is_empty();
 
     rsx! {
         document::Stylesheet { href: asset!("/assets/main.css") }
@@ -329,6 +347,15 @@ fn App() -> Element {
                         oninput: move |e| if let Ok(v) = e.value().parse() { bitrate.set(v) },
                     }
                 }
+            }
+
+            label { "Encoder" }
+            select {
+                value: "{encoder_backend}",
+                onchange: move |e| encoder_backend.set(e.value()),
+                option { value: "auto", "Auto (hardware if available)" }
+                option { value: "hardware", "Hardware only (GPU)" }
+                option { value: "software", "Software (x264)" }
             }
 
             label { "Command" }
@@ -454,13 +481,6 @@ fn App() -> Element {
                     }
                     " Show ping"
                 }
-                label {
-                    input {
-                        r#type: "checkbox", checked: force_software(),
-                        onchange: move |e| force_software.set(e.checked()),
-                    }
-                    " Force software encoding (applies at Start)"
-                }
             }
 
             details {
@@ -503,8 +523,14 @@ fn App() -> Element {
                         span { class: "kbdhint", " — tap to type · drag/scroll/long-press supported" }
                     }
                 }
-                if show_stats {
-                    span { class: "stats", "{stats_text}" }
+                span {
+                    if show_badge {
+                        span { class: "pipebadge {badge_class}", title: "active encode pipeline",
+                            "{badge_label}" }
+                    }
+                    if show_stats {
+                        span { class: "stats", "{stats_text}" }
+                    }
                 }
             }
             video { id: "wado-video", autoplay: true, playsinline: true, muted: true }

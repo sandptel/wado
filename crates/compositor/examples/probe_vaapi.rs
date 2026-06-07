@@ -8,6 +8,9 @@
 //! Usage:
 //!   cargo run -p wado-compositor --example probe_vaapi
 
+use std::borrow::Cow;
+
+use wado_compositor::capture::Frame;
 use wado_compositor::encode::encoder::VideoEncoder;
 use wado_compositor::encode::ffmpeg::{FfmpegVaapiEncoder, hwcontext::first_render_node, probe};
 
@@ -51,7 +54,7 @@ fn main() {
         if f == 5 {
             enc.force_idr_next();
         }
-        match enc.encode_frame(&rgba) {
+        match enc.submit(Frame::Rgba(Cow::Borrowed(&rgba))) {
             Ok(Some(nal)) => {
                 total += nal.len();
                 println!("frame {f}: {} bytes", nal.len());

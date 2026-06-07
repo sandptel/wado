@@ -2,10 +2,13 @@
 //! **open** a VAAPI H.264 encoder and run one frame through it, then **cache** the result
 //! for the life of the process so we probe at most once.
 
+use std::borrow::Cow;
 use std::sync::OnceLock;
 
 use super::FfmpegVaapiEncoder;
 use super::hwcontext::first_render_node;
+use crate::capture::Frame;
+use crate::encode::encoder::VideoEncoder;
 
 static VAAPI_OK: OnceLock<bool> = OnceLock::new();
 
@@ -28,7 +31,7 @@ fn probe() -> bool {
     match FfmpegVaapiEncoder::new(&node, PW, PH, 30, 1000, 30) {
         Ok(mut enc) => {
             let black = vec![0u8; (PW * PH * 4) as usize];
-            match enc.encode_frame(&black) {
+            match enc.submit(Frame::Rgba(Cow::Borrowed(&black))) {
                 Ok(_) => {
                     tracing::info!(node, "VAAPI probe: hardware H.264 encoder opened OK");
                     true
