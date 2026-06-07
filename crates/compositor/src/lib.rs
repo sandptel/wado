@@ -25,6 +25,7 @@ pub mod conf;
 pub mod control;
 pub mod encode;
 pub mod error;
+pub mod event;
 pub mod grabs;
 pub mod handlers;
 pub mod headless;
@@ -46,6 +47,7 @@ use tokio::sync::mpsc;
 
 pub use control::CompositorCommand;
 pub use error::{CompositorError, Result};
+pub use event::SessionEvent;
 pub use sink::channel::FrameMsg;
 pub use state::Wado;
 pub use wado_protocol::InputEvent;
@@ -74,14 +76,18 @@ pub struct CompositorHandles {
 ///
 /// `frame_tx` is the encoded-frame channel; the session's `ChannelSink` clones it and
 /// the server owns the matching receiver (the WebRTC frame pump).
+/// `event_tx` receives [`SessionEvent`]s (e.g. encoder tier downgrades) from the live
+/// session; the server fans these out to SSE clients as named `event: encoder` frames.
 pub fn build(
     frame_tx: mpsc::Sender<FrameMsg>,
+    event_tx: mpsc::Sender<event::SessionEvent>,
 ) -> Result<(EventLoop<'static, Wado>, Wado, CompositorHandles)> {
     let mut event_loop: EventLoop<'static, Wado> =
         EventLoop::try_new().map_err(|e| CompositorError::Other(format!("event loop: {e}")))?;
     let display: Display<Wado> =
         Display::new().map_err(|e| CompositorError::Other(format!("display: {e}")))?;
-    let state = Wado::new(&mut event_loop, display);
+    let mut state = Wado::new(&mut event_loop, display);
+    state.event_tx = Some(event_tx);
 
     // Apps spawned later (on session start) connect to this socket.
     unsafe { std::env::set_var("WAYLAND_DISPLAY", &state.socket_name) };

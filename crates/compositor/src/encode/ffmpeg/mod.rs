@@ -31,6 +31,7 @@ use ffmpeg_the_third::ffi::{
     avcodec_send_frame,
 };
 use smithay::backend::allocator::dmabuf::Dmabuf;
+use wado_protocol::KeyframeMode;
 
 use crate::CompositorError;
 use crate::capture::Frame;
@@ -80,12 +81,15 @@ impl FfmpegVaapiEncoder {
         fps: u32,
         bitrate_kbps: u32,
         keyframe_interval: u32,
+        keyframe_mode: KeyframeMode,
     ) -> crate::Result<Self> {
         let w = width as i32;
         let h = height as i32;
         let device = create_vaapi_device(node)?;
         let frames = create_nv12_frames(&device, w, h, 4)?;
-        let ctx = unsafe { open_h264_vaapi(w, h, fps, bitrate_kbps, keyframe_interval, frames.0)? };
+        let ctx = unsafe {
+            open_h264_vaapi(w, h, fps, bitrate_kbps, keyframe_interval, keyframe_mode, frames.0)?
+        };
         Ok(Self {
             ctx,
             feed: Feed::Cpu { _device: device, frames },
@@ -106,6 +110,7 @@ impl FfmpegVaapiEncoder {
         fps: u32,
         bitrate_kbps: u32,
         keyframe_interval: u32,
+        keyframe_mode: KeyframeMode,
     ) -> crate::Result<Self> {
         let w = width as i32;
         let h = height as i32;
@@ -117,7 +122,9 @@ impl FfmpegVaapiEncoder {
 
         // Bind the encoder to the graph's NV12 VAAPI output frames context.
         let out_frames = graph.output_frames_ctx()?;
-        let ctx = unsafe { open_h264_vaapi(w, h, fps, bitrate_kbps, keyframe_interval, out_frames) };
+        let ctx = unsafe {
+            open_h264_vaapi(w, h, fps, bitrate_kbps, keyframe_interval, keyframe_mode, out_frames)
+        };
         unsafe {
             let mut f = out_frames;
             av_buffer_unref(&mut f); // the codec ctx took its own ref
@@ -288,6 +295,7 @@ unsafe fn open_h264_vaapi(
     fps: u32,
     bitrate_kbps: u32,
     keyframe_interval: u32,
+    keyframe_mode: KeyframeMode,
     hw_frames: *mut AVBufferRef,
 ) -> crate::Result<*mut AVCodecContext> {
     unsafe {
@@ -307,7 +315,14 @@ unsafe fn open_h264_vaapi(
         (*ctx).framerate = AVRational { num: fps.max(1) as i32, den: 1 };
         (*ctx).pix_fmt = AVPixelFormat::VAAPI;
         (*ctx).max_b_frames = 0; // invariant #7: no reordering latency
-        (*ctx).gop_size = keyframe_interval.max(1) as i32;
+        // Keyframe strategy (invariant #7). True intra-refresh is unsupported by h264_vaapi
+        // (ffmpeg 8.1 exposes only `-g`/`idr_interval`), so the low-latency mode is "on-demand":
+        // a huge GOP with no periodic IDR — keyframes come only from the per-frame forced IDR
+        // (viewer-connect + RTCP PLI/FIR). `Periodic` keeps a fixed short-GOP cadence.
+        (*ctx).gop_size = match keyframe_mode {
+            KeyframeMode::OnDemand => fps.max(1).saturating_mul(3600).min(i32::MAX as u32) as i32,
+            KeyframeMode::Periodic => keyframe_interval.max(1) as i32,
+        };
         let bitrate = (bitrate_kbps as i64) * 1000;
         (*ctx).bit_rate = bitrate;
         (*ctx).rc_max_rate = bitrate; // CBR

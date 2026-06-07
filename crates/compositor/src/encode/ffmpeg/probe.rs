@@ -28,7 +28,8 @@ fn probe() -> bool {
     // a minimum frame size (e.g. AMD requires ≥128 per side), so don't probe too small.
     const PW: u32 = 320;
     const PH: u32 = 240;
-    match FfmpegVaapiEncoder::new(&node, PW, PH, 30, 1000, 30) {
+    match FfmpegVaapiEncoder::new(&node, PW, PH, 30, 1000, 30, wado_protocol::KeyframeMode::OnDemand)
+    {
         Ok(mut enc) => {
             let black = vec![0u8; (PW * PH * 4) as usize];
             match enc.submit(Frame::Rgba(Cow::Borrowed(&black))) {
