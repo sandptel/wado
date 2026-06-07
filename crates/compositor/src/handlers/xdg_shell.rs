@@ -34,7 +34,7 @@ impl XdgShellHandler for Wado {
 
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
         let window = Window::new_wayland_window(surface);
-        self.space.map_element(window, (0, 0), false);
+        self.place_new_toplevel(window);
     }
 
     fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {

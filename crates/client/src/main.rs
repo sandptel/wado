@@ -10,11 +10,34 @@
 //! `dioxus.send`, and Rust kicks actions with tiny one-shot evals into `window.__wado.*`.
 
 use dioxus::prelude::*;
-use wado_protocol::{logfmt::LogLine, Quality, SessionConfig};
+use wado_protocol::{logfmt::LogLine, InputConfig, Placement, Quality, SessionConfig, WindowConfig};
 
-/// The bridge script (see module docs). Loaded as a static string so it needs no
-/// `format!` brace-escaping; per-call arguments are passed via small separate evals.
-const BRIDGE_JS: &str = include_str!("bridge.js");
+/// The bridge script: assembled from the single-job `js/` files (concatenated in load order —
+/// `core` first, `lifecycle` last because of its trailing keep-alive await). Each file owns one
+/// concern (webrtc / stats / logs / input subsystems / overlay / settings / lifecycle).
+const BRIDGE_JS: &str = concat!(
+    include_str!("js/core.js"),
+    "\n",
+    include_str!("js/logs.js"),
+    "\n",
+    include_str!("js/stats.js"),
+    "\n",
+    include_str!("js/webrtc.js"),
+    "\n",
+    include_str!("js/input_core.js"),
+    "\n",
+    include_str!("js/input_pointer.js"),
+    "\n",
+    include_str!("js/input_touch.js"),
+    "\n",
+    include_str!("js/input_keyboard.js"),
+    "\n",
+    include_str!("js/overlay.js"),
+    "\n",
+    include_str!("js/settings.js"),
+    "\n",
+    include_str!("js/lifecycle.js"),
+);
 
 /// Default server the client talks to. Editable in the UI; the dev server typically
 /// runs the client on a different port and reaches the wado server here over CORS.
@@ -51,6 +74,18 @@ fn App() -> Element {
     let mut session_on = use_signal(|| false);
     // "Move window" mode: while on, dragging the video moves the window under it.
     let mut move_mode = use_signal(|| false);
+    // ── Compositor settings (input/window). Repeat/placement/focus apply at Start; scroll
+    //    is instant client-side. ──────────────────────────────────────────────────────────
+    let mut scroll_speed = use_signal(|| 1.0_f64);
+    let mut natural_scroll = use_signal(|| false);
+    let mut repeat_rate = use_signal(|| 25_i32);
+    let mut repeat_delay = use_signal(|| 200_i32);
+    let mut placement = use_signal(|| "center".to_string());
+    let mut focus_follows = use_signal(|| false);
+    // ── Debug toggles (all client-side / view-only) ──────────────────────────────────────
+    let mut show_touches = use_signal(|| false);
+    let mut show_fps = use_signal(|| true);
+    let mut show_ping = use_signal(|| true);
     let mut status = use_signal(|| "idle".to_string());
     let mut stagebar = use_signal(|| "No session.".to_string());
     let mut logs = use_signal(Vec::<LogLine>::new);
@@ -137,6 +172,12 @@ fn App() -> Element {
             "custom" => Quality::Custom { bitrate_kbps: bitrate() },
             _ => Quality::Balanced,
         };
+        let place = match placement().as_str() {
+            "top_left" => Placement::TopLeft,
+            "cascade" => Placement::Cascade,
+            "maximized" => Placement::Maximized,
+            _ => Placement::Center,
+        };
         let cfg = SessionConfig {
             width,
             height,
@@ -144,6 +185,12 @@ fn App() -> Element {
             quality: q,
             preset: Some(preset()).filter(|p| !p.is_empty()),
             keyframe_interval: keyframe().trim().parse().ok(),
+            input: InputConfig {
+                repeat_rate: repeat_rate(),
+                repeat_delay: repeat_delay(),
+                focus_follows_pointer: focus_follows(),
+            },
+            window: WindowConfig { placement: place },
         };
         let server = server_addr();
         session_on.set(true);
@@ -167,33 +214,29 @@ fn App() -> Element {
 
     let stop = move |_| {
         session_on.set(false);
-        move_mode.set(false);
         stat_fps.set(None);
         stat_ping.set(None);
         spawn(async move {
-            let _ = document::eval("window.__wado.setMoveMode(false);").await;
             let _ = document::eval("window.__wado.stopSession();").await;
             status.set("idle".to_string());
             stagebar.set("No session.".to_string());
         });
     };
 
-    // Toggle "Move window" mode in the bridge.
-    let toggle_move = move |_| {
-        let next = !move_mode();
-        move_mode.set(next);
-        spawn(async move {
-            let _ = document::eval(&format!("window.__wado.setMoveMode({next});")).await;
-        });
-    };
-
     let on = session_on();
-    let mv = move_mode();
     let show_custom_res = res() == "custom";
     let show_custom_q = quality() == "custom";
     let log_items = logs.read().clone();
     let fps_text = stat_fps().map(|f| format!("{f:.0} fps")).unwrap_or_else(|| "— fps".into());
     let ping_text = stat_ping().map(|p| format!("{p:.0} ms")).unwrap_or_else(|| "— ms".into());
+    // The Debug toggles decide which stats appear in the stagebar.
+    let stats_text = {
+        let mut parts = Vec::new();
+        if show_fps() { parts.push(fps_text); }
+        if show_ping() { parts.push(ping_text); }
+        parts.join(" · ")
+    };
+    let show_stats = on && (show_fps() || show_ping());
 
     rsx! {
         document::Stylesheet { href: asset!("/assets/main.css") }
@@ -280,17 +323,111 @@ fn App() -> Element {
                 "Launch into session"
             }
 
-            label { "Input" }
-            button {
-                id: "movemode",
-                class: if mv { "active" } else { "" },
-                style: "width:100%;",
-                disabled: !on,
-                onclick: toggle_move,
-                if mv { "Move window: ON — drag to move" } else { "Move window: off" }
+            details {
+                summary { "Compositor settings" }
+
+                label {
+                    input {
+                        r#type: "checkbox", checked: move_mode(),
+                        onchange: move |e| {
+                            let c = e.checked();
+                            move_mode.set(c);
+                            spawn(async move {
+                                let _ = document::eval(&format!("window.__wado.setMoveMode({c});")).await;
+                            });
+                        },
+                    }
+                    " Move-window mode (drag moves windows)"
+                }
+                label {
+                    input {
+                        r#type: "checkbox", checked: focus_follows(),
+                        onchange: move |e| focus_follows.set(e.checked()),
+                    }
+                    " Focus follows pointer (applies at Start)"
+                }
+
+                label { "Scroll speed: {scroll_speed():.1}×" }
+                input {
+                    r#type: "range", min: "0.2", max: "5", step: "0.1", value: "{scroll_speed}",
+                    oninput: move |e| {
+                        if let Ok(v) = e.value().parse::<f64>() {
+                            scroll_speed.set(v);
+                            let n = natural_scroll();
+                            spawn(async move {
+                                let _ = document::eval(&format!("window.__wado.setScroll({v}, {n});")).await;
+                            });
+                        }
+                    },
+                }
+                label {
+                    input {
+                        r#type: "checkbox", checked: natural_scroll(),
+                        onchange: move |e| {
+                            let c = e.checked();
+                            natural_scroll.set(c);
+                            let s = scroll_speed();
+                            spawn(async move {
+                                let _ = document::eval(&format!("window.__wado.setScroll({s}, {c});")).await;
+                            });
+                        },
+                    }
+                    " Natural scroll direction"
+                }
+
+                label { "Window placement (applies at Start)" }
+                select {
+                    value: "{placement}",
+                    onchange: move |e| placement.set(e.value()),
+                    option { value: "center", "Center" }
+                    option { value: "top_left", "Top-left" }
+                    option { value: "cascade", "Cascade" }
+                    option { value: "maximized", "Maximized" }
+                }
+
+                label { "Keyboard repeat (applies at Start)" }
+                div { class: "row",
+                    input {
+                        r#type: "number", min: "1", value: "{repeat_rate}",
+                        oninput: move |e| if let Ok(v) = e.value().parse() { repeat_rate.set(v) },
+                    }
+                    input {
+                        r#type: "number", min: "0", value: "{repeat_delay}",
+                        oninput: move |e| if let Ok(v) = e.value().parse() { repeat_delay.set(v) },
+                    }
+                }
+                p { class: "hint", style: "margin:4px 0 0;", "rate (keys/s) · delay (ms)" }
             }
-            p { class: "hint", style: "margin:4px 0 0;",
-                "Drag = touch · wheel = scroll · long-press = right-click (or drag to move). Toggle above to move windows by dragging."
+
+            details {
+                summary { "Debug" }
+                label {
+                    input {
+                        r#type: "checkbox", checked: show_touches(),
+                        onchange: move |e| {
+                            let c = e.checked();
+                            show_touches.set(c);
+                            spawn(async move {
+                                let _ = document::eval(&format!("window.__wado.setShowTouches({c});")).await;
+                            });
+                        },
+                    }
+                    " Show touches / clicks"
+                }
+                label {
+                    input {
+                        r#type: "checkbox", checked: show_fps(),
+                        onchange: move |e| show_fps.set(e.checked()),
+                    }
+                    " Show FPS"
+                }
+                label {
+                    input {
+                        r#type: "checkbox", checked: show_ping(),
+                        onchange: move |e| show_ping.set(e.checked()),
+                    }
+                    " Show ping"
+                }
             }
 
             details {
@@ -328,8 +465,8 @@ fn App() -> Element {
                         span { class: "kbdhint", " — tap to type · drag/scroll/long-press supported" }
                     }
                 }
-                if on {
-                    span { class: "stats", "{fps_text} · {ping_text}" }
+                if show_stats {
+                    span { class: "stats", "{stats_text}" }
                 }
             }
             video { id: "wado-video", autoplay: true, playsinline: true, muted: true }

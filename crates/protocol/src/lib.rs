@@ -53,11 +53,17 @@ pub enum InputEvent {
     /// A key press/release. `code` is the **Linux evdev keycode** (e.g. `KEY_A` = 30),
     /// *before* the xkb +8 offset (the compositor applies it).
     Key { code: u32, pressed: bool },
-    /// A scroll/wheel tick at (`x`,`y`). `dx`/`dy` are pixel deltas (browser `wheel`
-    /// `deltaX`/`deltaY`); the compositor turns them into a `wl_pointer` axis frame.
+    /// Absolute pointer motion / hover at (`x`,`y`) — sent for a real mouse (`pointerType
+    /// == "mouse"`), so apps get `wl_pointer` motion (hover, menus, tooltips). No cursor is
+    /// drawn. Touchscreens use `Touch` instead.
+    PointerMotion { x: f64, y: f64 },
+    /// A scroll/wheel tick at (`x`,`y`). `dx`/`dy` are already-normalized **pixel** deltas
+    /// (the client folds in `deltaMode`, scroll-speed and natural-direction); the compositor
+    /// turns them into a value-only `wl_pointer` axis frame.
     Scroll { x: f64, y: f64, dx: f64, dy: f64 },
-    /// A pointer button press/release at (`x`,`y`) — used for the long-press → right-click
-    /// gesture. Delivered via `wl_pointer` with focus set to the surface under the point.
+    /// A pointer button press/release at (`x`,`y`). For a real mouse this is the actual
+    /// button; for touch it is the long-press → right-click emulation. Delivered via
+    /// `wl_pointer` with focus set to the surface under the point.
     Button {
         x: f64,
         y: f64,
@@ -74,12 +80,13 @@ pub enum InputEvent {
     CancelTouch { id: u32 },
 }
 
-/// Which pointer button a [`InputEvent::Button`] refers to. Only the secondary (right)
-/// button is emulated this iteration (long-press → right-click); left/middle are reserved.
+/// Which pointer button a [`InputEvent::Button`] refers to. The compositor maps these to the
+/// Linux `BTN_*` codes (`Left`=`0x110`, `Middle`=`0x112`, `Right`=`0x111`).
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PointerButton {
-    /// `BTN_RIGHT` (`0x111`).
+    Left,
+    Middle,
     Right,
 }
 
@@ -108,7 +115,9 @@ pub enum Quality {
 }
 
 /// One session's configuration: built by the client and sent to the server on
-/// `POST /session/start`.
+/// `POST /session/start`. The encoder/video fields are flat (the original, stable set);
+/// newer behaviour settings are grouped into atomic sub-structs ([`InputConfig`],
+/// [`WindowConfig`]) so each settings domain stays independently testable.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionConfig {
     pub width: u32,
@@ -123,6 +132,53 @@ pub struct SessionConfig {
     /// preset's default when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub keyframe_interval: Option<u32>,
+    /// Input behaviour (keyboard repeat, focus policy). Applied at session start.
+    #[serde(default)]
+    pub input: InputConfig,
+    /// Window-management behaviour (new-window placement). Applied at session start.
+    #[serde(default)]
+    pub window: WindowConfig,
+}
+
+/// Input-behaviour settings for a session (the "Compositor settings → input" group).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct InputConfig {
+    /// xkb key-repeat rate in keys/second.
+    pub repeat_rate: i32,
+    /// xkb key-repeat delay in milliseconds before repeat begins.
+    pub repeat_delay: i32,
+    /// When true, hovering a window with the pointer also gives it keyboard focus.
+    pub focus_follows_pointer: bool,
+}
+
+impl Default for InputConfig {
+    fn default() -> Self {
+        // Mirrors the historical `seat.add_keyboard(_, 200, 25)` defaults.
+        Self { repeat_rate: 25, repeat_delay: 200, focus_follows_pointer: false }
+    }
+}
+
+/// Window-management settings for a session (the "Compositor settings → window" group).
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct WindowConfig {
+    /// Where newly-mapped toplevels are placed on the output.
+    #[serde(default)]
+    pub placement: Placement,
+}
+
+/// New-window placement policy.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Placement {
+    /// Map at the output origin (0,0) — the historical behaviour.
+    TopLeft,
+    /// Centre the window on the output.
+    #[default]
+    Center,
+    /// Step each new window down-right from the last (cascade).
+    Cascade,
+    /// Size the window to the output and map at (0,0).
+    Maximized,
 }
 
 /// Live-log wire format shared by the server's log bus (which formats lines) and
