@@ -3,8 +3,10 @@ use std::time::Duration;
 
 use smithay::{
     backend::{
+        allocator::{Fourcc, Modifier},
         egl::EGLContext,
         renderer::{
+            Color32F, Frame as _, Renderer as _,
             damage::OutputDamageTracker,
             element::surface::WaylandSurfaceRenderElement,
             gles::{GlesRenderer, GlesTarget},
@@ -12,7 +14,7 @@ use smithay::{
     },
     output::{Mode, Output, PhysicalProperties, Subpixel},
     reexports::calloop::timer::{TimeoutAction, Timer},
-    utils::{Buffer, Size, Transform},
+    utils::{Buffer, Physical, Rectangle, Size, Transform},
 };
 
 use tracing::{debug, info, warn};
@@ -29,6 +31,7 @@ use crate::{
         select::{Tier, tiers_for},
         x264enc::X264Encoder,
     },
+    event::SessionEvent,
     sink::{FrameSink, file::FileSink},
 };
 
@@ -254,6 +257,7 @@ fn build_tier(
                 ec.fps,
                 ec.bitrate_kbps,
                 ec.keyframe_interval,
+                ec.keyframe_mode,
                 ec.preset,
             )?;
             let cap = MemTarget::new(renderer, buf_size)?;
@@ -267,6 +271,7 @@ fn build_tier(
                 ec.fps,
                 ec.bitrate_kbps,
                 ec.keyframe_interval,
+                ec.keyframe_mode,
             )?;
             let cap = MemTarget::new(renderer, buf_size)?;
             Ok((Box::new(enc), Box::new(cap)))
@@ -275,18 +280,89 @@ fn build_tier(
             let gbm = gbm
                 .clone()
                 .ok_or_else(|| CompositorError::Encoder("DMA tier needs a GBM device".into()))?;
-            let enc = FfmpegVaapiEncoder::new_dma(
+            let mut enc = FfmpegVaapiEncoder::new_dma(
                 &node()?,
                 ec.width,
                 ec.height,
                 ec.fps,
                 ec.bitrate_kbps,
                 ec.keyframe_interval,
+                ec.keyframe_mode,
             )?;
-            let cap = DmaTarget::new(gbm, buf_size)?;
+
+            // Query GPU-preferred non-Linear modifiers for Abgr8888 render targets.
+            // EGL advertises which tiled modifiers the driver prefers; we verify them
+            // end-to-end (GBM alloc → GLES render → VAAPI DRM-PRIME import + encode)
+            // before committing — building the tier *is* the probe (invariant #6).
+            let preferred: Vec<Modifier> = renderer
+                .egl_context()
+                .dmabuf_render_formats()
+                .iter()
+                .filter(|f| f.code == Fourcc::Abgr8888 && f.modifier != Modifier::Linear)
+                .map(|f| f.modifier)
+                .collect();
+
+            let tried_tiled = !preferred.is_empty();
+            if tried_tiled {
+                // Pass tiled modifiers first so GBM picks the best one; Linear is the
+                // swapchain-level fallback if GBM can't allocate tiled.
+                let mut mods = preferred;
+                mods.push(Modifier::Linear);
+                match DmaTarget::new(gbm.clone(), buf_size, mods) {
+                    Ok(mut cap) => {
+                        match self_test_dma(renderer, &mut cap, &mut enc, buf_size) {
+                            Ok(()) => {
+                                enc.force_idr_next(); // probe consumed first IDR
+                                tracing::info!("Tier A: tiled modifier verified end-to-end");
+                                return Ok((Box::new(enc), Box::new(cap)));
+                            }
+                            Err(e) => tracing::warn!(
+                                "Tier A: tiled modifier self-test failed ({e}), retrying with Linear"
+                            ),
+                        }
+                    }
+                    Err(e) => tracing::warn!(
+                        "Tier A: tiled modifier alloc failed ({e}), retrying with Linear"
+                    ),
+                }
+            }
+
+            // Linear path: status-quo or tiled fallback. Self-test only when we already
+            // tried tiled (guard against a regression introduced by the query path itself;
+            // proven path stays unchanged when no tiled modifiers were advertised).
+            let mut cap = DmaTarget::new(gbm, buf_size, vec![Modifier::Linear])?;
+            if tried_tiled {
+                self_test_dma(renderer, &mut cap, &mut enc, buf_size)?;
+                enc.force_idr_next();
+                tracing::info!("Tier A: Linear modifier (tiled fallback) verified");
+            }
             Ok((Box::new(enc), Box::new(cap)))
         }
     }
+}
+
+/// One clear→capture→submit cycle to verify the DMA-BUF modifier end-to-end.
+/// Returns `Ok(())` if all three steps succeed. The encode output is discarded
+/// (the caller resets the encoder with `force_idr_next` after success).
+fn self_test_dma(
+    renderer: &mut GlesRenderer,
+    capture: &mut DmaTarget,
+    encoder: &mut dyn VideoEncoder,
+    size: Size<i32, Buffer>,
+) -> crate::Result<()> {
+    let phys: Size<i32, Physical> = (size.w, size.h).into();
+    let mut render = |r: &mut GlesRenderer, fb: &mut GlesTarget<'_>| -> crate::Result<()> {
+        let mut frame = r
+            .render(fb, phys, Transform::Normal)
+            .map_err(renderer_err("self_test render"))?;
+        frame
+            .clear(Color32F::new(0.0, 0.0, 0.0, 1.0), &[Rectangle::from_size(phys)])
+            .map_err(renderer_err("self_test clear"))?;
+        let _sync = frame.finish().map_err(renderer_err("self_test finish"))?;
+        Ok(())
+    };
+    let frame = capture.capture(renderer, &mut render)?;
+    encoder.submit(frame).map(|_| ())
 }
 
 /// Pick the best pipeline tier that actually opens for the session's backend preference.
@@ -300,7 +376,7 @@ fn build_pipeline(
     let mut last_err = None;
     for tier in tiers_for(ec.backend, gbm.is_some()) {
         match build_tier(tier, renderer, gbm, ec, buf_size) {
-            Ok((enc, cap)) => return Ok((enc, cap, tier.report(), tier)),
+            Ok((enc, cap)) => return Ok((enc, cap, tier.report(ec.keyframe_mode), tier)),
             Err(e) => {
                 warn!(?tier, "pipeline tier unavailable, trying next: {e}");
                 last_err = Some(e);
@@ -324,11 +400,15 @@ fn downgrade_pipeline(state: &mut Wado) {
         match build_tier(tier, renderer, &state.gbm, &ec, buf_size) {
             Ok((enc, cap)) => {
                 warn!(from = ?cur, to = ?tier, "pipeline downgraded after runtime encode failure");
+                let new_report = tier.report(ec.keyframe_mode);
                 state.encoder = Some(enc);
                 state.capture = Some(cap);
                 state.current_tier = Some(tier);
                 if let Some(e) = state.encoder.as_mut() {
                     e.force_idr_next();
+                }
+                if let Some(tx) = &state.event_tx {
+                    let _ = tx.try_send(SessionEvent::EncoderChanged(new_report));
                 }
                 return;
             }

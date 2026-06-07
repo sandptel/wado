@@ -31,7 +31,7 @@ use wado_protocol::Placement;
 
 use crate::{
     capture::CaptureTarget, conf::EncoderConfig, encode::encoder::VideoEncoder,
-    encode::select::Tier, sink::FrameSink,
+    encode::select::Tier, event::EventSender, sink::FrameSink,
 };
 
 pub struct Wado {
@@ -79,6 +79,10 @@ pub struct Wado {
     pub app_processes: Vec<std::process::Child>,
     /// True between start_session and stop_session.
     pub session_active: bool,
+    /// Session-event channel: the server subscribes at startup; the compositor pushes a
+    /// [`crate::event::SessionEvent`] when the pipeline tier degrades at runtime so the
+    /// server can fan the change out to all connected SSE clients. `None` when not wired.
+    pub event_tx: Option<EventSender>,
     /// An in-progress compositor-managed window move (long-press-drag or "move mode"),
     /// driven by [`wado_protocol::InputEvent::WindowDrag`]. `None` when not moving.
     pub window_move: Option<WindowMove>,
@@ -159,6 +163,7 @@ impl Wado {
             render_timer_token: None,
             app_processes: Vec::new(),
             session_active: false,
+            event_tx: None,
             window_move: None,
             placement: Placement::default(),
             focus_follows_pointer: false,

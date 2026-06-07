@@ -2,7 +2,7 @@
 //! ([`SessionConfig`], [`Quality`]) live in the `wado-protocol` crate and are
 //! re-exported here; this module owns the x264-coupled encoder mapping.
 
-pub use wado_protocol::{EncoderBackend, Quality, SessionConfig};
+pub use wado_protocol::{EncoderBackend, KeyframeMode, Quality, SessionConfig};
 pub use x264::Preset;
 
 pub const DEFAULT_WIDTH: u32 = 1280;
@@ -24,8 +24,9 @@ pub struct EncoderConfig {
     pub fps: u32,
     /// CBR target in kbps.
     pub bitrate_kbps: u32,
-    /// Maximum (and minimum with scenecut disabled) frames between IDR keyframes.
-    /// A late-joining client syncs within this many frames. At 60fps, 30 → 0.5 s.
+    /// Frames between IDR keyframes **when `keyframe_mode` is `Periodic`**. A late-joining
+    /// client syncs within this many frames. At 60fps, 30 → 0.5 s. Ignored in `OnDemand`
+    /// mode (which uses a huge GOP and IDRs only on connect/PLI).
     pub keyframe_interval: u32,
     /// x264 preset. **Software-path only** — the hardware (VAAPI) backend derives its rate
     /// control from `bitrate_kbps` / `fps` / `keyframe_interval` and ignores this.
@@ -33,6 +34,11 @@ pub struct EncoderConfig {
     /// Which encode backend to use (hardware/software/auto). Resolved by
     /// [`crate::encode::select::build_encoder`].
     pub backend: EncoderBackend,
+    /// Master low-latency lock (informational/logging; the keyframe effect is already baked
+    /// into `keyframe_mode`). Software (x264) always runs low-latency regardless.
+    pub zero_latency: bool,
+    /// Effective keyframe strategy after applying the `zero_latency` lock.
+    pub keyframe_mode: KeyframeMode,
 }
 
 /// Where encoded H.264 frames are delivered (for standalone examples).
@@ -63,6 +69,8 @@ impl Default for WadoConfig {
                 keyframe_interval: 30,
                 preset: Preset::Ultrafast,
                 backend: EncoderBackend::Auto,
+                zero_latency: true,
+                keyframe_mode: KeyframeMode::OnDemand,
             },
             output: OutputConfig {
                 sink: SinkTarget::File("captures/wado.h264".to_string()),
@@ -98,6 +106,12 @@ pub fn to_encoder_config(config: &SessionConfig) -> EncoderConfig {
         Quality::Quality => (8000, Preset::Veryfast, fps * 2),
         Quality::Custom { bitrate_kbps } => (bitrate_kbps, Preset::Ultrafast, fps * 2),
     };
+    // The zero-latency master lock forces on-demand keyframes; otherwise honour the knob.
+    let keyframe_mode = if config.tuning.zero_latency {
+        KeyframeMode::OnDemand
+    } else {
+        config.tuning.keyframe_mode
+    };
     EncoderConfig {
         width: config.width,
         height: config.height,
@@ -106,6 +120,8 @@ pub fn to_encoder_config(config: &SessionConfig) -> EncoderConfig {
         keyframe_interval: config.keyframe_interval.unwrap_or(default_kf),
         preset: config.preset.as_deref().map(parse_preset).unwrap_or(default_preset),
         backend: config.encoder.backend,
+        zero_latency: config.tuning.zero_latency,
+        keyframe_mode,
     }
 }
 

@@ -9,6 +9,7 @@
 //!   cargo run -p wado-compositor --example probe_dmabuf   # (sandbox disabled — opens the GPU)
 
 use smithay::backend::{
+    allocator::Modifier,
     egl::EGLContext,
     renderer::{Color32F, Frame as _, Renderer as _, gles::GlesRenderer},
 };
@@ -16,6 +17,7 @@ use smithay::utils::{Physical, Rectangle, Size, Transform};
 
 use wado_compositor::CompositorError;
 use wado_compositor::capture::{CaptureTarget, DmaTarget, gpu};
+use wado_compositor::conf::KeyframeMode;
 use wado_compositor::encode::encoder::VideoEncoder;
 use wado_compositor::encode::ffmpeg::{FfmpegVaapiEncoder, hwcontext::first_render_node};
 
@@ -42,14 +44,15 @@ fn main() {
 
     let (w, h) = (1280u32, 720u32);
     let size: Size<i32, smithay::utils::Buffer> = (w as i32, h as i32).into();
-    let mut dma = match DmaTarget::new(gbm, size) {
+    let mut dma = match DmaTarget::new(gbm, size, vec![Modifier::Linear]) {
         Ok(d) => d,
         Err(e) => {
             println!("DmaTarget::new failed: {e}");
             return;
         }
     };
-    let mut enc = match FfmpegVaapiEncoder::new_dma(&node, w, h, 60, 4000, 30) {
+    let mut enc = match FfmpegVaapiEncoder::new_dma(&node, w, h, 60, 4000, 30, KeyframeMode::OnDemand)
+    {
         Ok(e) => e,
         Err(e) => {
             println!("new_dma failed: {e}");
