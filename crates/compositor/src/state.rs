@@ -1,10 +1,7 @@
 use std::{ffi::OsString, sync::Arc};
 
 use smithay::{
-    backend::renderer::{
-        damage::OutputDamageTracker,
-        gles::{GlesRenderbuffer, GlesRenderer},
-    },
+    backend::renderer::{damage::OutputDamageTracker, gles::GlesRenderer},
     desktop::{PopupManager, Space, Window, WindowSurfaceType},
     input::{Seat, SeatState},
     output::Output,
@@ -32,7 +29,7 @@ use smithay::{
 
 use wado_protocol::Placement;
 
-use crate::{encode::encoder::VideoEncoder, sink::FrameSink};
+use crate::{capture::CaptureTarget, encode::encoder::VideoEncoder, sink::FrameSink};
 
 pub struct Wado {
     pub start_time: std::time::Instant,
@@ -58,7 +55,10 @@ pub struct Wado {
     // Headless rendering pipeline — present only while a session is active
     // (set by headless::start_session, cleared by headless::stop_session).
     pub renderer: Option<GlesRenderer>,
-    pub renderbuffer: Option<GlesRenderbuffer>,
+    /// The GBM device backing the EGL display + dmabuf allocator. `Some` only when a DRM
+    /// render node opened (gates the zero-copy DMA-BUF capture tier).
+    pub gbm: Option<crate::capture::gpu::Gbm>,
+    pub capture: Option<Box<dyn CaptureTarget>>,
     pub damage_tracker: Option<OutputDamageTracker>,
     pub encoder: Option<Box<dyn VideoEncoder>>,
     pub frame_sink: Option<Box<dyn FrameSink>>,
@@ -141,7 +141,8 @@ impl Wado {
             popups,
             seat,
             renderer: None,
-            renderbuffer: None,
+            gbm: None,
+            capture: None,
             damage_tracker: None,
             encoder: None,
             frame_sink: None,

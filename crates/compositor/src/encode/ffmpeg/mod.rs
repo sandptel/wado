@@ -29,6 +29,7 @@ use ffmpeg_the_third::ffi::{
 };
 
 use crate::CompositorError;
+use crate::capture::Frame;
 use crate::encode::encoder::VideoEncoder;
 use hwcontext::{DeviceRef, FramesRef, create_nv12_frames, create_vaapi_device};
 
@@ -211,13 +212,14 @@ impl FfmpegVaapiEncoder {
 }
 
 impl VideoEncoder for FfmpegVaapiEncoder {
-    fn encode(&mut self, rgba: &[u8]) -> Option<Vec<u8>> {
-        match self.encode_frame(rgba) {
-            Ok(out) => out,
-            Err(e) => {
-                tracing::warn!("vaapi encode failed: {e}");
-                None
-            }
+    fn submit(&mut self, frame: Frame<'_>) -> crate::Result<Option<Vec<u8>>> {
+        match frame {
+            // CPU-upload feed (Step 1): RGBA → NV12 (CPU) → hwframe_transfer → encode.
+            Frame::Rgba(rgba) => self.encode_frame(&rgba),
+            // Zero-copy DMA-BUF feed lands in Step 2 (encode/ffmpeg/dmabuf_import.rs).
+            Frame::Dma(_) => Err(CompositorError::Encoder(
+                "vaapi DMA-BUF feed not yet wired (Step 2)".into(),
+            )),
         }
     }
 

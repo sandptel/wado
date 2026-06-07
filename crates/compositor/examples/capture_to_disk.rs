@@ -17,13 +17,8 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use smithay::{
-    backend::renderer::Bind,
-    reexports::{calloop::EventLoop, wayland_server::Display},
-    utils::{Buffer, Size},
-};
+use smithay::reexports::{calloop::EventLoop, wayland_server::Display};
 use wado_compositor::{
-    capture::mem::capture_frame,
     conf::{OutputConfig, SinkTarget, WadoConfig},
     headless::{self, FPS, HEIGHT, WIDTH},
     Wado,
@@ -58,7 +53,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     unsafe { std::env::set_var("WAYLAND_DISPLAY", &state.socket_name) };
     std::process::Command::new("weston-terminal").spawn().ok();
 
-    let buf_size: Size<i32, Buffer> = (WIDTH as i32, HEIGHT as i32).into();
     let mut last_snap = Instant::now();
     let mut snap_n = 0u32;
 
@@ -69,26 +63,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         last_snap = Instant::now();
         snap_n += 1;
 
-        let (Some(renderer), Some(renderbuffer)) =
-            (state.renderer.as_mut(), state.renderbuffer.as_mut())
-        else {
-            return;
-        };
-
-        let fb = match renderer.bind(renderbuffer) {
-            Ok(fb) => fb,
-            Err(e) => {
-                eprintln!("[snap] bind error: {e}");
-                return;
-            }
-        };
-
-        match capture_frame(renderer, &fb, buf_size) {
-            Ok(abgr) => {
+        // Best-effort CPU snapshot through the capture abstraction (None on a DMA-BUF target).
+        match headless::snapshot_rgba(state) {
+            Some(abgr) => {
                 let path = format!("captures/snap_{}_{}.ppm", ts, snap_n);
                 save_ppm(&abgr, WIDTH as usize, HEIGHT as usize, &path);
             }
-            Err(e) => eprintln!("[snap] capture_frame error: {e}"),
+            None => eprintln!("[snap] no CPU snapshot available this tick"),
         }
     })?;
 

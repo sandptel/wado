@@ -1,5 +1,7 @@
 use x264::{Colorspace, Encoder, Image, Plane, Preset, Setup, Tune};
 
+use crate::CompositorError;
+use crate::capture::Frame;
 use crate::encode::encoder::VideoEncoder;
 
 pub struct X264Encoder {
@@ -142,8 +144,13 @@ impl X264Encoder {
 }
 
 impl VideoEncoder for X264Encoder {
-    fn encode(&mut self, rgba: &[u8]) -> Option<Vec<u8>> {
-        self.encode_rgba(rgba)
+    fn submit(&mut self, frame: Frame<'_>) -> crate::Result<Option<Vec<u8>>> {
+        match frame {
+            Frame::Rgba(rgba) => Ok(self.encode_rgba(&rgba)),
+            Frame::Dma(_) => Err(CompositorError::Encoder(
+                "x264 (software) cannot consume a DMA-BUF frame".into(),
+            )),
+        }
     }
 
     fn force_idr_next(&mut self) {
