@@ -3,13 +3,11 @@ use std::time::Duration;
 
 use smithay::{
     backend::{
-        allocator::Fourcc,
-        egl::{EGLContext, EGLDisplay, native::EGLSurfacelessDisplay},
+        egl::EGLContext,
         renderer::{
-            Bind, Offscreen,
             damage::OutputDamageTracker,
             element::surface::WaylandSurfaceRenderElement,
-            gles::{GlesRenderbuffer, GlesRenderer},
+            gles::{GlesRenderer, GlesTarget},
         },
     },
     output::{Mode, Output, PhysicalProperties, Subpixel},
@@ -23,7 +21,7 @@ use wado_protocol::EncoderReport;
 
 use crate::{
     Wado, CompositorError,
-    capture::mem::capture_frame,
+    capture::{CaptureTarget, MemTarget, gpu},
     conf::{EncoderConfig, SinkTarget, WadoConfig},
     encode::select::build_encoder,
     sink::{FrameSink, file::FileSink},
@@ -70,18 +68,16 @@ pub fn start_session(
         "starting compositor session — building EGL/GLES + encoder"
     );
 
-    // ── EGL / GLES renderer ───────────────────────────────────────────────────
-    let egl_display =
-        unsafe { EGLDisplay::new(EGLSurfacelessDisplay).map_err(renderer_err("EGLDisplay::new"))? };
-    let egl_context = EGLContext::new(&egl_display).map_err(renderer_err("EGLContext::new"))?;
+    // ── GPU: GBM device + EGL (dmabuf-capable), or surfaceless fallback ───────
+    let gpu = gpu::open()?;
+    let egl_context = EGLContext::new(&gpu.egl).map_err(renderer_err("EGLContext::new"))?;
     let mut renderer =
         unsafe { GlesRenderer::new(egl_context).map_err(renderer_err("GlesRenderer::new"))? };
 
-    // ── Offscreen render target ───────────────────────────────────────────────
+    // ── Capture target (host-memory `ExportMem` — the robust fallback) ────────
+    // Step 2 selects a DMA-BUF target here when the zero-copy pipeline is chosen.
     let buf_size: Size<i32, Buffer> = (ec.width as i32, ec.height as i32).into();
-    let renderbuffer: GlesRenderbuffer = renderer
-        .create_buffer(Fourcc::Abgr8888, buf_size)
-        .map_err(renderer_err("create_buffer"))?;
+    let capture: Box<dyn CaptureTarget> = Box::new(MemTarget::new(&mut renderer, buf_size)?);
 
     // ── Logical Output (no physical display), sized to the client ─────────────
     let mode = Mode {
@@ -114,7 +110,8 @@ pub fn start_session(
     );
 
     state.renderer = Some(renderer);
-    state.renderbuffer = Some(renderbuffer);
+    state.gbm = gpu.gbm;
+    state.capture = Some(capture);
     state.damage_tracker = Some(damage_tracker);
     state.encoder = Some(encoder);
     state.frame_sink = Some(sink);
@@ -123,7 +120,6 @@ pub fn start_session(
     state.session_active = true;
 
     // ── Render timer ──────────────────────────────────────────────────────────
-    let (w, h) = (ec.width, ec.height);
     let frame_nanos = 1_000_000_000 / ec.fps.max(1) as u64;
     let token = state
         .loop_handle
@@ -133,7 +129,7 @@ pub fn start_session(
                 // Guard the render path: a panic here must tear down only the session,
                 // not abort the process (and the server with it). Only Rust unwinding
                 // panics are caught — a native segfault in EGL/GLES/x264 still aborts.
-                match std::panic::catch_unwind(AssertUnwindSafe(|| render_tick(state, w, h))) {
+                match std::panic::catch_unwind(AssertUnwindSafe(|| render_tick(state))) {
                     Ok(Ok(())) => {}
                     // Transient per-frame failure: log and keep the timer alive so
                     // the pipeline can recover on the next tick.
@@ -199,7 +195,8 @@ pub fn stop_session(state: &mut Wado) {
         state.display_handle.remove_global::<Wado>(global);
     }
     state.renderer = None;
-    state.renderbuffer = None;
+    state.capture = None;
+    state.gbm = None;
     state.damage_tracker = None;
     state.encoder = None;
     state.frame_sink = None;
@@ -211,6 +208,21 @@ pub fn stop_session(state: &mut Wado) {
     info!("compositor session stopped — resources released");
 }
 
+/// Best-effort CPU snapshot of the last rendered frame in `Abgr8888`, for debug tooling
+/// (e.g. `examples/capture_to_disk.rs` PPM snapshots). `None` when idle or when the active
+/// capture target can't cheaply read back to the CPU (e.g. a DMA-BUF target).
+pub fn snapshot_rgba(state: &mut Wado) -> Option<Vec<u8>> {
+    let renderer = state.renderer.as_mut()?;
+    let capture = state.capture.as_mut()?;
+    match capture.current_rgba(renderer) {
+        Ok(px) => px,
+        Err(e) => {
+            warn!("snapshot_rgba failed: {e}");
+            None
+        }
+    }
+}
+
 /// Request that the next encoded frame be a forced IDR keyframe. Called when a new
 /// viewer connects or the browser sends a PLI/FIR (picture loss). No-op if idle.
 pub fn force_keyframe(state: &mut Wado) {
@@ -220,7 +232,7 @@ pub fn force_keyframe(state: &mut Wado) {
     }
 }
 
-fn render_tick(state: &mut Wado, width: u32, height: u32) -> crate::Result<()> {
+fn render_tick(state: &mut Wado) -> crate::Result<()> {
     if !state.session_active {
         return Ok(());
     }
@@ -228,30 +240,40 @@ fn render_tick(state: &mut Wado, width: u32, height: u32) -> crate::Result<()> {
         return Ok(());
     };
 
-    let renderer = state.renderer.as_mut().unwrap();
-    let renderbuffer = state.renderbuffer.as_mut().unwrap();
-    let damage_tracker = state.damage_tracker.as_mut().unwrap();
+    // Render into the active capture target and hand the resulting frame to the encoder.
+    // The render itself is a closure so the capture target (`MemTarget`/`DmaTarget`) owns
+    // the bind/export and the render tick stays capture-agnostic. Disjoint field borrows
+    // (renderer / capture / damage_tracker / space / encoder) keep the borrow checker happy.
+    let nal = {
+        let renderer = state.renderer.as_mut().unwrap();
+        let capture = state.capture.as_mut().unwrap();
+        let damage_tracker = state.damage_tracker.as_mut().unwrap();
+        let space = &state.space;
+        let bg = [0.1, 0.1, 0.1, 1.0];
 
-    let mut fb = renderer.bind(renderbuffer).map_err(renderer_err("bind"))?;
+        let mut render = |r: &mut GlesRenderer, fb: &mut GlesTarget<'_>| -> crate::Result<()> {
+            smithay::desktop::space::render_output::<
+                _,
+                WaylandSurfaceRenderElement<GlesRenderer>,
+                _,
+                _,
+            >(&output, r, fb, 1.0, 0, [space], &[], damage_tracker, bg)
+            .map_err(renderer_err("render_output"))?;
+            Ok(())
+        };
 
-    smithay::desktop::space::render_output::<
-        _,
-        WaylandSurfaceRenderElement<GlesRenderer>,
-        _,
-        _,
-    >(
-        &output,
-        renderer,
-        &mut fb,
-        1.0,
-        0,
-        [&state.space],
-        &[],
-        damage_tracker,
-        [0.1, 0.1, 0.1, 1.0],
-    )
-    .map_err(renderer_err("render_output"))?;
+        let frame = capture.capture(renderer, &mut render)?;
+        let encoder = state.encoder.as_mut().unwrap();
+        encoder.submit(frame)?
+    };
 
+    if let Some(nal_bytes) = nal {
+        if let Some(sink) = state.frame_sink.as_mut() {
+            sink.send(&nal_bytes);
+        }
+    }
+
+    // Post-frame bookkeeping (after the capture/encode borrows are released).
     state.space.elements().for_each(|window| {
         window.send_frame(
             &output,
@@ -263,16 +285,6 @@ fn render_tick(state: &mut Wado, width: u32, height: u32) -> crate::Result<()> {
     state.space.refresh();
     state.popups.cleanup();
     let _ = state.display_handle.flush_clients();
-
-    let buf_size: Size<i32, Buffer> = (width as i32, height as i32).into();
-    let pixels = capture_frame(renderer, &fb, buf_size)?;
-
-    let encoder = state.encoder.as_mut().unwrap();
-    if let Some(nal_bytes) = encoder.encode(&pixels) {
-        if let Some(sink) = state.frame_sink.as_mut() {
-            sink.send(&nal_bytes);
-        }
-    }
 
     Ok(())
 }
