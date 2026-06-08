@@ -141,10 +141,6 @@ pub struct SessionConfig {
     /// Encoder backend preference (hardware vs software). Applied at session start.
     #[serde(default)]
     pub encoder: EncoderPref,
-    /// Latency-oriented encoder tuning (the "Encoder settings" panel group). Applied at
-    /// session start.
-    #[serde(default)]
-    pub tuning: EncoderTuning,
 }
 
 /// Encoder-backend selection for a session (the "Compositor settings → encoder" group).
@@ -153,55 +149,6 @@ pub struct EncoderPref {
     /// Which encode backend to use. Defaults to [`EncoderBackend::Auto`] (probe and pick).
     #[serde(default)]
     pub backend: EncoderBackend,
-}
-
-/// Latency-oriented encoder tuning (the "Encoder settings" panel group). Kept as its own
-/// atomic sub-struct so the latency knobs stay independent of backend/quality selection.
-///
-/// Only **safe** (latency-preserving) knobs are exposed: rate control is always CBR with no
-/// B-frames (invariant #7). `zero_latency` is a master lock — when set it forces the
-/// latency-optimal config (CBR, on-demand keyframes) and the other knobs are ignored.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct EncoderTuning {
-    /// Master low-latency lock. When `true` (default) the server forces the latency-optimal
-    /// config (CBR, no B-frames, `async_depth=1`, on-demand keyframes) and ignores
-    /// `keyframe_mode`. When `false` the keyframe knob is honoured (still CBR, still no
-    /// B-frames — the dangerous knobs are never exposed).
-    #[serde(default = "default_true")]
-    pub zero_latency: bool,
-    /// How keyframes are scheduled. Only consulted when `zero_latency` is `false`.
-    #[serde(default)]
-    pub keyframe_mode: KeyframeMode,
-}
-
-impl Default for EncoderTuning {
-    fn default() -> Self {
-        // Default to Periodic short-GOP for broad VAAPI driver compatibility. On-demand
-        // keyframes (huge GOP) can destabilize some AMD/Intel VAAPI drivers under heavy
-        // load at high resolutions; expose it as an opt-in via the client's UI knob.
-        Self { zero_latency: false, keyframe_mode: KeyframeMode::Periodic }
-    }
-}
-
-fn default_true() -> bool {
-    true
-}
-
-/// Keyframe-scheduling strategy.
-///
-/// True intra-refresh is unsupported by the VAAPI H.264 encoder (ffmpeg) and the `x264`
-/// crate, so the low-latency strategy is **on-demand keyframes**: a huge GOP (no periodic
-/// IDR) with an IDR emitted only on viewer-connect and RTCP PLI/FIR. This removes the
-/// periodic full-keyframe latency/bandwidth spike; loss recovery costs one PLI round-trip.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum KeyframeMode {
-    /// No periodic IDR; keyframes only on connect + PLI/FIR. Lowest latency (default).
-    #[default]
-    OnDemand,
-    /// Fixed-cadence periodic IDR every `keyframe_interval` frames. Auto-recovers from loss
-    /// without a round-trip, at the cost of the periodic spike.
-    Periodic,
 }
 
 /// Which video-encode backend a session should use.
@@ -243,10 +190,6 @@ pub struct EncoderReport {
     /// Lets the client mark a *fallback* path. Defaults empty for older servers.
     #[serde(default)]
     pub pipeline: String,
-    /// Engaged keyframe strategy — `"on-demand"` or `"periodic"`. Surfaced in the client
-    /// badge tooltip. Defaults empty for older servers.
-    #[serde(default)]
-    pub keyframe: String,
 }
 
 /// Whether a running session is encoding in hardware or software.

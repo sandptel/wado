@@ -11,7 +11,6 @@
 use std::borrow::Cow;
 
 use wado_compositor::capture::Frame;
-use wado_compositor::conf::KeyframeMode;
 use wado_compositor::encode::encoder::VideoEncoder;
 use wado_compositor::encode::ffmpeg::{FfmpegVaapiEncoder, hwcontext::first_render_node, probe};
 
@@ -30,7 +29,7 @@ fn main() {
     };
 
     let (w, h) = (1280u32, 720u32);
-    let mut enc = match FfmpegVaapiEncoder::new(&node, w, h, 60, 4000, 30, KeyframeMode::OnDemand) {
+    let mut enc = match FfmpegVaapiEncoder::new(&node, w, h, 60, 4000, 30) {
         Ok(e) => e,
         Err(e) => {
             println!("FAILED to open VAAPI encoder at {w}x{h}: {e}");

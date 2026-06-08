@@ -10,7 +10,7 @@
 use std::{fs, time::Instant};
 
 use wado_compositor::{
-    conf::{KeyframeMode, Preset},
+    conf::Preset,
     encode::x264enc::X264Encoder,
     sink::{file::FileSink, FrameSink},
 };
@@ -29,8 +29,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // ── Step 1: build encoder ─────────────────────────────────────────────────
     let t = Instant::now();
-    let mut encoder =
-        X264Encoder::new(WIDTH, HEIGHT, FPS, 4000, 30, KeyframeMode::Periodic, Preset::Ultrafast)
+    let mut encoder = X264Encoder::new(WIDTH, HEIGHT, FPS, 4000, 30, Preset::Ultrafast)
         .inspect_err(|e| eprintln!("[FAIL] X264Encoder::new: {e}"))?;
     eprintln!("[1/5] X264Encoder::new  OK  ({:.1} ms)", ms(t));
 

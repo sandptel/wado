@@ -37,7 +37,6 @@
 //! The launch command is free-form, so this server binds `127.0.0.1` by default.
 //! A password/approval gate (and only then LAN exposure) is the next step.
 
-pub mod events;
 pub mod logbus;
 
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -67,9 +66,8 @@ use webrtc::rtp_transceiver::rtp_codec::RTCRtpCodecCapability;
 use webrtc::track::track_local::TrackLocal;
 use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
 
-use events::SSE_CAPACITY;
 use logbus::LogBus;
-use wado_compositor::{CommandSender, CompositorCommand, FrameMsg, InputEvent, InputSender, SessionEvent};
+use wado_compositor::{CommandSender, CompositorCommand, FrameMsg, InputEvent, InputSender};
 use wado_protocol::{INPUT_CHANNEL, SessionInfo};
 
 /// Bounded so encoded frames never pile up behind a slow/absent network.
@@ -90,9 +88,6 @@ struct ServerCtx {
     /// Sender for remote touch/keyboard events, fed by each viewer's input data channel.
     input_tx: InputSender,
     log_bus: LogBus,
-    /// Pre-formatted SSE frames for encoder tier changes, fanned from the compositor's
-    /// SessionEvent channel by `events::spawn`. Each `/events` subscriber subscribes.
-    encoder_sse: broadcast::Sender<String>,
     /// The single active viewer's peer connection, kept alive here (not merely by
     /// the RTCP task) and cleared when it fails/closes.
     active_pc: Arc<Mutex<Option<Arc<RTCPeerConnection>>>>,
@@ -109,7 +104,6 @@ pub fn start(
     cmd_tx: CommandSender,
     input_tx: InputSender,
     frame_rx: mpsc::Receiver<FrameMsg>,
-    event_rx: mpsc::Receiver<SessionEvent>,
     addr: &str,
     log_bus: LogBus,
 ) -> crate::Result<()> {
@@ -125,7 +119,7 @@ pub fn start(
                 }
             };
             rt.block_on(async move {
-                if let Err(e) = run_server(addr, frame_rx, event_rx, cmd_tx, input_tx, log_bus).await {
+                if let Err(e) = run_server(addr, frame_rx, cmd_tx, input_tx, log_bus).await {
                     error!("control server exited: {e}");
                 }
             });
@@ -137,7 +131,6 @@ pub fn start(
 async fn run_server(
     addr: String,
     mut frame_rx: mpsc::Receiver<FrameMsg>,
-    event_rx: mpsc::Receiver<SessionEvent>,
     cmd_tx: CmdSender,
     input_tx: InputSender,
     log_bus: LogBus,
@@ -184,17 +177,12 @@ async fn run_server(
         });
     }
 
-    // Encoder SSE: fan encoder-changed events from the compositor out to all /events clients.
-    let (encoder_sse, _) = broadcast::channel::<String>(SSE_CAPACITY);
-    events::spawn(event_rx, encoder_sse.clone());
-
     let ctx = Arc::new(ServerCtx {
         api,
         track,
         cmd_tx,
         input_tx,
         log_bus,
-        encoder_sse,
         active_pc: Arc::new(Mutex::new(None)),
         generation: Arc::new(AtomicU64::new(0)),
     });
@@ -262,7 +250,7 @@ async fn handle_conn(mut stream: TcpStream, ctx: Arc<ServerCtx>) -> crate::Resul
 
     // Live log stream is a long-lived response — handle before the normal path.
     if method == "GET" && path == "/events" {
-        return serve_sse(stream, &ctx.log_bus, ctx.encoder_sse.subscribe()).await;
+        return serve_sse(stream, &ctx.log_bus).await;
     }
 
     let body_start = header_end + 4;
@@ -460,14 +448,8 @@ async fn handle_offer(ctx: &ServerCtx, offer_json: &str) -> crate::Result<String
     Ok(serde_json::to_string(&local)?)
 }
 
-/// Stream wado's live tracing output and session events to a `/events` listener as SSE.
-/// Log lines arrive as unnamed `data:` events; encoder tier changes are named
-/// `event: encoder` frames pushed by the compositor when it downgrades at runtime.
-async fn serve_sse(
-    mut stream: TcpStream,
-    log_bus: &LogBus,
-    mut encoder_rx: broadcast::Receiver<String>,
-) -> crate::Result<()> {
+/// Stream wado's live tracing output to a `/events` listener as Server-Sent Events.
+async fn serve_sse(mut stream: TcpStream, log_bus: &LogBus) -> crate::Result<()> {
     let header = "HTTP/1.1 200 OK\r\n\
          Content-Type: text/event-stream\r\n\
          Cache-Control: no-cache\r\n\
@@ -489,17 +471,6 @@ async fn serve_sse(
                 Ok(line) => {
                     if stream.write_all(format!("data: {line}\n\n").as_bytes()).await.is_err() {
                         break; // client disconnected
-                    }
-                }
-                Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                Err(broadcast::error::RecvError::Closed) => break,
-            },
-            // Named "encoder" SSE event: the compositor emits this when the pipeline tier
-            // degrades at runtime (the frame is already formatted by events::spawn).
-            recv = encoder_rx.recv() => match recv {
-                Ok(frame) => {
-                    if stream.write_all(frame.as_bytes()).await.is_err() {
-                        break;
                     }
                 }
                 Err(broadcast::error::RecvError::Lagged(_)) => continue,
