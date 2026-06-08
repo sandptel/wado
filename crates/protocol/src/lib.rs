@@ -176,7 +176,10 @@ pub struct EncoderTuning {
 
 impl Default for EncoderTuning {
     fn default() -> Self {
-        Self { zero_latency: true, keyframe_mode: KeyframeMode::OnDemand }
+        // Default to Periodic short-GOP for broad VAAPI driver compatibility. On-demand
+        // keyframes (huge GOP) can destabilize some AMD/Intel VAAPI drivers under heavy
+        // load at high resolutions; expose it as an opt-in via the client's UI knob.
+        Self { zero_latency: false, keyframe_mode: KeyframeMode::Periodic }
     }
 }
 

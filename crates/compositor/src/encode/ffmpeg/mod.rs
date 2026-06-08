@@ -317,10 +317,16 @@ unsafe fn open_h264_vaapi(
         (*ctx).max_b_frames = 0; // invariant #7: no reordering latency
         // Keyframe strategy (invariant #7). True intra-refresh is unsupported by h264_vaapi
         // (ffmpeg 8.1 exposes only `-g`/`idr_interval`), so the low-latency mode is "on-demand":
-        // a huge GOP with no periodic IDR — keyframes come only from the per-frame forced IDR
-        // (viewer-connect + RTCP PLI/FIR). `Periodic` keeps a fixed short-GOP cadence.
+        // a bounded-long GOP with no periodic IDR — keyframes come only from the per-frame
+        // forced IDR (viewer-connect + RTCP PLI/FIR). `Periodic` keeps a fixed short-GOP cadence.
+        // The ceiling (ON_DEMAND_GOP_MAX) prevents the AMD VAAPI encoder from building an
+        // unbounded P-chain that silently stalls under rapid frame-delta bursts.
         (*ctx).gop_size = match keyframe_mode {
-            KeyframeMode::OnDemand => fps.max(1).saturating_mul(3600).min(i32::MAX as u32) as i32,
+            KeyframeMode::OnDemand => {
+                fps.max(1)
+                    .saturating_mul(crate::encode::ON_DEMAND_GOP_SECS)
+                    .min(crate::encode::ON_DEMAND_GOP_MAX) as i32
+            }
             KeyframeMode::Periodic => keyframe_interval.max(1) as i32,
         };
         let bitrate = (bitrate_kbps as i64) * 1000;

@@ -29,6 +29,7 @@ use crate::{
         encoder::VideoEncoder,
         ffmpeg::{FfmpegVaapiEncoder, hwcontext::first_render_node},
         select::{Tier, tiers_for},
+        stall_watchdog::StallWatchdog,
         x264enc::X264Encoder,
     },
     event::SessionEvent,
@@ -128,6 +129,8 @@ pub fn start_session(
     state.output = Some(output);
     state.output_global = Some(global);
     state.session_active = true;
+    // Arm the stall watchdog calibrated to the session's frame rate.
+    state.stall_watchdog = Some(StallWatchdog::new(ec.fps));
 
     // ── Render timer ──────────────────────────────────────────────────────────
     let frame_nanos = 1_000_000_000 / ec.fps.max(1) as u64;
@@ -144,8 +147,25 @@ pub fn start_session(
                     // Transient per-frame failure: log and keep the timer alive so
                     // the pipeline can recover on the next tick.
                     Ok(Err(e)) => tracing::warn!("render tick failed: {e}"),
-                    Err(_) => {
-                        tracing::error!("compositor panicked during render — stopping session");
+                    Err(payload) => {
+                        // Extract a human-readable message from the panic payload.
+                        let msg = payload
+                            .downcast_ref::<&str>()
+                            .copied()
+                            .or_else(|| {
+                                payload.downcast_ref::<String>().map(String::as_str)
+                            })
+                            .unwrap_or("<opaque panic value>");
+                        tracing::error!(
+                            "compositor panicked during render: {msg} — stopping session"
+                        );
+                        // Notify connected clients before tearing down, so they can
+                        // show a reconnect banner instead of a silent frozen video.
+                        if let Some(tx) = &state.event_tx {
+                            let _ = tx.try_send(SessionEvent::SessionEnded {
+                                reason: msg.to_string(),
+                            });
+                        }
                         // We're inside this timer's own callback: take the token so
                         // stop_session won't `remove()` the source we're about to drop
                         // via the return value below (avoids a double-remove).
@@ -213,6 +233,7 @@ pub fn stop_session(state: &mut Wado) {
     state.encoder_config = None;
     state.frame_sink = None;
     state.session_active = false;
+    state.stall_watchdog = None;
     state.window_move = None;
     state.pending_placement.clear();
     state.cascade_count = 0;
@@ -407,6 +428,10 @@ fn downgrade_pipeline(state: &mut Wado) {
                 if let Some(e) = state.encoder.as_mut() {
                     e.force_idr_next();
                 }
+                // Reset the stall counter so the new encoder starts with a clean slate.
+                if let Some(w) = state.stall_watchdog.as_mut() {
+                    w.reset();
+                }
                 if let Some(tx) = &state.event_tx {
                     let _ = tx.try_send(SessionEvent::EncoderChanged(new_report));
                 }
@@ -419,6 +444,13 @@ fn downgrade_pipeline(state: &mut Wado) {
         }
     }
     tracing::error!("no fallback encoder tier left — session video is broken");
+    // All tiers exhausted: notify the client so it shows a reconnect banner instead of
+    // a silent frozen video (the session stays technically alive but is producing nothing).
+    if let Some(tx) = &state.event_tx {
+        let _ = tx.try_send(SessionEvent::SessionEnded {
+            reason: "all encoder tiers exhausted".to_string(),
+        });
+    }
 }
 
 /// Request that the next encoded frame be a forced IDR keyframe. Called when a new
@@ -470,11 +502,35 @@ fn render_tick(state: &mut Wado) -> crate::Result<()> {
 
     match result {
         Ok(Some(nal_bytes)) => {
+            // Got a packet: reset stall counter and forward to the network sink.
+            if let Some(w) = state.stall_watchdog.as_mut() {
+                w.reset();
+            }
             if let Some(sink) = state.frame_sink.as_mut() {
                 sink.send(&nal_bytes);
             }
         }
-        Ok(None) => {}
+        Ok(None) => {
+            // No packet this tick: count consecutive empties.
+            // A VAAPI encoder under a very long GOP can silently return Ok(None) every
+            // tick without error — the stall watchdog detects this and auto-downgrades.
+            let stalled = state.stall_watchdog.as_mut().map_or(false, |w| w.tick(false));
+            if stalled {
+                let n = state
+                    .stall_watchdog
+                    .as_ref()
+                    .map_or(0, |w| w.consecutive_empty());
+                warn!(
+                    tier = ?state.current_tier,
+                    "encoder stalled: no packets for {n} consecutive ticks — downgrading pipeline"
+                );
+                // Reset before downgrade so the new encoder starts with a clean slate.
+                if let Some(w) = state.stall_watchdog.as_mut() {
+                    w.reset();
+                }
+                downgrade_pipeline(state);
+            }
+        }
         // Robustness: a runtime encode failure downgrades the pipeline one tier instead of
         // failing every frame. The render loop continues; the next tick uses the new tier.
         Err(e) => {

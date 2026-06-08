@@ -92,8 +92,9 @@ fn App() -> Element {
     // Requested encoder backend: "auto" | "hardware" | "software" (the panel picker).
     let mut encoder_backend = use_signal(|| "auto".to_string());
     // ── Encoder settings (latency knobs). Applied at Start. ──────────────────────────────
-    // Master low-latency lock; when on, the keyframe knob is locked to on-demand.
-    let mut zero_latency = use_signal(|| true);
+    // Master low-latency lock; default OFF — on-demand keyframes destabilize some VAAPI
+    // drivers under heavy load (huge GOP). The user can enable it explicitly via the UI.
+    let mut zero_latency = use_signal(|| false);
     // Keyframe strategy: "on_demand" | "periodic" (only honoured when zero-latency is off).
     let mut keyframe_mode = use_signal(|| "on_demand".to_string());
     // What the server actually opened, from the /session/start response: the hw/sw `mode`
@@ -172,6 +173,24 @@ fn App() -> Element {
                     encoder_keyframe.set(String::new());
                     let _ = document::eval("window.__wado.stopSession();").await;
                     status.set("idle".to_string());
+                }
+                // The compositor ended the session abnormally (render panic, or all
+                // encoder tiers exhausted). Show the reason and reset UI so the user
+                // can click Start again without a page reload.
+                "session" => {
+                    let reason = msg
+                        .get("reason")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown error");
+                    session_on.set(false);
+                    logs_open.set(true);
+                    stat_fps.set(None);
+                    stat_ping.set(None);
+                    encoder_mode.set(String::new());
+                    encoder_pipeline.set(String::new());
+                    encoder_keyframe.set(String::new());
+                    let _ = document::eval("window.__wado.stopSession();").await;
+                    status.set(format!("Session ended: {reason}"));
                 }
                 _ => {}
             }

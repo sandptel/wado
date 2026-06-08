@@ -31,7 +31,8 @@ use wado_protocol::Placement;
 
 use crate::{
     capture::CaptureTarget, conf::EncoderConfig, encode::encoder::VideoEncoder,
-    encode::select::Tier, event::EventSender, sink::FrameSink,
+    encode::select::Tier, encode::stall_watchdog::StallWatchdog, event::EventSender,
+    sink::FrameSink,
 };
 
 pub struct Wado {
@@ -83,6 +84,11 @@ pub struct Wado {
     /// [`crate::event::SessionEvent`] when the pipeline tier degrades at runtime so the
     /// server can fan the change out to all connected SSE clients. `None` when not wired.
     pub event_tx: Option<EventSender>,
+    /// Stall watchdog: counts consecutive `Ok(None)` ticks from the encoder. `Some` while
+    /// a session is active (calibrated to the session's fps), `None` between sessions.
+    /// When the threshold is exceeded, `render_tick` treats it as an encode stall and
+    /// calls `downgrade_pipeline` — converting a silent hang into an auto-fallback.
+    pub stall_watchdog: Option<StallWatchdog>,
     /// An in-progress compositor-managed window move (long-press-drag or "move mode"),
     /// driven by [`wado_protocol::InputEvent::WindowDrag`]. `None` when not moving.
     pub window_move: Option<WindowMove>,
@@ -164,6 +170,7 @@ impl Wado {
             app_processes: Vec::new(),
             session_active: false,
             event_tx: None,
+            stall_watchdog: None,
             window_move: None,
             placement: Placement::default(),
             focus_follows_pointer: false,

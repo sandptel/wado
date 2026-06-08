@@ -9,5 +9,8 @@ W.connectLogs = (server) => {
   es.onmessage = (ev) => emit({ type: "log", line: ev.data });
   // Named SSE event: the server pushes this when the encoder tier changes at runtime.
   es.addEventListener("encoder", (ev) => emit({ type: "encoder", ...JSON.parse(ev.data) }));
+  // Named SSE event: the server pushes this when the session ends abnormally (render
+  // panic or all encoder tiers exhausted). The client shows a reconnect banner.
+  es.addEventListener("session", (ev) => emit({ type: "session", ...JSON.parse(ev.data) }));
   es.onerror = () => {}; // EventSource auto-reconnects
 };
