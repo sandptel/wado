@@ -11,8 +11,8 @@
 
 use dioxus::prelude::*;
 use wado_protocol::{
-    logfmt::LogLine, EncoderBackend, EncoderPref, EncoderTuning, InputConfig, KeyframeMode,
-    Placement, Quality, SessionConfig, WindowConfig,
+    logfmt::LogLine, EncoderBackend, EncoderPref, InputConfig, Placement, Quality, SessionConfig,
+    WindowConfig,
 };
 
 /// The bridge script: assembled from the single-job `js/` files (concatenated in load order —
@@ -91,19 +91,11 @@ fn App() -> Element {
     let mut show_ping = use_signal(|| true);
     // Requested encoder backend: "auto" | "hardware" | "software" (the panel picker).
     let mut encoder_backend = use_signal(|| "auto".to_string());
-    // ── Encoder settings (latency knobs). Applied at Start. ──────────────────────────────
-    // Master low-latency lock; default OFF — on-demand keyframes destabilize some VAAPI
-    // drivers under heavy load (huge GOP). The user can enable it explicitly via the UI.
-    let mut zero_latency = use_signal(|| false);
-    // Keyframe strategy: "on_demand" | "periodic" (only honoured when zero-latency is off).
-    let mut keyframe_mode = use_signal(|| "on_demand".to_string());
     // What the server actually opened, from the /session/start response: the hw/sw `mode`
     // (drives the persistent software banner, invariant #5) and the `pipeline` tier id
     // (drives the stagebar badge + fallback marker).
     let mut encoder_mode = use_signal(String::new);
     let mut encoder_pipeline = use_signal(String::new);
-    // Engaged keyframe strategy from the server ("on-demand"/"periodic"), for the badge tooltip.
-    let mut encoder_keyframe = use_signal(String::new);
     let mut status = use_signal(|| "idle".to_string());
     let mut stagebar = use_signal(|| "No session.".to_string());
     let mut logs = use_signal(Vec::<LogLine>::new);
@@ -141,9 +133,6 @@ fn App() -> Element {
                     encoder_pipeline.set(
                         msg.get("pipeline").and_then(|v| v.as_str()).unwrap_or("").to_string(),
                     );
-                    encoder_keyframe.set(
-                        msg.get("keyframe").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                    );
                 }
                 "log" => {
                     let line = msg.get("line").and_then(|v| v.as_str()).unwrap_or("");
@@ -161,7 +150,6 @@ fn App() -> Element {
                     stat_ping.set(None);
                     encoder_mode.set(String::new());
                     encoder_pipeline.set(String::new());
-                    encoder_keyframe.set(String::new());
                 }
                 "giveup" => {
                     session_on.set(false);
@@ -170,27 +158,8 @@ fn App() -> Element {
                     stat_ping.set(None);
                     encoder_mode.set(String::new());
                     encoder_pipeline.set(String::new());
-                    encoder_keyframe.set(String::new());
                     let _ = document::eval("window.__wado.stopSession();").await;
                     status.set("idle".to_string());
-                }
-                // The compositor ended the session abnormally (render panic, or all
-                // encoder tiers exhausted). Show the reason and reset UI so the user
-                // can click Start again without a page reload.
-                "session" => {
-                    let reason = msg
-                        .get("reason")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("unknown error");
-                    session_on.set(false);
-                    logs_open.set(true);
-                    stat_fps.set(None);
-                    stat_ping.set(None);
-                    encoder_mode.set(String::new());
-                    encoder_pipeline.set(String::new());
-                    encoder_keyframe.set(String::new());
-                    let _ = document::eval("window.__wado.stopSession();").await;
-                    status.set(format!("Session ended: {reason}"));
                 }
                 _ => {}
             }
@@ -236,10 +205,6 @@ fn App() -> Element {
             "software" => EncoderBackend::Software,
             _ => EncoderBackend::Auto,
         };
-        let kf_mode = match keyframe_mode().as_str() {
-            "periodic" => KeyframeMode::Periodic,
-            _ => KeyframeMode::OnDemand,
-        };
         let cfg = SessionConfig {
             width,
             height,
@@ -254,13 +219,11 @@ fn App() -> Element {
             },
             window: WindowConfig { placement: place },
             encoder: EncoderPref { backend },
-            tuning: EncoderTuning { zero_latency: zero_latency(), keyframe_mode: kf_mode },
         };
         let server = server_addr();
         session_on.set(true);
         encoder_mode.set(String::new());
         encoder_pipeline.set(String::new());
-        encoder_keyframe.set(String::new());
         status.set("starting session…".to_string());
         spawn(async move {
             let code = format!("window.__wado.start({}, {});", js(&server), js(&cfg));
@@ -318,11 +281,6 @@ fn App() -> Element {
         _ => ("", ""),
     };
     let show_badge = on && !badge_label.is_empty();
-    // Badge tooltip: active pipeline + the engaged keyframe strategy (on-demand vs periodic).
-    let badge_title = match encoder_keyframe().as_str() {
-        "" => "active encode pipeline".to_string(),
-        kf => format!("active encode pipeline · {kf} keyframes"),
-    };
 
     rsx! {
         document::Stylesheet { href: asset!("/assets/main.css") }
@@ -398,53 +356,6 @@ fn App() -> Element {
                 option { value: "auto", "Auto (hardware if available)" }
                 option { value: "hardware", "Hardware only (GPU)" }
                 option { value: "software", "Software (x264)" }
-            }
-
-            details {
-                summary { "Encoder settings" }
-
-                label {
-                    input {
-                        r#type: "checkbox", checked: zero_latency(),
-                        onchange: move |e| zero_latency.set(e.checked()),
-                    }
-                    " Zero-latency mode (applies at Start)"
-                }
-                p { class: "hint", style: "margin:4px 0 0;",
-                    "Locks the latency-optimal config: CBR, no B-frames, on-demand keyframes."
-                }
-
-                label { "Rate control" }
-                input {
-                    r#type: "text", value: "CBR (constant bitrate)", disabled: true,
-                    title: "Constant bitrate — the only mode (latency-first, invariant #7).",
-                }
-
-                label { "Keyframe mode (applies at Start)" }
-                select {
-                    value: "{keyframe_mode}",
-                    disabled: zero_latency(),
-                    onchange: move |e| keyframe_mode.set(e.value()),
-                    option { value: "on_demand", "On-demand (no periodic IDR · lowest latency)" }
-                    option { value: "periodic", "Periodic IDR (fixed cadence)" }
-                }
-                if zero_latency() {
-                    p { class: "hint", style: "margin:4px 0 0;",
-                        "Locked to on-demand while zero-latency is on. IDRs come on connect + packet loss."
-                    }
-                } else if keyframe_mode() == "periodic" {
-                    div { style: "margin-top:8px;",
-                        label { style: "margin-top:0;", "Keyframe interval (frames)" }
-                        input {
-                            r#type: "number", min: "1", placeholder: "(from quality)",
-                            value: "{keyframe}",
-                            oninput: move |e| keyframe.set(e.value()),
-                        }
-                    }
-                }
-                p { class: "hint", style: "margin:8px 0 0;",
-                    "Software (x264) fallback always runs low-latency regardless of these."
-                }
             }
 
             label { "Command" }
@@ -584,8 +495,11 @@ fn App() -> Element {
                     option { value: "veryfast", "veryfast" }
                     option { value: "faster", "faster" }
                 }
-                p { class: "hint", style: "margin:4px 0 0;",
-                    "Keyframe interval moved to Encoder settings → Keyframe mode (Periodic)."
+                label { "Keyframe interval (frames)" }
+                input {
+                    r#type: "number", min: "1", placeholder: "(from quality)",
+                    value: "{keyframe}",
+                    oninput: move |e| keyframe.set(e.value()),
                 }
             }
 
@@ -611,7 +525,7 @@ fn App() -> Element {
                 }
                 span {
                     if show_badge {
-                        span { class: "pipebadge {badge_class}", title: "{badge_title}",
+                        span { class: "pipebadge {badge_class}", title: "active encode pipeline",
                             "{badge_label}" }
                     }
                     if show_stats {

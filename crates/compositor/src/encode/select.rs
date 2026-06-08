@@ -8,7 +8,7 @@
 //! - `vaapi-cpu`   (Tier B): `ExportMem` → CPU NV12 → upload → `h264_vaapi`.
 //! - `x264-cpu`    (Tier C): `ExportMem` → x264 software.
 
-use wado_protocol::{EncoderBackend, EncoderMode, EncoderReport, KeyframeMode};
+use wado_protocol::{EncoderBackend, EncoderMode, EncoderReport};
 
 /// One pipeline tier, best (lowest latency) first.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -19,23 +19,18 @@ pub enum Tier {
 }
 
 impl Tier {
-    /// The wire report for this tier, given the engaged `keyframe_mode`.
-    pub fn report(self, keyframe_mode: KeyframeMode) -> EncoderReport {
+    /// The wire report for this tier.
+    pub fn report(self) -> EncoderReport {
         let (mode, codec, backend, pipeline) = match self {
             Tier::VaapiDma => (EncoderMode::Hardware, "h264", "vaapi", "vaapi-dmabuf"),
             Tier::VaapiCpu => (EncoderMode::Hardware, "h264", "vaapi", "vaapi-cpu"),
             Tier::X264 => (EncoderMode::Software, "h264", "x264", "x264-cpu"),
-        };
-        let keyframe = match keyframe_mode {
-            KeyframeMode::OnDemand => "on-demand",
-            KeyframeMode::Periodic => "periodic",
         };
         EncoderReport {
             mode,
             codec: codec.into(),
             backend: backend.into(),
             pipeline: pipeline.into(),
-            keyframe: keyframe.into(),
         }
     }
 

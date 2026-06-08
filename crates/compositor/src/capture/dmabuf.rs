@@ -5,9 +5,9 @@
 //!
 //! A small [`Swapchain`] (max 4 buffers) of `Abgr8888` dmabufs is rendered into round-robin
 //! so the GPU isn't stalled waiting for the encoder to finish reading the previous frame.
-//! Modifier choice is caller-supplied: `headless::build_tier` queries the GPU's preferred
-//! render formats (`EGLContext::dmabuf_render_formats`) and runs a self-test before
-//! committing; Linear is always the final fallback (invariant #3 / invariant #6).
+//! Modifier choice is **Linear** for now: it is the most portable across the GLES renderer
+//! and the VAAPI DRM-PRIME importer (the cross-driver modifier minefield — invariant #3
+//! keeps the CPU `MemTarget` as the fallback when even this fails the Tier-A probe).
 
 use smithay::backend::{
     allocator::{
@@ -36,19 +36,16 @@ pub struct DmaTarget {
 }
 
 impl DmaTarget {
-    /// Build a swapchain on `gbm` at `size` using the provided `modifiers` list.
-    /// GBM will allocate using the first modifier it supports; pass `[preferred…, Linear]`
-    /// to prefer tiled layouts while keeping Linear as a fallback within the swapchain.
-    /// The caller (headless::build_tier) is responsible for running a self-test before
-    /// committing to any non-Linear modifier (invariant #6).
-    pub fn new(gbm: Gbm, size: Size<i32, Buffer>, modifiers: Vec<Modifier>) -> crate::Result<Self> {
+    /// Build a swapchain on `gbm` at `size`. The render node and the EGL display this renders
+    /// on come from the same GBM device (see [`crate::capture::gpu`]).
+    pub fn new(gbm: Gbm, size: Size<i32, Buffer>) -> crate::Result<Self> {
         let allocator = GbmAllocator::new(gbm, GbmBufferFlags::RENDERING);
         let swapchain = Swapchain::new(
             allocator,
             size.w as u32,
             size.h as u32,
             Fourcc::Abgr8888,
-            modifiers,
+            vec![Modifier::Linear],
         );
         Ok(Self { swapchain, current: None })
     }

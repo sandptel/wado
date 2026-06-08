@@ -1,7 +1,5 @@
 use x264::{Colorspace, Encoder, Image, Plane, Preset, Setup, Tune};
 
-use wado_protocol::KeyframeMode;
-
 use crate::CompositorError;
 use crate::capture::Frame;
 use crate::encode::encoder::VideoEncoder;
@@ -13,7 +11,6 @@ pub struct X264Encoder {
     fps: u32,
     bitrate_kbps: u32,
     keyframe_interval: u32,
-    keyframe_mode: KeyframeMode,
     preset: Preset,
     pts: i64,
     /// SPS + PPS NALs, prepended to every IDR frame so the stream is self-contained.
@@ -31,13 +28,11 @@ impl X264Encoder {
         fps: u32,
         bitrate_kbps: u32,
         keyframe_interval: u32,
-        keyframe_mode: KeyframeMode,
         preset: Preset,
     ) -> crate::Result<Self> {
         let w = width as usize;
         let h = height as usize;
-        let mut encoder =
-            build_encoder(w, h, fps, bitrate_kbps, keyframe_interval, keyframe_mode, preset)?;
+        let mut encoder = build_encoder(w, h, fps, bitrate_kbps, keyframe_interval, preset)?;
         let headers = encoder
             .headers()
             .ok()
@@ -50,7 +45,6 @@ impl X264Encoder {
             fps,
             bitrate_kbps,
             keyframe_interval,
-            keyframe_mode,
             preset,
             pts: 0,
             headers,
@@ -91,7 +85,6 @@ impl X264Encoder {
             self.fps,
             self.bitrate_kbps,
             self.keyframe_interval,
-            self.keyframe_mode,
             self.preset,
         ) {
             Ok(mut enc) => {
@@ -171,37 +164,19 @@ fn build_encoder(
     fps: u32,
     bitrate_kbps: u32,
     keyframe_interval: u32,
-    keyframe_mode: KeyframeMode,
     preset: Preset,
 ) -> crate::Result<Encoder> {
-    // zero_latency=true (the 4th `Setup::preset` arg) → no B-frames, no lookahead delay, flush
-    // every frame. The software path is the emergency fallback, so it *always* runs low-latency
-    // regardless of the client's zero-latency toggle (the toggle is a hardware-facing knob).
-    // scenecut_threshold(0) disables scene-cut detection so IDR timing is deterministic.
-    //
-    // Keyframe strategy. The `x264` 0.5 crate has no intra-refresh API, so we mirror the VAAPI
-    // path: `OnDemand` uses a bounded-long keyframe interval (no periodic IDR — IDRs come from
-    // the force_idr rebuild on connect/PLI); `Periodic` pins a fixed min==max cadence.
-    // The ceiling (ON_DEMAND_GOP_MAX) mirrors the VAAPI guard — keeps the P-chain bounded.
-    let (max_ki, min_ki) = match keyframe_mode {
-        KeyframeMode::OnDemand => {
-            let max = fps
-                .max(1)
-                .saturating_mul(crate::encode::ON_DEMAND_GOP_SECS)
-                .min(crate::encode::ON_DEMAND_GOP_MAX) as i32;
-            (max, 1)
-        }
-        KeyframeMode::Periodic => {
-            let ki = keyframe_interval.max(1) as i32;
-            (ki, ki)
-        }
-    };
+    let ki = keyframe_interval as i32;
+    // zero_latency=true → no B-frames, no lookahead delay, flush every frame.
+    // scenecut_threshold(0) disables scene-cut detection so IDR timing is exactly
+    // keyframe_interval frames — gives late clients a bounded, predictable sync window.
+    // min_keyframe_interval = max_keyframe_interval enforces the fixed cadence.
     let encoder = Setup::preset(preset, Tune::None, false, true)
         .fps(fps, 1)
         .bitrate(bitrate_kbps as i32)
         .baseline()
-        .max_keyframe_interval(max_ki)
-        .min_keyframe_interval(min_ki)
+        .max_keyframe_interval(ki)
+        .min_keyframe_interval(ki)
         .scenecut_threshold(0)
         .annexb(true)
         .build(Colorspace::I420, width as i32, height as i32)
