@@ -12,20 +12,32 @@ use wado_compositor::SessionEvent;
 /// per session, so a small buffer is more than enough.
 pub const SSE_CAPACITY: usize = 16;
 
-/// Spawns a background task that drains `event_rx` and broadcasts a pre-formatted
-/// `"event: encoder\ndata: {json}\n\n"` frame to all `/events` subscribers.
+/// Spawns a background task that drains `event_rx` and broadcasts pre-formatted SSE
+/// frames to all `/events` subscribers. Two named event types are emitted:
+/// - `event: encoder` — encoder tier changed at runtime (pipeline badge update).
+/// - `event: session` — session ended abnormally (render panic or all tiers exhausted).
+///
 /// Call this once after `tokio::runtime` is live, before the listener starts.
 pub fn spawn(mut event_rx: mpsc::Receiver<SessionEvent>, sse_tx: broadcast::Sender<String>) {
     tokio::spawn(async move {
         while let Some(ev) = event_rx.recv().await {
-            let SessionEvent::EncoderChanged(report) = ev;
-            match serde_json::to_string(&report) {
-                Ok(json) => {
-                    // Pre-format as a named SSE event; serve_sse writes it verbatim.
-                    let _ = sse_tx.send(format!("event: encoder\ndata: {json}\n\n"));
+            let frame = match ev {
+                SessionEvent::EncoderChanged(report) => {
+                    match serde_json::to_string(&report) {
+                        Ok(json) => format!("event: encoder\ndata: {json}\n\n"),
+                        Err(e) => {
+                            tracing::warn!("failed to serialize EncoderReport for SSE: {e}");
+                            continue;
+                        }
+                    }
                 }
-                Err(e) => tracing::warn!("failed to serialize EncoderReport for SSE: {e}"),
-            }
+                SessionEvent::SessionEnded { reason } => {
+                    let json = serde_json::json!({ "reason": reason }).to_string();
+                    format!("event: session\ndata: {json}\n\n")
+                }
+            };
+            // Pre-formatted SSE frame; serve_sse writes it verbatim.
+            let _ = sse_tx.send(frame);
         }
     });
 }

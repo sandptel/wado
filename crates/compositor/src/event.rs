@@ -9,6 +9,10 @@ use wado_protocol::EncoderReport;
 pub enum SessionEvent {
     /// The active pipeline tier was downgraded at runtime (encode failure → next tier).
     EncoderChanged(EncoderReport),
+    /// The session ended abnormally (render panic, or all encoder tiers exhausted).
+    /// The server fans this out as a named `event: session` SSE frame so the client
+    /// can display a "Session ended — reconnect" banner instead of a silent frozen video.
+    SessionEnded { reason: String },
 }
 
 /// Sender half of the session-event channel (compositor end).

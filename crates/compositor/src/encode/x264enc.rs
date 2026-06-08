@@ -180,11 +180,16 @@ fn build_encoder(
     // scenecut_threshold(0) disables scene-cut detection so IDR timing is deterministic.
     //
     // Keyframe strategy. The `x264` 0.5 crate has no intra-refresh API, so we mirror the VAAPI
-    // path: `OnDemand` uses a huge keyframe interval (no periodic IDR — IDRs come from the
-    // force_idr rebuild on connect/PLI); `Periodic` pins a fixed min==max cadence.
+    // path: `OnDemand` uses a bounded-long keyframe interval (no periodic IDR — IDRs come from
+    // the force_idr rebuild on connect/PLI); `Periodic` pins a fixed min==max cadence.
+    // The ceiling (ON_DEMAND_GOP_MAX) mirrors the VAAPI guard — keeps the P-chain bounded.
     let (max_ki, min_ki) = match keyframe_mode {
         KeyframeMode::OnDemand => {
-            (fps.max(1).saturating_mul(3600).min(i32::MAX as u32) as i32, 1)
+            let max = fps
+                .max(1)
+                .saturating_mul(crate::encode::ON_DEMAND_GOP_SECS)
+                .min(crate::encode::ON_DEMAND_GOP_MAX) as i32;
+            (max, 1)
         }
         KeyframeMode::Periodic => {
             let ki = keyframe_interval.max(1) as i32;

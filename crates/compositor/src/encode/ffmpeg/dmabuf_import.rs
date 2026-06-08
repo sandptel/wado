@@ -37,6 +37,17 @@ pub fn drm_prime_frame(dmabuf: &Dmabuf, drm_frames: &FramesRef) -> crate::Result
             "unsupported dmabuf plane count {num_planes}"
         )));
     }
+    // Multi-fd dmabufs (tiled/multi-planar formats that span several GEM objects) cannot be
+    // represented in a single AVDRMObjectDescriptor. Reject early so the caller's downgrade
+    // path handles it gracefully rather than passing a malformed descriptor to native VAAPI —
+    // a malformed descriptor would cause a driver-level fault that `catch_unwind` cannot catch.
+    let fd_count = dmabuf.handles().count();
+    if fd_count > 1 {
+        return Err(CompositorError::Encoder(format!(
+            "multi-fd dmabuf ({fd_count} objects) unsupported by DRM-PRIME import — \
+             only single-object (Linear) dmabufs are supported"
+        )));
+    }
     let fd = dmabuf
         .handles()
         .next()

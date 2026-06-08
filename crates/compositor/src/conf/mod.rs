@@ -69,8 +69,8 @@ impl Default for WadoConfig {
                 keyframe_interval: 30,
                 preset: Preset::Ultrafast,
                 backend: EncoderBackend::Auto,
-                zero_latency: true,
-                keyframe_mode: KeyframeMode::OnDemand,
+                zero_latency: false,
+                keyframe_mode: KeyframeMode::Periodic,
             },
             output: OutputConfig {
                 sink: SinkTarget::File("captures/wado.h264".to_string()),
