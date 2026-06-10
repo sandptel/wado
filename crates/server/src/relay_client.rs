@@ -30,7 +30,6 @@ use tokio_tungstenite::tungstenite::Message as WsMsg;
 use tracing::{error, info, warn};
 use webrtc::api::interceptor_registry::register_default_interceptors;
 use webrtc::api::media_engine::{MIME_TYPE_H264, MediaEngine};
-use webrtc::api::setting_engine::SettingEngine;
 use webrtc::api::{API, APIBuilder};
 use webrtc::data_channel::RTCDataChannel;
 use webrtc::data_channel::data_channel_message::DataChannelMessage;
@@ -138,7 +137,7 @@ async fn run(
         remote_id,
     };
 
-    // ── Reconnect loop ───────────────────────────────────────────────────────
+    // ── Reconnect loop ──────────────────────────────────────────────────────
     let mut backoff = BACKOFF_INITIAL;
     let mut first_attempt = true;
     loop {
@@ -445,12 +444,7 @@ fn build_webrtc_api() -> crate::Result<API> {
     let mut registry = Registry::new();
     registry = register_default_interceptors(registry, &mut media)?;
 
-    let mut settings = SettingEngine::default();
-    settings.set_ice_timeouts(
-        Some(Duration::from_secs(15)),
-        Some(Duration::from_secs(30)),
-        Some(Duration::from_secs(2)),
-    );
+    let settings = crate::webrtc_settings::build_setting_engine();
 
     Ok(APIBuilder::new()
         .with_media_engine(media)

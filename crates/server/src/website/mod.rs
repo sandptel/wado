@@ -50,7 +50,6 @@ use tokio::sync::{broadcast, mpsc, oneshot};
 use tracing::{error, info, warn};
 use webrtc::api::interceptor_registry::register_default_interceptors;
 use webrtc::api::media_engine::{MIME_TYPE_H264, MediaEngine};
-use webrtc::api::setting_engine::SettingEngine;
 use webrtc::api::{API, APIBuilder};
 use webrtc::data_channel::RTCDataChannel;
 use webrtc::data_channel::data_channel_message::DataChannelMessage;
@@ -141,14 +140,7 @@ async fn run_server(
     let mut registry = Registry::new();
     registry = register_default_interceptors(registry, &mut media_engine)?;
 
-    // Forgiving ICE timeouts: a brief connectivity gap (default 5 s → disconnected)
-    // must not drop a healthy localhost/LAN stream. mDNS stays at default QueryOnly.
-    let mut setting_engine = SettingEngine::default();
-    setting_engine.set_ice_timeouts(
-        Some(Duration::from_secs(15)), // disconnected
-        Some(Duration::from_secs(30)), // failed
-        Some(Duration::from_secs(2)),  // keepalive
-    );
+    let setting_engine = crate::webrtc_settings::build_setting_engine();
 
     let api = Arc::new(
         APIBuilder::new()
