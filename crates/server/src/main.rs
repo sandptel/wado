@@ -1,36 +1,57 @@
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 use wado::website::{self, FRAME_CHANNEL_CAPACITY, logbus::LogBus};
 
-/// Where the control server listens. Bound to localhost because the session launch
-/// command is free-form (an RCE surface); LAN exposure waits on the security gate.
+/// Where the control server listens in direct mode.
 const DEFAULT_CONTROL_ADDR: &str = "127.0.0.1:8080";
 
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let log_bus = init_logging();
 
-    // Encoded-frame channel: the compositor's session ChannelSink feeds frame_tx; the
-    // server's WebRTC frame pump owns frame_rx. The command Sender flows the other way.
     let (frame_tx, frame_rx) = tokio::sync::mpsc::channel(FRAME_CHANNEL_CAPACITY);
-
-    // Build the compositor (event loop + state + control/input channels). `build` claims
-    // the Wayland socket and exports WAYLAND_DISPLAY for apps spawned into the session.
     let (mut event_loop, mut state, handles) = wado_compositor::build(frame_tx)?;
 
-    // Start the idle control plane only. No compositor session, encoder, or render
-    // loop exists until a client triggers one — wado sits ~idle until then. The server
-    // holds only the command + input Senders and the frame Receiver; never Wado/Smithay.
-    let control_addr =
-        std::env::args().nth(1).unwrap_or_else(|| DEFAULT_CONTROL_ADDR.to_string());
-    website::start(handles.commands, handles.input, frame_rx, &control_addr, log_bus)?;
-    tracing::info!("wado server idle on http://{control_addr} — connect with the wado-client app");
+    // ── Mode selection ───────────────────────────────────────────────────────
+    // Relay mode: set WADO_RELAY_URL (e.g. ws://my-vps:4000). The server's identity
+    // is its Remote ID — resolved by `remote_id::resolve()` (WADO_REMOTE_ID env var,
+    // else the persisted ~/.config/wado/remote_id, else generated + persisted).
+    // Clients connect with that single ID; no separate password.
+    //
+    // Direct mode (default): server binds an HTTP control endpoint.
+    //   First CLI argument overrides the default listen address (127.0.0.1:8080).
+
+    if let Ok(relay_url) = std::env::var("WADO_RELAY_URL") {
+        let remote_id = wado::remote_id::resolve();
+
+        tracing::info!(
+            relay_url = %relay_url,
+            "wado server — relay mode"
+        );
+
+        wado::relay_client::start(
+            handles.commands,
+            handles.input,
+            frame_rx,
+            relay_url,
+            remote_id,
+            log_bus,
+        )?;
+    } else {
+        let control_addr =
+            std::env::args().nth(1).unwrap_or_else(|| DEFAULT_CONTROL_ADDR.to_string());
+
+        tracing::info!(
+            addr = %control_addr,
+            "wado server — direct mode (http)"
+        );
+
+        website::start(handles.commands, handles.input, frame_rx, &control_addr, log_bus)?;
+        tracing::info!("wado server idle on http://{control_addr} — connect with the wado-client app");
+    }
 
     event_loop.run(None, &mut state, move |_| {})?;
-
     Ok(())
 }
 
-/// Install tracing: the console fmt layer, plus the [`LogBus`] layer that feeds the
-/// web client's live log panel. Returns the bus so it can be handed to the server.
 fn init_logging() -> LogBus {
     let log_bus = LogBus::new();
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));

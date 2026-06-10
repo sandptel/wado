@@ -4,6 +4,8 @@
 //! boundary (see [`website::start`]).
 
 pub mod error;
+pub mod relay_client;
+pub mod remote_id;
 pub mod website;
 
 pub use error::{Result, WadoError};

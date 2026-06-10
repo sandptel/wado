@@ -1,48 +1,63 @@
 // wado bridge — session lifecycle (start / launch / stop) + page-lifetime keep-alive.
 // MUST be concatenated last: the trailing never-resolving await keeps this eval (and its
 // dioxus.send channel) alive for the app's lifetime.
+//
+// Supports two connection modes:
+//   Direct mode  — POST /session/start to server, then HTTP /offer for WebRTC.
+//   Relay mode   — all control + WebRTC signaling goes through wado-relay WS.
+//                  relayOpts = { relayUrl, remoteId } enables relay mode.
 
-// Ask the server to start a session, then connect the video. `config` is the SessionConfig
-// as a JS object (valid JSON the server deserializes).
-W.start = async (server, config) => {
+W.start = async (server, config, relayOpts) => {
   W.server = server;
-  status("starting session…");
-  try {
-    const res = await fetch(server + "/session/start", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(config),
-    });
-    if (!res.ok) {
-      status("start failed: " + (await res.text()));
-      emit({ type: "startFailed" });
-      return;
-    }
-    // The server reports which encoder it actually opened (hardware vs software);
-    // surface it so the UI can show the software-encoding banner (invariant #5).
+
+  if (relayOpts && relayOpts.relayUrl) {
+    // ── Relay mode ────────────────────────────────────────────────────────────
+    status("relay: connecting…");
     try {
-      const info = await res.json();
-      if (info && info.encoder && info.encoder.mode) {
-        emit({
-          type: "encoder",
-          mode: info.encoder.mode,
-          pipeline: info.encoder.pipeline || "",
-        });
+      W.reconnectAttempts = 0;
+      await W.relayConnect(relayOpts.relayUrl, relayOpts.remoteId, config);
+    } catch (e) {
+      status("relay error: " + (e && e.message ? e.message : String(e)));
+      emit({ type: "startFailed" });
+    }
+  } else {
+    // ── Direct mode (existing behaviour) ─────────────────────────────────────
+    status("starting session…");
+    try {
+      const res = await fetch(server + "/session/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(config),
+      });
+      if (!res.ok) {
+        status("start failed: " + (await res.text()));
+        emit({ type: "startFailed" });
+        return;
       }
-    } catch (_) {}
-    W.sessionOn = true;
-    W.reconnectAttempts = 0;
-    stagebar("Session running — connecting video…");
-    await W.connectWebRTC();
-  } catch (e) {
-    status("error: " + (e && e.message ? e.message : e));
-    emit({ type: "startFailed" });
+      try {
+        const info = await res.json();
+        if (info && info.encoder && info.encoder.mode) {
+          emit({ type: "encoder", mode: info.encoder.mode, pipeline: info.encoder.pipeline || "" });
+        }
+      } catch (_) {}
+      W.sessionOn = true;
+      W.reconnectAttempts = 0;
+      stagebar("Session running — connecting video…");
+      await W.connectWebRTC();
+    } catch (e) {
+      status("error: " + (e && e.message ? e.message : e));
+      emit({ type: "startFailed" });
+    }
   }
 };
 
 // Launch a command into the running session in realtime (callable repeatedly).
 W.launch = async (command) => {
   if (!W.sessionOn) { status("launch ignored — no session"); return; }
+  if (W.relayMode) {
+    await W.relayLaunch(command);
+    return;
+  }
   try {
     const res = await fetch(W.server + "/session/launch", {
       method: "POST",
@@ -64,12 +79,22 @@ W.stopSession = async () => {
   const v = document.getElementById("wado-video");
   if (v) v.srcObject = null;
   stagebar("No session.");
-  try { await fetch(W.server + "/session/stop", { method: "POST" }); } catch (_) {}
+
+  if (W.relayMode) {
+    W.relayStop();
+  } else {
+    try { await fetch(W.server + "/session/stop", { method: "POST" }); } catch (_) {}
+  }
 };
 
 // Free server resources promptly if the tab is closed mid-session.
 window.addEventListener("pagehide", () => {
-  if (W.sessionOn && W.server) navigator.sendBeacon(W.server + "/session/stop");
+  if (!W.sessionOn) return;
+  if (W.relayMode && W.relayWs && W.relayWs.readyState === WebSocket.OPEN) {
+    W.relayWs.send(JSON.stringify({ type: "session_stop" }));
+  } else if (W.server) {
+    navigator.sendBeacon(W.server + "/session/stop");
+  }
 });
 
 // Keep this eval (and its `dioxus` send channel) alive for the app's lifetime.

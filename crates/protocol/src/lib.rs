@@ -6,6 +6,8 @@
 //! This crate is deliberately dependency-light (just `serde`) so it compiles for
 //! both the host (server) and the `wasm32` (web client) targets.
 
+pub mod relay;
+
 use serde::{Deserialize, Serialize};
 
 /// HTTP endpoints the client talks to on the server. Shared as constants so the

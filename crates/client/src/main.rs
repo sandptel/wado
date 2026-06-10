@@ -27,6 +27,8 @@ const BRIDGE_JS: &str = concat!(
     "\n",
     include_str!("js/webrtc.js"),
     "\n",
+    include_str!("js/relay.js"),
+    "\n",
     include_str!("js/input_core.js"),
     "\n",
     include_str!("js/input_pointer.js"),
@@ -72,6 +74,14 @@ fn App() -> Element {
     let mut command = use_signal(|| "weston-terminal".to_string());
     let mut preset = use_signal(String::new);
     let mut keyframe = use_signal(String::new);
+
+    // ── connection mode ───────────────────────────────────────────────────────
+    // "direct" = existing HTTP path (server_addr is the wado-server URL).
+    // "relay"  = all communication (session + WebRTC) goes through wado-relay.
+    //            One Remote ID identifies + authorizes (dashes/spaces optional).
+    let mut conn_mode = use_signal(|| "direct".to_string());
+    let mut relay_url = use_signal(|| "ws://".to_string());
+    let mut remote_id = use_signal(String::new);
 
     // ── runtime state ────────────────────────────────────────────────────────
     let mut session_on = use_signal(|| false);
@@ -221,12 +231,26 @@ fn App() -> Element {
             encoder: EncoderPref { backend },
         };
         let server = server_addr();
+        // Build relay opts (null in direct mode → JS treats it as falsy).
+        let relay_opts: Option<serde_json::Value> = if conn_mode() == "relay" {
+            Some(serde_json::json!({
+                "relayUrl": relay_url(),
+                "remoteId": remote_id(),
+            }))
+        } else {
+            None
+        };
         session_on.set(true);
         encoder_mode.set(String::new());
         encoder_pipeline.set(String::new());
         status.set("starting session…".to_string());
         spawn(async move {
-            let code = format!("window.__wado.start({}, {});", js(&server), js(&cfg));
+            let code = format!(
+                "window.__wado.start({}, {}, {});",
+                js(&server),
+                js(&cfg),
+                js(&relay_opts),
+            );
             let _ = document::eval(&code).await;
         });
     };
@@ -290,11 +314,37 @@ fn App() -> Element {
             h1 { "wado" }
             p { class: "hint", "Configure and start a streaming session." }
 
-            label { "Server" }
-            input {
-                r#type: "text",
-                value: "{server_addr}",
-                oninput: move |e| server_addr.set(e.value()),
+            // ── Connection mode ──────────────────────────────────────────────
+            label { "Connection" }
+            select {
+                value: "{conn_mode}",
+                onchange: move |e| conn_mode.set(e.value()),
+                option { value: "direct", "Direct (HTTP — same LAN / port-forward)" }
+                option { value: "relay",  "Via relay (internet, no port-forward)" }
+            }
+
+            if conn_mode() == "relay" {
+                label { "Relay URL" }
+                input {
+                    r#type: "text",
+                    placeholder: "ws://my-vps:4000",
+                    value: "{relay_url}",
+                    oninput: move |e| relay_url.set(e.value()),
+                }
+                label { "Remote ID" }
+                input {
+                    r#type: "text",
+                    placeholder: "528-491-307 (shown in the server log)",
+                    value: "{remote_id}",
+                    oninput: move |e| remote_id.set(e.value()),
+                }
+            } else {
+                label { "Server" }
+                input {
+                    r#type: "text",
+                    value: "{server_addr}",
+                    oninput: move |e| server_addr.set(e.value()),
+                }
             }
 
             label { "Resolution" }

@@ -19,3 +19,8 @@ tokio = { version = "1", features = ["rt-multi-thread", "sync", "net", "io-util"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 bytes = "1"
+# WebSocket client used by the relay client to connect to wado-relay.
+tokio-tungstenite = "0.24"
+futures-util = "0.3"
+# Remote ID generation (already in the dep tree via webrtc).
+rand = "0.8"

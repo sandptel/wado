@@ -1,0 +1,45 @@
+[package]
+name = "wado-relay"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+description = "wado relay server — WebSocket signaling broker for P2P WebRTC connections."
+
+[[bin]]
+name = "wado-relay"
+path = "src/main.rs"
+
+[dependencies]
+wado-protocol = { path = "../protocol" }
+
+# HTTP + WebSocket server
+axum = { version = "0.7", features = ["ws", "macros"] }
+tower-http = { version = "0.5", features = ["trace"] }
+tower = "0.4"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+futures-util = "0.3"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+# Error handling
+thiserror = "1"
+
+# Concurrent data structures (lock-free registry)
+dashmap = "6"
+
+# Unique room IDs
+uuid = { version = "1", features = ["v4"] }
+
+# Application-level error plumbing in main()
+anyhow = "1"
