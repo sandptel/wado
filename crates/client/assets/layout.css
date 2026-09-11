@@ -21,7 +21,9 @@
   overflow-y: auto;
 }
 
-#stage { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+/* position: relative unconditionally — the stage is the containing block for the video and
+ * for every overlay on top of it. It used to be set only below the mobile breakpoint. */
+#stage { flex: 1; position: relative; min-width: 0; }
 
 .brand { margin-bottom: 4px; }
 
