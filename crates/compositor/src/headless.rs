@@ -336,6 +336,10 @@ pub fn stop_session(state: &mut Wado) {
         return;
     }
 
+    // Counted before the apps are killed, or the verdict below reports whatever survived the
+    // teardown race rather than what the session actually had.
+    let mapped_at_stop = state.space.elements().count();
+
     if let Some(token) = state.render_timer_token.take() {
         state.loop_handle.remove(token);
     }
@@ -375,7 +379,14 @@ pub fn stop_session(state: &mut Wado) {
     // verdict that reads as "no" and as "nobody looked" in exactly the same way — which is how
     // this question went unanswered in the first place.
     if !state.dmabuf_logged {
-        info!("dmabuf path unused this session — every client buffer went through wl_shm");
+        // `windows` is what makes this a finding rather than a tautology. A session that
+        // nobody launched an app into produced no buffers of any kind, so "unused" there means
+        // "nothing asked", not "everything chose shm" — and the first such line was read as
+        // the latter within a minute of shipping it. Zero windows, vacuous verdict.
+        info!(
+            windows = mapped_at_stop,
+            "dmabuf path unused this session — every client buffer went through wl_shm"
+        );
     }
     state.dmabuf_logged = false;
 
