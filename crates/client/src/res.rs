@@ -59,6 +59,22 @@ pub fn default_value(sw: u32, sh: u32) -> Option<String> {
     options(sw, sh).last().map(|(v, _)| v.clone())
 }
 
+/// The output scale a device of this pixel density should start at.
+///
+/// The same reasoning a desktop compositor uses: a display packing three physical pixels
+/// into a logical one needs a scale near three, or every app draws at a third of the size it
+/// was designed for. Defaulting to 1x on a phone produced a menu twelve physical pixels tall.
+///
+/// Whole numbers only, and clamped: `wl_output.scale` is an integer event and wado does not
+/// implement `wp-fractional-scale-v1`, so a fractional value would be rounded by the
+/// compositor anyway — after the client had already drawn for something else.
+pub fn default_scale(dpr: f64) -> u32 {
+    if !dpr.is_finite() || dpr <= 0.0 {
+        return 1;
+    }
+    (dpr.round() as u32).clamp(1, 3)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -95,6 +111,21 @@ mod tests {
     #[test]
     fn default_is_the_smaller_option() {
         assert_eq!(default_value(1080, 2400).as_deref(), Some("720x1600"));
+    }
+
+    #[test]
+    fn scale_follows_pixel_density() {
+        assert_eq!(default_scale(1.0), 1); // a plain desktop display
+        assert_eq!(default_scale(2.0), 2);
+        assert_eq!(default_scale(2.625), 3); // this phone
+        assert_eq!(default_scale(4.0), 3); // clamped, not 4
+    }
+
+    #[test]
+    fn absent_or_nonsense_density_falls_back_to_unscaled() {
+        for d in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+            assert_eq!(default_scale(d), 1, "{d}");
+        }
     }
 
     #[test]

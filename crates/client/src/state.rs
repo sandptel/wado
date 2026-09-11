@@ -20,6 +20,10 @@ pub const DEFAULT_SERVER: &str = "http://127.0.0.1:8080";
 /// restart. Replace when the relay gets a stable hostname.
 pub const DEFAULT_RELAY: &str = "https://operational-gate-addresses-campaigns.trycloudflare.com";
 
+/// Marks a scale that has never been chosen — neither by the user nor from pixel density.
+/// Not a valid option value, so it cannot survive the effect that resolves it.
+pub const SCALE_UNSET: &str = "";
+
 /// Keep at most this many log lines in memory / the DOM.
 pub const MAX_LOG_LINES: usize = 500;
 
@@ -90,7 +94,9 @@ impl Settings {
             res: use_signal(String::new),
             custom_w: use_signal(|| 1280),
             custom_h: use_signal(|| 720),
-            scale: use_signal(|| "1".to_string()),
+            // Sentinel, not a value: the right scale depends on the device's pixel density,
+            // which the bridge has not reported yet. Replaced in `main`'s effect.
+            scale: use_signal(|| SCALE_UNSET.to_string()),
             fps: use_signal(|| 60),
             quality: use_signal(|| "balanced".to_string()),
             bitrate: use_signal(|| 4000),
@@ -150,6 +156,9 @@ pub struct Live {
 
     pub screen_w: Signal<u32>,
     pub screen_h: Signal<u32>,
+    /// The device's pixel density. Drives the default output scale the way a desktop
+    /// compositor does: a phone reporting 2.6 wants roughly 3x, not 1x.
+    pub screen_dpr: Signal<f64>,
 
     /// How far the connection got, as a count of completed stages (see `ui::status`).
     /// Relay mode reaches the video through four separate hops that fail for unrelated
@@ -185,6 +194,7 @@ impl Live {
             encoder_pipeline: use_signal(String::new),
             decode_drop_pct: use_signal(|| 0.0),
             screen_w: use_signal(|| 0),
+            screen_dpr: use_signal(|| 0.0),
             screen_h: use_signal(|| 0),
             conn_stage: use_signal(|| 0),
             conn_error: use_signal(String::new),

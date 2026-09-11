@@ -139,6 +139,7 @@ pub fn run(ui: Ui) {
                 "screen" => {
                     live.screen_w.set(num("w").unwrap_or(0.0) as u32);
                     live.screen_h.set(num("h").unwrap_or(0.0) as u32);
+                    live.screen_dpr.set(num("dpr").unwrap_or(0.0));
                 }
                 "phase" => {
                     // Monotonic: a late stray message must not walk the indicator backwards.
