@@ -1,3 +1,4 @@
+use std::panic::AssertUnwindSafe;
 use std::{ffi::OsString, sync::Arc};
 
 use smithay::{
@@ -268,8 +269,25 @@ impl Wado {
             .insert_source(
                 Generic::new(display, Interest::READ, Mode::Level),
                 |_, display, state| {
-                    unsafe {
-                        display.get_mut().dispatch_clients(state).unwrap();
+                    // The last event source without a panic guard, and the one fed by the
+                    // least trustworthy input: every request from every Wayland client runs
+                    // under this call. A panic here unwinds out of `event_loop.run` and kills
+                    // the daemon — and because `main` unwinds rather than exiting, the session
+                    // teardown that reaps launched applications never runs, so they survive the
+                    // daemon that owned them. That is the exact leak `proc::terminate` and the
+                    // SIGTERM handler exist to prevent, arriving by a path neither covers.
+                    //
+                    // The command and input sources are guarded the same way (see `lib.rs`).
+                    // A misbehaving client is dropped; the compositor keeps running.
+                    let caught = std::panic::catch_unwind(AssertUnwindSafe(|| unsafe {
+                        display.get_mut().dispatch_clients(state)
+                    }));
+                    match caught {
+                        Ok(Ok(_)) => {}
+                        Ok(Err(e)) => tracing::warn!("wayland dispatch error: {e}"),
+                        Err(_) => tracing::error!(
+                            "compositor panicked dispatching a wayland client —                              the client's request was dropped, the session continues"
+                        ),
                     }
                     Ok(PostAction::Continue)
                 },
