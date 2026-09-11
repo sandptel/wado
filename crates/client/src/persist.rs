@@ -134,7 +134,13 @@ pub fn restore(ui: Ui, saved: Saved) {
     put!(keyframe);
     put!(command);
     put!(move_mode);
-    put!(scroll_speed);
+    // Clamped, not just restored: the slider's range shrank from 0.2-5 to 0.05-2, and a
+    // blob saved under the old range holds values the control can no longer represent. A
+    // range input pins its thumb to the nearest end, so without this the panel would show
+    // 2.00x while scrolling at 5x and the user would have no way to reconcile the two.
+    if let Some(v) = saved.scroll_speed {
+        s.scroll_speed.clone().set(v.clamp(0.05, 2.0));
+    }
     put!(natural_scroll);
     put!(panel_open);
     put!(theme);

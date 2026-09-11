@@ -46,9 +46,15 @@ pub fn render(ui: Ui) -> Element {
             " Move-window mode (drag moves windows)"
         }
 
-        label { "Scroll speed: {(s.scroll_speed)():.1}×" }
+        // Range and default are both far below what they were (0.2-5, default 1.0). Raw
+        // browser deltas are already large — a wheel notch is ~100 px and a finger drag is
+        // reported in CSS pixels — so a 1.0 multiplier meant "pass it straight through",
+        // which overshoots on every device the client actually runs on. The old floor of
+        // 0.2 was still too fast, so the floor is what moved most. Acceleration
+        // (input_accel.js) is what makes a number this small still able to cross a page.
+        label { "Scroll speed: {(s.scroll_speed)():.2}×" }
         input {
-            r#type: "range", min: "0.2", max: "5", step: "0.1",
+            r#type: "range", min: "0.05", max: "2", step: "0.05",
             value: "{(s.scroll_speed)()}",
             oninput: move |e| {
                 if let Ok(v) = e.value().parse::<f64>() {
