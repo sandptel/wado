@@ -27,6 +27,21 @@ impl Wado {
 
         match phase {
             TouchPhase::Down => {
+                // Close an orphan first. See `Wado::pinch_open` — the end event is the half
+                // that goes missing, and beginning on top of an open gesture leaves the
+                // toolkit stuck in zoom mode with no way back.
+                if self.pinch_open {
+                    tracing::debug!("pinch begin on an open gesture — ending the orphan first");
+                    pointer.gesture_pinch_end(
+                        self,
+                        &GesturePinchEndEvent {
+                            serial,
+                            time,
+                            cancelled: true,
+                        },
+                    );
+                }
+                self.pinch_open = true;
                 // A gesture is delivered to whatever the pointer is over, and wado draws no
                 // cursor, so the pointer has to be put there first or the begin goes
                 // nowhere — silently, with no error anywhere. Same reason `pointer_scroll`
@@ -52,6 +67,9 @@ impl Wado {
                 );
             }
             TouchPhase::Motion => {
+                if !self.pinch_open {
+                    return;
+                }
                 pointer.gesture_pinch_update(
                     self,
                     &GesturePinchUpdateEvent {
@@ -67,6 +85,10 @@ impl Wado {
                 );
             }
             TouchPhase::Up => {
+                if !self.pinch_open {
+                    return;
+                }
+                self.pinch_open = false;
                 pointer.gesture_pinch_end(
                     self,
                     &GesturePinchEndEvent {

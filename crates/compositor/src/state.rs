@@ -100,6 +100,14 @@ pub struct Wado {
     /// log line per gesture can report its length — a gesture that produced three events is a
     /// different fault from one that produced three hundred.
     pub scroll_events: u32,
+    /// Whether a `zwp_pointer_gestures_v1` pinch is currently open.
+    ///
+    /// Tracked on this side because the client's end event is the half that can go missing:
+    /// a disconnect, a `resetInput`, or a third contact all drop the gesture without one.
+    /// An un-ended pinch is not the same harmless thing as an un-stopped scroll axis —
+    /// the toolkit stays in zoom mode, and the next begin lands on an already-open gesture.
+    /// Windows outlive sessions here, so an orphan would survive into the next one.
+    pub pinch_open: bool,
 
     /// New-window placement policy (from `SessionConfig.window.placement`, applied at start).
     pub placement: Placement,
@@ -213,6 +221,7 @@ impl Wado {
             session_active: false,
             window_move: None,
             scroll_events: 0,
+            pinch_open: false,
             placement: Placement::default(),
             focus_follows_pointer: false,
             pre_maximize: std::collections::HashMap::new(),
