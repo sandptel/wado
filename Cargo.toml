@@ -4,3 +4,24 @@ members = ["crates/server", "crates/compositor", "crates/protocol", "crates/clie
 # Plain `cargo build` builds the host crates only. The client is WASM-only and is
 # built/served with the `dx` (dioxus-cli) tool, not host cargo.
 default-members = ["crates/server", "crates/compositor", "crates/protocol", "crates/relay"]
+
+# The daemon is a soft-real-time video pipeline with an 8 ms frame budget at 120 fps, and it
+# is only ever run as a release build (see `scripts/daemon.sh` — a debug build was once
+# mistaken for a pipeline bug and cost a whole session). So the release profile is tuned for
+# the binary that actually ships and actually runs, and the extra build time is accepted.
+[profile.release]
+# Cross-crate inlining across the capture → encode → packetise path, which is split over
+# several crates and an FFI boundary. `fat` rather than `thin` because build time here is
+# paid by a machine and latency is paid by a person.
+lto = "fat"
+# One codegen unit per crate: no parallel-codegen boundaries to block optimisation across.
+codegen-units = 1
+# ⚠️ LOAD-BEARING, DO NOT SET TO "abort".
+# Panics in the render and command paths are caught per session so the server survives a
+# broken client — see the crash-isolation invariant in CLAUDE.md. `panic = "abort"` looks
+# like a free size/speed win and would silently delete that containment, turning a
+# recoverable session fault into a dead daemon. Stated explicitly so it is never "optimised".
+panic = "unwind"
+# Line tables only (not full DWARF): no runtime cost, no inlining changes, but `perf` and a
+# backtrace name real functions instead of hex. The stall investigation needs this.
+debug = 1
