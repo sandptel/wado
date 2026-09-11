@@ -84,11 +84,23 @@ W.latency = {
       } catch (_) {}
 
       // --- server legs ---
+      // Relay mode has no HTTP path to the server, and an https page could not reach a
+      // plain-http one anyway. Asking over the relay socket is the only way these legs are
+      // visible there; without it the breakdown showed the browser's half only, and an
+      // absent capture/encode/queue reading looks exactly like a fast one.
       let srv = null;
-      try {
-        const resp = await fetch(W.server + "/timing", { cache: "no-store" });
-        if (resp.ok) srv = await resp.json();
-      } catch (_) {}
+      if (W.relayMode) {
+        srv = W._lastTiming || null;
+        const ws = W.relayWs;
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          try { ws.send(JSON.stringify({ type: "timing_request" })); } catch (_) {}
+        }
+      } else {
+        try {
+          const resp = await fetch(W.server + "/timing", { cache: "no-store" });
+          if (resp.ok) srv = await resp.json();
+        } catch (_) {}
+      }
 
       emit({
         type: "latency",
@@ -102,6 +114,19 @@ W.latency = {
         decode,
         input: this._inMs,
       });
+
+      // Also to the server log, where it sits beside the pump's own numbers. The two halves
+      // are measured on unsynchronised clocks and must never be summed (see this file's
+      // header), but having both in one timeline is what turns "it feels slow" into a leg.
+      const n = (v) => (v == null ? "?" : v.toFixed(1));
+      if (W.rlog) {
+        W.rlog(
+          "latency capture=" + n(srv && srv.capture_ms) + " encode=" + n(srv && srv.encode_ms) +
+          " queue=" + n(srv && srv.queue_ms) + " tick=" + n(srv && srv.tick_ms) +
+          " net~" + n(net) + " buf=" + n(buf) + " decode=" + n(decode) +
+          " input(rt)=" + n(this._inMs)
+        );
+      }
     }, 1000);
   },
 

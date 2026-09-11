@@ -155,6 +155,14 @@ W.relayConnect = async (relayUrl, remoteId, config) => {
           }
           break;
 
+        // ── Server render timings (relay's answer to GET /timing) ────────────
+        // Stashed rather than resolved through a promise: the collector runs on its own
+        // 1 Hz tick and uses the most recent reply, so one dropped answer costs a stale
+        // sample instead of a stalled breakdown.
+        case "timing":
+          W._lastTiming = msg.timings || null;
+          break;
+
         // ── Launchable applications ──────────────────────────────────────────
         case "apps_list":
           emit({ type: "apps", apps: msg.apps || [] });

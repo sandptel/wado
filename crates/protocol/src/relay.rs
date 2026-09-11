@@ -149,6 +149,17 @@ pub enum RelayMsg {
         message: String,
     },
 
+    /// Ask for the server's per-stage render timings.
+    ///
+    /// Relay mode has no HTTP path, so `GET /timing` needs a message counterpart the same way
+    /// `GET /apps` did. Without it the latency breakdown silently shows only the browser's
+    /// half — an absent capture/encode/queue reading is easy to misread as a fast one.
+    TimingRequest,
+    /// The server's answer to [`RelayMsg::TimingRequest`].
+    Timing {
+        timings: crate::StageTimings,
+    },
+
     // ── Live logs: server → client (forwarded by relay) ─────────────────────
     /// One tracing log line in `LEVEL|HH:MM:SS|text` format.
     Log {
