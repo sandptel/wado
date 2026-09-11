@@ -1,6 +1,6 @@
 [package]
 name = "wado-relay"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 license = "AGPL-3.0-only"
 description = "wado relay server — WebSocket signaling broker for P2P WebRTC connections."

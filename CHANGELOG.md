@@ -1,5 +1,62 @@
 # Changelog
 
+## v0.0.2 — `2026-09-11`
+
+Everything v0.0.1 measured still holds; this adds the fixes found by running it. Each item
+below says how far it was actually verified, because two of them have never been watched by
+a human.
+
+### Verified live
+
+- **Launched applications no longer outlive their session.** An app spawned into the session
+  inherited the daemon's own process group, so stopping the compositor killed the one pid we
+  held and nothing it had forked — a browser kept running, and kept playing audio, with
+  nothing left that knew how to stop it. Apps are now spawned as their own process-group
+  leaders and signalled by group (SIGTERM, 300 ms grace, then SIGKILL). A signalfd handler
+  runs the same teardown on SIGINT/SIGTERM to the daemon itself.
+  Confirmed on the running daemon: `signal received — stopping session` → `compositor
+  session stopped` → zero survivors.
+- **The 1080p120 flashing is gone.** The VBV was sized in *frame times*, which made the
+  allowance frame-rate dependent: at 120 fps it halved, and IDRs were being squeezed to
+  ~16 KB. Sized in bits now (`VBV_MILLIS = 67`). Keyframes came back at 45–52 KB with 0
+  pump stalls.
+
+### Measured, on a release build
+
+- **Quality presets scale with resolution.** `Balanced` and `Optimise quality` were handing
+  1080p the same bitrate as 720p. Bitrate is now scaled by pixel count from a 720p base and
+  clamped to 1–12 Mbps; `Custom` still passes through untouched.
+- **The 1080p stutter was a debug build**, not the pipeline. Same config, release vs debug:
+  stalls 14 → 0, jitter buffer 19–42 ms → 12 ms flat, frame rate 48–60 → 60 steady. The
+  server now warns on startup when it is a debug build.
+
+### Shipped, not yet confirmed by a human
+
+- **A real shell in the console, on a PTY** (`$SHELL -l`) with xterm.js in front of it —
+  resize, Ctrl-C and full-screen programs all work by construction rather than by
+  observation. Server and client are deployed and byte-verified; nobody has watched it run.
+  It does **not** survive a reconnect yet: the shell is owned by the relay connection, so
+  losing it starts a fresh one.
+- **Jitter-buffer reclaim after a network blip.** Chrome ratchets its jitter buffer up on an
+  rtt spike and drains it at ~0.3 ms/sample, so one blip is felt as sluggishness for
+  minutes. The client now re-asserts the playout target when the buffer is inflated *and*
+  rtt has already recovered. The underlying behaviour is measured (8 → 68 ms on a 198 ms
+  spike); the fix's effect is not.
+
+### Packaging
+
+- **`flake.nix` and `flake.lock` are in the repo**, with a real `packages.default` — so this
+  tag can be `nix build`-ed. v0.0.1 predates the flake and cannot be; it is left where it is
+  rather than moved, since it is already published.
+
+### Known ceilings
+
+- An app that calls `setsid` escapes the process-group cleanup (seen: `chrome_crashpad`).
+  A per-session cgroup is the upgrade path.
+- Pump stalls of 300–500 ms still appear occasionally on LAN with `rtt=0` and no packet
+  loss. Duration does not track frame size or packet count, so it is a blocking event rather
+  than send cost — cause not yet established, and deliberately not guessed at.
+
 ## v0.0.1 — `2026-09-11`
 
 The first tagged point. It marks a **measured latency local maximum**: the settings below
