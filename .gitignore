@@ -7,3 +7,6 @@
 # nix build output links
 result
 result-*
+
+# run planning + memory (local working surface)
+plan/
