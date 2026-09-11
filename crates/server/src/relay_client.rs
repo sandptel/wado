@@ -331,6 +331,10 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 }
             }
 
+            RelayMsg::ClientLog { line } => {
+                info!("browser: {line}");
+            }
+
             RelayMsg::Ping => { send_relay(&out_tx, &RelayMsg::Pong).await.ok(); }
 
             other => {
@@ -346,6 +350,23 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
 
 /// Create a new RTCPeerConnection, attach the shared track, wire input data
 /// channel, RTCP PLI → ForceKeyframe, state-change → Stop, gather ICE, answer.
+///
+/// Summarise the ICE candidate types present in an SDP — "host", "srflx", "relay".
+fn candidate_types(sdp: &str) -> String {
+    let mut types: Vec<&str> = sdp
+        .lines()
+        .filter(|l| l.starts_with("a=candidate:"))
+        .filter_map(|l| {
+            let mut parts = l.split_whitespace();
+            // a=candidate:<foundation> <component> <proto> <priority> <ip> <port> typ <type>
+            parts.position(|w| w == "typ").and_then(|_| parts.next())
+        })
+        .collect();
+    types.sort_unstable();
+    types.dedup();
+    if types.is_empty() { "none".to_string() } else { types.join(",") }
+}
+
 async fn handle_sdp_offer(
     ctx: &RelayCtx,
     offer_json: String,
@@ -353,6 +374,15 @@ async fn handle_sdp_offer(
 ) -> crate::Result<()> {
     let offer: RTCSessionDescription = serde_json::from_str(&offer_json)
         .map_err(|e| crate::WadoError::Other(format!("bad SDP: {e}")))?;
+
+    // The offer carries every candidate the browser gathered (non-trickle). Their types are
+    // the whole diagnosis when media never flows: host-only means STUN was blocked and no
+    // route past NAT was ever found, srflx present means the path failed somewhere later.
+    info!(
+        "relay client: offer received — {} candidates ({})",
+        offer.sdp.matches("a=candidate:").count(),
+        candidate_types(&offer.sdp)
+    );
 
     let pc = Arc::new(
         ctx.api
@@ -433,11 +463,19 @@ async fn handle_sdp_offer(
                         let _ = cmd_tx.send(CompositorCommand::Stop);
                     }
                 }
-                _ => {}
+                other => info!(?other, "relay client: peer connection state"),
             }
             Box::pin(async {})
         }));
     }
+
+    // ICE-level transitions. The peer-connection state hides where a failure happened;
+    // this is the one that distinguishes "never got a reply" (stuck Checking) from
+    // "candidates exhausted" (Failed).
+    pc.on_ice_connection_state_change(Box::new(|state| {
+        info!(?state, "relay client: ICE connection state");
+        Box::pin(async {})
+    }));
 
     pc.set_remote_description(offer).await?;
     let answer = pc.create_answer(None).await?;
@@ -451,6 +489,11 @@ async fn handle_sdp_offer(
         .ok_or_else(|| crate::WadoError::Other("no local description after ICE gather".into()))?;
     let answer_json = serde_json::to_string(&local)?;
 
+    info!(
+        "relay client: answer sent — {} candidates ({})",
+        local.sdp.matches("a=candidate:").count(),
+        candidate_types(&local.sdp)
+    );
     send_relay(&out_tx, &RelayMsg::SdpAnswer { sdp: answer_json }).await?;
     Ok(())
 }

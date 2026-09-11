@@ -154,6 +154,12 @@ pub enum RelayMsg {
     Log {
         line: String,
     },
+    /// One diagnostic line from the browser, client → server. The phone's console is
+    /// unreachable during a field test, so the client ships what it sees — ICE candidate
+    /// types above all — to the server, which logs it.
+    ClientLog {
+        line: String,
+    },
 
     // ── WebRTC signaling (bidirectional, forwarded by relay) ─────────────────
     /// Client's SDP offer JSON (with all ICE candidates gathered, non-trickle).
