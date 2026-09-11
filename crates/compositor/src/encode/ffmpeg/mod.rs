@@ -312,18 +312,24 @@ unsafe fn open_h264_vaapi(
         (*ctx).bit_rate = bitrate;
         (*ctx).rc_max_rate = bitrate; // CBR
         (*ctx).rc_min_rate = bitrate;
-        // VBV is the burst allowance, and it is a latency knob, not a quality one: a buffer
-        // of N seconds lets any single frame spend N seconds' worth of bits. The one-second
-        // buffer that used to be here is the streaming default, and it produced measured
-        // 250-350 KB keyframes against an 8 KB per-frame budget — 2000-2800 kbits each,
-        // which then blocked the WebRTC pump for 110-153 ms and dropped every frame queued
-        // behind them.
+        // VBV is the burst allowance, and it is a latency knob rather than a quality one: the
+        // buffer size is exactly how many bits one frame may spend. Expressed in frame times
+        // because that is the unit that matters — a frame is late when it misses its own
+        // budget, and seconds say nothing about that.
         //
-        // A fifth of a second caps that burst roughly five-fold while still leaving a
-        // keyframe enough bits to not fall apart. Invariant #7 is explicit that these
-        // encoders are tuned for latency rather than quality, and this is where that is
-        // decided; raising it back trades smoothness for keyframe sharpness.
-        (*ctx).rc_buffer_size = (bitrate / VBV_FRACTION_OF_A_SECOND) as i32;
+        // Measured, at 4000 kbps / 60 fps: a one-second buffer (the streaming default, and
+        // what was here) gave 2000-2800 kbit keyframes that blocked the pump for 110-153 ms.
+        // A fifth of a second gave 862 kbits — still 150 ms, because the cap itself was the
+        // burst. Frames leave this pump at roughly 6-13 Mbps, so staying inside a 16 ms frame
+        // budget means a ceiling of a few frames' worth of bits, not a few hundred.
+        //
+        // The cost is real and deliberate: a keyframe or a hard scene change now has far
+        // fewer bits and will look soft for a frame or two before the picture recovers.
+        // Invariant #7 chooses that trade, and this constant is where it is made — raise it
+        // to buy sharpness back at the price of a stalled pump.
+        let vbv = (bitrate / fps.max(1) as i64) * VBV_FRAME_TIMES;
+        (*ctx).rc_buffer_size = vbv as i32;
+        (*ctx).rc_initial_buffer_occupancy = (vbv * 3 / 4) as i32;
         (*ctx).hw_frames_ctx = av_buffer_ref(hw_frames);
 
         let mut opts: *mut AVDictionary = ptr::null_mut();
@@ -341,9 +347,11 @@ unsafe fn open_h264_vaapi(
     }
 }
 
-/// How much of a second the VBV buffer holds — the largest burst any one frame may spend.
-/// See the note where it is applied; 5 means a fifth of a second.
-const VBV_FRACTION_OF_A_SECOND: i64 = 5;
+/// VBV buffer size, in frame times: the largest burst any one frame may spend, as a multiple
+/// of the average per-frame bit budget. Four is enough headroom for a keyframe to stay
+/// coherent while keeping the resulting write inside a frame or two. See the note at the
+/// point of use for the measurements behind it.
+const VBV_FRAME_TIMES: i64 = 4;
 
 /// Set a string option in an `AVDictionary` (best-effort; bad keys are ignored by ffmpeg).
 fn set_opt(opts: &mut *mut AVDictionary, key: &str, val: &str) {
