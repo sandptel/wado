@@ -106,7 +106,33 @@
 #scrim { display: none; }
 .settings-only { display: none; }
 
+/* Collapsed docked panel. Width rather than display, so the stage reflows smoothly instead
+ * of snapping — and the video keeps its aspect either way because the panel is a sibling
+ * column, not something layered over it. */
+.app[data-panel="shut"] > #panel {
+  flex-basis: 0;
+  width: 0;
+  padding-left: 0; padding-right: 0;
+  border-right: 0;
+  overflow: hidden;
+}
+.app > #panel {
+  transition: flex-basis var(--dur) var(--ease), width var(--dur) var(--ease),
+              padding var(--dur) var(--ease);
+}
+@media (prefers-reduced-motion: reduce) { .app > #panel { transition: none; } }
+
 @media (max-width: 719px) {
+  /* The sheet has the scrim and the ⚙; a collapse arrow would be a third way to do the
+   * same thing, and the panel is not a column down here for it to collapse. */
+  .docked-only { display: none; }
+  /* A panel collapsed on desktop must not follow you down to the sheet layout, where the
+   * only way back would be a control that is hidden. */
+  .app[data-panel="shut"] > #panel {
+    flex-basis: auto; width: auto; overflow-y: auto;
+    padding-left: 16px; padding-right: 16px;
+  }
+
   /* The panel stops being a column and becomes a sheet over the video. Same markup — the
    * alternative is a second panel to keep in sync with every new setting. */
   #panel {
