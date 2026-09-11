@@ -312,7 +312,18 @@ unsafe fn open_h264_vaapi(
         (*ctx).bit_rate = bitrate;
         (*ctx).rc_max_rate = bitrate; // CBR
         (*ctx).rc_min_rate = bitrate;
-        (*ctx).rc_buffer_size = bitrate as i32; // ~1 s VBV
+        // VBV is the burst allowance, and it is a latency knob, not a quality one: a buffer
+        // of N seconds lets any single frame spend N seconds' worth of bits. The one-second
+        // buffer that used to be here is the streaming default, and it produced measured
+        // 250-350 KB keyframes against an 8 KB per-frame budget — 2000-2800 kbits each,
+        // which then blocked the WebRTC pump for 110-153 ms and dropped every frame queued
+        // behind them.
+        //
+        // A fifth of a second caps that burst roughly five-fold while still leaving a
+        // keyframe enough bits to not fall apart. Invariant #7 is explicit that these
+        // encoders are tuned for latency rather than quality, and this is where that is
+        // decided; raising it back trades smoothness for keyframe sharpness.
+        (*ctx).rc_buffer_size = (bitrate / VBV_FRACTION_OF_A_SECOND) as i32;
         (*ctx).hw_frames_ctx = av_buffer_ref(hw_frames);
 
         let mut opts: *mut AVDictionary = ptr::null_mut();
@@ -329,6 +340,10 @@ unsafe fn open_h264_vaapi(
         Ok(ctx)
     }
 }
+
+/// How much of a second the VBV buffer holds — the largest burst any one frame may spend.
+/// See the note where it is applied; 5 means a fifth of a second.
+const VBV_FRACTION_OF_A_SECOND: i64 = 5;
 
 /// Set a string option in an `AVDictionary` (best-effort; bad keys are ignored by ffmpeg).
 fn set_opt(opts: &mut *mut AVDictionary, key: &str, val: &str) {
