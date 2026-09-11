@@ -123,25 +123,26 @@ pub fn start_session(
     // everything is drawn proportionally larger. Clamped because a zero or negative scale is
     // a divide-by-zero in the logical geometry, not a preference.
     let scale = if scale.is_finite() { scale.clamp(1.0, 4.0) } else { 1.0 };
-    // Rounded to a whole number, and this is not a nicety. wl_output.scale is an integer
-    // event, and wado does not implement wp-fractional-scale-v1, so a client asked for 1.5
-    // is told "2", renders its buffers at 2x, and has them composited as though they were
-    // 1.5x — the buffer overhangs its own area and app elements are visibly clipped.
-    // Honouring the request halfway is worse than not honouring it: rounding gives a client
-    // a scale it can actually draw for.
-    let requested = scale;
-    let scale = scale.round().max(1.0);
-    if (requested - scale).abs() > f32::EPSILON {
-        tracing::warn!(
-            requested,
-            applied = scale,
-            "fractional output scale rounded — wp-fractional-scale-v1 is not implemented, and              a client told an integer scale it did not ask for renders clipped"
-        );
-    }
+    // Two audiences, two answers, which is exactly what `Scale::Custom` is for.
+    //
+    // `wl_output.scale` is an integer event, so a client that speaks only that has to be
+    // told a whole number. A client that speaks wp-fractional-scale-v1 — which wado does
+    // advertise, see `state.rs` — is told the real value and draws for it.
+    //
+    // The trap `Scale::Fractional` sets is that it rounds *up* for the integer protocols:
+    // 1.25 is advertised as 2, the client draws a 2x buffer, and it is composited as 1.25x,
+    // so the buffer overhangs its own area and app elements are clipped. That was the real
+    // bug behind the old blanket rounding. Rounding to nearest instead means a legacy client
+    // asked for 1.25 is told 1 and comes out slightly soft — wrong in the safe direction,
+    // and only for clients that could not have honoured the request anyway.
+    let advertised_integer = (scale.round() as i32).max(1);
     output.change_current_state(
         Some(mode),
         Some(Transform::Normal),
-        Some(smithay::output::Scale::Fractional(scale as f64)),
+        Some(smithay::output::Scale::Custom {
+            advertised_integer,
+            fractional: scale as f64,
+        }),
         Some((0, 0).into()),
     );
     output.set_preferred(mode);
