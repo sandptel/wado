@@ -114,6 +114,7 @@ pub fn start_session(
     // A start that fails below this point leaves `session_active` false, so `stop_session`
     // early-returns and never tears this down. Dropping any previous global here keeps the
     // invariant simple: at most one, always the current renderer's.
+    state.dmabuf_logged = false;
     if let Some(old) = state.dmabuf_global.take() {
         state
             .dmabuf_state
@@ -369,6 +370,14 @@ pub fn stop_session(state: &mut Wado) {
     state.window_move = None;
     state.pending_placement.clear();
     state.cascade_count = 0;
+
+    // The negative case said out loud. A verdict that only logs when the answer is yes is a
+    // verdict that reads as "no" and as "nobody looked" in exactly the same way — which is how
+    // this question went unanswered in the first place.
+    if !state.dmabuf_logged {
+        info!("dmabuf path unused this session — every client buffer went through wl_shm");
+    }
+    state.dmabuf_logged = false;
 
     info!("compositor session stopped — resources released");
 }
