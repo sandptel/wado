@@ -155,6 +155,15 @@ W.relayConnect = async (relayUrl, remoteId, config) => {
           }
           break;
 
+        // ── Terminal ─────────────────────────────────────────────────────────
+        case "exec_output":
+          emit({ type: "exec", line: msg.line || "", err: !!msg.err });
+          break;
+
+        case "exec_exit":
+          emit({ type: "execExit", code: msg.code });
+          break;
+
         // ── Server render timings (relay's answer to GET /timing) ────────────
         // Stashed rather than resolved through a promise: the collector runs on its own
         // 1 Hz tick and uses the most recent reply, so one dropped answer costs a stale
@@ -299,6 +308,14 @@ W._relayNegotiate = async (ws) => {
 };
 
 // ── Session control helpers ───────────────────────────────────────────────────
+
+// Send a command to the session's shell. Relay-only: direct mode reaches the server over
+// HTTP and would need its own route, which nothing has asked for yet.
+W.relayExec = (command) => {
+  const ws = W.relayWs;
+  if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+  try { ws.send(JSON.stringify({ type: "exec", command })); return true; } catch (_) { return false; }
+};
 
 W.relayStop = () => {
   if (W.relayWs && W.relayWs.readyState === WebSocket.OPEN) {

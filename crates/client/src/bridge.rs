@@ -195,6 +195,26 @@ pub fn run(ui: Ui) {
                     let excess = buf.len().saturating_sub(MAX_LOG_LINES);
                     buf.drain(0..excess);
                 }
+                "exec" => {
+                    let mut buf = live.term.write();
+                    buf.push((string("line"), msg.get("err").and_then(|v| v.as_bool()).unwrap_or(false)));
+                    // Same cap as the log, for the same reason: `yes` should not kill the tab.
+                    let excess = buf.len().saturating_sub(MAX_LOG_LINES);
+                    buf.drain(0..excess);
+                }
+                "execExit" => {
+                    live.term_busy.set(false);
+                    let code = num("code");
+                    // Only a failure is worth a line of its own. Announcing every success
+                    // would double the output of a command whose whole job is one line.
+                    if code != Some(0.0) {
+                        let text = match code {
+                            Some(c) => format!("[exit {c}]"),
+                            None => "[killed]".to_string(),
+                        };
+                        live.term.write().push((text, true));
+                    }
+                }
                 // Both failure paths open the logs, because the reason is always in there.
                 "startFailed" => {
                     live.session_on.set(false);

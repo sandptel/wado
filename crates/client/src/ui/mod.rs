@@ -15,6 +15,7 @@ pub mod live;
 pub mod session;
 pub mod stage;
 pub mod status;
+pub mod term;
 
 use dioxus::prelude::*;
 

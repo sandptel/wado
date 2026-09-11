@@ -384,6 +384,47 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 send_relay(&out_tx, &RelayMsg::AppsList { apps }).await.ok();
             }
 
+            RelayMsg::Exec { command } => {
+                // Spawned rather than awaited: a command that never exits must not stop the
+                // relay loop from carrying input, frames or session control. The viewer's
+                // channel is cloned in, so output flows for as long as the socket lives.
+                let out_tx = out_tx.clone();
+                tokio::spawn(async move {
+                    info!(command, "exec");
+                    let (tx, mut rx) = mpsc::channel::<crate::exec::Line>(256);
+                    let forward = {
+                        let out_tx = out_tx.clone();
+                        tokio::spawn(async move {
+                            while let Some(l) = rx.recv().await {
+                                if send_relay(
+                                    &out_tx,
+                                    &RelayMsg::ExecOutput { line: l.text, err: l.err },
+                                )
+                                .await
+                                .is_err()
+                                {
+                                    break;
+                                }
+                            }
+                        })
+                    };
+                    let code = match crate::exec::run(&command, tx).await {
+                        Ok(code) => code,
+                        Err(e) => {
+                            send_relay(&out_tx, &RelayMsg::ExecOutput {
+                                line: format!("wado: {e}"),
+                                err: true,
+                            })
+                            .await
+                            .ok();
+                            Some(127)
+                        }
+                    };
+                    let _ = forward.await;
+                    send_relay(&out_tx, &RelayMsg::ExecExit { code }).await.ok();
+                });
+            }
+
             RelayMsg::TimingRequest => {
                 let timings = *ctx.timings.borrow();
                 send_relay(&out_tx, &RelayMsg::Timing { timings }).await.ok();

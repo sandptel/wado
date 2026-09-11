@@ -149,6 +149,27 @@ pub enum RelayMsg {
         message: String,
     },
 
+    /// Run a shell command in the session and stream its output back.
+    ///
+    /// Distinct from `SessionLaunch`, which spawns a GUI application into the session and
+    /// discards its output: this is for commands whose output *is* the point. Both run the
+    /// same shell in the same environment, so a GUI app started here still appears on screen.
+    Exec {
+        command: String,
+    },
+    /// One line of output from an [`RelayMsg::Exec`]. `err` marks stderr, which is worth
+    /// keeping apart: a command that printed nothing and a command that failed loudly look
+    /// identical once the two streams are merged.
+    ExecOutput {
+        line: String,
+        #[serde(default)]
+        err: bool,
+    },
+    /// The command finished. `code` is absent when it was killed by a signal.
+    ExecExit {
+        code: Option<i32>,
+    },
+
     /// Ask for the server's per-stage render timings.
     ///
     /// Relay mode has no HTTP path, so `GET /timing` needs a message counterpart the same way

@@ -93,6 +93,26 @@
 }
 .latnote .latval { color: var(--base0A); }
 
+/* The session shell. Styled as a sibling of the log panel because that is what it is — same
+ * collapsed height, same monospace, so the two read as one row of tools rather than two
+ * unrelated things stacked. */
+#term { border-top: 1px solid var(--base02); background: var(--base00); }
+#term > summary { padding: 6px 12px; user-select: none; cursor: pointer; color: var(--base04); }
+#wado-termwrap {
+  height: 160px; overflow-y: auto; padding: 4px 12px;
+  font-family: var(--mono); font-size: 11.5px; line-height: 1.45;
+}
+.termline { white-space: pre-wrap; word-break: break-word; color: var(--base05); }
+/* stderr apart from stdout: a command that printed nothing and one that failed loudly are
+ * indistinguishable once the streams are merged. */
+.term-err { color: var(--base08); }
+.termrow { display: flex; gap: 6px; padding: 0 12px 8px; }
+.termrow input {
+  flex: 1; min-width: 0;
+  font-family: var(--mono); font-size: 12px;
+}
+.termrow button { flex: 0 0 auto; }
+
 /* Live log panel. */
 #logs { border-top: 1px solid var(--base02); background: var(--base00); }
 #logs > summary { padding: 6px 12px; user-select: none; cursor: pointer; color: var(--base04); }

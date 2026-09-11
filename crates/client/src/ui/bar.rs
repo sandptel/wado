@@ -63,6 +63,30 @@ pub fn render(ui: Ui) -> Element {
                 }
             }
 
+            // Beside the window actions, because it belongs to the same group: things you do
+            // to the running session. A session is required for the same reason they are —
+            // there is no shell to run in until one exists.
+            button {
+                class: "barbtn",
+                title: "Shell",
+                "aria-label": "Shell",
+                disabled: !(live.session_on)(),
+                onclick: move |_| {
+                    let open = !(live.term_open)();
+                    live.term_open.set(open);
+                    // Focus follows the reveal: opening a command line and then having to
+                    // tap it is one step too many on a phone.
+                    if open {
+                        bridge::call(
+                            "setTimeout(function(){var e=document.getElementById('wado-terminput'); \
+                             if(e) e.focus();}, 60);"
+                                .to_string(),
+                        );
+                    }
+                },
+                "❯_"
+            }
+
             span { class: "barsep" }
 
             button {

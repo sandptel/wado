@@ -145,6 +145,16 @@ pub struct Live {
     pub stagebar: Signal<String>,
     pub logs: Signal<Vec<LogLine>>,
     pub logs_open: Signal<bool>,
+
+    /// Terminal output: `(text, is_stderr)`. Capped like the log, for the same reason — an
+    /// unbounded command would otherwise grow the DOM until the page dies.
+    pub term: Signal<Vec<(String, bool)>>,
+    /// Whether the terminal section is showing. Beside the log rather than inside it: they
+    /// answer different questions, and interleaving a command's output with the server's own
+    /// tracing makes both harder to read.
+    pub term_open: Signal<bool>,
+    /// True while a command is running, so the input can say so and refuse a second one.
+    pub term_busy: Signal<bool>,
     /// Whether the settings sheet is up. Only meaningful below the layout breakpoint — above
     /// it the panel is docked and this is ignored. Not persisted: reopening a page with the
     /// settings sheet already covering the video is never what someone wanted.
@@ -198,6 +208,9 @@ impl Live {
             stagebar: use_signal(|| "No session.".to_string()),
             logs: use_signal(Vec::new),
             logs_open: use_signal(|| false),
+            term: use_signal(Vec::new),
+            term_open: use_signal(|| false),
+            term_busy: use_signal(|| false),
             sheet_open: use_signal(|| false),
             encoder_mode: use_signal(String::new),
             encoder_pipeline: use_signal(String::new),
