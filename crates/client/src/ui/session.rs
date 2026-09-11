@@ -57,7 +57,8 @@ pub fn render(ui: Ui) -> Element {
             "How large apps draw themselves, as Hyprland's monitor scale does. \
              The stream stays at the resolution above; only the logical area apps lay out \
              in shrinks, so text and buttons come out bigger. Fractional steps need an app \
-             that speaks wp-fractional-scale; one that does not rounds to a whole number."
+             that speaks wp-fractional-scale; one that does not falls back to the nearest \
+             whole number below and comes out slightly soft."
         }
 
         label { "FPS" }
