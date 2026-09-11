@@ -191,10 +191,12 @@ async fn run(
                     ..Default::default()
                 };
                 let t0 = std::time::Instant::now();
+                let runq0 = crate::sched::run_delay_ns();
                 if let Err(e) = track_pump.write_sample(&sample).await {
                     warn!("relay client: write_sample: {e}");
                 }
                 let took = t0.elapsed();
+                let runq = crate::sched::run_delay_ns().saturating_sub(runq0);
                 let budget = frame.duration;
                 if took > budget {
                     slow += 1;
@@ -211,22 +213,32 @@ async fn run(
                             "write_sample slower than the frame budget — pump is the bottleneck"
                         );
                     }
-                    // Every overrun past a tenth of a second, with its size and whether it was
-                    // an IDR. If the stalls are keyframes, the fix is the keyframe — not the
-                    // channel depth, and not the bitrate.
+                    // Every overrun past a tenth of a second, with the three numbers that
+                    // separate its possible causes.
+                    //
+                    // Size and packet count were the original suspects and have since been
+                    // ruled out by their own data: 83 packets took 452 ms while 12 took
+                    // 442 ms, so the stall is a roughly constant blocking event per frame
+                    // rather than accumulated per-packet send cost. They are still logged,
+                    // because that is the correlation that must keep failing to appear.
+                    //
+                    // `runq_ms` is what actually discriminates. If it approaches `took_ms`
+                    // the thread was runnable and starved of CPU, and giving the session's
+                    // applications a smaller CPU share is a real fix. If it is near zero the
+                    // thread was blocked on something else and no amount of priority tuning
+                    // will touch this — in which case `psi_mem` is the next suspect, since
+                    // reclaim driven by another process stalls a thread for hundreds of
+                    // milliseconds while every CPU metric says the machine is idle.
                     if took > Duration::from_millis(100) {
-                        // write_sample packetizes and then awaits once per RTP packet, in
-                        // series. Cost per packet is therefore the number that says whether a
-                        // stall is the frame's size or a fixed price paid per await — and
-                        // measured here it is roughly constant per packet across frames that
-                        // differ twofold in size, which points at the latter.
                         let packets = (bytes / MTU_PAYLOAD).max(1);
                         warn!(
                             took_ms = took.as_millis() as u64,
+                            runq_ms = runq / 1_000_000,
+                            psi_cpu = crate::sched::pressure_some_avg10("/proc/pressure/cpu"),
+                            psi_mem = crate::sched::pressure_some_avg10("/proc/pressure/memory"),
                             bytes,
                             keyframe = key,
                             packets,
-                            us_per_packet = (took.as_micros() as usize / packets),
                             "write_sample stall"
                         );
                     }

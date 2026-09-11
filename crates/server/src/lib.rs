@@ -9,6 +9,7 @@ pub mod exec;
 pub mod relay_client;
 pub mod pty;
 pub mod remote_id;
+pub mod sched;
 pub mod webrtc_settings;
 pub mod website;
 

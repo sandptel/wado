@@ -11,10 +11,22 @@
 //! cannot tear down its own children either — the very thing we are trying to make happen.
 //! SIGKILL follows, for whatever is still there after a short grace.
 //!
-//! ponytail: a process group, not a cgroup. An application that calls `setsid` for itself
-//! leaves the group and escapes this — rare outside daemons, and it was escaping far more
-//! before. The upgrade path when that matters is a per-session cgroup (or a transient
-//! `systemd-run --scope`), which nothing can escape.
+//! Resources are a second, separate concern on the same spawn. Each application also goes
+//! into a transient `systemd-run --user --scope` with a CPU weight below wado's own, so that
+//! a burst of work inside the session — a page loading, a video decoding — competes with the
+//! render and send threads on worse terms than they do. Weights are inert until there is
+//! actually contention, so this costs nothing in the common case.
+//!
+//! ⚠️ **The weight is a feature, not a proven fix.** The 300–500 ms pump stalls it was built
+//! in response to have not yet been shown to be CPU starvation; see `runq_ms` in the pump's
+//! stall log (`server/src/sched.rs`), which is the measurement that decides. If `runq_ms`
+//! comes back near zero, this knob is not what fixes those stalls and must not be described
+//! as though it were.
+//!
+//! ponytail: a scope for resources, a process group for lifetime — not one mechanism doing
+//! both. An application that calls `setsid` still escapes the *group* (rare outside daemons)
+//! though not the scope; unifying them means killing by cgroup, which is the upgrade path
+//! when that matters.
 
 use std::{
     os::unix::process::CommandExt,
@@ -39,13 +51,90 @@ const POLL: Duration = Duration::from_millis(20);
 /// and redirection as literal text. `sh -c` is the rule a desktop entry's `Exec` line
 /// already follows.
 pub fn spawn(command: &str) -> std::io::Result<Child> {
-    Command::new("sh")
-        .arg("-c")
-        .arg(command)
-        // The whole point: a new group, whose id is this child's pid, so everything the
-        // command goes on to fork can be signalled as one unit.
-        .process_group(0)
-        .spawn()
+    let mut cmd = match cpu_weight() {
+        // A transient scope puts the application in its own cgroup with a CPU weight below
+        // the default 100, so the kernel prefers wado's render and send threads whenever the
+        // two actually compete. Below contention it changes nothing: weights only apply when
+        // there is something to divide.
+        Some(weight) if scope_available() => {
+            let mut c = Command::new("systemd-run");
+            c.args(["--user", "--scope", "--quiet", "--collect"])
+                .arg(format!("--unit=wado-app-{}", unit_counter()))
+                .arg(format!("--property=CPUWeight={weight}"))
+                .args(["sh", "-c", command]);
+            c
+        }
+        _ => {
+            let mut c = Command::new("sh");
+            c.args(["-c", command]);
+            c
+        }
+    };
+    // The whole point: a new group, whose id is this child's pid, so everything the
+    // command goes on to fork can be signalled as one unit. Kept even under a scope —
+    // the scope is for resources, the group is for lifetime, and the group is the one
+    // that has been verified to reap a browser's helpers.
+    cmd.process_group(0).spawn()
+}
+
+/// CPU shares for session applications, relative to the default 100 that wado itself keeps.
+///
+/// `WADO_APP_CPU_WEIGHT` overrides it; `0` turns the scope off entirely and spawns exactly
+/// as before. The default is deliberately mild — halving an application's share under
+/// contention, not starving it — because a browser inside the session is the thing the user
+/// came to use, not background noise.
+///
+/// ponytail: one env var, no config plumbing and no UI. This is a knob whose *effect* is
+/// unproven — see the note below — and a setting nobody can yet read a number for is worse
+/// than no setting.
+fn cpu_weight() -> Option<u32> {
+    let raw =
+        std::env::var("WADO_APP_CPU_WEIGHT").unwrap_or_else(|_| DEFAULT_APP_CPU_WEIGHT.to_string());
+    match raw.trim().parse::<u32>() {
+        Ok(0) => None,
+        Ok(w) => Some(w.clamp(1, 10_000)),
+        Err(_) => Some(DEFAULT_APP_CPU_WEIGHT),
+    }
+}
+
+const DEFAULT_APP_CPU_WEIGHT: u32 = 50;
+
+/// Whether a transient user scope can actually be created, probed once.
+///
+/// Both halves have to hold and neither can be assumed: `systemd-run` may not be installed,
+/// and even where it is, the user manager may not have been delegated the `cpu` controller —
+/// in which case the scope is created and the weight silently does nothing. Probing with a
+/// real scope is the only answer that covers both, and it costs one `true` per process.
+fn scope_available() -> bool {
+    use std::sync::OnceLock;
+    static OK: OnceLock<bool> = OnceLock::new();
+    *OK.get_or_init(|| {
+        let ok = Command::new("systemd-run")
+            .args([
+                "--user",
+                "--scope",
+                "--quiet",
+                "--collect",
+                "--property=CPUWeight=100",
+                "true",
+            ])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if !ok {
+            tracing::info!("no usable systemd user scope — session apps run unconstrained");
+        }
+        ok
+    })
+}
+
+/// Unique scope names. Reusing one fails once the first is still running.
+fn unit_counter() -> u64 {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static N: AtomicU64 = AtomicU64::new(0);
+    std::process::id() as u64 * 1000 + N.fetch_add(1, Ordering::Relaxed)
 }
 
 /// Stop a launched application and everything it spawned, then reap it.
@@ -91,6 +180,54 @@ fn signal_group(pgid: i32, sig: i32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `0` means "spawn exactly as before" and has to survive round-tripping, because it is
+    /// the escape hatch when a scope turns out to be the thing that broke something.
+    /// An unparseable value falls back to the default rather than to unconstrained: a typo
+    /// in an env var should not silently disable a resource limit.
+    #[test]
+    fn cpu_weight_reads_the_env_and_treats_zero_as_off() {
+        // ponytail: `set_var` is unsafe and this is the only test touching it, so it runs
+        // without a lock. Add one if a second env-reading test ever lands here.
+        unsafe {
+            std::env::set_var("WADO_APP_CPU_WEIGHT", "0");
+            assert_eq!(cpu_weight(), None);
+            std::env::set_var("WADO_APP_CPU_WEIGHT", "25");
+            assert_eq!(cpu_weight(), Some(25));
+            std::env::set_var("WADO_APP_CPU_WEIGHT", "not a number");
+            assert_eq!(cpu_weight(), Some(DEFAULT_APP_CPU_WEIGHT));
+            std::env::remove_var("WADO_APP_CPU_WEIGHT");
+            assert_eq!(cpu_weight(), Some(DEFAULT_APP_CPU_WEIGHT));
+        }
+    }
+
+    /// The one that would have caught the real bug: `-p=CPUWeight=50` is not valid
+    /// `systemd-run` syntax (it wants `--property=`), and the failure mode was a scope that
+    /// never started at all. Asserting the weight *landed* is the only check that covers it —
+    /// asserting the command ran would have passed via the fallback path.
+    #[test]
+    fn a_launched_app_lands_in_a_cgroup_with_the_reduced_weight() {
+        if !scope_available() {
+            eprintln!("no usable user scope here — skipping");
+            return;
+        }
+        let out = std::env::temp_dir().join(format!("wado-weight-{}", std::process::id()));
+        let _ = std::fs::remove_file(&out);
+        let mut child = spawn(&format!(
+            "cat /sys/fs/cgroup$(cut -d: -f3 /proc/self/cgroup)/cpu.weight > {}",
+            out.display()
+        ))
+        .expect("spawn");
+        let _ = child.wait();
+
+        let weight = std::fs::read_to_string(&out).unwrap_or_default();
+        let _ = std::fs::remove_file(&out);
+        assert_eq!(
+            weight.trim().parse::<u32>().ok(),
+            Some(DEFAULT_APP_CPU_WEIGHT),
+            "app should run in its own scope at the reduced weight, got {weight:?}"
+        );
+    }
 
     /// Does any process still exist in this group? Signal 0 performs the permission and
     /// existence checks without delivering anything.
