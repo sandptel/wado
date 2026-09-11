@@ -14,6 +14,7 @@ serde_json = "1"
 # Readable panics in the browser console during development.
 console_error_panic_hook = "0.1"
 
-# Yes I am going to pin this , because I wasn't able to compile
-# Will have to change when I update to the next version of dioxus, which will likely require a newer version of wasm-bindgen.
-wasm-bindgen = "=0.2.118"
+# Pinned EXACTLY, and it must match the wasm-bindgen-cli that `dx` ships, or the build
+# fails with "Incorrect wasm-bindgen-cli version". Bump this in lockstep with dioxus-cli:
+# dioxus-cli 0.7.10 -> 0.2.126 (0.7.9 was 0.2.118).
+wasm-bindgen = "=0.2.126"
