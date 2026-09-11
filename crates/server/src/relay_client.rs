@@ -116,6 +116,12 @@ async fn run(
     {
         let track_pump = Arc::clone(&track);
         tokio::spawn(async move {
+            // The frame channel is two slots deep, so a write_sample that takes longer than
+            // two frame times is enough to start dropping. Whether it does is the difference
+            // between "the link is saturated" and "the pump is the bottleneck", and nothing
+            // else in the log distinguishes them.
+            let mut slow: u64 = 0;
+            let mut worst = Duration::ZERO;
             while let Some(frame) = frame_rx.recv().await {
                 // Relay mode has no /timing endpoint yet, so the queue stamp is unused
                 // here — the duration still matters (real elapsed time keeps the RTP clock
@@ -125,8 +131,24 @@ async fn run(
                     duration: frame.duration,
                     ..Default::default()
                 };
+                let t0 = std::time::Instant::now();
                 if let Err(e) = track_pump.write_sample(&sample).await {
                     warn!("relay client: write_sample: {e}");
+                }
+                let took = t0.elapsed();
+                if took > frame.duration {
+                    slow += 1;
+                    if took > worst { worst = took; }
+                    // Same once-per-60 cadence as the drop counter, so the two lines pair up.
+                    if slow % 60 == 0 {
+                        warn!(
+                            slow,
+                            worst_ms = worst.as_millis() as u64,
+                            last_ms = took.as_millis() as u64,
+                            budget_ms = frame.duration.as_millis() as u64,
+                            "write_sample slower than the frame budget — pump is the bottleneck"
+                        );
+                    }
                 }
             }
         });
