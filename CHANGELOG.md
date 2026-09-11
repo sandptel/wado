@@ -13,11 +13,39 @@ a phone's 1080 × 2422 that is roughly 10 MB per surface per frame. Version 4 wi
 advertised when the render node is known, so a client is also told *which* GPU to allocate on;
 version 3 otherwise.
 
+**Unmeasured so far.** One live sample had Chrome's GPU process holding zero dmabuf file
+descriptors, which suggests it may not be taking the path at all — so each session now says
+which it did, on both branches. If it turns out Chrome never uses it, the protocol is still
+right (any future GPU client needs it) but the saving described above is not being collected
+today.
+
 **Two-finger pinch and rotate** — `zwp_pointer_gestures_v1`.
 
 A two-finger drag now produces a scroll axis *and* a pinch. That is what a touchpad emits and
 what toolkits are written against — so the pinch's own translation is deliberately sent as
 zero, or an app pans twice for one drag.
+
+### Changed
+
+**Logs say where things went wrong instead of going quiet.**
+
+One `EnvFilter` sat on the subscriber registry, so it gated every destination at once — the
+terminal and the client's log panel shared a single verbosity, and because that verbosity was
+`info`, every `debug!` in wado's own crates was written, shipped and permanently silent. A log
+line that *cannot* fire is indistinguishable from one whose subject never happened, which is
+the worse of the two failures.
+
+Filters are per-destination now. The terminal defaults to debug for wado's own crates, with
+`webrtc_ice` muted — one session teardown emitted eight "Failed to close candidate" lines,
+none of which ever meant anything. The client's log panel stays at `info`, because it is a
+200-line ring in front of a person. `RUST_LOG` still overrides the terminal. Per-lane detail
+needs no new code: a tracing target is the module path, so
+`RUST_LOG=wado_compositor::headless=debug` already works.
+
+Two questions that previously required catching a live session and reading `/proc` now answer
+themselves in the log: whether any client took the dmabuf path (said on **both** branches —
+"live" or "unused this session"), and which surfaces asked for a fractional scale, which is the
+only way to see the population that the integer fallback actually serves.
 
 ### Fixed
 
