@@ -66,6 +66,12 @@ pub fn render(ui: Ui) -> Element {
             onchange: move |e| if let Ok(v) = e.value().parse() { s.fps.set(v) },
             option { value: "30", "30" }
             option { value: "60", "60" }
+            // 90 is the useful middle rung, not a compromise: it cuts the pixel rate a
+            // fifth below 120 — so every frame gets ~33% more bits at the same bitrate —
+            // while keeping the 11.1 ms frame period well under the ~16.7 ms that 60 makes
+            // visible as motion judder. Nothing in the pipeline needs a divisor of 60: the
+            // render timer derives its period from fps directly.
+            option { value: "90", "90" }
             option { value: "120", "120" }
         }
 
