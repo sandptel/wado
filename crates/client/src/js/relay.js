@@ -213,9 +213,9 @@ W._relayNegotiate = async (ws) => {
     // with 7-13 ms RTT and no packet loss. Direct mode has always set it here; this is the
     // third thing relay mode was missing that the direct path had (after the ICE servers
     // and the latency echo), so the two ontrack handlers are worth diffing when either moves.
-    W.minimizePlayoutDelay(
+    rlog("playout delay: " + W.minimizePlayoutDelay(
       ev.receiver || pc.getReceivers().find((r) => r.track && r.track.kind === "video")
-    );
+    ));
     stagebar("Streaming (relay).");
     W.reconnectAttempts = 0;
     W.startStats(pc);

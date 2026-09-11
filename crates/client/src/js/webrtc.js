@@ -86,12 +86,19 @@ W.connectWebRTC = async () => {
 // Poke `W.playoutMs` from the console to feel the trade either way.
 W.playoutMs = 20;
 W.minimizePlayoutDelay = (recv) => {
-  if (!recv) return;
+  if (!recv) return "no receiver";
+  const applied = [];
   try {
     const ms = Math.max(0, W.playoutMs || 0);
-    if ("jitterBufferTarget" in recv) recv.jitterBufferTarget = ms;
-    if ("playoutDelayHint" in recv) recv.playoutDelayHint = ms / 1000; // seconds
-  } catch (_) {}
+    if ("jitterBufferTarget" in recv) { recv.jitterBufferTarget = ms; applied.push("jitterBufferTarget=" + ms); }
+    if ("playoutDelayHint" in recv) { recv.playoutDelayHint = ms / 1000; applied.push("playoutDelayHint=" + ms + "ms"); }
+  } catch (e) {
+    return "threw: " + e;
+  }
+  // Returned rather than logged here: this file is shared with direct mode, which has no
+  // relay socket to log down. Both are hints the browser may exceed under real jitter, so
+  // knowing they were *set* is not the same as knowing they took — compare against jbuf.
+  return applied.length ? applied.join(" ") : "unsupported by this browser";
 };
 
 // Retry the WebRTC connection with backoff; the compositor session keeps running.
