@@ -18,7 +18,7 @@
 //! reset after a successful registration). A relay restart therefore only causes
 //! a short re-registration gap, not a dead server.
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -69,6 +69,19 @@ struct RelayCtx {
     /// Latest per-stage render timings, answering `TimingRequest`. Latest-value-wins, so a
     /// slow or absent reader never backs the compositor up.
     timings: tokio::sync::watch::Receiver<wado_protocol::StageTimings>,
+    /// Unix-millis of the last message received from the relay. See [`viewer_watchdog`].
+    last_relay_msg: Arc<AtomicU64>,
+    /// Whether a session was started for a viewer and has not been stopped. See
+    /// [`viewer_watchdog`].
+    session_started: Arc<AtomicBool>,
+}
+
+/// Now, in unix milliseconds.
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 /// Spawn the relay client on a dedicated thread. Mirrors `website::start`.
@@ -254,10 +267,19 @@ async fn run(
         log_bus,
         active_pc: Arc::new(Mutex::new(None)),
         generation: Arc::new(AtomicU64::new(0)),
+        last_relay_msg: Arc::new(AtomicU64::new(now_ms())),
+        session_started: Arc::new(AtomicBool::new(false)),
         relay_url,
         remote_id,
         timings,
     };
+
+    tokio::spawn(viewer_watchdog(
+        ctx.cmd_tx.clone(),
+        Arc::clone(&ctx.last_relay_msg),
+        Arc::clone(&ctx.session_started),
+        Arc::clone(&ctx.active_pc),
+    ));
 
     // ── Reconnect loop ──────────────────────────────────────────────────────
     let mut backoff = BACKOFF_INITIAL;
@@ -372,6 +394,10 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             Err(e) => { warn!("relay client: WS error: {e}"); break; }
         };
 
+        // Liveness for `viewer_watchdog`. Bumped on every frame, including ones we do not
+        // understand — the point is that the relay link is carrying traffic, not what it says.
+        ctx.last_relay_msg.store(now_ms(), Ordering::Relaxed);
+
         let msg = match serde_json::from_str::<RelayMsg>(&text) {
             Ok(m) => m,
             Err(e) => { warn!("relay client: bad JSON from relay: {e}"); continue; }
@@ -383,6 +409,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             }
 
             RelayMsg::SessionStart { config } => {
+                ctx.session_started.store(true, Ordering::SeqCst);
                 let (reply_tx, reply_rx) = oneshot::channel();
                 if ctx.cmd_tx.send(CompositorCommand::Start { config, reply: reply_tx }).is_err() {
                     send_relay(&out_tx, &RelayMsg::SessionError {
@@ -411,6 +438,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             }
 
             RelayMsg::SessionStop => {
+                ctx.session_started.store(false, Ordering::SeqCst);
                 let _ = ctx.cmd_tx.send(CompositorCommand::Stop);
                 send_relay(&out_tx, &RelayMsg::SessionStopped).await.ok();
             }
@@ -704,6 +732,7 @@ async fn handle_sdp_offer(
     {
         let cmd_tx = ctx.cmd_tx.clone();
         let generation = Arc::clone(&ctx.generation);
+        let session_started = Arc::clone(&ctx.session_started);
         pc.on_peer_connection_state_change(Box::new(move |state| {
             match state {
                 RTCPeerConnectionState::Connected => {
@@ -713,6 +742,7 @@ async fn handle_sdp_offer(
                 RTCPeerConnectionState::Failed | RTCPeerConnectionState::Closed => {
                     if generation.load(Ordering::SeqCst) == my_gen {
                         info!("relay client: viewer gone — stopping session");
+                        session_started.store(false, Ordering::SeqCst);
                         let _ = cmd_tx.send(CompositorCommand::Stop);
                     }
                 }
@@ -822,5 +852,62 @@ mod pump_tests {
         for au in [&[][..], &[0][..], &[0, 0, 1][..], &[0, 0, 0, 1][..]] {
             let _ = is_keyframe(au);
         }
+    }
+}
+
+/// How long a started session may go without any sign of its viewer before it is stopped.
+///
+/// Generous, because a session outliving its viewer by half a minute costs nothing while a
+/// session killed out from under a live viewer costs everything.
+const VIEWER_GRACE: std::time::Duration = std::time::Duration::from_secs(45);
+
+/// Stop a session whose viewer has vanished without saying so.
+///
+/// **Why this exists.** Until now the *only* thing that stopped a session was the WebRTC peer
+/// connection reaching `Failed` or `Closed`. That covers a viewer that closes its tab. It does
+/// not cover the relay link dropping — a relay restart, a network blip, or (2026-09-12) a
+/// panicked relay task — because the reconnect loop treats that as routine and retries. The
+/// compositor, the encoder and every application the session launched keep running, with
+/// nobody watching and nothing left that knows how to stop them. A browser playing audio into
+/// an empty room is the same failure the process-group cleanup fixed, arriving by a different
+/// door.
+///
+/// **Why two conditions and not one.** Silence on the relay link is not enough on its own: a
+/// viewer that is connected and quiet would be killed. So the session is stopped only when the
+/// signalling link has been silent *and* WebRTC is not connected. Either one alone is normal;
+/// together they mean there is no viewer by any route.
+async fn viewer_watchdog(
+    cmd_tx: CommandSender,
+    last_relay_msg: Arc<AtomicU64>,
+    session_started: Arc<AtomicBool>,
+    active_pc: Arc<Mutex<Option<Arc<RTCPeerConnection>>>>,
+) {
+    let mut tick = tokio::time::interval(std::time::Duration::from_secs(5));
+    loop {
+        tick.tick().await;
+        if !session_started.load(Ordering::SeqCst) {
+            continue;
+        }
+        let silent_ms = now_ms().saturating_sub(last_relay_msg.load(Ordering::Relaxed));
+        if silent_ms < VIEWER_GRACE.as_millis() as u64 {
+            continue;
+        }
+        // The lock is released before the await point; holding a std Mutex across one would
+        // be a deadlock waiting for a slow tick.
+        let connected = {
+            let pc = active_pc.lock().unwrap().clone();
+            pc.map(|pc| pc.connection_state() == RTCPeerConnectionState::Connected)
+                .unwrap_or(false)
+        };
+        if connected {
+            continue;
+        }
+        warn!(
+            silent_ms,
+            "no sign of a viewer for {VIEWER_GRACE:?} and WebRTC is not connected — stopping \
+             the session so its applications do not outlive it"
+        );
+        session_started.store(false, Ordering::SeqCst);
+        let _ = cmd_tx.send(CompositorCommand::Stop);
     }
 }
