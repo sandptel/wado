@@ -6,7 +6,7 @@
 W.startStats = (pc) => {
   W.stopStats();
   let lastFrames = null, lastTs = null, lastBytes = null, lastByteTs = null;
-  let lastLost = null, tick = 0;
+  let lastLost = null, tick = 0, lastDropped = null, lastRecv = null;
   W.statsTimer = setInterval(async () => {
     if (!W.pc || W.pc !== pc) { W.stopStats(); return; } // pc replaced (reconnect)
     let stats;
@@ -55,7 +55,17 @@ W.startStats = (pc) => {
         }
       });
     }
-    emit({ type: "stats", fps, ping, jbuf });
+    // Over the window rather than the session: a device that struggled for ten seconds and
+    // then settled should stop warning, and a cumulative percentage never would.
+    let decodeDropPct = null;
+    if (dropped !== null && recv !== null && lastDropped !== null && lastRecv !== null) {
+        const dd = dropped - lastDropped, dr = recv - lastRecv;
+        if (dr > 0) decodeDropPct = (dd / dr) * 100;
+    }
+    if (dropped !== null) lastDropped = dropped;
+    if (recv !== null) lastRecv = recv;
+
+    emit({ type: "stats", fps, ping, jbuf, decodeDropPct });
 
     // The UI wants 1 Hz; the relay does not — a log line a second per viewer buries the
     // events worth reading. Ship every fifth tick, and immediately on anything anomalous so

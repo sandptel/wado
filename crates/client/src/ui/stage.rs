@@ -57,9 +57,23 @@ pub fn render(ui: Ui) -> Element {
     let dropped = (live.dropped)().unwrap_or(0);
     let logs = live.logs.read().clone();
 
+    // The server can be entirely healthy while the picture still stutters, because the
+    // viewing device cannot decode what it asked for. Measured on this phone: 1080x2422 at
+    // 60 fps dropped ~5% of frames in the browser while the pump reported no stalls and no
+    // drops at all. Without this the only visible symptom is choppiness, which reads as a
+    // server fault and sends you looking in the wrong place.
+    let decode_drop = (live.decode_drop_pct)();
+    let struggling = on && decode_drop >= 2.0;
+
     rsx! {
         if sw_encoding {
             div { class: "swbanner", "⚠ Software encoding — higher CPU use and latency" }
+        }
+        if struggling {
+            div { class: "decodebanner",
+                "⚠ This device is dropping {decode_drop:.0}% of frames — it cannot decode this \
+                 fast enough. Lower the resolution or drop to 30 fps."
+            }
         }
         div { id: "stagebar",
             span {

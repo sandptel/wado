@@ -153,6 +153,9 @@ pub fn run(ui: Ui) {
                     live.fps.set(num("fps"));
                     live.ping.set(num("ping"));
                     live.jbuf.set(num("jbuf"));
+                    if let Some(p) = num("decodeDropPct") {
+                        live.decode_drop_pct.set(p);
+                    }
                 }
                 "latency" => {
                     // Pipeline order, so the row reads left-to-right the way a frame and an

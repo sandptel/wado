@@ -143,6 +143,11 @@ pub struct Live {
 
     /// The viewing device's physical screen in real pixels, once the bridge reports it.
     /// Drives the device-exact resolution options — see `crate::res`.
+    /// Percentage of received frames this device failed to render, smoothed by the bridge.
+    /// Distinct from `dropped`, which counts frames the *server* discarded: this one says
+    /// the pipeline delivered and the viewer could not keep up.
+    pub decode_drop_pct: Signal<f64>,
+
     pub screen_w: Signal<u32>,
     pub screen_h: Signal<u32>,
 
@@ -178,6 +183,7 @@ impl Live {
             sheet_open: use_signal(|| false),
             encoder_mode: use_signal(String::new),
             encoder_pipeline: use_signal(String::new),
+            decode_drop_pct: use_signal(|| 0.0),
             screen_w: use_signal(|| 0),
             screen_h: use_signal(|| 0),
             conn_stage: use_signal(|| 0),
