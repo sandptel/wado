@@ -89,7 +89,21 @@ pub enum InputEvent {
     /// A scroll/wheel tick at (`x`,`y`). `dx`/`dy` are already-normalized **pixel** deltas
     /// (the client folds in `deltaMode`, scroll-speed and natural-direction); the compositor
     /// turns them into a value-only `wl_pointer` axis frame.
-    Scroll { x: f64, y: f64, dx: f64, dy: f64 },
+    Scroll {
+        x: f64,
+        y: f64,
+        dx: f64,
+        dy: f64,
+        /// What produced the scroll. A finger is not a wheel: clients use the source to pick
+        /// smooth kinetic scrolling over notched stepping, and to know that an axis-stop will
+        /// follow when the contact lifts.
+        #[serde(default)]
+        source: ScrollSource,
+        /// The contact has lifted; emit the axis-stop that ends a finger scroll. Carries no
+        /// delta. Meaningless for a wheel, which has no end.
+        #[serde(default)]
+        stop: bool,
+    },
     /// A pointer button press/release at (`x`,`y`). For a real mouse this is the actual
     /// button; for touch it is the long-press → right-click emulation. Delivered via
     /// `wl_pointer` with focus set to the surface under the point.
@@ -301,6 +315,18 @@ pub struct WindowConfig {
     /// Where newly-mapped toplevels are placed on the output.
     #[serde(default)]
     pub placement: Placement,
+}
+
+/// What produced a scroll event.
+///
+/// Wheel is the default so an older client, which sent neither field, keeps behaving exactly
+/// as it did.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScrollSource {
+    #[default]
+    Wheel,
+    Finger,
 }
 
 /// New-window placement policy.

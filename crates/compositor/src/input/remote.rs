@@ -32,7 +32,9 @@ impl Wado {
             InputEvent::Button { x, y, button, pressed } => {
                 self.pointer_button(x, y, button, pressed)
             }
-            InputEvent::Scroll { x, y, dx, dy } => self.pointer_scroll(x, y, dx, dy),
+            InputEvent::Scroll { x, y, dx, dy, source, stop } => {
+                self.pointer_scroll(x, y, dx, dy, source, stop)
+            }
             InputEvent::WindowDrag { phase, x, y } => self.window_drag(phase, x, y),
             // Never reaches here in practice: the server answers Ping itself and does not
             // forward it, precisely so the probe measures the input path without the

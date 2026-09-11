@@ -12,7 +12,7 @@ use smithay::{
     reexports::wayland_server::protocol::wl_surface::WlSurface,
 };
 
-use wado_protocol::PointerButton;
+use wado_protocol::{PointerButton, ScrollSource};
 
 use crate::Wado;
 
@@ -88,18 +88,53 @@ impl Wado {
     /// Scroll at a point. `dx`/`dy` are already-normalized pixel deltas; we emit a
     /// **value-only** wheel axis frame (no v120), which GTK/Qt/web/terminals honour as
     /// smooth scroll. Discrete-step emulation is intentionally left out (see CHALLENGES.md).
-    pub(crate) fn pointer_scroll(&mut self, x: f64, y: f64, dx: f64, dy: f64) {
+    pub(crate) fn pointer_scroll(
+        &mut self,
+        x: f64,
+        y: f64,
+        dx: f64,
+        dy: f64,
+        source: ScrollSource,
+        stop: bool,
+    ) {
         let Some(loc) = self.map_point(x, y) else {
             return;
         };
         let (serial, time) = self.input_clock();
         let under = self.surface_under(loc);
         let pointer = self.seat.get_pointer().unwrap();
-        // Focus the surface under the wheel point (no cursor) so the axis lands on it.
+        // Focus the surface under the scroll point (no cursor) so the axis lands on it.
         pointer.motion(self, under, &MotionEvent { location: loc, serial, time });
         pointer.frame(self);
 
-        let mut frame = AxisFrame::new(time).source(AxisSource::Wheel);
+        // The source is not cosmetic. On Finger a toolkit scrolls smoothly and starts its
+        // own kinetic animation when the axis stops; on Wheel it steps. A finger drag
+        // reported as a wheel therefore arrives as a burst of notches — which is what a
+        // two-finger drag used to feel like, because Wheel was hard-coded here.
+        let axis_source = match source {
+            ScrollSource::Finger => AxisSource::Finger,
+            ScrollSource::Wheel => AxisSource::Wheel,
+        };
+        let mut frame = AxisFrame::new(time).source(axis_source);
+
+        // Traced at debug because a scroll that feels wrong has three possible causes that
+        // look identical from the outside: deltas arriving too small, too rarely, or with the
+        // wrong source. RUST_LOG=wado_compositor::input=debug shows which.
+        tracing::debug!(dx, dy, ?source, stop, "scroll");
+
+        if stop {
+            // A finger scroll must be terminated explicitly or the client waits for more,
+            // and never begins the kinetic phase that makes flicking feel right.
+            frame = frame.stop(Axis::Horizontal).stop(Axis::Vertical);
+            pointer.axis(self, frame);
+            pointer.frame(self);
+            // At info: one line per gesture, not per event, and it is the line that says the
+            // finger path was actually taken rather than silently falling back to wheel.
+            tracing::info!(events = self.scroll_events, ?source, "scroll gesture ended");
+            self.scroll_events = 0;
+            return;
+        }
+
         let mut any = false;
         if dx != 0.0 {
             frame = frame.value(Axis::Horizontal, dx);
@@ -112,6 +147,7 @@ impl Wado {
         if any {
             pointer.axis(self, frame);
             pointer.frame(self);
+            self.scroll_events = self.scroll_events.saturating_add(1);
         }
     }
 }

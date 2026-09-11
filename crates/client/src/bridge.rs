@@ -44,6 +44,8 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/input_touch.js"),
     "\n",
+    include_str!("js/input_scroll.js"),
+    "\n",
     include_str!("js/input_keyboard.js"),
     "\n",
     include_str!("js/overlay.js"),
