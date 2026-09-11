@@ -321,6 +321,11 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
 
     info!("relay client: ready — clients can connect with the Remote ID");
 
+    // The viewer's interactive shell, if they have opened one. A local rather than
+    // connection state held elsewhere, so that losing the connection drops it — and
+    // dropping a `Pty` kills the shell and, through SIGHUP, whatever it was running.
+    let mut pty: Option<crate::pty::Pty> = None;
+
     // ── 4. Main message loop ─────────────────────────────────────────────────
     while let Some(frame) = ws_stream.next().await {
         let text = match frame {
@@ -423,6 +428,64 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     let _ = forward.await;
                     send_relay(&out_tx, &RelayMsg::ExecExit { code }).await.ok();
                 });
+            }
+
+            RelayMsg::PtyOpen { cols, rows } => {
+                // Replaces any existing shell: one per viewer. The old one is dropped first
+                // so its shell is gone before the new one starts, rather than both running.
+                pty = None;
+                let (tx, mut rx) = mpsc::channel::<String>(64);
+                match crate::pty::Pty::open(cols, rows, tx) {
+                    Ok(p) => {
+                        pty = Some(p);
+                        let out_tx = out_tx.clone();
+                        tokio::spawn(async move {
+                            while let Some(data) = rx.recv().await {
+                                if send_relay(&out_tx, &RelayMsg::PtyOutput { data }).await.is_err()
+                                {
+                                    break;
+                                }
+                            }
+                            // The channel closing means the reader thread saw EOF, which is
+                            // how a shell exiting looks from here.
+                            //
+                            // ponytail: no exit code. The thread that notices the exit is the
+                            // one reading the master and it does not hold the child handle;
+                            // plumbing the code back is a channel this does not need to show
+                            // "[shell exited]".
+                            let _ = send_relay(&out_tx, &RelayMsg::PtyExit { code: None }).await;
+                        });
+                    }
+                    Err(e) => {
+                        warn!("pty open failed: {e}");
+                        send_relay(&out_tx, &RelayMsg::PtyOutput {
+                            data: format!("wado: could not start a shell: {e}\r\n"),
+                        })
+                        .await
+                        .ok();
+                        send_relay(&out_tx, &RelayMsg::PtyExit { code: None }).await.ok();
+                    }
+                }
+            }
+
+            RelayMsg::PtyInput { data } => {
+                if let Some(p) = pty.as_mut() {
+                    if let Err(e) = p.write(&data) {
+                        warn!("pty write failed: {e}");
+                        pty = None;
+                    }
+                }
+            }
+
+            RelayMsg::PtyResize { cols, rows } => {
+                if let Some(p) = pty.as_mut() {
+                    p.resize(cols, rows);
+                }
+            }
+
+            RelayMsg::PtyClose => {
+                // Drop kills the shell; SIGHUP takes its jobs with it.
+                pty = None;
             }
 
             RelayMsg::TimingRequest => {

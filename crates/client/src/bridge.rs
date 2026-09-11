@@ -62,6 +62,8 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/apps.js"),
     "\n",
+    include_str!("js/pty.js"),
+    "\n",
     include_str!("js/lifecycle.js"),
 );
 

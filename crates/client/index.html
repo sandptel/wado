@@ -8,6 +8,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="theme-color" content="#181818" />
+    <!-- Terminal emulator for the console's shell tab. A PTY sends ANSI — cursor
+         addressing, colour, alternate screen — and interpreting that is a real terminal's
+         job, not something to hand-roll. Pinned exactly; the fit addon must match the
+         xterm it was built against. Loaded here rather than through the JS bridge because
+         the bridge is one concatenated eval and cannot await a script tag; js/pty.js
+         waits for `window.Terminal` instead of assuming this has finished. -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.js"></script>
   </head>
   <body>
     <div id="main"></div>

@@ -24,3 +24,4 @@ tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
 futures-util = "0.3"
 # Remote ID generation (already in the dep tree via webrtc).
 rand = "0.8"
+portable-pty = "0.9.0"
