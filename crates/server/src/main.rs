@@ -111,5 +111,9 @@ fn init_logging() -> LogBus {
         .with(fmt::layer().with_filter(term))
         .with(log_bus.clone().with_filter(EnvFilter::new(PANEL_LOG)))
         .init();
+    // After the subscriber, so a panic during startup still has somewhere to go. Panics in the
+    // render and command paths are already caught per session; this is for everything else —
+    // notably tokio tasks, where a dead task looks exactly like a quiet one.
+    wado::panic_log::install();
     log_bus
 }

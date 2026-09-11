@@ -22,6 +22,7 @@ use tracing::info;
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 mod config;
+mod panic_log;
 mod error;
 mod registry;
 mod room;
@@ -47,6 +48,8 @@ async fn main() -> anyhow::Result<()> {
     let filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new(&cfg.log_level));
     tracing_subscriber::registry().with(filter).with(fmt::layer()).init();
+    // After logging, so a panic during startup still has somewhere to go.
+    panic_log::install();
 
     let state = AppState {
         registry: ServerRegistry::new(),
