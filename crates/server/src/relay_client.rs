@@ -132,6 +132,15 @@ async fn run(
             let mut worst_wait = Duration::ZERO;
             let mut queued_total = Duration::ZERO;
             let mut frames: u64 = 0;
+            // Keyframe size, reported per stretch rather than only when something stalls.
+            // The VBV cap is a ceiling on exactly this number, so it is the measurement that
+            // says whether the cap is doing what it was set to do — and an IDR crushed against
+            // it is visible as a once-per-GOP pulse of blockiness, which no timing metric
+            // shows at all.
+            let mut key_bytes_max: usize = 0;
+            let mut key_bytes_total: usize = 0;
+            let mut key_count: u64 = 0;
+            let mut p_bytes_total: usize = 0;
             while let Some(frame) = frame_rx.recv().await {
                 let bytes = frame.data.len();
                 let key = is_keyframe(&frame.data);
@@ -146,16 +155,32 @@ async fn run(
                 }
                 queued_total += waited;
                 frames += 1;
+                if key {
+                    key_count += 1;
+                    key_bytes_total += bytes;
+                    key_bytes_max = key_bytes_max.max(bytes);
+                } else {
+                    p_bytes_total += bytes;
+                }
                 if frames % 300 == 0 {
+                    let p_frames = frames - key_count;
                     info!(
                         avg_queue_ms = (queued_total.as_millis() as u64) / frames.max(1),
                         worst_queue_ms = worst_wait.as_millis() as u64,
                         frames,
+                        keyframes = key_count,
+                        key_avg_kb = (key_bytes_total / key_count.max(1) as usize) / 1024,
+                        key_max_kb = key_bytes_max / 1024,
+                        p_avg_kb = (p_bytes_total / p_frames.max(1) as usize) / 1024,
                         "pump: queue wait over the last stretch"
                     );
                     queued_total = Duration::ZERO;
                     worst_wait = Duration::ZERO;
                     frames = 0;
+                    key_count = 0;
+                    key_bytes_total = 0;
+                    key_bytes_max = 0;
+                    p_bytes_total = 0;
                 }
                 // Relay mode has no /timing endpoint yet, so the queue stamp is unused
                 // here — the duration still matters (real elapsed time keeps the RTP clock
