@@ -94,14 +94,14 @@ async fn register_loop(socket: WebSocket, addr: SocketAddr, state: AppState) {
     // ── 4. Bidirectional message pump ────────────────────────────────────────
     // Spawn a task that drains inbox_rx → ws_tx (messages from relay/client to server).
     let remote_id_fwd = remote_id.clone();
-    let fwd_task = tokio::spawn(async move {
+    let _fwd_task = AbortOnDrop(tokio::spawn(async move {
         while let Some(text) = inbox_rx.recv().await {
             if ws_tx.send(Message::Text(text)).await.is_err() {
                 debug!(remote_id = %remote_id_fwd, "forward task: ws write failed");
                 break;
             }
         }
-    });
+    }));
 
     // Main task: ws_rx → route to active room's client (server → relay → client).
     while let Some(frame) = ws_rx.next().await {
@@ -126,7 +126,8 @@ async fn register_loop(socket: WebSocket, addr: SocketAddr, state: AppState) {
     }
 
     // ── 5. Cleanup ───────────────────────────────────────────────────────────
-    fwd_task.abort();
+    // `_fwd_task` aborts itself on drop — including when this function unwinds. See
+    // `AbortOnDrop`.
     state.registry.remove(&remote_id);
     state.rooms.remove(&remote_id);
     info!(
@@ -222,14 +223,14 @@ async fn join_loop(socket: WebSocket, remote_id: String, addr: SocketAddr, state
     // ── 5. Bidirectional message pump ────────────────────────────────────────
     // Spawn a task that drains client_inbox_rx → ws_tx (server → relay → client).
     let remote_id_fwd = remote_id.clone();
-    let fwd_task = tokio::spawn(async move {
+    let _fwd_task = AbortOnDrop(tokio::spawn(async move {
         while let Some(text) = client_inbox_rx.recv().await {
             if ws_tx.send(Message::Text(text)).await.is_err() {
                 debug!(remote_id = %remote_id_fwd, "client fwd task: ws write failed");
                 break;
             }
         }
-    });
+    }));
 
     // Main task: ws_rx → server's inbox (client → relay → server).
     while let Some(frame) = ws_rx.next().await {
@@ -253,7 +254,8 @@ async fn join_loop(socket: WebSocket, remote_id: String, addr: SocketAddr, state
     }
 
     // ── 6. Cleanup ───────────────────────────────────────────────────────────
-    fwd_task.abort();
+    // `_fwd_task` aborts itself on drop — including when this function unwinds. See
+    // `AbortOnDrop`.
     state.rooms.remove(&remote_id);
     // Tell the server the viewer is gone. Its own teardown hangs off the WebRTC peer
     // state, which never reaches Failed/Closed when ICE never completed in the first
@@ -322,5 +324,24 @@ mod tests {
         assert_eq!(head("hi"), "hi");
         assert_eq!(head(""), "");
         assert_eq!(head(&"●".repeat(200)).chars().count(), 120);
+    }
+}
+
+/// Aborts a spawned task when this guard is dropped — **including on an unwind**.
+///
+/// The relay's per-connection loops each spawn a forwarder that owns the WebSocket's write
+/// half, and each called `fwd_task.abort()` at the end. A panic unwinds *past* that line, so
+/// the forwarder survived, kept the socket open, and nothing drained the read half: 2.6 MB
+/// backed up in the daemon's send queue and every message after the panic was silently lost.
+/// The visible symptom was "the shell works but nothing streams" — nobody would look for a
+/// panic, because the process was still up and still serving other rooms.
+///
+/// A guard turns that into what it should have been: the connection closes, the peer notices,
+/// and it reconnects.
+struct AbortOnDrop(tokio::task::JoinHandle<()>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
     }
 }
