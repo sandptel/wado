@@ -85,44 +85,22 @@ W.connectWebRTC = async () => {
 // network. A small floor costs a fraction of a frame of latency and buys back smoothness.
 // Poke `W.playoutMs` from the console to feel the trade either way.
 W.playoutMs = 20;
-// Push an inflated playout buffer back down once the network has recovered.
+// ⚠️ Reclaiming an inflated playout buffer by re-asserting the hint DOES NOT WORK, and the
+// code that tried was deleted rather than left looking like a feature. Recorded here so it
+// is not re-attempted:
 //
-// `jitterBufferTarget` is a target, not a cap. Chrome grows the buffer in one step when the
-// link misbehaves — a single 200 ms RTT spike took it from 8 ms to 68 ms — and then drains it
-// at a fraction of a millisecond per second, so one blip costs minutes of added latency that
-// the user feels as sluggishness. The hint is set once at connect and never re-evaluated.
+// v0.0.2 shipped a `reassertPlayout` that re-set `jitterBufferTarget` whenever jbuf ran well
+// past it and the RTT was healthy again. It fired — 15 "playout reasserted" lines in one
+// session — and the buffer drained 56→55→54→54→53→52 across them, which is its natural rate
+// with no inflection at any reassert. It changed nothing.
 //
-// The condition is deliberately two-sided: the buffer must be well past what was asked for
-// AND the round trip must already be healthy again. Forcing the buffer down while the link is
-// still bad is how you trade latency for stutter, and Chrome grew it for a reason. This only
-// reclaims the buffer the network no longer needs.
+// Why: `jitterBufferTarget` is a *floor*, honoured only up to what the browser's own timing
+// model demands. Playout is roughly max(target, model), so the hint can raise the delay and
+// can never lower one the model is driving. Two windowed traces confirm it directly —
+// `jtarget` tracks `jbuf` (26/24 on desktop, 23/31 on a phone) while the hint reads back as
+// the 20 we set. The model binds; our number does not.
 //
-// ponytail: re-asserting the same value and letting Chrome converge, rather than tracking a
-// target of our own. If Chrome ever stops honouring a repeat set, the next step is stepping
-// the target down gradually.
-const REASSERT_OVER_TARGET_MS = 25; // how far past the target counts as inflated
-const REASSERT_HEALTHY_RTT_MS = 60; // "the link is fine now"
-const REASSERT_MIN_GAP_MS = 4000;   // never thrash it
-let lastReassert = 0;
-
-W.reassertPlayout = (jbuf, ping) => {
-  if (jbuf === null || ping === null || !W.pc) return;
-  const target = W.playoutMs || 0;
-  if (jbuf <= target + REASSERT_OVER_TARGET_MS) return;
-  if (ping > REASSERT_HEALTHY_RTT_MS) return;
-  const now = Date.now();
-  if (now - lastReassert < REASSERT_MIN_GAP_MS) return;
-  lastReassert = now;
-  try {
-    const recv = W.pc.getReceivers().find((r) => r.track && r.track.kind === "video");
-    if (!recv) return;
-    W.minimizePlayoutDelay(recv);
-    W.rlog && W.rlog(
-      "playout reasserted: jbuf=" + Math.round(jbuf) + "ms rtt=" + Math.round(ping) +
-      "ms target=" + target + "ms"
-    );
-  } catch (_) {}
-};
+// So the only thing worth setting is the floor below, once, at connect.
 
 W.minimizePlayoutDelay = (recv) => {
   if (!recv) return "no receiver";

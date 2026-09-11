@@ -37,11 +37,14 @@ a human.
   observation. Server and client are deployed and byte-verified; nobody has watched it run.
   It does **not** survive a reconnect yet: the shell is owned by the relay connection, so
   losing it starts a fresh one.
-- **Jitter-buffer reclaim after a network blip.** Chrome ratchets its jitter buffer up on an
-  rtt spike and drains it at ~0.3 ms/sample, so one blip is felt as sluggishness for
-  minutes. The client now re-asserts the playout target when the buffer is inflated *and*
-  rtt has already recovered. The underlying behaviour is measured (8 → 68 ms on a 198 ms
-  spike); the fix's effect is not.
+- ~~**Jitter-buffer reclaim after a network blip.**~~ **RETRACTED — it never worked.** The
+  reasoning was sound and the effect was zero: `jitterBufferTarget` is a floor honoured only
+  up to what the browser's own timing model demands, so it can raise the playout delay and
+  can never lower one the model is driving. Measured afterwards: the reassert fired 15 times
+  in one session while the buffer drained 56→55→54→54→53→52, its natural rate, with no
+  inflection at any of them. The code is deleted; `webrtc.js` records why so it is not
+  retried. The *underlying* behaviour this aimed at is still real and still unfixed
+  (8 → 68 ms on a 198 ms spike).
 
 ### Packaging
 
