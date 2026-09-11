@@ -528,7 +528,13 @@ async fn handle_offer(ctx: &ServerCtx, offer_json: &str) -> crate::Result<String
     let answer = pc.create_answer(None).await?;
     let mut gather_complete = pc.gathering_complete_promise().await;
     pc.set_local_description(answer).await?;
-    let _ = gather_complete.recv().await;
+    // Bounded — see `crate::ice::GATHER_WAIT` and the twin in `relay_client.rs`.
+    if tokio::time::timeout(crate::ice::GATHER_WAIT, gather_complete.recv())
+        .await
+        .is_err()
+    {
+        tracing::warn!("ICE gathering still running after {:?} — answering with what we have", crate::ice::GATHER_WAIT);
+    }
 
     let local = pc
         .local_description()
