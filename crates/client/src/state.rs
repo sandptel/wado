@@ -144,15 +144,21 @@ pub struct Live {
     pub status: Signal<String>,
     pub stagebar: Signal<String>,
     pub logs: Signal<Vec<LogLine>>,
-    pub logs_open: Signal<bool>,
+    /// Whether the console sheet is up, and which half of it is showing.
+    ///
+    /// One sheet with two tabs rather than two panels, and floating rather than stacked: as
+    /// siblings under the video they each took height off the picture, so turning either on
+    /// letterboxed the stream. On a phone there is no height to spare for a panel you are not
+    /// reading.
+    pub console_open: Signal<bool>,
+    pub console_tab: Signal<String>,
 
     /// Terminal output: `(text, is_stderr)`. Capped like the log, for the same reason — an
     /// unbounded command would otherwise grow the DOM until the page dies.
+    ///
+    /// Kept apart from the log rather than interleaved: they answer different questions, and
+    /// a command's output mixed into the server's tracing makes both harder to read.
     pub term: Signal<Vec<(String, bool)>>,
-    /// Whether the terminal section is showing. Beside the log rather than inside it: they
-    /// answer different questions, and interleaving a command's output with the server's own
-    /// tracing makes both harder to read.
-    pub term_open: Signal<bool>,
     /// True while a command is running, so the input can say so and refuse a second one.
     pub term_busy: Signal<bool>,
     /// Whether the settings sheet is up. Only meaningful below the layout breakpoint — above
@@ -207,9 +213,9 @@ impl Live {
             status: use_signal(|| "idle".to_string()),
             stagebar: use_signal(|| "No session.".to_string()),
             logs: use_signal(Vec::new),
-            logs_open: use_signal(|| false),
+            console_open: use_signal(|| false),
+            console_tab: use_signal(|| "shell".to_string()),
             term: use_signal(Vec::new),
-            term_open: use_signal(|| false),
             term_busy: use_signal(|| false),
             sheet_open: use_signal(|| false),
             encoder_mode: use_signal(String::new),
