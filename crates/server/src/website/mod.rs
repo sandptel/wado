@@ -68,10 +68,16 @@ use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSampl
 
 use logbus::LogBus;
 use wado_compositor::{CommandSender, CompositorCommand, FrameMsg, InputEvent, InputSender};
-use wado_protocol::{INPUT_CHANNEL, SessionInfo};
+use tokio::sync::watch;
+use wado_protocol::{INPUT_CHANNEL, MOTION_CHANNEL, SessionInfo, StageTimings};
 
 /// Bounded so encoded frames never pile up behind a slow/absent network.
-pub const FRAME_CHANNEL_CAPACITY: usize = 4;
+///
+/// Kept deliberately shallow: every queued frame is latency the viewer will eventually
+/// see, and for an interactive stream a stale frame is worth less than a fresh one. Two
+/// slots absorb a single scheduling hiccup between the render tick and the pump without
+/// letting a standing backlog form (4 slots at 60 fps was up to ~66 ms of queue).
+pub const FRAME_CHANNEL_CAPACITY: usize = 2;
 /// Reject oversized request bodies (SDP/config are tiny; this is a DoS guard).
 const MAX_BODY_BYTES: usize = 256 * 1024;
 /// How long `/session/start` waits for the compositor thread to reply.
@@ -93,6 +99,13 @@ struct ServerCtx {
     active_pc: Arc<Mutex<Option<Arc<RTCPeerConnection>>>>,
     /// Bumped on every accepted offer; lets a stale viewer's teardown be ignored.
     generation: Arc<AtomicU64>,
+    /// Latest per-stage render timings published by the compositor.
+    timings: watch::Receiver<StageTimings>,
+    /// Smoothed time (microseconds) encoded frames wait before the pump takes them.
+    /// Lives here rather than in the compositor because only this side knows when the
+    /// frame was actually picked up. Atomic so the pump task and the HTTP handlers can
+    /// share it without a lock on the hot path.
+    queue_us: Arc<AtomicU64>,
 }
 
 /// Start the control plane: spawn the tokio runtime (HTTP server + frame pump) on its
@@ -104,6 +117,7 @@ pub fn start(
     cmd_tx: CommandSender,
     input_tx: InputSender,
     frame_rx: mpsc::Receiver<FrameMsg>,
+    timings: watch::Receiver<StageTimings>,
     addr: &str,
     log_bus: LogBus,
 ) -> crate::Result<()> {
@@ -119,7 +133,9 @@ pub fn start(
                 }
             };
             rt.block_on(async move {
-                if let Err(e) = run_server(addr, frame_rx, cmd_tx, input_tx, log_bus).await {
+                if let Err(e) =
+                    run_server(addr, frame_rx, cmd_tx, input_tx, timings, log_bus).await
+                {
                     error!("control server exited: {e}");
                 }
             });
@@ -133,6 +149,7 @@ async fn run_server(
     mut frame_rx: mpsc::Receiver<FrameMsg>,
     cmd_tx: CmdSender,
     input_tx: InputSender,
+    timings: watch::Receiver<StageTimings>,
     log_bus: LogBus,
 ) -> crate::Result<()> {
     let mut media_engine = MediaEngine::default();
@@ -157,12 +174,28 @@ async fn run_server(
         "wado".to_owned(),
     ));
 
+    // How long frames wait between the compositor handing them over and this pump taking
+    // them. Smoothed, because the client polls at ~1 Hz and a single raw sample of a 60 Hz
+    // signal is meaningless noise.
+    let queue_us = Arc::new(AtomicU64::new(0));
+
     // Frame pump: encoded frames → write_sample. Harmless no-op when no viewer.
     {
         let track = Arc::clone(&track);
+        let queue_us = Arc::clone(&queue_us);
         tokio::spawn(async move {
-            while let Some((buf, dur)) = frame_rx.recv().await {
-                let sample = Sample { data: Bytes::from(buf), duration: dur, ..Default::default() };
+            while let Some(frame) = frame_rx.recv().await {
+                // Stamped by the compositor at hand-off, so this is pure waiting time.
+                let waited = frame.queued_at.elapsed().as_micros() as u64;
+                // EWMA, 1/8 weight on the newest sample.
+                let prev = queue_us.load(Ordering::Relaxed);
+                queue_us.store((prev * 7 + waited) / 8, Ordering::Relaxed);
+
+                let sample = Sample {
+                    data: Bytes::from(frame.data),
+                    duration: frame.duration,
+                    ..Default::default()
+                };
                 if let Err(e) = track.write_sample(&sample).await {
                     warn!("write_sample error: {e}");
                 }
@@ -178,6 +211,8 @@ async fn run_server(
         log_bus,
         active_pc: Arc::new(Mutex::new(None)),
         generation: Arc::new(AtomicU64::new(0)),
+        timings,
+        queue_us,
     });
 
     let listener = TcpListener::bind(&addr).await?;
@@ -257,6 +292,29 @@ async fn handle_conn(mut stream: TcpStream, ctx: Arc<ServerCtx>) -> crate::Resul
     }
 
     match (method.as_str(), path.as_str()) {
+        // Per-stage pipeline timings for the client's latency breakdown. A plain polled
+        // GET rather than a new SSE event type: /events is a hand-rolled raw-TCP log
+        // stream with no named-event support, and telemetry the client samples once a
+        // second does not justify building that out.
+        ("GET", "/timing") => {
+            let t = *ctx.timings.borrow();
+            let queue_ms = ctx.queue_us.load(Ordering::Relaxed) as f64 / 1e3;
+            let body = serde_json::json!({
+                "capture_ms": t.capture_ms,
+                "encode_ms": t.encode_ms,
+                "queue_ms": queue_ms,
+                "tick_ms": t.tick_ms,
+                "fps": t.fps,
+                "dropped": t.dropped,
+            });
+            write_response(
+                &mut stream,
+                "200 OK",
+                "application/json",
+                body.to_string().as_bytes(),
+            )
+            .await?;
+        }
         ("GET", "/") => {
             // No UI here anymore — the client is the separate `wado-client` app.
             let msg = b"wado control server (API only). Run the wado-client app to connect.";
@@ -349,17 +407,23 @@ async fn handle_offer(ctx: &ServerCtx, offer_json: &str) -> crate::Result<String
         .add_track(Arc::clone(&ctx.track) as Arc<dyn TrackLocal + Send + Sync>)
         .await?;
 
-    // Remote input: the browser opens a reliable data channel (label INPUT_CHANNEL) in
-    // its offer; each message is a JSON InputEvent we forward to the compositor on the
-    // separate input channel (never behind video — invariant #1). Bad frames are dropped.
+    // Remote input: the browser opens TWO data channels in its offer — INPUT_CHANNEL
+    // (reliable+ordered: buttons, keys, scroll, touch, drag start/end) and MOTION_CHANNEL
+    // (zero-retransmit: high-rate pointer/drag motion, latest-wins). Both carry
+    // JSON InputEvents and both funnel into the same compositor input channel (never
+    // behind video — invariant #1). Bad frames are dropped.
+    //
+    // The split exists because a high-polling-rate mouse saturates a reliable channel and
+    // everything else then queues behind its backlog. See MOTION_CHANNEL's docs for why
+    // each event type is safe on the channel it uses.
     {
         let input_tx = ctx.input_tx.clone();
         pc.on_data_channel(Box::new(move |dc: Arc<RTCDataChannel>| {
             let input_tx = input_tx.clone();
             Box::pin(async move {
                 let label = dc.label().to_string();
-                if label != INPUT_CHANNEL {
-                    info!("ignoring data channel {label:?} (expected {INPUT_CHANNEL:?})");
+                if label != INPUT_CHANNEL && label != MOTION_CHANNEL {
+                    info!("ignoring data channel {label:?} (not an input channel)");
                     return;
                 }
                 {
@@ -370,10 +434,22 @@ async fn handle_offer(ctx: &ServerCtx, offer_json: &str) -> crate::Result<String
                     }));
                 }
                 let input_tx = input_tx.clone();
+                let dc_echo = Arc::clone(&dc);
                 dc.on_message(Box::new(move |msg: DataChannelMessage| {
                     let input_tx = input_tx.clone();
+                    let dc_echo = Arc::clone(&dc_echo);
                     Box::pin(async move {
                         match serde_json::from_slice::<InputEvent>(&msg.data) {
+                            // Latency probe: bounce it straight back and do NOT forward it.
+                            // Answering here measures the input path itself — if it went
+                            // via the compositor the number would include a wait for the
+                            // render loop, which is a different question.
+                            Ok(InputEvent::Ping { seq }) => {
+                                let pong = format!("{{\"t\":\"pong\",\"seq\":{seq}}}");
+                                if let Err(e) = dc_echo.send_text(pong).await {
+                                    tracing::debug!("pong send failed: {e}");
+                                }
+                            }
                             Ok(ev) => {
                                 tracing::debug!(?ev, "input event");
                                 if input_tx.send(ev).is_err() {
