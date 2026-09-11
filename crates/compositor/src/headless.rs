@@ -5,6 +5,7 @@ use smithay::{
     backend::{
         egl::EGLContext,
         renderer::{
+            ImportDma,
             damage::OutputDamageTracker,
             element::surface::WaylandSurfaceRenderElement,
             gles::{GlesRenderer, GlesTarget},
@@ -99,6 +100,49 @@ pub fn start_session(
     let egl_context = EGLContext::new(&gpu.egl).map_err(renderer_err("EGLContext::new"))?;
     let mut renderer =
         unsafe { GlesRenderer::new(egl_context).map_err(renderer_err("GlesRenderer::new"))? };
+
+    // ── zwp-linux-dmabuf-v1 ──────────────────────────────────────────────────
+    //
+    // Created here, not in `Wado::new`, because its format list comes from the renderer and
+    // there is no renderer until now. Every Wayland client here is spawned by the compositor
+    // into a running session, so none of them can bind before this point — the usual
+    // "advertise unconditionally or a toolkit never looks again" rule has nothing to bite on.
+    //
+    // Version 4 (with feedback) when the device id is known, because feedback is how a client
+    // is told *which* GPU to allocate on; version 3 (bare format list) otherwise, which is
+    // still enough for a client to stop going through shm.
+    match gpu.dev {
+        Some(dev) => {
+            let formats: Vec<_> = renderer.dmabuf_formats().into_iter().collect();
+            match smithay::wayland::dmabuf::DmabufFeedbackBuilder::new(dev, formats).build() {
+                Ok(feedback) => {
+                    state.dmabuf_global = Some(
+                        state
+                            .dmabuf_state
+                            .create_global_with_default_feedback::<Wado>(
+                                &state.display_handle,
+                                &feedback,
+                            ),
+                    );
+                    info!("zwp-linux-dmabuf-v1 advertised (v4, with feedback)");
+                }
+                Err(e) => warn!("dmabuf feedback build failed, clients stay on shm: {e}"),
+            }
+        }
+        None => {
+            let formats: Vec<_> = renderer.dmabuf_formats().into_iter().collect();
+            let n = formats.len();
+            state.dmabuf_global = Some(
+                state
+                    .dmabuf_state
+                    .create_global::<Wado>(&state.display_handle, formats),
+            );
+            info!(
+                formats = n,
+                "zwp-linux-dmabuf-v1 advertised (v3, no device id)"
+            );
+        }
+    }
 
     let buf_size: Size<i32, Buffer> = (ec.width as i32, ec.height as i32).into();
 
@@ -297,6 +341,13 @@ pub fn stop_session(state: &mut Wado) {
     }
     if let Some(global) = state.output_global.take() {
         state.display_handle.remove_global::<Wado>(global);
+    }
+    // Goes with the renderer that produced its format list. A client holding a dmabuf across
+    // a session boundary gets `failed()` from the import handler, which is the honest answer.
+    if let Some(global) = state.dmabuf_global.take() {
+        state
+            .dmabuf_state
+            .destroy_global::<Wado>(&state.display_handle, global);
     }
     state.renderer = None;
     state.capture = None;

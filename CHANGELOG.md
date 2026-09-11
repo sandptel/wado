@@ -2,39 +2,53 @@
 
 ## Unreleased
 
-### Fixed
-
-- **Fractional scale was implemented and then rounded away.** The requested scale was rounded
-  to a whole number *before* it reached either consumer, so a session asked for 1.25 was given
-  1.0 on a protocol wado already speaks — `requested=1.25 applied=1.0` in the log. The output
-  now carries `Scale::Custom`: the exact value for clients that speak
-  `wp-fractional-scale-v1`, a whole number for those that do not. Verified live at 1.25, 1.75
-  and 2.0 with no divergence.
-
-  The whole-number companion is `floor`, not `round`: `round` and `ceil` are the same number at
-  1.5, 1.75, 2.5 and 2.75, so rounding would have left the original bug — an oversized buffer
-  overhanging its own area, clipping app chrome — intact at every scale above 1.25. Flooring
-  makes a legacy client slightly soft instead, which costs nearly nothing through an H.264
-  stream.
-
-- **A pinch that was never ended left the toolkit stuck in zoom mode.** A disconnect or an
-  input reset drops the gesture with no end event, and windows outlive sessions here, so the
-  orphan survived into the next one. The open/closed state is tracked on the compositor side
-  now; a new pinch closes any open one first.
-
-- ~~**Jitter-buffer reclaim after a network blip.**~~ **Retracted from v0.0.2 — it never
-  worked.** `jitterBufferTarget` is a floor honoured only up to what the browser's own timing
-  model demands, so it can raise the playout delay and can never lower one the model is
-  driving. It fired 15 times in one session while the buffer drained 56→55→54→54→53→52, its
-  natural rate, with no inflection at any of them. Deleted; the reasoning is recorded in
-  `webrtc.js` so it is not retried. The underlying behaviour is still real and still unfixed.
-
 ### Added
 
-- **Two-finger pinch and rotate** (`zwp_pointer_gestures_v1`). A two-finger drag now produces a
-  scroll axis *and* a pinch, which is what a touchpad emits and what toolkits are written
-  against — the pinch's own translation is deliberately left at zero so an app does not pan
-  twice for one drag.
+**Clients can hand over GPU buffers** — `zwp_linux_dmabuf_v1`.
+
+`wl_shm` was the only buffer path on offer, so a GPU application had to render on the GPU,
+read the result back to the CPU, write it into shared memory, and have the compositor upload
+it to a texture again — two full copies of every window, every frame, on the render tick. At
+a phone's 1080 × 2422 that is roughly 10 MB per surface per frame. Version 4 with feedback is
+advertised when the render node is known, so a client is also told *which* GPU to allocate on;
+version 3 otherwise.
+
+**Two-finger pinch and rotate** — `zwp_pointer_gestures_v1`.
+
+A two-finger drag now produces a scroll axis *and* a pinch. That is what a touchpad emits and
+what toolkits are written against — so the pinch's own translation is deliberately sent as
+zero, or an app pans twice for one drag.
+
+### Fixed
+
+**Fractional scale was implemented and then rounded away.**
+
+The requested scale was rounded to a whole number *before* it reached either consumer, so a
+session asking for 1.25 was given 1.0 on a protocol wado already speaks. The output now
+carries both answers: the exact value for clients that speak `wp-fractional-scale-v1`, a whole
+number for those that do not. Verified live at 1.25, 1.75 and 2.0.
+
+The whole-number companion is floored, not rounded. Rounding and ceiling agree at 1.5, 1.75,
+2.5 and 2.75, so rounding would have left the original bug — an oversized buffer overhanging
+its own area and clipping app chrome — intact at every scale above 1.25. Flooring makes a
+legacy client slightly soft instead, which costs almost nothing through an H.264 stream.
+
+**A pinch that was never ended left the toolkit stuck in zoom mode.**
+
+A disconnect or an input reset drops the gesture with no end event, and windows outlive
+sessions here, so the orphan survived into the next one. The open/closed state is tracked on
+the compositor side now; a new pinch closes any open one first.
+
+### Retracted
+
+**Jitter-buffer reclaim (shipped in v0.0.2) never worked, and is deleted.**
+
+`jitterBufferTarget` is a floor honoured only up to what the browser's own timing model
+demands — it can raise the playout delay and can never lower one the model is driving. The
+reassert fired 15 times in one session while the buffer drained 56 → 55 → 54 → 54 → 53 → 52,
+its natural rate, with no inflection at any of them. The reasoning is left in `webrtc.js` so
+it is not tried again. The underlying behaviour is still real and still unfixed: a network
+hitch permanently inflates the buffer by about 5 ms.
 
 ## v0.0.2 — `2026-09-11`
 

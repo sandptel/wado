@@ -1,4 +1,5 @@
 mod compositor;
+mod dmabuf;
 mod xdg_shell;
 
 use crate::Wado;

@@ -19,6 +19,7 @@ use smithay::{
     utils::{Logical, Point},
     wayland::{
         compositor::{CompositorClientState, CompositorState},
+        dmabuf::{DmabufGlobal, DmabufState},
         fractional_scale::FractionalScaleManagerState,
         output::OutputManagerState,
         pointer_gestures::PointerGesturesState,
@@ -62,6 +63,13 @@ pub struct Wado {
     /// its buffer overhangs its own area and elements are visibly clipped.
     pub fractional_scale_state: FractionalScaleManagerState,
     pub pointer_gestures_state: PointerGesturesState,
+    /// zwp-linux-dmabuf-v1. Unlike every other global here it is created **per session**,
+    /// not at startup: its format list comes from the renderer, and there is no renderer
+    /// until a session starts. That is safe only because every Wayland client here is
+    /// spawned by the compositor *into* a running session, so none of them can bind before
+    /// the global exists. See `headless::start_session`.
+    pub dmabuf_state: DmabufState,
+    pub dmabuf_global: Option<DmabufGlobal>,
     /// wp-viewport. Its companion: a client drawing for a fractional scale needs to declare
     /// the destination size its buffer maps onto, or the rounding it just avoided reappears
     /// at composite time.
@@ -173,6 +181,7 @@ impl Wado {
         // the same reason as the two above: a toolkit looks for its gesture global when it
         // binds the seat, and one that appears later is one it never asks for again.
         let pointer_gestures_state = PointerGesturesState::new::<Self>(&dh);
+        let dmabuf_state = DmabufState::new();
 
         let mut seat_state = SeatState::new();
         let mut seat: Seat<Self> = seat_state.new_wl_seat(&dh, "headless");
@@ -203,6 +212,8 @@ impl Wado {
             data_device_state,
             fractional_scale_state,
             pointer_gestures_state,
+            dmabuf_state,
+            dmabuf_global: None,
             viewporter_state,
             popups,
             seat,
