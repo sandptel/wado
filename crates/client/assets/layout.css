@@ -197,3 +197,35 @@
 .appname { font-size: 13px; }
 .appexec { font-size: 11px; color: var(--base03); font-family: var(--mono); }
 @keyframes row-in { from { opacity: 0; } }
+
+/* ── Connection status: the four hops to video ──────────────────────────────
+ * A stalled connection has four unrelated causes and they used to look identical.
+ * Colour carries the state, but the label and the per-stage hint carry it too —
+ * base16 08/0B are not distinguishable to every reader. */
+.stages { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; }
+.stages li {
+  display: grid; grid-template-columns: 14px auto 1fr; align-items: baseline;
+  gap: 8px; font-size: 13px;
+}
+.stages .dot {
+  width: 9px; height: 9px; border-radius: 50%; align-self: center;
+  background: var(--base02); box-shadow: 0 0 0 1px var(--base03) inset;
+}
+.stages .name { color: var(--base04); }
+.stages .hint { color: var(--base03); font-size: 12px; }
+.stages .done .dot { background: var(--base0B); box-shadow: none; }
+.stages .done .name { color: var(--base06); }
+/* The in-flight stage pulses so a stall is visibly a stall, not a finished state. */
+.stages .active .dot { background: var(--base0A); box-shadow: none; animation: pulse 1.2s infinite; }
+.stages .active .name { color: var(--base0A); }
+.stages .failed .dot { background: var(--base08); box-shadow: none; }
+.stages .failed .name { color: var(--base08); }
+@keyframes pulse { 50% { opacity: 0.3; } }
+@media (prefers-reduced-motion: reduce) { .stages .active .dot { animation: none; } }
+
+.connerr {
+  margin: 8px 0 0; padding: 7px 9px; border-radius: var(--r);
+  background: var(--base01); border-left: 3px solid var(--base08);
+  color: var(--base05); font-size: 12px; line-height: 1.45;
+}
+.connok { margin: 8px 0 0; color: var(--base0B); font-size: 12px; }

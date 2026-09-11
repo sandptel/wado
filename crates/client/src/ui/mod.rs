@@ -14,6 +14,7 @@ pub mod launcher;
 pub mod live;
 pub mod session;
 pub mod stage;
+pub mod status;
 
 use dioxus::prelude::*;
 
@@ -40,6 +41,8 @@ pub fn panel(ui: Ui) -> Element {
         }
 
         {connection::render(ui)}
+
+        {status::render(ui)}
 
         Group {
             title: "Session",

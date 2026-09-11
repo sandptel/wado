@@ -136,6 +136,14 @@ pub fn run(ui: Ui) {
 
             match kind {
                 "status" => live.status.set(text()),
+                "phase" => {
+                    // Monotonic: a late stray message must not walk the indicator backwards.
+                    let n = num("stage").unwrap_or(0.0) as u8;
+                    if n == 0 || n > (live.conn_stage)() {
+                        live.conn_stage.set(n);
+                    }
+                    live.conn_error.set(string("error"));
+                }
                 "stagebar" => live.stagebar.set(text()),
                 "stats" => {
                     live.fps.set(num("fps"));

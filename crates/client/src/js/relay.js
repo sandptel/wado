@@ -28,6 +28,10 @@ W._relayAnswer = null;
 // A phone's console is unreachable mid-field-test, so diagnostics go two ways: into the
 // in-page log panel, and over the relay WS to the server, which logs them next to its own.
 // That is the only way the two halves of a failed negotiation end up in one place.
+// Stage 0 = nothing, 1 = relay reachable, 2 = daemon online, 3 = session up, 4 = video.
+// `error` non-empty marks the stage it is passed with as the one that failed.
+const phase = (stage, error) => emit({ type: "phase", stage, error: error || "" });
+
 const rlog = (line) => {
   emit({ type: "log", line: "INFO|" + new Date().toTimeString().slice(0, 8) + "|browser: " + line });
   const ws = W.relayWs;
@@ -40,6 +44,7 @@ const rlog = (line) => {
 
 W.relayConnect = async (relayUrl, remoteId, config) => {
   W.relayMode = true;
+  W._relayStage = 0;
   if (W.relayWs) { try { W.relayWs.close(); } catch (_) {} W.relayWs = null; }
 
   // Normalize the Remote ID: 528-491-307 / "528 491 307" / 528491307 are equal.
@@ -49,6 +54,7 @@ W.relayConnect = async (relayUrl, remoteId, config) => {
                          .replace(/^ws(s?):\/\/(.*)$/, (_, s, rest) => `ws${s}://${rest}`)
                + "/join/" + encodeURIComponent(id);
 
+  phase(0, "");
   status("relay: connecting to " + relayUrl + "…");
   emit({ type: "log", line: "INFO|" + new Date().toTimeString().slice(0, 8) + "|browser: dialing " + wsUrl });
 
@@ -56,12 +62,19 @@ W.relayConnect = async (relayUrl, remoteId, config) => {
     const ws = new WebSocket(wsUrl);
     W.relayWs = ws;
 
+    // Named per stage: the same 15 s expiry used to report "connection timed out" whether
+      // the relay was down, the daemon absent, or the encoder merely slow to open.
     const timeout = setTimeout(() => {
-      reject(new Error("relay: connection timed out"));
+      const stuck = ["relay unreachable — check the relay URL and that it is running",
+                     "relay reachable but no daemon answered for this Remote ID",
+                     "daemon is up but the session never started"][W._relayStage || 0]
+                     || "handshake stalled";
+      phase(W._relayStage || 0, stuck);
+      reject(new Error("relay: " + stuck));
       ws.close();
     }, 15000);
 
-    ws.onopen = () => rlog("relay WS open — awaiting join verdict");
+    ws.onopen = () => { W._relayStage = 1; phase(1, ""); rlog("relay WS open — awaiting join verdict"); };
 
     ws.onerror = () => {
       clearTimeout(timeout);
@@ -75,6 +88,7 @@ W.relayConnect = async (relayUrl, remoteId, config) => {
       switch (msg.type) {
         // ── Handshake (the WS path was the join; just await the verdict) ─────
         case "join_accepted":
+          W._relayStage = 2; phase(2, "");
           rlog("join accepted — a daemon is registered for this Remote ID");
           status("relay: joined — starting session…");
           // Ask the server to start a compositor session.
@@ -85,6 +99,7 @@ W.relayConnect = async (relayUrl, remoteId, config) => {
           break;
 
         case "join_denied":
+          phase(1, msg.reason || "join denied");
           clearTimeout(timeout);
           reject(new Error("relay: " + (msg.reason || "join denied")));
           ws.close();
@@ -97,6 +112,7 @@ W.relayConnect = async (relayUrl, remoteId, config) => {
             emit({ type: "encoder", mode: msg.info.encoder.mode, pipeline: msg.info.encoder.pipeline || "" });
           }
           W.sessionOn = true;
+          W._relayStage = 3; phase(3, "");
           rlog("session started — encoder " + ((msg.info && msg.info.encoder && msg.info.encoder.mode) || "?"));
           stagebar("Session running — negotiating WebRTC…");
           // Now negotiate WebRTC through the relay.
@@ -111,6 +127,7 @@ W.relayConnect = async (relayUrl, remoteId, config) => {
           break;
 
         case "session_error":
+          phase(2, msg.message || "session failed to start");
           clearTimeout(timeout);
           status("relay: session error — " + (msg.message || "unknown"));
           emit({ type: "startFailed" });
@@ -185,6 +202,7 @@ W._relayNegotiate = async (ws) => {
   W.inputDC = pc.createDataChannel(INPUT_CHANNEL, { ordered: true });
 
   pc.ontrack = (ev) => {
+    phase(4, "");
     rlog("track received — media is flowing");
     const v = document.getElementById("wado-video");
     if (v) v.srcObject = ev.streams[0];
@@ -201,6 +219,10 @@ W._relayNegotiate = async (ws) => {
   pc.oniceconnectionstatechange = () => {
     rlog("ICE state: " + pc.iceConnectionState);
     status("ICE: " + pc.iceConnectionState);
+    if (pc.iceConnectionState === "failed") {
+      phase(3, "no network path to the daemon — ICE failed. Both ends are likely behind " +
+               "a NAT that STUN cannot traverse; this needs a TURN server.");
+    }
   };
   pc.onconnectionstatechange = () => {
     rlog("peer state: " + pc.connectionState);
