@@ -33,7 +33,6 @@ use webrtc::api::media_engine::{MIME_TYPE_H264, MediaEngine};
 use webrtc::api::{API, APIBuilder};
 use webrtc::data_channel::RTCDataChannel;
 use webrtc::data_channel::data_channel_message::DataChannelMessage;
-use webrtc::ice_transport::ice_server::RTCIceServer;
 use webrtc::interceptor::registry::Registry;
 use webrtc::media::Sample;
 use webrtc::peer_connection::RTCPeerConnection;
@@ -644,10 +643,7 @@ async fn handle_sdp_offer(
     let pc = Arc::new(
         ctx.api
             .new_peer_connection(RTCConfiguration {
-                ice_servers: vec![RTCIceServer {
-                    urls: vec!["stun:stun.l.google.com:19302".to_owned()],
-                    ..Default::default()
-                }],
+                ice_servers: crate::ice::servers(),
                 ..Default::default()
             })
             .await?,
@@ -751,6 +747,16 @@ async fn handle_sdp_offer(
         local.sdp.matches("a=candidate:").count(),
         candidate_types(&local.sdp)
     );
+    // Said loudly because the alternative is watching ICE fail and guessing. Host-only is not
+    // a weaker connection, it is one that cannot be made from outside this LAN.
+    if !crate::ice::has_reflexive(&local.sdp) {
+        tracing::warn!(
+            "no server-reflexive candidate — every STUN server timed out, so this answer only \
+             works on the local network. A client elsewhere hangs on 'starting session' while \
+             ICE goes checking, disconnected, failed."
+        );
+    }
+
     send_relay(&out_tx, &RelayMsg::SdpAnswer { sdp: answer_json }).await?;
     Ok(())
 }
