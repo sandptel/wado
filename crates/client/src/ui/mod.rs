@@ -7,6 +7,7 @@
 //! is enforced rather than merely written down.
 
 pub mod appearance;
+pub mod bar;
 pub mod connection;
 pub mod debug;
 pub mod live;

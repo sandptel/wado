@@ -9,6 +9,9 @@
 
 W.start = async (server, config, relayOpts) => {
   W.server = server;
+  // Before either branch: a session with no touch input for minutes would otherwise let the
+  // phone sleep, and the resulting pagehide tears the session down.
+  W.wake.acquire();
 
   if (relayOpts && relayOpts.relayUrl) {
     // ── Relay mode ────────────────────────────────────────────────────────────
@@ -72,6 +75,7 @@ W.launch = async (command) => {
 
 W.stopSession = async () => {
   W.sessionOn = false;
+  W.wake.release();
   W.stopStats();
   W.latency.stop();
   W.resetInput();

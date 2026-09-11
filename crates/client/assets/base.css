@@ -32,6 +32,9 @@ html, body {
   background: var(--base00);
   color: var(--base05);
   font-family: system-ui, sans-serif;
+  /* A drag that reaches the page edge must not pull-to-refresh: reloading mid-session tears
+   * the session down, and a downward drag is an ordinary gesture in the streamed app. */
+  overscroll-behavior: none;
 }
 
 h1 { font-size: 18px; margin: 0 0 4px; color: var(--base06); }

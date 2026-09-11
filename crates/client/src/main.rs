@@ -65,9 +65,24 @@ fn App() -> Element {
         document::Stylesheet { href: asset!("/assets/layout.css") }
         document::Stylesheet { href: asset!("/assets/stage.css") }
 
-        div { class: "app",
+        // `sheet` on the shell is what the layout breakpoint reads to decide whether the
+        // panel is docked beside the video or slid over it. One markup tree, two
+        // presentations — the alternative is two panels to keep in sync.
+        div { class: "app", "data-sheet": if (ui.live.sheet_open)() { "open" } else { "shut" },
+            // Dismiss-on-tap-away. Present only below the breakpoint (CSS), where the
+            // panel covers the video and the bar's toggle is underneath it.
+            div {
+                id: "scrim",
+                onclick: move |_| {
+                    let mut live = ui.live;
+                    live.sheet_open.set(false);
+                },
+            }
             aside { id: "panel", {ui::panel(ui)} }
-            main { id: "stage", {ui::stage::render(ui)} }
+            main { id: "stage",
+                {ui::stage::render(ui)}
+                {ui::bar::render(ui)}
+            }
         }
     }
 }

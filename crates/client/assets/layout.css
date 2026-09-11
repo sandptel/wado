@@ -61,3 +61,102 @@
 .btns > button { flex: 1; }
 
 #status { font-size: 12px; color: var(--base0B); margin-top: 12px; min-height: 1em; }
+
+/* ── the control bar ──────────────────────────────────────────────────────────────────── */
+
+/* Floats over the video, bottom-centre so it is thumb-reachable on a phone. Fades when idle
+ * (js/bar.js) rather than staying put: everything on it replaces a keyboard shortcut, so it
+ * has to be reachable always and visible rarely. */
+#wado-bar {
+  position: absolute;
+  left: 50%;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: calc(var(--r) + 4px);
+  background: color-mix(in srgb, var(--base01) 88%, transparent);
+  border: 1px solid var(--base02);
+  z-index: 10;
+  transition: opacity var(--dur) var(--ease);
+}
+#wado-bar.idle { opacity: 0; }
+/* Never fade out from under a finger or a keyboard focus. */
+#wado-bar:hover, #wado-bar:focus-within { opacity: 1; }
+
+.barbtn {
+  background: transparent;
+  color: var(--base05);
+  font-size: 16px;
+  line-height: 1;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+}
+.barbtn:hover { color: var(--base06); background: var(--base02); }
+
+#stage { position: relative; }
+
+/* ── the sheet ────────────────────────────────────────────────────────────────────────── */
+
+/* Above the breakpoint the panel is docked and the scrim and ⚙ have no job. */
+#scrim { display: none; }
+.settings-only { display: none; }
+
+@media (max-width: 719px) {
+  /* The panel stops being a column and becomes a sheet over the video. Same markup — the
+   * alternative is a second panel to keep in sync with every new setting. */
+  #panel {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    width: auto;
+    flex: none;
+    max-height: 82dvh;
+    border-right: 0;
+    border-top: 1px solid var(--base02);
+    border-radius: 14px 14px 0 0;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    /* translateY, not height or display: it stays on the compositor thread, so the sheet
+     * animating in never competes with video decode. */
+    transform: translateY(100%);
+    transition: transform 220ms var(--ease);
+    z-index: 30;
+    overscroll-behavior: contain; /* scrolling the sheet must not scroll the page behind it */
+  }
+  .app[data-sheet="open"] #panel { transform: translateY(0); }
+
+  /* A grab handle. Purely a signifier — dragging is not implemented, and a handle that
+   * merely says "this came from the bottom edge" is most of the value. */
+  #panel::before {
+    content: "";
+    display: block;
+    width: 36px; height: 4px;
+    margin: -4px auto 10px;
+    border-radius: 2px;
+    background: var(--base02);
+  }
+
+  #scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: color-mix(in srgb, var(--base00) 55%, transparent);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 220ms var(--ease);
+    z-index: 20;
+  }
+  .app[data-sheet="open"] #scrim { opacity: 1; pointer-events: auto; }
+
+  .settings-only { display: block; }
+
+  /* Touch targets. 44px is the floor below which a control is genuinely hard to hit. */
+  select, textarea, input[type=text], input[type=number] { min-height: 44px; font-size: 16px; }
+  button { min-height: 44px; }
+  label.check { min-height: 44px; }
+  label.check input[type=checkbox] { width: 22px; height: 22px; }
+
+  /* The log panel is a debugging surface; on a phone it must not eat the video. */
+  #wado-logwrap { height: 120px; }
+}
