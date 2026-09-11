@@ -74,3 +74,62 @@ pub async fn run(command: &str, out: mpsc::Sender<Line>) -> std::io::Result<Opti
     let _ = t_err.await;
     Ok(status.code())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Collect every line a command produces, plus its exit code.
+    async fn collect(command: &str) -> (Vec<(String, bool)>, Option<i32>) {
+        let (tx, mut rx) = mpsc::channel::<Line>(64);
+        let handle = tokio::spawn(async move {
+            let mut out = Vec::new();
+            while let Some(l) = rx.recv().await {
+                out.push((l.text, l.err));
+            }
+            out
+        });
+        let code = run(command, tx).await.expect("spawn");
+        (handle.await.expect("collector"), code)
+    }
+
+    #[tokio::test]
+    async fn runs_through_a_shell_not_a_bare_exec() {
+        // The whole point of the change: quoting, variables and pipes have to survive.
+        let (lines, code) = collect("echo 'two words' | tr a-z A-Z").await;
+        assert_eq!(code, Some(0));
+        assert_eq!(lines, vec![("TWO WORDS".to_string(), false)]);
+    }
+
+    #[tokio::test]
+    async fn keeps_stderr_apart_from_stdout() {
+        let (lines, _) = collect("echo out; echo err 1>&2").await;
+        assert!(lines.contains(&("out".to_string(), false)));
+        assert!(lines.contains(&("err".to_string(), true)));
+    }
+
+    #[tokio::test]
+    async fn reports_a_failing_exit_code() {
+        assert_eq!(collect("exit 3").await.1, Some(3));
+    }
+
+    #[tokio::test]
+    async fn a_command_reading_stdin_ends_rather_than_hanging() {
+        // stdin is /dev/null precisely so this returns instead of waiting for a prompt
+        // nothing can answer — there is no PTY and no way to type at it.
+        let (lines, code) = collect("cat").await;
+        assert_eq!(code, Some(0));
+        assert!(lines.is_empty(), "{lines:?}");
+    }
+
+    #[tokio::test]
+    async fn drains_both_pipes_concurrently() {
+        // Reading one stream to completion before the other deadlocks once a command fills
+        // the pipe buffer of the one not being read. 4000 lines on each is past 64 KiB.
+        let (lines, code) =
+            collect("seq 1 4000; seq 1 4000 1>&2").await;
+        assert_eq!(code, Some(0));
+        assert_eq!(lines.iter().filter(|(_, e)| !*e).count(), 4000);
+        assert_eq!(lines.iter().filter(|(_, e)| *e).count(), 4000);
+    }
+}
