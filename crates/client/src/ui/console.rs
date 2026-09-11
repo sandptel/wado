@@ -14,9 +14,8 @@ use crate::{bridge, state::Ui};
 
 /// Send the draft command and clear the input.
 fn submit(ui: Ui) {
-    let mut set = ui.set;
     let mut live = ui.live;
-    let command = (set.command)().trim().to_string();
+    let command = (live.term_input)().trim().to_string();
     if command.is_empty() || (live.term_busy)() {
         return;
     }
@@ -28,11 +27,10 @@ fn submit(ui: Ui) {
         "window.__wado.relayExec({});",
         serde_json::to_string(&command).unwrap_or_else(|_| "\"\"".into())
     ));
-    set.command.set(String::new());
+    live.term_input.set(String::new());
 }
 
 pub fn render(ui: Ui) -> Element {
-    let mut set = ui.set;
     let mut live = ui.live;
     if !(live.console_open)() {
         return rsx! {};
@@ -83,8 +81,8 @@ pub fn render(ui: Ui) -> Element {
                         autocomplete: "off",
                         autocapitalize: "off",
                         spellcheck: false,
-                        value: "{(set.command)()}",
-                        oninput: move |e| set.command.set(e.value()),
+                        value: "{(live.term_input)()}",
+                        oninput: move |e| live.term_input.set(e.value()),
                         // Enter submits; the button is for touch, where Enter only exists
                         // once the on-screen keyboard offers it.
                         onkeydown: move |e| if e.key() == Key::Enter { submit(ui) },
