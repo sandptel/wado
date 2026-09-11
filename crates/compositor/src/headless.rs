@@ -131,11 +131,14 @@ pub fn start_session(
     //
     // The trap `Scale::Fractional` sets is that it rounds *up* for the integer protocols:
     // 1.25 is advertised as 2, the client draws a 2x buffer, and it is composited as 1.25x,
-    // so the buffer overhangs its own area and app elements are clipped. That was the real
-    // bug behind the old blanket rounding. Rounding to nearest instead means a legacy client
-    // asked for 1.25 is told 1 and comes out slightly soft — wrong in the safe direction,
-    // and only for clients that could not have honoured the request anyway.
-    let advertised_integer = (scale.round() as i32).max(1);
+    // so the buffer overhangs its own area and app elements are clipped. That is the failure
+    // `634c603` recorded as visible at 1.75 and 2.5, and it is the reason this is `floor`
+    // rather than `round`: round and ceil are the same number at 1.5, 1.75, 2.5 and 2.75, so
+    // rounding would have left the original bug intact at every scale above 1.25 — including
+    // the 1.75 in live use. Flooring inverts the error: a legacy client is told 1, draws 1x,
+    // and is composited slightly soft. Soft is nearly free through an H.264 stream; clipped
+    // chrome is broken. Only clients that cannot speak fractional scale see this at all.
+    let advertised_integer = (scale.floor() as i32).max(1);
     output.change_current_state(
         Some(mode),
         Some(Transform::Normal),

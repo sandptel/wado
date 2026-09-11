@@ -91,6 +91,12 @@ impl FractionalScaleHandler for Wado {
             // appears — see `headless::start_session`, which pushes to every known surface.
             return;
         };
+        // Logged because the *other* branch — the integer `wl_output.scale` a client gets
+        // when it cannot speak this protocol — is otherwise unmeasurable: a clipped or soft
+        // legacy client looks identical to a correct one until someone squints at it. Every
+        // surface that appears here took the fractional path; anything mapped that never
+        // does is the population `headless.rs`'s `advertised_integer` actually serves.
+        tracing::debug!(%scale, "fractional scale requested by a surface");
         with_states(&surface, |states| {
             with_fractional_scale(states, |fs| fs.set_preferred_scale(scale));
         });
