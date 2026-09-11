@@ -164,6 +164,17 @@ W.relayConnect = async (relayUrl, remoteId, config) => {
           emit({ type: "execExit", code: msg.code });
           break;
 
+        // Straight to the emulator rather than through a Dioxus signal: terminal output
+        // arrives in small bursts at high rate, and routing it through a re-render would
+        // make the shell feel slower than the video behind it.
+        case "pty_output":
+          W.ptyOutput(msg.data || "");
+          break;
+
+        case "pty_exit":
+          W.ptyExited();
+          break;
+
         // ── Server render timings (relay's answer to GET /timing) ────────────
         // Stashed rather than resolved through a promise: the collector runs on its own
         // 1 Hz tick and uses the most recent reply, so one dropped answer costs a stale
@@ -311,11 +322,21 @@ W._relayNegotiate = async (ws) => {
 
 // Send a command to the session's shell. Relay-only: direct mode reaches the server over
 // HTTP and would need its own route, which nothing has asked for yet.
-W.relayExec = (command) => {
+W.relayExec = (command) => relaySend({ type: "exec", command });
+
+// One place that knows the socket might not be there. Every pty verb is fire-and-forget:
+// a keystroke that misses the socket is a keystroke the shell never saw, and the terminal
+// showing nothing is the right feedback for that.
+function relaySend(obj) {
   const ws = W.relayWs;
   if (!ws || ws.readyState !== WebSocket.OPEN) return false;
-  try { ws.send(JSON.stringify({ type: "exec", command })); return true; } catch (_) { return false; }
-};
+  try { ws.send(JSON.stringify(obj)); return true; } catch (_) { return false; }
+}
+
+W.ptyOpen = (cols, rows) => relaySend({ type: "pty_open", cols, rows });
+W.ptyInput = (data) => relaySend({ type: "pty_input", data });
+W.ptyResize = (cols, rows) => relaySend({ type: "pty_resize", cols, rows });
+W.ptyClose = () => relaySend({ type: "pty_close" });
 
 W.relayStop = () => {
   if (W.relayWs && W.relayWs.readyState === WebSocket.OPEN) {

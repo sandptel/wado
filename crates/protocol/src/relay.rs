@@ -170,6 +170,48 @@ pub enum RelayMsg {
         code: Option<i32>,
     },
 
+    // ── Interactive shell (PTY) ─────────────────────────────────────────────
+    /// Start a login shell on a pseudo-terminal, sized `cols`x`rows`.
+    ///
+    /// Distinct from [`RelayMsg::Exec`], which runs one command with pipes and no terminal.
+    /// A PTY is what makes a shell behave like a shell: job control, line editing, colour,
+    /// and full-screen programs all key off being attached to a terminal. Opening twice
+    /// replaces the first — one shell per viewer.
+    PtyOpen {
+        cols: u16,
+        rows: u16,
+    },
+    /// Keystrokes for the shell, exactly as typed — control characters included.
+    ///
+    /// Always valid UTF-8: this is what the terminal emulator produced from a key event, and
+    /// a control byte like `0x03` is a perfectly good `char`.
+    PtyInput {
+        data: String,
+    },
+    /// Output from the shell, for the terminal emulator to interpret.
+    ///
+    /// UTF-8 text rather than bytes, which costs one thing and buys another. A PTY read can
+    /// end mid-character, so the server holds the incomplete tail back until the rest
+    /// arrives (see `server::pty`). Output that is not UTF-8 at all — a stray `cat` of a
+    /// binary — arrives as replacement characters, which is what a terminal shows anyway.
+    ///
+    /// ponytail: base64 is the upgrade path if byte-exact non-UTF-8 output ever matters.
+    PtyOutput {
+        data: String,
+    },
+    /// The terminal was resized. Full-screen programs redraw from this, and a shell that
+    /// never receives it wraps its lines at the wrong column.
+    PtyResize {
+        cols: u16,
+        rows: u16,
+    },
+    /// Close the shell and everything running under it.
+    PtyClose,
+    /// The shell exited. `code` is absent when it was killed by a signal.
+    PtyExit {
+        code: Option<i32>,
+    },
+
     /// Ask for the server's per-stage render timings.
     ///
     /// Relay mode has no HTTP path, so `GET /timing` needs a message counterpart the same way

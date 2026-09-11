@@ -79,12 +79,11 @@ pub fn render(ui: Ui) -> Element {
                     // line and then having to tap it is a step too many on a phone. On the
                     // log tab a focused input would raise the keyboard over what you opened
                     // the panel to read.
+                    // The terminal is hidden with CSS, so revealing it is what tells the
+                    // emulator to re-measure — a terminal sized while display:none is 1x1.
+                    // This is also what starts the shell the first time.
                     if open && (live.console_tab)() == "shell" {
-                        bridge::call(
-                            "setTimeout(function(){var e=document.getElementById('wado-terminput'); \
-                             if(e) e.focus();}, 60);"
-                                .to_string(),
-                        );
+                        bridge::call("window.__wado.ptyShow();".to_string());
                     }
                 },
                 "❯_"

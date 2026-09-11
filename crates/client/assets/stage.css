@@ -114,6 +114,9 @@
 }
 @keyframes console-in { from { transform: translateY(12px); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { #console { animation: none; } }
+/* Hidden, not removed. The shell lives inside this sheet: unmounting it would kill the
+ * terminal, its scrollback and the running shell every time the console was closed. */
+#console.shut { display: none; }
 
 .consoletabs {
   display: flex; align-items: stretch; gap: 2px;
@@ -140,24 +143,20 @@
   overscroll-behavior: contain;
 }
 
-.termline { white-space: pre-wrap; word-break: break-word; color: var(--base05); }
-/* stderr apart from stdout: a command that printed nothing and one that failed loudly are
- * indistinguishable once the streams are merged. */
-.term-err { color: var(--base08); }
-
-.termrow {
-  display: flex; gap: 6px; align-items: center;
-  padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
-  background: var(--base01);
+/* The terminal. xterm.js owns everything inside this element — Dioxus renders it empty and
+ * never touches it again. It needs a real box to measure: the fit addon turns the pixel size
+ * into rows and columns, and an element with no height becomes a 1x1 terminal that never
+ * recovers. Hence an explicit flex child with min-height: 0. */
+#wado-term {
+  flex: 1; min-height: 0; overflow: hidden;
+  padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+  background: var(--base00);
 }
-.termrow input {
-  flex: 1; min-width: 0; min-height: 40px;
-  font-family: var(--mono);
-  /* 16px exactly: anything smaller and iOS Safari zooms the page on focus, which on a
-   * streamed desktop means the picture jumps sideways as you start typing. */
-  font-size: 16px;
-}
-.termrow button { flex: 0 0 auto; min-height: 40px; padding: 0 16px; }
+/* display:none would measure as zero; the tab switch re-fits on reveal. */
+#wado-term.termhide { display: none; }
+.xterm, .xterm .xterm-viewport { height: 100%; }
+/* Never rubber-band the page behind the sheet while scrolling the scrollback. */
+.xterm .xterm-viewport { overscroll-behavior: contain; }
 
 .logline { white-space: pre-wrap; word-break: break-word; }
 .lts { color: var(--base03); }
