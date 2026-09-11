@@ -102,7 +102,6 @@ W.startStats = (pc) => {
 
     // Reclaim a jitter buffer that the network inflated and no longer needs. Cheap, and a
     // no-op unless the buffer has drifted well past the target while the link is healthy.
-    if (W.reassertPlayout) W.reassertPlayout(jbuf, ping);
 
     emit({ type: "stats", fps, ping, jbuf, decodeDropPct });
 
