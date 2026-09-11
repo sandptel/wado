@@ -84,6 +84,11 @@ pub struct Wado {
     /// An in-progress compositor-managed window move (long-press-drag or "move mode"),
     /// driven by [`wado_protocol::InputEvent::WindowDrag`]. `None` when not moving.
     pub window_move: Option<WindowMove>,
+    /// Axis events in the current finger-scroll gesture, reset when it ends. Counted so one
+    /// log line per gesture can report its length — a gesture that produced three events is a
+    /// different fault from one that produced three hundred.
+    pub scroll_events: u32,
+
     /// New-window placement policy (from `SessionConfig.window.placement`, applied at start).
     pub placement: Placement,
     /// When true, pointer hover also moves keyboard focus (`SessionConfig.input`).
@@ -183,6 +188,7 @@ impl Wado {
             app_processes: Vec::new(),
             session_active: false,
             window_move: None,
+            scroll_events: 0,
             placement: Placement::default(),
             focus_follows_pointer: false,
             pre_maximize: std::collections::HashMap::new(),

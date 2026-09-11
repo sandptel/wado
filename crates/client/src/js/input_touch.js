@@ -46,14 +46,24 @@ W.touchg = {
         g.holdTimer = setTimeout(onHoldFired, HOLD_MS);
       }
       W.gesture = g;
+    } else if (W.scrollg.begin(e, video)) {
+      // A second contact means scrolling, not multi-touch. Deliberately ahead of the
+      // passthrough: two fingers on a desktop app are far more often a scroll than a
+      // genuine multi-touch gesture, and the toolkits that want raw multi-touch are the
+      // rarer case. See input_scroll.js.
     } else {
       touchAt(e.pointerId, "down", e.clientX, e.clientY, video); // secondary passthrough
     }
   },
 
   move(e, video) {
+    if (W.scrollg.move(e, video)) return;
     const g = W.gesture;
     if (g && e.pointerId === g.id) {
+      // The scroll midpoint is computed from both contacts, so the primary's latest
+      // position has to be known at the moment the second one lands.
+      g.lastClientX = e.clientX;
+      g.lastClientY = e.clientY;
       const dist = Math.hypot(e.clientX - g.startClientX, e.clientY - g.startClientY);
       if (g.state === "tap") {
         if (dist > MOVE_THRESHOLD) {
@@ -78,6 +88,7 @@ W.touchg = {
   },
 
   up(e, video) {
+    if (W.scrollg.end(e)) return;
     const g = W.gesture;
     if (g && e.pointerId === g.id) {
       if (g.holdTimer) { clearTimeout(g.holdTimer); g.holdTimer = null; }

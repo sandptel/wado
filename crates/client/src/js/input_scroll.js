@@ -1,0 +1,105 @@
+// wado bridge — two-finger scroll.
+//
+// Its own file because input_touch.js owns exactly one job: the per-primary-contact FSM.
+// This owns the other one: what a *second* simultaneous contact means.
+//
+// Why it exists at all. Until now the only scroll path was the mouse wheel, so on a phone
+// a drag became a wl_touch contact and scrolling worked only in applications that implement
+// touch scrolling themselves. Most desktop toolkits expect a scroll axis, so the common case
+// was a drag that selected text instead of scrolling the page.
+//
+// Shape: a second contact converts the gesture into a scroll, retracting whatever the first
+// finger had already started — the primary may already have sent a touch-down, and leaving
+// that live would drag a selection underneath the scroll. `cancel_touch` is the same retract
+// the press-hold path uses.
+
+// Below this the two contacts are treated as noise rather than intent; a resting hand moves
+// a pixel or two per frame and should not scroll the page.
+const SCROLL_DEADZONE = 2;
+
+W.scrollg = {
+  // Take over from the primary-contact FSM. Called on the second pointerdown.
+  begin(e, video) {
+    const g = W.gesture;
+    if (!g) return false;
+    if (g.holdTimer) { clearTimeout(g.holdTimer); g.holdTimer = null; } // else: right-click
+    // Retract anything the first finger already committed to.
+    if (g.state === "tap" || g.state === "touch") {
+      W.coalesce.now({ t: "cancel_touch", id: g.id >>> 0 });
+    } else if (g.state === "move") {
+      // A window drag in flight: end it where it stands rather than leaving it grabbed.
+      const n = W.normPoint(e.clientX, e.clientY, video);
+      if (n) W.coalesce.now({ t: "window_drag", phase: "up", x: n.x, y: n.y });
+    }
+    g.state = "scroll";
+    g.second = e.pointerId;
+    // Midpoint of the two contacts, so rotating or pinching the pair does not scroll.
+    g.sx = (g.lastClientX ?? g.startClientX) ;
+    g.sy = (g.lastClientY ?? g.startClientY);
+    g.anchorX = (g.sx + e.clientX) / 2;
+    g.anchorY = (g.sy + e.clientY) / 2;
+    g.p1 = { x: g.sx, y: g.sy };
+    g.p2 = { x: e.clientX, y: e.clientY };
+    return true;
+  },
+
+  // A move from either contact. Returns true when it was consumed as scrolling.
+  move(e, video) {
+    const g = W.gesture;
+    if (!g || g.state !== "scroll") return false;
+    if (e.pointerId === g.id) g.p1 = { x: e.clientX, y: e.clientY };
+    else if (e.pointerId === g.second) g.p2 = { x: e.clientX, y: e.clientY };
+    else return false;
+
+    const mx = (g.p1.x + g.p2.x) / 2;
+    const my = (g.p1.y + g.p2.y) / 2;
+    const dx = mx - g.anchorX;
+    const dy = my - g.anchorY;
+    if (Math.hypot(dx, dy) < SCROLL_DEADZONE) return true;
+    g.anchorX = mx;
+    g.anchorY = my;
+
+    const n = W.normPoint(mx, my, video);
+    if (!n) return true;
+    // Content follows the finger, which is what a touchscreen means by scrolling — so the
+    // delta is negated before the shared direction/speed settings are applied. Routed through
+    // the same W.naturalScroll and W.scrollSpeed as the wheel so one setting governs both.
+    const sign = W.naturalScroll ? -1 : 1;
+    const speed = W.scrollSpeed || 1;
+    W.sendInput({
+      t: "scroll",
+      x: n.x,
+      y: n.y,
+      dx: -dx * speed * sign,
+      dy: -dy * speed * sign,
+      source: "finger",
+    });
+    g.lastN = n;
+    return true;
+  },
+
+  // Either contact lifting ends the gesture; a leftover finger does not silently become a
+  // new drag, because a hand coming off a screen never lifts both at once.
+  end(e) {
+    const g = W.gesture;
+    if (!g || g.state !== "scroll") return false;
+    if (e.pointerId === g.id || e.pointerId === g.second) {
+      // Terminate the axis. Without it a toolkit keeps waiting for more deltas and never
+      // starts the kinetic phase, so a flick just stops dead where the finger left off.
+      if (g.lastN) {
+        W.sendInput({
+          t: "scroll",
+          x: g.lastN.x,
+          y: g.lastN.y,
+          dx: 0,
+          dy: 0,
+          source: "finger",
+          stop: true,
+        });
+      }
+      W.gesture = null;
+      return true;
+    }
+    return false;
+  },
+};
