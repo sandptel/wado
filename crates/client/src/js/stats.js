@@ -7,6 +7,7 @@ W.startStats = (pc) => {
   W.stopStats();
   let lastFrames = null, lastTs = null, lastBytes = null, lastByteTs = null;
   let lastLost = null, tick = 0, lastDropped = null, lastRecv = null;
+  let lastDecTime = null, lastDecFrames = null;
   W.statsTimer = setInterval(async () => {
     if (!W.pc || W.pc !== pc) { W.stopStats(); return; } // pc replaced (reconnect)
     let stats;
@@ -52,9 +53,17 @@ W.startStats = (pc) => {
             jtarget = (r.jitterBufferTargetDelay / r.jitterBufferEmittedCount) * 1000;
           }
         }
+        // Over the window, not the session — same reason as decodeDropPct below. A
+        // cumulative mean stays pinned to the startup burst for minutes and reads as a
+        // per-frame cost the decoder is not actually paying now.
         if (typeof r.totalDecodeTime === "number" &&
-            typeof r.framesDecoded === "number" && r.framesDecoded > 0) {
-          dec = (r.totalDecodeTime / r.framesDecoded) * 1000;
+            typeof r.framesDecoded === "number") {
+          if (lastDecTime !== null && r.framesDecoded > lastDecFrames) {
+            dec = ((r.totalDecodeTime - lastDecTime) /
+                   (r.framesDecoded - lastDecFrames)) * 1000;
+          }
+          lastDecTime = r.totalDecodeTime;
+          lastDecFrames = r.framesDecoded;
         }
       } else if (r.type === "candidate-pair" && (r.nominated || r.state === "succeeded")) {
         if (typeof r.currentRoundTripTime === "number") ping = r.currentRoundTripTime * 1000;
