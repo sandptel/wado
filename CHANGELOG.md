@@ -1,5 +1,41 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **Fractional scale was implemented and then rounded away.** The requested scale was rounded
+  to a whole number *before* it reached either consumer, so a session asked for 1.25 was given
+  1.0 on a protocol wado already speaks — `requested=1.25 applied=1.0` in the log. The output
+  now carries `Scale::Custom`: the exact value for clients that speak
+  `wp-fractional-scale-v1`, a whole number for those that do not. Verified live at 1.25, 1.75
+  and 2.0 with no divergence.
+
+  The whole-number companion is `floor`, not `round`: `round` and `ceil` are the same number at
+  1.5, 1.75, 2.5 and 2.75, so rounding would have left the original bug — an oversized buffer
+  overhanging its own area, clipping app chrome — intact at every scale above 1.25. Flooring
+  makes a legacy client slightly soft instead, which costs nearly nothing through an H.264
+  stream.
+
+- **A pinch that was never ended left the toolkit stuck in zoom mode.** A disconnect or an
+  input reset drops the gesture with no end event, and windows outlive sessions here, so the
+  orphan survived into the next one. The open/closed state is tracked on the compositor side
+  now; a new pinch closes any open one first.
+
+- ~~**Jitter-buffer reclaim after a network blip.**~~ **Retracted from v0.0.2 — it never
+  worked.** `jitterBufferTarget` is a floor honoured only up to what the browser's own timing
+  model demands, so it can raise the playout delay and can never lower one the model is
+  driving. It fired 15 times in one session while the buffer drained 56→55→54→54→53→52, its
+  natural rate, with no inflection at any of them. Deleted; the reasoning is recorded in
+  `webrtc.js` so it is not retried. The underlying behaviour is still real and still unfixed.
+
+### Added
+
+- **Two-finger pinch and rotate** (`zwp_pointer_gestures_v1`). A two-finger drag now produces a
+  scroll axis *and* a pinch, which is what a touchpad emits and what toolkits are written
+  against — the pinch's own translation is deliberately left at zero so an app does not pan
+  twice for one drag.
+
 ## v0.0.2 — `2026-09-11`
 
 Everything v0.0.1 measured still holds; this adds the fixes found by running it. Each item
