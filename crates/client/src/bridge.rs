@@ -100,15 +100,21 @@ pub fn run(ui: Ui) {
         // Set even when nothing was stored: the flag means "loading is over", not "something
         // was found", and leaving it false would disable saving forever on a first run.
         live.loaded.set(true);
+        // Restoring the settings only restored the *signals*. Anything mirrored on the JS
+        // side has to be pushed, or the panel and the bridge disagree until the user happens
+        // to touch each control. Every group with browser-side state owns one of these.
+        // The theme is the one exception and needs no push: js/theme.js applied it from the
+        // same blob during the bridge's synchronous head, which is precisely why it lives
+        // there — doing it from here would repaint a page that is already correct.
         crate::debug::apply(ui);
-        // Direct mode can ask immediately; relay mode has no socket until a room is open, so
-        // it asks from relay.js on join_accepted instead.
-        let _ = document::eval("window.__wado.requestApps();").await;
-        let _ = document::eval(&format!(
-            "window.__wado.connectLogs({});",
-            js(&(ui.set.server_addr)())
-        ))
-        .await;
+        crate::ui::live::apply(ui);
+
+        let server = (ui.set.server_addr)();
+        let _ = document::eval(&format!("window.__wado.connectLogs({});", js(&server))).await;
+        // Direct mode can ask now; relay mode has no socket until a room is open, so it asks
+        // from relay.js on join_accepted instead. The address is passed explicitly because
+        // W.server is only set as a side effect of connectLogs.
+        let _ = document::eval(&format!("window.__wado.requestApps({});", js(&server))).await;
 
         while let Ok(msg) = bridge.recv::<serde_json::Value>().await {
             let Some(kind) = msg.get("type").and_then(|v| v.as_str()) else {

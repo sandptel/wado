@@ -64,10 +64,10 @@ W.relayConnect = async (relayUrl, remoteId, config) => {
           status("relay: joined — starting session…");
           // Ask the server to start a compositor session.
           ws.send(JSON.stringify({ type: "session_start", config }));
-          break;
-          // The socket only exists from here, so this is the earliest the app
-          // list can be fetched in relay mode. Direct mode asks at page load.
+          // The socket only exists from here, so this is the earliest the app list can be
+          // fetched in relay mode. Direct mode asks at page load instead.
           W.requestApps();
+          break;
 
         case "join_denied":
           clearTimeout(timeout);

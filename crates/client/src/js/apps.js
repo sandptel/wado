@@ -8,7 +8,11 @@
 // dispatched from relay.js — so this function does not resolve with the list. Both paths end
 // the same way, at `emit({type:"apps"})`.
 
-W.requestApps = async () => {
+// `server` is optional and only used in direct mode. It is a parameter rather than a read of
+// W.server because W.server is set as a *side effect* of connectLogs — so calling this before
+// that ran would fetch a relative "/apps" against the dev server's own origin, get nothing,
+// and leave an empty list indistinguishable from "this machine has no apps".
+W.requestApps = async (server) => {
   if (W.relayMode) {
     if (W.relayWs && W.relayWs.readyState === WebSocket.OPEN) {
       W.relayWs.send(JSON.stringify({ type: "apps_request" }));
@@ -16,7 +20,7 @@ W.requestApps = async () => {
     return;
   }
   try {
-    const res = await fetch(W.server + "/apps", { cache: "no-store" });
+    const res = await fetch((server || W.server) + "/apps", { cache: "no-store" });
     if (res.ok) emit({ type: "apps", apps: await res.json() });
   } catch (_) {
     // An unreachable server is already visible in the status line; the picker simply stays
