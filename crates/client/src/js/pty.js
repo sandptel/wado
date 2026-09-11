@@ -96,13 +96,28 @@
   }
 
   // Called when the shell tab becomes visible. Opens the server-side shell the first time.
+  //
+  // The sizing is deferred deliberately. The console is revealed by removing a class, and at
+  // the moment this runs the element has not been laid out yet — measuring it gives zero,
+  // `refit` declines, and the terminal keeps xterm's 80x24 default. That is not cosmetic: the
+  // server's PTY is created at whatever size is reported here, so a shell that believes it is
+  // 80 columns wide wraps its lines at 80 regardless of the panel.
+  //
+  // So: fit on the next frame, once layout has happened, and again shortly after to catch a
+  // phone's address bar settling. `refit` sends a resize whenever the answer changes, so the
+  // later pass corrects the earlier one at no cost.
   W.ptyShow = () => {
     build(() => {
-      refit();
-      if (!opened) {
-        opened = true;
-        W.ptyOpen(term ? term.cols : 80, term ? term.rows : 24);
-      }
+      const start = () => {
+        refit();
+        if (!opened && term) {
+          opened = true;
+          W.ptyOpen(term.cols, term.rows);
+        }
+      };
+      if (window.requestAnimationFrame) requestAnimationFrame(start);
+      else setTimeout(start, 16);
+      setTimeout(() => refit(), 150);
       // Focus after layout, or the keyboard opens against a terminal that is still 0px.
       setTimeout(() => { try { term && term.focus(); } catch (_) {} }, 60);
     });
