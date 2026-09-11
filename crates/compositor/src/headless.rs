@@ -1,5 +1,5 @@
 use std::panic::AssertUnwindSafe;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use smithay::{
     backend::{
@@ -22,6 +22,7 @@ use wado_protocol::EncoderReport;
 use crate::{
     Wado, CompositorError,
     capture::{CaptureTarget, DmaTarget, MemTarget, gpu, gpu::Gbm},
+    pacing::TickStats,
     conf::{EncoderConfig, SinkTarget, WadoConfig},
     encode::{
         encoder::VideoEncoder,
@@ -128,11 +129,14 @@ pub fn start_session(
 
     // ── Render timer ──────────────────────────────────────────────────────────
     let frame_nanos = 1_000_000_000 / ec.fps.max(1) as u64;
+    let frame_period = Duration::from_nanos(frame_nanos);
+    let mut pacing = TickStats::new(ec.fps);
     let token = state
         .loop_handle
         .insert_source(
             Timer::immediate(),
             move |deadline, _, state: &mut Wado| {
+                pacing.tick();
                 // Guard the render path: a panic here must tear down only the session,
                 // not abort the process (and the server with it). Only Rust unwinding
                 // panics are caught — a native segfault in EGL/GLES/x264 still aborts.
@@ -151,7 +155,23 @@ pub fn start_session(
                         return TimeoutAction::Drop;
                     }
                 }
-                TimeoutAction::ToInstant(deadline + Duration::from_nanos(frame_nanos))
+                // Pace the next tick WITHOUT accumulating lateness. `deadline` is the
+                // instant this tick was *scheduled* for, not now, so the naive
+                // `deadline + frame_period` permanently falls behind wall clock as soon
+                // as one tick overruns its budget: every later deadline is already in
+                // the past, the timer is always ready, calloop never idles, and remote
+                // input/Wayland/control sources starve behind a busy render loop. It is
+                // a latching failure — it never recovers on its own.
+                //
+                // On time: keep the original phase, so pacing stays drift-free.
+                // Behind: drop the missed frames and re-phase from now, which restores
+                // the idle gap other event sources need.
+                // ponytail: drops late frames rather than rendering them; fine for a live
+                // stream where only the newest frame matters. Revisit only if we ever need
+                // a recorded, gap-free capture.
+                let next = deadline + frame_period;
+                let now = Instant::now();
+                TimeoutAction::ToInstant(if next <= now { now + frame_period } else { next })
             },
         )
         .map_err(|e| CompositorError::Other(format!("insert render timer: {e}")))?;
@@ -364,7 +384,11 @@ fn render_tick(state: &mut Wado) -> crate::Result<()> {
     // (renderer / capture / damage_tracker / space / encoder) keep the borrow checker happy.
     // Returns the encoder result (owned) so the `frame` borrow on `capture` is released
     // before we may rebuild the pipeline on failure.
-    let result: crate::Result<Option<Vec<u8>>> = {
+    let tick_start = Instant::now();
+
+    // The block yields the encode result plus how long each stage took, so neither
+    // duration needs a dummy initial value.
+    let (result, capture_dur, encode_dur): (crate::Result<Option<Vec<u8>>>, Duration, Duration) = {
         let renderer = state.renderer.as_mut().unwrap();
         let capture = state.capture.as_mut().unwrap();
         let damage_tracker = state.damage_tracker.as_mut().unwrap();
@@ -382,9 +406,16 @@ fn render_tick(state: &mut Wado) -> crate::Result<()> {
             Ok(())
         };
 
+        // Timed separately so the client's breakdown can say WHICH stage costs the time:
+        // a slow capture points at the GL/readback path, a slow encode at the encoder tier.
         match capture.capture(renderer, &mut render) {
-            Ok(frame) => state.encoder.as_mut().unwrap().submit(frame),
-            Err(e) => Err(e),
+            Ok(frame) => {
+                let captured = tick_start.elapsed();
+                let encode_start = Instant::now();
+                let out = state.encoder.as_mut().unwrap().submit(frame);
+                (out, captured, encode_start.elapsed())
+            }
+            Err(e) => (Err(e), tick_start.elapsed(), Duration::ZERO),
         }
     };
 
@@ -401,6 +432,12 @@ fn render_tick(state: &mut Wado) -> crate::Result<()> {
             warn!("encode failed on tier {:?}: {e} — downgrading", state.current_tier);
             downgrade_pipeline(state);
         }
+    }
+
+    if let Some(timing) = state.timing.as_mut() {
+        // `queue` is measured by the pump (it is the only side that knows when the frame
+        // was taken), so it is not passed here — see `StageTimings::queue_ms`.
+        timing.frame(tick_start, capture_dur, encode_dur, Duration::ZERO);
     }
 
     // Post-frame bookkeeping (after the capture/encode borrows are released).

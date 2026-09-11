@@ -44,11 +44,23 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             "wado server — direct mode (http)"
         );
 
-        website::start(handles.commands, handles.input, frame_rx, &control_addr, log_bus)?;
+        website::start(
+            handles.commands,
+            handles.input,
+            frame_rx,
+            handles.timings,
+            &control_addr,
+            log_bus,
+        )?;
         tracing::info!("wado server idle on http://{control_addr} — connect with the wado-client app");
     }
 
-    event_loop.run(None, &mut state, move |_| {})?;
+    // Post-dispatch flush: calloop runs this after EVERY dispatch, so remote input
+    // synthesized on the input channel reaches the app immediately instead of waiting
+    // for the next render tick to flush it (which quantised input to the frame period).
+    // One flush per loop iteration, however many sources fired — cheaper than flushing
+    // per event and it covers commands and Wayland traffic too.
+    event_loop.run(None, &mut state, |state| state.flush_clients())?;
     Ok(())
 }
 
