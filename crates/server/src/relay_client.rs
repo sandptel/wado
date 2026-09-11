@@ -18,12 +18,13 @@
 //! reset after a successful registration). A relay restart therefore only causes
 //! a short re-registration gap, not a dead server.
 
+use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use bytes::Bytes;
-use futures_util::{SinkExt, StreamExt};
+use futures_util::{FutureExt, SinkExt, StreamExt};
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message as WsMsg;
@@ -285,7 +286,24 @@ async fn run(
     let mut backoff = BACKOFF_INITIAL;
     let mut first_attempt = true;
     loop {
-        match connect_and_serve(&ctx).await {
+        // `catch_unwind` around the whole connection, not just around a suspicious line.
+        //
+        // Without it a panic anywhere in `connect_and_serve` — a per-message handler, a
+        // poisoned lock — unwinds through `run`, through `block_on`, and kills the
+        // `wado-relay-client` thread for good. Nothing restarts it. The process stays up, the
+        // compositor keeps running, `/proc` looks healthy, and **no client can ever reach this
+        // server again**: the exact signature of the relay panic on 2026-09-12, one layer down.
+        // Treated as a lost connection, which is what the reconnect loop below already knows
+        // how to survive.
+        let attempt = AssertUnwindSafe(connect_and_serve(&ctx)).catch_unwind().await;
+        let attempt = match attempt {
+            Ok(r) => r,
+            Err(_) => {
+                error!("relay client: panicked serving a connection — reconnecting");
+                Ok(())
+            }
+        };
+        match attempt {
             // Ok = we registered successfully and the connection later closed:
             // the relay restarted or the network blipped. Retry promptly.
             Ok(()) => {
@@ -575,7 +593,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             }
 
             RelayMsg::IceCandidate { candidate } => {
-                let pc = ctx.active_pc.lock().unwrap().clone();
+                let pc = ctx.active_pc.lock().unwrap_or_else(|e| e.into_inner()).clone();
                 if let Some(pc) = pc {
                     if let Ok(cand) = serde_json::from_str(&candidate) {
                         let _ = pc.add_ice_candidate(cand).await;
@@ -704,7 +722,7 @@ async fn handle_sdp_offer(
 
     // Generation guard: only the current viewer's teardown stops the session.
     let my_gen = ctx.generation.fetch_add(1, Ordering::SeqCst) + 1;
-    *ctx.active_pc.lock().unwrap() = Some(Arc::clone(&pc));
+    *ctx.active_pc.lock().unwrap_or_else(|e| e.into_inner()) = Some(Arc::clone(&pc));
 
     // RTCP read loop: PLI/FIR → ForceKeyframe.
     {
@@ -895,7 +913,7 @@ async fn viewer_watchdog(
         // The lock is released before the await point; holding a std Mutex across one would
         // be a deadlock waiting for a slow tick.
         let connected = {
-            let pc = active_pc.lock().unwrap().clone();
+            let pc = active_pc.lock().unwrap_or_else(|e| e.into_inner()).clone();
             pc.map(|pc| pc.connection_state() == RTCPeerConnectionState::Connected)
                 .unwrap_or(false)
         };
