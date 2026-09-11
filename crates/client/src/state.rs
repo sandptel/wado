@@ -15,6 +15,11 @@ use wado_protocol::{logfmt::LogLine, AppEntry};
 /// client on a different port and reaches the wado server here over CORS.
 pub const DEFAULT_SERVER: &str = "http://127.0.0.1:8080";
 
+/// Default relay the client dials in relay mode. Editable in the UI.
+/// ponytail: a trycloudflare quick tunnel — ephemeral, it changes every `cloudflared`
+/// restart. Replace when the relay gets a stable hostname.
+pub const DEFAULT_RELAY: &str = "https://operational-gate-addresses-campaigns.trycloudflare.com";
+
 /// Keep at most this many log lines in memory / the DOM.
 pub const MAX_LOG_LINES: usize = 500;
 
@@ -74,7 +79,7 @@ impl Settings {
         Self {
             conn_mode: use_signal(|| "direct".to_string()),
             server_addr: use_signal(|| DEFAULT_SERVER.to_string()),
-            relay_url: use_signal(|| "ws://".to_string()),
+            relay_url: use_signal(|| DEFAULT_RELAY.to_string()),
             remote_id: use_signal(String::new),
 
             res: use_signal(|| "1280x720".to_string()),
