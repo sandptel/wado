@@ -734,7 +734,18 @@ async fn handle_sdp_offer(
     let answer = pc.create_answer(None).await?;
     let mut gather = pc.gathering_complete_promise().await;
     pc.set_local_description(answer).await?;
-    let _ = gather.recv().await;
+    // Bounded: see `crate::ice::GATHER_WAIT`. Waiting for gathering to *complete* is what a
+    // dead STUN server turns into a 15-second answer, and the client has left by then.
+    if tokio::time::timeout(crate::ice::GATHER_WAIT, gather.recv())
+        .await
+        .is_err()
+    {
+        tracing::warn!(
+            "ICE gathering still running after {:?} — answering with what we have. A STUN \
+             server is not replying; webrtc-ice gives each one a fixed 5s before giving up.",
+            crate::ice::GATHER_WAIT
+        );
+    }
 
     let local = pc
         .local_description()

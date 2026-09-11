@@ -14,7 +14,26 @@
 //! The fix is redundancy, not a different single server. ICE gathers from every entry here in
 //! parallel and needs only one to answer.
 
+use std::time::Duration;
+
 use webrtc::ice_transport::ice_server::RTCIceServer;
+
+/// How long to wait for ICE gathering before sending the answer with whatever is in hand.
+///
+/// **This is the difference between connecting and hanging.** `webrtc-ice` gives every STUN
+/// probe a hardcoded 5-second `STUN_GATHER_TIMEOUT` (`agent_gather.rs:21`) that no setting
+/// exposes, and it does not wait on them in parallel. A probe to an unreachable server
+/// therefore costs the full 5 s, and gathering-complete arrives 5, 10 or 15 seconds late
+/// depending on how many died — measured exactly those three values on 2026-09-12, against
+/// **30 milliseconds** for the one attempt that succeeded. The client gives up and re-offers
+/// long before a 15-second answer arrives, so the connection can never be made and the log
+/// shows nothing worse than a slow answer.
+///
+/// A STUN server that is going to reply replies in 4–24 ms from this host. Nothing is gained
+/// by waiting seconds for one that has not. If the cap is hit the answer goes out with the
+/// candidates gathered so far — which is strictly better than an answer nobody is still
+/// waiting for.
+pub const GATHER_WAIT: Duration = Duration::from_secs(2);
 
 /// STUN servers, most-reliable first. All are public, free, and unauthenticated.
 ///
