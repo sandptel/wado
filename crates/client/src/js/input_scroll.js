@@ -65,7 +65,11 @@ W.scrollg = {
     // delta is negated before the shared direction/speed settings are applied. Routed through
     // the same W.naturalScroll and W.scrollSpeed as the wheel so one setting governs both.
     const sign = W.naturalScroll ? -1 : 1;
-    const speed = W.scrollSpeed || 1;
+    // Gain from the speed of the drag, so a slow adjustment stays precise and a flick still
+    // crosses the page — see input_accel.js. Taken once from the combined magnitude rather
+    // than per axis, or a diagonal drag would accelerate its two axes by different amounts
+    // and curve away from the finger.
+    const speed = (W.scrollSpeed || 1) * W.scrollAccel.gain(Math.hypot(dx, dy));
     W.sendInput({
       t: "scroll",
       x: n.x,

@@ -54,7 +54,11 @@ W.mouse = {
     // deltaMode 0=pixel, 1=line, 2=page → pixels; then apply speed + natural direction.
     const factor = e.deltaMode === 1 ? 16 : (e.deltaMode === 2 ? 100 : 1);
     const sign = W.naturalScroll ? -1 : 1;
-    const speed = W.scrollSpeed || 1;
+    // Pixel-mode deltas are what a touchpad sends (many small ones), so they get the same
+    // velocity gain as a finger drag. Line and page modes are a real wheel's discrete
+    // notches: accelerating those makes a mouse feel broken, so they stay linear.
+    const accel = e.deltaMode === 0 ? W.scrollAccel.gain(Math.hypot(e.deltaX, e.deltaY)) : 1;
+    const speed = (W.scrollSpeed || 1) * accel;
     W.sendInput({
       t: "scroll",
       x: n.x,

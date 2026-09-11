@@ -118,7 +118,9 @@ impl Settings {
 
             command: use_signal(|| "weston-terminal".to_string()),
             move_mode: use_signal(|| false),
-            scroll_speed: use_signal(|| 1.0),
+            // See ui/live.rs: 1.0 meant "pass the raw browser delta through", which is
+            // too fast everywhere. Acceleration covers the range this gives up.
+            scroll_speed: use_signal(|| 0.35),
             natural_scroll: use_signal(|| false),
 
             panel_open: use_signal(|| true),
