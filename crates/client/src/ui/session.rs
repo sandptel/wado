@@ -13,6 +13,9 @@ pub fn render(ui: Ui) -> Element {
     let mut s = ui.set;
     let on = (ui.live.session_on)();
     let custom_res = (s.res)() == "custom";
+    // Derived from the viewing device, so a stream can fill it edge to edge instead of
+    // being letterboxed into a 16:9 box on a 20:9 panel.
+    let device = crate::res::options((ui.live.screen_w)(), (ui.live.screen_h)());
     let custom_q = (s.quality)() == "custom";
 
     rsx! {
@@ -20,10 +23,11 @@ pub fn render(ui: Ui) -> Element {
         select {
             value: "{(s.res)()}", disabled: on,
             onchange: move |e| s.res.set(e.value()),
+            for (value, label) in device.iter().cloned() {
+                option { key: "{value}", value: "{value}", "{label}" }
+            }
             option { value: "1280x720", "1280 × 720 (720p)" }
             option { value: "1920x1080", "1920 × 1080 (1080p)" }
-            option { value: "1080x2400", "1080 × 2400 (phone portrait)" }
-            option { value: "2400x1080", "2400 × 1080 (phone landscape)" }
             option { value: "custom", "Custom…" }
         }
         if custom_res {

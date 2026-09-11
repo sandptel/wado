@@ -136,6 +136,10 @@ pub fn run(ui: Ui) {
 
             match kind {
                 "status" => live.status.set(text()),
+                "screen" => {
+                    live.screen_w.set(num("w").unwrap_or(0.0) as u32);
+                    live.screen_h.set(num("h").unwrap_or(0.0) as u32);
+                }
                 "phase" => {
                     // Monotonic: a late stray message must not walk the indicator backwards.
                     let n = num("stage").unwrap_or(0.0) as u8;
