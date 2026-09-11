@@ -9,6 +9,10 @@ use smithay::input::{Seat, SeatHandler, SeatState};
 use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::Serial;
+use smithay::wayland::compositor::with_states;
+use smithay::wayland::fractional_scale::{
+    FractionalScaleHandler, with_fractional_scale,
+};
 use smithay::wayland::output::OutputHandler;
 use smithay::wayland::selection::SelectionHandler;
 use smithay::wayland::selection::data_device::{
@@ -68,5 +72,29 @@ impl WaylandDndGrabHandler for Wado {
 }
 
 impl OutputHandler for Wado {}
+
+impl FractionalScaleHandler for Wado {
+    /// Tell a surface the scale it should draw for, the moment it asks.
+    ///
+    /// Anvil walks subsurface parents and per-window output lists to answer this. wado has
+    /// exactly one output for the whole session (invariant #8 — a client's resolution comes
+    /// from a fresh `Output`, and there is never a second one), so the answer is always that
+    /// output's scale and the walk would be ceremony.
+    ///
+    /// Answering at all is the point: with no reply a client falls back to `wl_output.scale`,
+    /// which is an integer, and a fractional session is right back to the clipped buffers
+    /// this protocol exists to prevent.
+    fn new_fractional_scale(&mut self, surface: WlSurface) {
+        let Some(scale) = self.space.outputs().next().map(|o| o.current_scale().fractional_scale())
+        else {
+            // No output yet: the session has not started. The surface will be told when one
+            // appears — see `headless::start_session`, which pushes to every known surface.
+            return;
+        };
+        with_states(&surface, |states| {
+            with_fractional_scale(states, |fs| fs.set_preferred_scale(scale));
+        });
+    }
+}
 
 smithay::delegate_dispatch2!(Wado);

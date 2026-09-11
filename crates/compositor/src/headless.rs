@@ -43,6 +43,24 @@ pub const WIDTH: u32 = crate::conf::DEFAULT_WIDTH;
 pub const HEIGHT: u32 = crate::conf::DEFAULT_HEIGHT;
 pub const FPS: u32 = crate::conf::DEFAULT_FPS;
 
+/// Tell every currently-mapped surface the output scale it should draw for. Returns how many
+/// were told, which is only interesting as a trace.
+fn push_fractional_scale(state: &Wado, scale: f32) -> usize {
+    use smithay::wayland::compositor::with_states;
+    use smithay::wayland::fractional_scale::with_fractional_scale;
+
+    let mut n = 0;
+    for window in state.space.elements() {
+        if let Some(surface) = window.toplevel().map(|t| t.wl_surface().clone()) {
+            with_states(&surface, |states| {
+                with_fractional_scale(states, |fs| fs.set_preferred_scale(scale as f64));
+            });
+            n += 1;
+        }
+    }
+    n
+}
+
 /// Eager, standalone setup for the examples: build the configured sink and start a
 /// session immediately. The live path uses `website` + `start_session` instead.
 pub fn init_headless(state: &mut Wado, config: &WadoConfig) -> crate::Result<()> {
@@ -128,6 +146,15 @@ pub fn start_session(
     );
     output.set_preferred(mode);
     state.space.map_output(&output, (0, 0));
+
+    // The fractional-scale handler answers a surface that asks, and a surface asks once when
+    // it binds. Anything already mapped when a session starts — every window carried over
+    // from a previous session in this compositor — bound before this output existed, and
+    // would otherwise keep drawing for the old scale forever.
+    let n = push_fractional_scale(state, scale);
+    if n > 0 {
+        tracing::debug!(surfaces = n, scale, "pushed fractional scale to existing surfaces");
+    }
 
     let damage_tracker = OutputDamageTracker::from_output(&output);
 
