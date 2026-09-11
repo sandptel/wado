@@ -2,6 +2,8 @@
 //! ([`SessionConfig`], [`Quality`]) live in the `wado-protocol` crate and are
 //! re-exported here; this module owns the x264-coupled encoder mapping.
 
+pub mod bitrate;
+
 pub use wado_protocol::{EncoderBackend, Quality, SessionConfig};
 pub use x264::Preset;
 
@@ -92,11 +94,18 @@ impl WadoConfig {
 /// the `wado-protocol` crate — the orphan rule forbids adding inherent impls here.
 pub fn to_encoder_config(config: &SessionConfig) -> EncoderConfig {
     let fps = config.fps.max(1);
-    let (bitrate_kbps, default_preset, default_kf) = match config.quality {
+    // The preset's budget at 1280x720; `bitrate::for_resolution` scales it to the output
+    // actually being encoded. A Custom bitrate is passed through untouched — someone typing
+    // a number means that number, not a number to be rescaled behind their back.
+    let (base_kbps, default_preset, default_kf) = match config.quality {
         Quality::Reactivity => (2000, Preset::Ultrafast, fps), // ~1 s GOP
         Quality::Balanced => (4000, Preset::Ultrafast, fps * 2),
         Quality::Quality => (8000, Preset::Veryfast, fps * 2),
         Quality::Custom { bitrate_kbps } => (bitrate_kbps, Preset::Ultrafast, fps * 2),
+    };
+    let bitrate_kbps = match config.quality {
+        Quality::Custom { bitrate_kbps } => bitrate_kbps,
+        _ => bitrate::for_resolution(base_kbps, config.width, config.height),
     };
     EncoderConfig {
         width: config.width,
