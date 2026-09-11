@@ -214,9 +214,28 @@ impl Wado {
             return;
         };
 
-        let output = self.space.outputs().next().unwrap();
-        let output_geo = self.space.output_geometry(output).unwrap();
-        let window_geo = self.space.element_geometry(window).unwrap();
+        // All three were `unwrap()`. The first is reachable and fatal: `stop_session` unmaps
+        // the output, while mapped windows are never removed — so any application still alive
+        // after a session ends (one started from the shell or from `Exec` inherits
+        // `WAYLAND_DISPLAY` and is not in `app_processes`, so nothing kills it) panics the
+        // compositor on its next menu, tooltip or combo box. The Wayland dispatch source is
+        // not `catch_unwind`-guarded, so that unwinds out of `event_loop.run` and takes the
+        // whole daemon with it — and because `main` unwinds, `stop_session` never runs and
+        // every application the session launched survives the daemon's death.
+        //
+        // Unconstraining a popup against an output that no longer exists has no meaningful
+        // answer, so leaving the client's requested geometry alone is the right no-op. Every
+        // other site that reads the output already handles this (`placement.rs`,
+        // `input/common.rs`, `handlers/mod.rs`); only this one did not.
+        let (Some(output), Some(window_geo)) = (
+            self.space.outputs().next(),
+            self.space.element_geometry(window),
+        ) else {
+            return;
+        };
+        let Some(output_geo) = self.space.output_geometry(output) else {
+            return;
+        };
 
         let mut target = output_geo;
         target.loc -= get_popup_toplevel_coords(&PopupKind::Xdg(popup.clone()));
