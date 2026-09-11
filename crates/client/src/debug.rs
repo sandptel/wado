@@ -25,6 +25,15 @@ pub struct Item {
 
 pub const ITEMS: &[Item] = &[
     Item {
+        // Off by default, and that is the fix rather than the preference: it used to be a
+        // permanent full-width bar pinned along the top of the stream, covering the row
+        // where an application's own controls live — you could not tell where to tap.
+        id: "statusbar",
+        label: "Status overlay (session, encoder, stats)",
+        default: false,
+        js: None,
+    },
+    Item {
         id: "fps",
         label: "Show FPS",
         default: true,
