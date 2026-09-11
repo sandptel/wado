@@ -255,6 +255,13 @@ async fn join_loop(socket: WebSocket, remote_id: String, addr: SocketAddr, state
     // ── 6. Cleanup ───────────────────────────────────────────────────────────
     fwd_task.abort();
     state.rooms.remove(&remote_id);
+    // Tell the server the viewer is gone. Its own teardown hangs off the WebRTC peer
+    // state, which never reaches Failed/Closed when ICE never completed in the first
+    // place — so without this a timed-out client leaves `session_active` set forever
+    // and every later join is refused with "a session is already active".
+    // ponytail: synthesized rather than forwarded; a PeerDisconnected variant is the
+    // clean version. Ordering is safe — a later PeerConnected rides the same inbox.
+    let _ = server_inbox_tx.send(r#"{"type":"session_stop"}"#.to_string()).await;
     info!(
         remote_id = %display_remote_id(&remote_id),
         room_id = %room_id,
