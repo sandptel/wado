@@ -19,11 +19,13 @@ use smithay::{
     utils::{Logical, Point},
     wayland::{
         compositor::{CompositorClientState, CompositorState},
+        fractional_scale::FractionalScaleManagerState,
         output::OutputManagerState,
         selection::data_device::DataDeviceState,
         shell::xdg::XdgShellState,
         shm::ShmState,
         socket::ListeningSocketSource,
+        viewporter::ViewporterState,
     },
 };
 
@@ -54,6 +56,14 @@ pub struct Wado {
     pub output_manager_state: OutputManagerState,
     pub seat_state: SeatState<Wado>,
     pub data_device_state: DataDeviceState,
+    /// wp-fractional-scale-v1. Without it `wl_output.scale` is the only channel and it is an
+    /// integer, so a client asked for 1.5 is told 2, draws at 2x, and is composited as 1.5x —
+    /// its buffer overhangs its own area and elements are visibly clipped.
+    pub fractional_scale_state: FractionalScaleManagerState,
+    /// wp-viewport. Its companion: a client drawing for a fractional scale needs to declare
+    /// the destination size its buffer maps onto, or the rounding it just avoided reappears
+    /// at composite time.
+    pub viewporter_state: ViewporterState,
     pub popups: PopupManager,
     pub seat: Seat<Self>,
 
@@ -144,6 +154,11 @@ impl Wado {
         let popups = PopupManager::default();
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&dh);
         let data_device_state = DataDeviceState::new::<Self>(&dh);
+        // Advertised unconditionally: a client decides how to draw when it binds, long
+        // before a session sets a scale, and a global that appears later is one most
+        // toolkits will never look for again.
+        let fractional_scale_state = FractionalScaleManagerState::new::<Self>(&dh);
+        let viewporter_state = ViewporterState::new::<Self>(&dh);
 
         let mut seat_state = SeatState::new();
         let mut seat: Seat<Self> = seat_state.new_wl_seat(&dh, "headless");
@@ -172,6 +187,8 @@ impl Wado {
             output_manager_state,
             seat_state,
             data_device_state,
+            fractional_scale_state,
+            viewporter_state,
             popups,
             seat,
             renderer: None,
