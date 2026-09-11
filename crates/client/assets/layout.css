@@ -1,0 +1,63 @@
+/* The shell: the two columns and the settings panel inside the left one.
+ *
+ * Desktop-only for now — the responsive sheet is M-C2. Kept in its own file so that work is
+ * confined to this stylesheet. */
+
+.app {
+  display: flex;
+  /* dvh, not vh: on mobile the URL bar collapses and 100vh overshoots the viewport by ~60px.
+   * Harmless on desktop, so there is no reason to wait for the mobile pass to use it. */
+  height: 100dvh;
+  overflow: hidden;
+}
+
+#panel {
+  width: 320px;
+  flex: 0 0 320px;
+  padding: 16px;
+  box-sizing: border-box;
+  background: var(--base01);
+  border-right: 1px solid var(--base02);
+  overflow-y: auto;
+}
+
+#stage { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+.brand { margin-bottom: 4px; }
+
+/* ── settings groups ─────────────────────────────────────────────────────────────────── */
+
+.group { margin-top: 12px; border-top: 1px solid var(--base02); padding-top: 8px; }
+.group.flat { border-top: 0; padding-top: 0; }
+.group > summary {
+  cursor: pointer; font-size: 13px; color: var(--base04); user-select: none;
+  list-style-position: outside;
+}
+.group > summary:hover { color: var(--base06); }
+.group .note { margin: 4px 0 0; }
+
+/* Expand/collapse. Animating grid-template-rows is the one way to transition to content
+ * height without hard-coding one, and it stays off the main thread's layout path for the
+ * subtree because the child is the thing being clipped, not re-laid-out. */
+.group-body {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows var(--dur) var(--ease);
+}
+.group:not([open]) .group-body { grid-template-rows: 0fr; }
+.group-body > * { overflow: hidden; min-height: 0; }
+
+/* A nested disclosure for the knobs most people never touch. */
+.sub { margin-top: 12px; border-top: 1px dashed var(--base02); padding-top: 8px; }
+.sub > summary { cursor: pointer; font-size: 12px; color: var(--base03); user-select: none; }
+.sub > summary:hover { color: var(--base04); }
+
+.row { display: flex; gap: 8px; }
+.row > * { flex: 1; }
+
+.debug-items { margin-top: 8px; padding-left: 4px; border-left: 2px solid var(--base02); }
+
+.btns { margin-top: 16px; display: flex; gap: 8px; }
+.btns > button { flex: 1; }
+
+#status { font-size: 12px; color: var(--base0B); margin-top: 12px; min-height: 1em; }

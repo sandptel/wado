@@ -111,6 +111,17 @@ W.latency = {
   },
 };
 
+// Debug toggle. This module owns the timers, so it owns the switch that stops them — the
+// toggle used to gate only the *display*, leaving a 2 Hz ping on the input data channel and a
+// 1 Hz /timing fetch running for numbers nothing rendered. That is non-input traffic on the
+// channel invariant #1 exists to protect, so "off" now means off.
+W.debugLatency = false;
+W.setLatency = (on) => {
+  W.debugLatency = !!on;
+  if (W.debugLatency && W.pc) W.latency.start(W.pc);
+  else W.latency.stop();
+};
+
 // The server answers our Ping on the same channel it arrived on. Attach once the reliable
 // input channel exists; non-pong traffic is ignored (the server sends nothing else).
 W.attachLatencyEcho = () => {

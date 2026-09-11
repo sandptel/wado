@@ -166,6 +166,10 @@ W._relayNegotiate = async (ws) => {
     stagebar("Streaming (relay).");
     W.reconnectAttempts = 0;
     W.startStats(pc);
+    // Relay mode used to stop here, so it reported no latency breakdown at all — an absent
+    // reading that was easy to misread as a good one. Same wiring as the direct path.
+    W.attachLatencyEcho();
+    if (W.debugLatency) W.latency.start(pc);
     W.setupInputCapture();
   };
 
