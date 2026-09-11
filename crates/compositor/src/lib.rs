@@ -31,6 +31,7 @@ pub mod headless;
 pub mod input;
 pub mod pacing;
 pub mod placement;
+pub mod proc;
 pub mod sink;
 pub mod state;
 pub mod timing;
@@ -42,6 +43,7 @@ use smithay::reexports::{
     calloop::{
         EventLoop,
         channel::{Event as ChannelEvent, Sender, channel},
+        signals::{Signal, Signals},
     },
     wayland_server::Display,
 };
@@ -133,6 +135,27 @@ pub fn build(
             }
         })
         .map_err(|e| CompositorError::Other(format!("insert input source: {e}")))?;
+
+    // Shut down on a signal instead of dying on one. Without this, Ctrl-C or a `systemctl
+    // stop` killed the process outright and `stop_session` never ran — so every application
+    // launched into the session survived its own session, which is the other half of the
+    // leak `proc.rs` describes. Handled here rather than in the server's `main` so the
+    // calloop/Smithay types stay on this side of the crate boundary.
+    //
+    // A signalfd source, not a handler setting a flag: the loop is asleep in `poll` when the
+    // signal lands, and a flag only gets read once something else happens to wake it.
+    let signals = Signals::new(&[Signal::SIGINT, Signal::SIGTERM])
+        .map_err(|e| CompositorError::Other(format!("signal source: {e}")))?;
+    event_loop
+        .handle()
+        .insert_source(signals, |event, _, state: &mut Wado| {
+            tracing::info!(signal = ?event.signal(), "signal received — stopping session");
+            // Before the loop stops, not after: `stop_session` is what kills the launched
+            // applications, and it cannot run once the process is gone.
+            headless::stop_session(state);
+            state.loop_signal.stop();
+        })
+        .map_err(|e| CompositorError::Other(format!("insert signal source: {e}")))?;
 
     Ok((event_loop, state, CompositorHandles { commands: cmd_tx, input: input_tx, timings }))
 }
