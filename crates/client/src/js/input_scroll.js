@@ -17,6 +17,16 @@
 // a pixel or two per frame and should not scroll the page.
 const SCROLL_DEADZONE = 2;
 
+// The same gesture also carries a pinch: the midpoint moving is a scroll, the gap between
+// the contacts changing is a magnify. Both are reported, which is what libinput does for a
+// touchpad and what toolkits are written against — one drag can legitimately pan and zoom.
+//
+// Its own deadzones, and they are not the scroll one. A pure pinch holds the midpoint still,
+// so it never clears SCROLL_DEADZONE; a pure scroll holds the gap constant, so it never
+// clears these. That is also why the pinch is computed *before* the scroll deadzone returns.
+const PINCH_DEADZONE = 0.01;    // fraction of the starting gap
+const ROTATE_DEADZONE = 0.5;    // degrees
+
 W.scrollg = {
   // Take over from the primary-contact FSM. Called on the second pointerdown.
   begin(e, video) {
@@ -40,6 +50,19 @@ W.scrollg = {
     g.anchorY = (g.sy + e.clientY) / 2;
     g.p1 = { x: g.sx, y: g.sy };
     g.p2 = { x: e.clientX, y: e.clientY };
+    // Pinch baseline. The gap can be zero if both contacts land on the same pixel, and a
+    // zero baseline makes every later scale Infinity, so it is floored at one pixel.
+    g.pinchD0 = Math.max(1, Math.hypot(g.p2.x - g.p1.x, g.p2.y - g.p1.y));
+    g.pinchScale = 1;
+    g.pinchAngle = Math.atan2(g.p2.y - g.p1.y, g.p2.x - g.p1.x);
+    const pn = W.normPoint(g.anchorX, g.anchorY, video);
+    if (pn) {
+      g.pinchOn = true;
+      // Its own last-point, not the scroll's: a pure pinch never fires a scroll, so
+      // reusing g.lastN would leave the end event with nowhere to land and never send it.
+      g.pinchN = pn;
+      W.sendInput({ t: "pinch", phase: "down", x: pn.x, y: pn.y, scale: 1, rotation: 0 });
+    }
     return true;
   },
 
@@ -53,6 +76,30 @@ W.scrollg = {
 
     const mx = (g.p1.x + g.p2.x) / 2;
     const my = (g.p1.y + g.p2.y) / 2;
+
+    // Pinch first: a magnify with a still midpoint would otherwise be swallowed by the
+    // scroll deadzone below and never reach the app at all.
+    if (g.pinchOn) {
+      const gap = Math.hypot(g.p2.x - g.p1.x, g.p2.y - g.p1.y);
+      const scale = gap / g.pinchD0;
+      const angle = Math.atan2(g.p2.y - g.p1.y, g.p2.x - g.p1.x);
+      // Wrapped into (-180, 180]: without it, a gesture crossing the atan2 branch cut
+      // reports a 360-degree flick in one event.
+      let rot = ((angle - g.pinchAngle) * 180) / Math.PI;
+      rot -= 360 * Math.round(rot / 360);
+      if (Math.abs(scale - g.pinchScale) > PINCH_DEADZONE || Math.abs(rot) > ROTATE_DEADZONE) {
+        const pn = W.normPoint(mx, my, video);
+        if (pn) {
+          // scale is absolute against the gap at "down"; rotation is the delta since the
+          // last event. The protocol defines them that way — see InputEvent::Pinch.
+          W.sendInput({ t: "pinch", phase: "motion", x: pn.x, y: pn.y, scale, rotation: rot });
+          g.pinchScale = scale;
+          g.pinchAngle = angle;
+          g.pinchN = pn;
+        }
+      }
+    }
+
     const dx = mx - g.anchorX;
     const dy = my - g.anchorY;
     if (Math.hypot(dx, dy) < SCROLL_DEADZONE) return true;
@@ -88,6 +135,15 @@ W.scrollg = {
     const g = W.gesture;
     if (!g || g.state !== "scroll") return false;
     if (e.pointerId === g.id || e.pointerId === g.second) {
+      // End the pinch before the axis. A toolkit that never sees the end keeps the gesture
+      // open and ignores whatever comes next as part of it.
+      if (g.pinchOn && g.pinchN) {
+        W.sendInput({
+          t: "pinch", phase: "up", x: g.pinchN.x, y: g.pinchN.y,
+          scale: g.pinchScale, rotation: 0,
+        });
+        g.pinchOn = false;
+      }
       // Terminate the axis. Without it a toolkit keeps waiting for more deltas and never
       // starts the kinetic phase, so a flick just stops dead where the finger left off.
       if (g.lastN) {

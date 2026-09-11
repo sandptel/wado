@@ -21,6 +21,7 @@ use smithay::{
         compositor::{CompositorClientState, CompositorState},
         fractional_scale::FractionalScaleManagerState,
         output::OutputManagerState,
+        pointer_gestures::PointerGesturesState,
         selection::data_device::DataDeviceState,
         shell::xdg::XdgShellState,
         shm::ShmState,
@@ -60,6 +61,7 @@ pub struct Wado {
     /// integer, so a client asked for 1.5 is told 2, draws at 2x, and is composited as 1.5x —
     /// its buffer overhangs its own area and elements are visibly clipped.
     pub fractional_scale_state: FractionalScaleManagerState,
+    pub pointer_gestures_state: PointerGesturesState,
     /// wp-viewport. Its companion: a client drawing for a fractional scale needs to declare
     /// the destination size its buffer maps onto, or the rounding it just avoided reappears
     /// at composite time.
@@ -159,6 +161,10 @@ impl Wado {
         // toolkits will never look for again.
         let fractional_scale_state = FractionalScaleManagerState::new::<Self>(&dh);
         let viewporter_state = ViewporterState::new::<Self>(&dh);
+        // Pinch and rotate for a two-finger touch gesture. Advertised unconditionally for
+        // the same reason as the two above: a toolkit looks for its gesture global when it
+        // binds the seat, and one that appears later is one it never asks for again.
+        let pointer_gestures_state = PointerGesturesState::new::<Self>(&dh);
 
         let mut seat_state = SeatState::new();
         let mut seat: Seat<Self> = seat_state.new_wl_seat(&dh, "headless");
@@ -188,6 +194,7 @@ impl Wado {
             seat_state,
             data_device_state,
             fractional_scale_state,
+            pointer_gestures_state,
             viewporter_state,
             popups,
             seat,

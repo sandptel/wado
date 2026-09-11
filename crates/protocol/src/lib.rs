@@ -117,6 +117,23 @@ pub enum InputEvent {
     /// window under the `Down` point follows subsequent `Motion`s until `Up`. Handled
     /// entirely by the compositor; never forwarded to the application.
     WindowDrag { phase: TouchPhase, x: f64, y: f64 },
+    /// A two-finger pinch/rotate, delivered as `zwp_pointer_gestures_v1` pinch events.
+    ///
+    /// Rides the same two-contact gesture the client uses for scrolling, so one gesture can
+    /// produce both — which is exactly what libinput reports for a touchpad, and what
+    /// toolkits expect: translation on the scroll axis, magnification here.
+    ///
+    /// The two figures are measured differently because the protocol defines them
+    /// differently, and mixing them up silently inverts a zoom: `scale` is **absolute**
+    /// against the distance at `Down`, `rotation` is the **delta in degrees** since the
+    /// previous event.
+    Pinch {
+        phase: TouchPhase,
+        x: f64,
+        y: f64,
+        scale: f64,
+        rotation: f64,
+    },
     /// Retract an in-progress touch contact when a gesture takes over (e.g. a long-press
     /// promotes to a window move/right-click), so the app sees a cancel, not a tap. Maps
     /// to `wl_touch`'s **global** cancel (all live contacts), per the protocol.
