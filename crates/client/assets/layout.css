@@ -160,3 +160,8 @@
   /* The log panel is a debugging surface; on a phone it must not eat the video. */
   #wado-logwrap { height: 120px; }
 }
+
+/* Separates the window actions from the view controls (settings, fullscreen). They act on
+ * different things — one on the session, one on this browser — and a mis-tap between them
+ * should take deliberate aim. */
+.barsep { width: 1px; align-self: stretch; margin: 6px 2px; background: var(--base02); }

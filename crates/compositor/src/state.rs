@@ -88,6 +88,10 @@ pub struct Wado {
     pub placement: Placement,
     /// When true, pointer hover also moves keyboard focus (`SessionConfig.input`).
     pub focus_follows_pointer: bool,
+    /// Where each maximized window was before it was maximized, so restore has somewhere to
+    /// go back to. Only maximized windows appear here; the entry is removed on restore, and
+    /// a window maximized at map time by `Placement::Maximized` never has one.
+    pub pre_maximize: std::collections::HashMap<Window, crate::window::PreMaximize>,
     /// Toplevels mapped but awaiting placement (Center/Cascade need the post-commit size).
     /// Drained by `Wado::apply_pending_placement`. See `placement.rs`.
     pub pending_placement: Vec<Window>,
@@ -181,6 +185,7 @@ impl Wado {
             window_move: None,
             placement: Placement::default(),
             focus_follows_pointer: false,
+            pre_maximize: std::collections::HashMap::new(),
             pending_placement: Vec::new(),
             cascade_count: 0,
         }

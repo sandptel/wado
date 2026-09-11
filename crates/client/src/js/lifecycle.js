@@ -1,4 +1,5 @@
-// wado bridge — session lifecycle (start / launch / stop) + page-lifetime keep-alive.
+// wado bridge — session lifecycle (start / stop) + page-lifetime keep-alive.
+// Launch and the window actions live in control.js; this file only starts and ends sessions.
 // MUST be concatenated last: the trailing never-resolving await keeps this eval (and its
 // dioxus.send channel) alive for the app's lifetime.
 //
@@ -51,25 +52,6 @@ W.start = async (server, config, relayOpts) => {
       status("error: " + (e && e.message ? e.message : e));
       emit({ type: "startFailed" });
     }
-  }
-};
-
-// Launch a command into the running session in realtime (callable repeatedly).
-W.launch = async (command) => {
-  if (!W.sessionOn) { status("launch ignored — no session"); return; }
-  if (W.relayMode) {
-    await W.relayLaunch(command);
-    return;
-  }
-  try {
-    const res = await fetch(W.server + "/session/launch", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(command),
-    });
-    if (!res.ok) status("launch failed: " + (await res.text()));
-  } catch (e) {
-    status("launch error: " + (e && e.message ? e.message : e));
   }
 };
 

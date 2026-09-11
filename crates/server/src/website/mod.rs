@@ -6,7 +6,7 @@
 //! app) that talks to these endpoints over CORS. The endpoints are:
 //!   - `POST /session/start` — body is a `wado_protocol::SessionConfig` (JSON).
 //!   - `POST /session/stop`  — tear the active session down.
-//!   - `POST /session/launch`— JSON-encoded command string → spawn it into the running session.
+//!   - `POST /session/control` — a JSON `SessionControl`: launch a command into the running session.
 //!   - `POST /offer`         — WebRTC SDP offer → answer (JSON).
 //!   - `GET  /events`        — live tracing logs as Server-Sent Events.
 //!   - `OPTIONS *`           — CORS preflight (204).
@@ -48,6 +48,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tracing::{error, info, warn};
+use wado_protocol::SessionControl;
 use webrtc::api::interceptor_registry::register_default_interceptors;
 use webrtc::api::media_engine::{MIME_TYPE_H264, MediaEngine};
 use webrtc::api::{API, APIBuilder};
@@ -334,18 +335,25 @@ async fn handle_conn(mut stream: TcpStream, ctx: Arc<ServerCtx>) -> crate::Resul
             let _ = ctx.cmd_tx.send(CompositorCommand::Stop);
             write_response(&mut stream, "200 OK", "text/plain", b"stopped").await?;
         }
-        ("POST", "/session/launch") => match serde_json::from_slice::<String>(&body) {
-            Ok(command) if !command.trim().is_empty() => {
-                let _ = ctx.cmd_tx.send(CompositorCommand::Launch { command });
-                write_response(&mut stream, "200 OK", "text/plain", b"launched").await?;
-            }
-            Ok(_) => {
+        // One route for every verb against a running session. `/session/launch` was its
+        // predecessor; adding four window actions in that shape would have meant four more
+        // routes here and four more relay messages, so the verb moved into the body.
+        ("POST", "/session/control") => match serde_json::from_slice::<SessionControl>(&body) {
+            Ok(SessionControl::Launch { command }) if command.trim().is_empty() => {
                 write_response(&mut stream, "400 Bad Request", "text/plain", b"empty command")
                     .await?
             }
+            Ok(SessionControl::Launch { command }) => {
+                let _ = ctx.cmd_tx.send(CompositorCommand::Launch { command });
+                write_response(&mut stream, "200 OK", "text/plain", b"launched").await?;
+            }
+            Ok(SessionControl::Window(action)) => {
+                let _ = ctx.cmd_tx.send(CompositorCommand::Window(action));
+                write_response(&mut stream, "200 OK", "text/plain", b"ok").await?;
+            }
             Err(e) => {
-                warn!("launch rejected: {e}");
-                write_response(&mut stream, "400 Bad Request", "text/plain", b"bad command").await?
+                warn!("control rejected: {e}");
+                write_response(&mut stream, "400 Bad Request", "text/plain", b"bad control").await?
             }
         },
         ("POST", "/offer") => {
