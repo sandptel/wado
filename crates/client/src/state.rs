@@ -77,7 +77,7 @@ impl Settings {
     /// Must be called from inside a component — these are hooks.
     pub fn new() -> Self {
         Self {
-            conn_mode: use_signal(|| "direct".to_string()),
+            conn_mode: use_signal(|| "relay".to_string()),
             server_addr: use_signal(|| DEFAULT_SERVER.to_string()),
             relay_url: use_signal(|| DEFAULT_RELAY.to_string()),
             remote_id: use_signal(String::new),
