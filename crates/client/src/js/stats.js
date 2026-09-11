@@ -15,6 +15,11 @@ W.startStats = (pc) => {
     // Loss and receiver-side drops separate the two causes of a full frame pump: frames that
     // never left the server (loss ~0, fps low) from a saturated link (loss climbing, RTT up).
     let lost = null, recv = null, dropped = null, kbps = null;
+    // jtarget is what the browser's own timing model is aiming for; jbuf is what it
+    // delivered. They separate "our hint is being ignored" from "the hint is not the
+    // binding constraint". dec is mean decode time per frame — at 120 fps anything at or
+    // past 8.3 ms means the decoder has no headroom, so a backlog can never drain.
+    let jtarget = null, dec = null;
     stats.forEach((r) => {
       if (r.type === "inbound-rtp" && (r.kind === "video" || r.mediaType === "video")) {
         if (typeof r.framesPerSecond === "number") {
@@ -43,6 +48,13 @@ W.startStats = (pc) => {
             typeof r.jitterBufferEmittedCount === "number" &&
             r.jitterBufferEmittedCount > 0) {
           jbuf = (r.jitterBufferDelay / r.jitterBufferEmittedCount) * 1000;
+          if (typeof r.jitterBufferTargetDelay === "number") {
+            jtarget = (r.jitterBufferTargetDelay / r.jitterBufferEmittedCount) * 1000;
+          }
+        }
+        if (typeof r.totalDecodeTime === "number" &&
+            typeof r.framesDecoded === "number" && r.framesDecoded > 0) {
+          dec = (r.totalDecodeTime / r.framesDecoded) * 1000;
         }
       } else if (r.type === "candidate-pair" && (r.nominated || r.state === "succeeded")) {
         if (typeof r.currentRoundTripTime === "number") ping = r.currentRoundTripTime * 1000;
@@ -84,7 +96,8 @@ W.startStats = (pc) => {
         "fps=" + n(fps, 1) + " rtt=" + n(ping, 0) + "ms jbuf=" + n(jbuf, 0) + "ms" +
         " kbps=" + n(kbps, 0) + " lost=" + (lost === null ? "?" : lost) +
         " (+" + lossDelta + ") framesDropped=" + (dropped === null ? "?" : dropped) +
-        " framesReceived=" + (recv === null ? "?" : recv));
+        " framesReceived=" + (recv === null ? "?" : recv) +
+        " jtarget=" + n(jtarget, 0) + "ms dec=" + n(dec, 2) + "ms");
     }
   }, 1000);
 };
