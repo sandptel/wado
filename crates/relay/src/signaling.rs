@@ -110,7 +110,7 @@ async fn register_loop(socket: WebSocket, addr: SocketAddr, state: AppState) {
                 debug!(
                     remote_id = %display_remote_id(&remote_id),
                     "server msg: {}",
-                    &text[..text.len().min(120)]
+                    head(&text)
                 );
                 // Forward verbatim to the paired client (if a room exists).
                 if !state.rooms.forward_to_client(&remote_id, text.to_string()).await {
@@ -239,7 +239,7 @@ async fn join_loop(socket: WebSocket, remote_id: String, addr: SocketAddr, state
                     remote_id = %display_remote_id(&remote_id),
                     client = %addr,
                     "client msg: {}",
-                    &text[..text.len().min(120)]
+                    head(&text)
                 );
                 if server_inbox_tx.send(text.to_string()).await.is_err() {
                     info!(remote_id = %display_remote_id(&remote_id), "server inbox closed — ending room");
@@ -288,4 +288,39 @@ async fn send_deny(
     let msg = serde_json::to_string(&RelayMsg::JoinDenied { reason: reason.to_string() })
         .unwrap_or_else(|_| r#"{"type":"join_denied","reason":"internal"}"#.to_string());
     let _ = ws_tx.send(Message::Text(msg)).await;
+}
+
+/// First [`LOG_HEAD`] *characters* of a relayed message, for the debug log.
+///
+/// Not `&text[..120]`. That slices on a **byte** index, and a WebSocket frame here carries
+/// arbitrary UTF-8 — PTY output most of all. On 2026-09-12 a shell rendering `●` (three bytes)
+/// straddling byte 120 panicked the tokio worker handling that room mid-frame. The failure did
+/// not look like a panic from outside: the socket simply stopped being drained, 2.6 MB backed
+/// up in the daemon's send queue, and every session-start and SDP message after it was never
+/// read. The symptom reported was "the shell works but nothing streams" — the shell being
+/// precisely what put the `●` on the wire.
+///
+/// Truncating by characters cannot land mid-codepoint, so it cannot panic.
+fn head(text: &str) -> String {
+    const LOG_HEAD: usize = 120;
+    text.chars().take(LOG_HEAD).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::head;
+
+    #[test]
+    fn head_never_splits_a_codepoint() {
+        // The exact shape that panicked: 119 ASCII bytes, then a 3-byte char occupying bytes
+        // 119..122 — so the old `&text[..120]` cut straight through it.
+        let s = format!("{}●tail", "a".repeat(119));
+        assert!(!s.is_char_boundary(120), "test no longer reproduces the original panic");
+        assert_eq!(head(&s).chars().count(), 120);
+        assert!(head(&s).ends_with('●'));
+        // Shorter than the cap, empty, and all-multibyte all pass through unharmed.
+        assert_eq!(head("hi"), "hi");
+        assert_eq!(head(""), "");
+        assert_eq!(head(&"●".repeat(200)).chars().count(), 120);
+    }
 }
