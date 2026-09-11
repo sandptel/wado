@@ -257,16 +257,13 @@ pub fn launch_command(state: &mut Wado, command: &str) {
         warn!("empty command — nothing to launch");
         return;
     }
-    // Through a shell, because splitting on whitespace is not what anyone means when they
-    // type a command: it broke quoted arguments into pieces, and left `~`, `$VAR`, globs,
-    // pipes and redirection as literal text. `sh -c` is the same rule a launcher or a
-    // desktop entry's Exec line already follows.
+    // Through a shell and in its own process group — see `proc::spawn`.
     //
     // This grants no access that did not exist: the field was already free-form and spawned
     // whatever it named. It is still the reason the direct-mode control plane binds
     // localhost, and the reason the relay's Remote ID is the only thing between a stranger
     // and this shell — see the auth gate in TODO's NECESSARY list.
-    match std::process::Command::new("sh").arg("-c").arg(command).spawn() {
+    match crate::proc::spawn(command) {
         Ok(child) => {
             info!(pid = child.id(), command, "launched session application");
             state.app_processes.push(child);
@@ -285,9 +282,11 @@ pub fn stop_session(state: &mut Wado) {
     if let Some(token) = state.render_timer_token.take() {
         state.loop_handle.remove(token);
     }
+    // Whole groups, not single pids: `child.kill()` reaped the shell and left everything it
+    // had forked running — a browser kept playing audio after the session it belonged to was
+    // gone. See `proc::terminate`.
     for mut child in state.app_processes.drain(..) {
-        let _ = child.kill();
-        let _ = child.wait();
+        crate::proc::terminate(&mut child);
     }
     if let Some(output) = state.output.take() {
         state.space.unmap_output(&output);
