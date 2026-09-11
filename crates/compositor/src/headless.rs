@@ -104,7 +104,22 @@ pub fn start_session(
     // encoded pixel size, but the logical area clients lay out in shrinks by this factor, so
     // everything is drawn proportionally larger. Clamped because a zero or negative scale is
     // a divide-by-zero in the logical geometry, not a preference.
-    let scale = if scale.is_finite() { scale.clamp(0.5, 4.0) } else { 1.0 };
+    let scale = if scale.is_finite() { scale.clamp(1.0, 4.0) } else { 1.0 };
+    // Rounded to a whole number, and this is not a nicety. wl_output.scale is an integer
+    // event, and wado does not implement wp-fractional-scale-v1, so a client asked for 1.5
+    // is told "2", renders its buffers at 2x, and has them composited as though they were
+    // 1.5x — the buffer overhangs its own area and app elements are visibly clipped.
+    // Honouring the request halfway is worse than not honouring it: rounding gives a client
+    // a scale it can actually draw for.
+    let requested = scale;
+    let scale = scale.round().max(1.0);
+    if (requested - scale).abs() > f32::EPSILON {
+        tracing::warn!(
+            requested,
+            applied = scale,
+            "fractional output scale rounded — wp-fractional-scale-v1 is not implemented, and              a client told an integer scale it did not ask for renders clipped"
+        );
+    }
     output.change_current_state(
         Some(mode),
         Some(Transform::Normal),

@@ -5,18 +5,31 @@
  * appearance of the thing being streamed. Chrome around it is themed normally. */
 #stage { background: #000; }
 
+/* The video owns the whole stage, and every piece of chrome floats over it. Laid out as
+ * siblings they each stole vertical space, so the video's box was never the screen's shape
+ * — and with object-fit: contain that is letterboxing no chosen resolution can fix. Turning
+ * the debug readout on would visibly re-letterbox the picture, which is how this was found. */
 #wado-video {
-  flex: 1; width: 100%; min-height: 0;
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
   object-fit: contain;
   background: #000;
 }
 #wado-video:focus { outline: 2px solid var(--base0B); outline-offset: -2px; }
 
+/* Floating chrome. pointer-events: none throughout — none of it is interactive, and a strip
+ * that swallowed touches along the top edge of the stream would be a worse bug than the one
+ * this fixes. Backgrounds are translucent so text stays legible over any picture. */
 #stagebar {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 2;
+  pointer-events: none;
   display: flex; justify-content: space-between; align-items: center;
+  gap: 8px;
   padding: 6px 12px; font-size: 12px;
-  color: var(--base03); background: var(--base01);
+  color: var(--base04); background: rgb(0 0 0 / 0.55);
 }
+/* The software banner sits above it when present; DOM order makes this reliable. */
+.swbanner ~ #stagebar { top: 28px; }
 #stagebar .stats {
   font-family: var(--mono); color: var(--base0B);
   font-variant-numeric: tabular-nums;
@@ -26,20 +39,14 @@
 /* Persistent software-encoding warning (invariant #5). Never gated by the debug switch: a
  * warning the user can turn off is not a warning. */
 .swbanner {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 3;
+  pointer-events: none;
   background: var(--base09); color: var(--base00);
   padding: 6px 12px; font-size: 12px; text-align: center;
   animation: banner-in var(--dur) var(--ease);
 }
 @keyframes banner-in { from { opacity: 0; transform: translateY(-4px); } }
 
-/* Decode warning: the viewing device cannot keep up with what it asked for. Distinct colour
- * from the software-encoding banner because the fix is the opposite end of the pipe — the
- * two must not be mistaken for each other at a glance. */
-.decodebanner {
-  background: var(--base0A); color: var(--base00);
-  padding: 6px 12px; font-size: 12px; text-align: center; line-height: 1.4;
-  animation: banner-in var(--dur) var(--ease);
-}
 
 /* Pipeline badge: green zero-copy, amber HW cpu-copy fallback, red software. */
 .pipebadge {
@@ -54,7 +61,10 @@
  * horizontally as they update — the readout exists to show which stage grew, and shifting
  * columns make that much harder to see. For the same reason nothing here animates. */
 #wado-latency {
-  display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 0; padding: 0 12px;
+  position: absolute; bottom: 0; left: 0; right: 0; z-index: 2;
+  pointer-events: none;
+  display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 6px 12px;
+  background: rgb(0 0 0 / 0.55);
   font-family: var(--mono); font-size: 11px;
 }
 .latstage {

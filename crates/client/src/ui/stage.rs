@@ -58,22 +58,15 @@ pub fn render(ui: Ui) -> Element {
     let logs = live.logs.read().clone();
 
     // The server can be entirely healthy while the picture still stutters, because the
-    // viewing device cannot decode what it asked for. Measured on this phone: 1080x2422 at
-    // 60 fps dropped ~5% of frames in the browser while the pump reported no stalls and no
-    // drops at all. Without this the only visible symptom is choppiness, which reads as a
-    // server fault and sends you looking in the wrong place.
+    // viewing device cannot decode what it asked for — measured here at 1080x2422/60, ~5%
+    // of frames lost in the browser while the pump reported no stalls at all. It belongs
+    // next to the other latency numbers and nowhere else: as a banner it appeared and
+    // vanished above the video, reflowing the stage every time the rate crossed back over.
     let decode_drop = (live.decode_drop_pct)();
-    let struggling = on && decode_drop >= 2.0;
 
     rsx! {
         if sw_encoding {
             div { class: "swbanner", "⚠ Software encoding — higher CPU use and latency" }
-        }
-        if struggling {
-            div { class: "decodebanner",
-                "⚠ This device is dropping {decode_drop:.0}% of frames — it cannot decode this \
-                 fast enough. Lower the resolution or drop to 30 fps."
-            }
         }
         div { id: "stagebar",
             span {
@@ -104,6 +97,12 @@ pub fn render(ui: Ui) -> Element {
                 span { class: "latstage latnote",
                     span { class: "latname", "dropped" }
                     span { class: "latval", "{dropped}" }
+                }
+                // Server-side drops and device-side drops are different faults with
+                // different fixes, so they are two readings rather than one total.
+                span { class: "latstage latnote",
+                    span { class: "latname", "device drop" }
+                    span { class: "latval", "{decode_drop:.1}%" }
                 }
             }
         }
