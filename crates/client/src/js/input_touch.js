@@ -7,11 +7,22 @@
 
 const touchAt = (id, phase, clientX, clientY, video) => {
   const n = W.normPoint(clientX, clientY, video);
-  if (n) W.sendInput({ t: "touch", id: id >>> 0, phase, x: n.x, y: n.y });
+  if (!n) return;
+  const ev = { t: "touch", id: id >>> 0, phase, x: n.x, y: n.y };
+  // Touch motion coalesces per contact; down/up are terminal and must keep their order.
+  // Touch stays on the RELIABLE channel even for motion: a finger generates events at a
+  // fraction of a mouse's rate, so it was never the saturation source, and a dropped
+  // wl_touch motion for a live slot is messier than a dropped pointer motion.
+  if (phase === "motion") W.coalesce.queue("touch:" + id, ev);
+  else W.coalesce.now(ev);
 };
 const dragAt = (phase, clientX, clientY, video) => {
   const n = W.normPoint(clientX, clientY, video);
-  if (n) W.sendInput({ t: "window_drag", phase, x: n.x, y: n.y });
+  if (!n) return;
+  const ev = { t: "window_drag", phase, x: n.x, y: n.y };
+  // Motion coalesces (newest position wins); down/up must arrive, and in order.
+  if (phase === "motion") W.coalesce.queue("window_drag", ev);
+  else W.coalesce.now(ev);
 };
 // Primary-contact hold fired: retract the tap and arm hold (→ move or right-click).
 const onHoldFired = () => {

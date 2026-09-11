@@ -7,14 +7,28 @@
 // 0..1 against the displayed video *content* rect (object-fit:contain letterbox math) so the
 // server scales 1:1 to the output. wado renders no cursor.
 
-const INPUT_CHANNEL = "wado-input"; // must match wado_protocol::INPUT_CHANNEL
+const INPUT_CHANNEL = "wado-input";   // must match wado_protocol::INPUT_CHANNEL
+const MOTION_CHANNEL = "wado-motion"; // must match wado_protocol::MOTION_CHANNEL
+
+// Event types that ride the zero-retransmit motion channel. Everything else
+// goes reliable+ordered. Keep this list in sync with MOTION_CHANNEL's docs in the protocol
+// crate: only absolute, latest-wins updates belong here — never a terminal or stateful
+// event, which would be unrecoverable if dropped or harmful if reordered.
+const MOTION_TYPES = new Set(["pointer_motion"]);
+const isMotion = (obj) =>
+  MOTION_TYPES.has(obj.t) || (obj.t === "window_drag" && obj.phase === "motion");
 const HOLD_MS = 500;                // press-hold that promotes a touch contact to a gesture
 const MOVE_THRESHOLD = 8;           // client-px movement that commits a touch to drag vs hold
 
+// Send one input event on whichever channel suits its delivery needs. Falls back to the
+// reliable channel if the motion channel isn't up yet — better a late motion than none.
 W.sendInput = (obj) => {
-  const dc = W.inputDC;
+  const motion = isMotion(obj);
+  let dc = motion ? W.motionDC : W.inputDC;
+  if (motion && !(dc && dc.readyState === "open")) dc = W.inputDC;
   if (dc && dc.readyState === "open") {
     try { dc.send(JSON.stringify(obj)); } catch (_) {}
+    W.latency && W.latency.onInputSent && W.latency.onInputSent(obj);
   } else {
     console.warn("input dropped, channel not open:", dc && dc.readyState);
   }
@@ -79,6 +93,7 @@ W.setupInputCapture = () => {
 
 // Drop all transient input state (called on session teardown).
 W.resetInput = () => {
+  W.coalesce.clear();
   if (W.gesture && W.gesture.holdTimer) clearTimeout(W.gesture.holdTimer);
   W.gesture = null;
   W.mouseDragging = false;

@@ -31,6 +31,24 @@ pub mod endpoints {
 /// matches it in `on_data_channel`) cannot disagree.
 pub const INPUT_CHANNEL: &str = "wado-input";
 
+/// Label of the **second** input data channel, carrying only high-rate *positional*
+/// updates (pointer motion, window-drag motion).
+///
+/// Invariant #1: input must never head-of-line-block. `INPUT_CHANNEL` is reliable and
+/// ordered because a dropped button-release or keystroke is unrecoverable — but a 1000 Hz
+/// mouse pushing motion down that same channel saturates it, and every later event then
+/// queues behind the backlog. Positional updates are *latest-wins*: a lost one is
+/// corrected by the next, so they ride a **zero-retransmit** channel instead. Ordered, though:
+/// the positions are absolute, so a reordered arrival would replay a stale one over a newer
+/// one and the pointer would visibly jump backwards.
+///
+/// Because the two channels have no ordering relationship, anything sent here must be
+/// safe to arrive late or out of order. Both current senders are: the compositor ignores
+/// `WindowDrag::Motion` when no move is in progress, and pointer motion is absolute, so a
+/// stale one is overwritten by the next. Do NOT move a terminal event (button/key/up) or
+/// anything stateful onto this channel.
+pub const MOTION_CHANNEL: &str = "wado-motion";
+
 /// One input event from the remote client, sent as JSON over the input data channel.
 ///
 /// All coordinates are **normalized 0..1** relative to the *displayed video content*
@@ -80,6 +98,37 @@ pub enum InputEvent {
     /// promotes to a window move/right-click), so the app sees a cancel, not a tap. Maps
     /// to `wl_touch`'s **global** cancel (all live contacts), per the protocol.
     CancelTouch { id: u32 },
+    /// Latency probe. The server echoes `{"t":"pong","seq":…}` straight back on the same
+    /// data channel and does **not** forward this to the compositor, so the client can
+    /// time the input leg (client → server → client) without a synchronised clock.
+    ///
+    /// It deliberately rides the reliable channel: it is measuring the path that real
+    /// button and key events take, and a probe that could be silently dropped would
+    /// measure nothing.
+    Ping { seq: u32 },
+}
+
+/// Per-stage timings for the server half of the pipeline, averaged over a short window.
+///
+/// Deliberately NOT a single glass-to-glass figure. The browser and the server have no
+/// common clock, so any fused end-to-end number would be guesswork; these are the legs
+/// that are honestly measurable on the server, and the client measures its own legs
+/// (network, playout buffer, decode) from `getStats()`. Reported in milliseconds.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct StageTimings {
+    /// Render the scene into the capture target (GL draw + DMA-BUF export / CPU readback).
+    pub capture_ms: f64,
+    /// Hand the captured frame to the encoder and get an access unit back.
+    pub encode_ms: f64,
+    /// How long the encoded frame then waited to be accepted by the WebRTC pump. A
+    /// non-zero value here means the network is the bottleneck, not the GPU.
+    pub queue_ms: f64,
+    /// Interval between render ticks, which is the frame pacing actually achieved.
+    pub tick_ms: f64,
+    /// Achieved frames per second over the window.
+    pub fps: f64,
+    /// Frames the pump refused since the session started (stale-frame indicator).
+    pub dropped: u64,
 }
 
 /// Which pointer button a [`InputEvent::Button`] refers to. The compositor maps these to the
