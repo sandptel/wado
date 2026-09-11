@@ -123,6 +123,8 @@ async fn run(
             let mut slow: u64 = 0;
             let mut worst = Duration::ZERO;
             while let Some(frame) = frame_rx.recv().await {
+                let bytes = frame.data.len();
+                let key = is_keyframe(&frame.data);
                 // Relay mode has no /timing endpoint yet, so the queue stamp is unused
                 // here — the duration still matters (real elapsed time keeps the RTP clock
                 // on wall clock; see ChannelSink).
@@ -136,7 +138,8 @@ async fn run(
                     warn!("relay client: write_sample: {e}");
                 }
                 let took = t0.elapsed();
-                if took > frame.duration {
+                let budget = frame.duration;
+                if took > budget {
                     slow += 1;
                     if took > worst { worst = took; }
                     // Same once-per-60 cadence as the drop counter, so the two lines pair up.
@@ -145,8 +148,22 @@ async fn run(
                             slow,
                             worst_ms = worst.as_millis() as u64,
                             last_ms = took.as_millis() as u64,
-                            budget_ms = frame.duration.as_millis() as u64,
+                            budget_ms = budget.as_millis() as u64,
+                            bytes,
+                            keyframe = key,
                             "write_sample slower than the frame budget — pump is the bottleneck"
+                        );
+                    }
+                    // Every overrun past a tenth of a second, with its size and whether it was
+                    // an IDR. If the stalls are keyframes, the fix is the keyframe — not the
+                    // channel depth, and not the bitrate.
+                    if took > Duration::from_millis(100) {
+                        warn!(
+                            took_ms = took.as_millis() as u64,
+                            bytes,
+                            keyframe = key,
+                            kbits = (bytes * 8 / 1000),
+                            "write_sample stall"
                         );
                     }
                 }
@@ -373,6 +390,33 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
 /// Create a new RTCPeerConnection, attach the shared track, wire input data
 /// channel, RTCP PLI → ForceKeyframe, state-change → Stop, gather ICE, answer.
 ///
+/// Whether an Annex-B access unit contains an IDR slice (NAL type 5).
+///
+/// Only the first few NAL headers are examined: SPS/PPS are prepended to IDR frames, so the
+/// slice that decides this is near the front, and scanning a 200 KB buffer per frame in the
+/// pump would be its own bottleneck.
+fn is_keyframe(data: &[u8]) -> bool {
+    let mut seen = 0;
+    let mut i = 0;
+    while i + 4 < data.len() && seen < 8 {
+        // Annex-B start code: 00 00 01 or 00 00 00 01.
+        let (hdr, next) = if data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 1 {
+            (data[i + 3], i + 4)
+        } else if data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 0 && data[i + 3] == 1 {
+            (data[i + 4.min(data.len() - 1)], i + 5)
+        } else {
+            i += 1;
+            continue;
+        };
+        if hdr & 0x1f == 5 {
+            return true;
+        }
+        seen += 1;
+        i = next;
+    }
+    false
+}
+
 /// Summarise the ICE candidate types present in an SDP — "host", "srflx", "relay".
 fn candidate_types(sdp: &str) -> String {
     let mut types: Vec<&str> = sdp
@@ -544,4 +588,31 @@ async fn send_relay(tx: &mpsc::Sender<String>, msg: &RelayMsg) -> crate::Result<
 async fn send_relay_nowait(tx: &mpsc::Sender<String>, msg: &RelayMsg) -> Option<()> {
     let text = serde_json::to_string(msg).ok()?;
     tx.try_send(text).ok()
+}
+
+#[cfg(test)]
+mod pump_tests {
+    use super::is_keyframe;
+
+    #[test]
+    fn finds_an_idr_behind_sps_and_pps() {
+        // SPS (7), PPS (8), then the IDR slice (5) — the order a real encoder emits.
+        let au = [
+            0, 0, 0, 1, 0x67, 0x42, 0, 0, 0, 1, 0x68, 0xce, 0, 0, 0, 1, 0x65, 0x88, 0x84,
+        ];
+        assert!(is_keyframe(&au));
+    }
+
+    #[test]
+    fn a_p_frame_is_not_a_keyframe() {
+        let au = [0, 0, 0, 1, 0x41, 0x9a, 0x12, 0x34, 0x56, 0x78];
+        assert!(!is_keyframe(&au));
+    }
+
+    #[test]
+    fn short_and_empty_buffers_do_not_panic() {
+        for au in [&[][..], &[0][..], &[0, 0, 1][..], &[0, 0, 0, 1][..]] {
+            let _ = is_keyframe(au);
+        }
+    }
 }
