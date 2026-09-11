@@ -8,6 +8,7 @@ W.startStats = (pc) => {
   let lastFrames = null, lastTs = null, lastBytes = null, lastByteTs = null;
   let lastLost = null, tick = 0, lastDropped = null, lastRecv = null;
   let lastDecTime = null, lastDecFrames = null;
+  let lastJDelay = null, lastJTarget = null, lastJCount = null;
   W.statsTimer = setInterval(async () => {
     if (!W.pc || W.pc !== pc) { W.stopStats(); return; } // pc replaced (reconnect)
     let stats;
@@ -45,12 +46,25 @@ W.startStats = (pc) => {
           lastBytes = r.bytesReceived;
           lastByteTs = r.timestamp;
         }
+        // Windowed, not cumulative. `jitterBufferDelay / jitterBufferEmittedCount` is a
+        // session mean, and a session mean cannot show what the buffer is doing *now*: it
+        // converges slowly upward toward a value the buffer already reached, so a step
+        // change reads as a gentle ramp, and it lags downward after a spike, so a recovery
+        // that already happened still reads as "inflated" for a minute. Both of those
+        // misreadings were made off this metric before it was windowed.
         if (typeof r.jitterBufferDelay === "number" &&
-            typeof r.jitterBufferEmittedCount === "number" &&
-            r.jitterBufferEmittedCount > 0) {
-          jbuf = (r.jitterBufferDelay / r.jitterBufferEmittedCount) * 1000;
+            typeof r.jitterBufferEmittedCount === "number") {
+          if (lastJCount !== null && r.jitterBufferEmittedCount > lastJCount) {
+            const dn = r.jitterBufferEmittedCount - lastJCount;
+            jbuf = ((r.jitterBufferDelay - lastJDelay) / dn) * 1000;
+            if (typeof r.jitterBufferTargetDelay === "number" && lastJTarget !== null) {
+              jtarget = ((r.jitterBufferTargetDelay - lastJTarget) / dn) * 1000;
+            }
+          }
+          lastJDelay = r.jitterBufferDelay;
+          lastJCount = r.jitterBufferEmittedCount;
           if (typeof r.jitterBufferTargetDelay === "number") {
-            jtarget = (r.jitterBufferTargetDelay / r.jitterBufferEmittedCount) * 1000;
+            lastJTarget = r.jitterBufferTargetDelay;
           }
         }
         // Over the window, not the session — same reason as decodeDropPct below. A
