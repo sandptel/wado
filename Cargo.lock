@@ -4883,7 +4883,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "wado"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "bytes",
  "futures-util",
@@ -4902,7 +4902,7 @@ dependencies = [
 
 [[package]]
 name = "wado-client"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "console_error_panic_hook",
  "dioxus",
@@ -4914,7 +4914,7 @@ dependencies = [
 
 [[package]]
 name = "wado-compositor"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "bitflags 2.13.1",
  "bytes",
@@ -4932,7 +4932,7 @@ dependencies = [
 
 [[package]]
 name = "wado-protocol"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -4940,7 +4940,7 @@ dependencies = [
 
 [[package]]
 name = "wado-relay"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "axum 0.7.9",
