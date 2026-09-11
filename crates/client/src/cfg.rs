@@ -59,6 +59,9 @@ pub fn build(ui: Ui) -> SessionConfig {
         width,
         height,
         fps: (s.fps)(),
+        // A bad parse means unscaled, never zero: a zero scale is a divide-by-zero in the
+        // compositor's logical geometry, not a smaller UI.
+        scale: (s.scale)().trim().parse().ok().filter(|v: &f32| v.is_finite() && *v > 0.0).unwrap_or(1.0),
         quality,
         preset: Some((s.preset)()).filter(|p| !p.is_empty()),
         keyframe_interval: (s.keyframe)().trim().parse().ok(),

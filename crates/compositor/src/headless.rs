@@ -50,7 +50,8 @@ pub fn init_headless(state: &mut Wado, config: &WadoConfig) -> crate::Result<()>
     let sink: Box<dyn FrameSink> = match &config.output.sink {
         SinkTarget::File(path) => Box::new(FileSink::create(path)?),
     };
-    start_session(state, &config.encoder, sink)?;
+    // The examples render to a file with no client to scale for; 1.0 is the whole story.
+    start_session(state, &config.encoder, 1.0, sink)?;
     Ok(())
 }
 
@@ -61,6 +62,7 @@ pub fn init_headless(state: &mut Wado, config: &WadoConfig) -> crate::Result<()>
 pub fn start_session(
     state: &mut Wado,
     ec: &EncoderConfig,
+    scale: f32,
     sink: Box<dyn FrameSink>,
 ) -> crate::Result<EncoderReport> {
     if state.session_active {
@@ -98,7 +100,17 @@ pub fn start_session(
         },
     );
     let global = output.create_global::<Wado>(&state.display_handle);
-    output.change_current_state(Some(mode), Some(Transform::Normal), None, Some((0, 0).into()));
+    // Scale is what makes a desktop app usable on a phone-sized output: the mode stays at the
+    // encoded pixel size, but the logical area clients lay out in shrinks by this factor, so
+    // everything is drawn proportionally larger. Clamped because a zero or negative scale is
+    // a divide-by-zero in the logical geometry, not a preference.
+    let scale = if scale.is_finite() { scale.clamp(0.5, 4.0) } else { 1.0 };
+    output.change_current_state(
+        Some(mode),
+        Some(Transform::Normal),
+        Some(smithay::output::Scale::Fractional(scale as f64)),
+        Some((0, 0).into()),
+    );
     output.set_preferred(mode);
     state.space.map_output(&output, (0, 0));
 
@@ -188,6 +200,7 @@ pub fn start_session(
         keyframe_interval = ec.keyframe_interval,
         preset = ?ec.preset,
         backend = ?ec.backend,
+        scale,
         "compositor session active"
     );
     Ok(encoder_report)

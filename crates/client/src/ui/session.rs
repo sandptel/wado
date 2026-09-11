@@ -45,6 +45,23 @@ pub fn render(ui: Ui) -> Element {
             }
         }
 
+        label { "Scale" }
+        select {
+            value: "{(s.scale)()}", disabled: on,
+            onchange: move |e| s.scale.set(e.value()),
+            option { value: "1", "1× — native (desktop-sized UI)" }
+            option { value: "1.25", "1.25×" }
+            option { value: "1.5", "1.5×" }
+            option { value: "2", "2× — phone-friendly" }
+            option { value: "2.5", "2.5×" }
+            option { value: "3", "3×" }
+        }
+        p { class: "hint",
+            "How large apps draw themselves, as Hyprland's monitor scale does. \
+             The stream stays at the resolution above; only the logical area apps lay out \
+             in shrinks, so text and buttons come out bigger."
+        }
+
         label { "FPS" }
         select {
             value: "{(s.fps)()}", disabled: on,
