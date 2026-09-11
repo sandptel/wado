@@ -111,6 +111,7 @@ pub fn render(ui: Ui) -> Element {
             }
         }
         video { id: "wado-video", autoplay: true, playsinline: true, muted: true }
+        {super::term::render(ui)}
         details { id: "logs", open: (live.logs_open)(),
             summary { "Logs" }
             div { id: "wado-logwrap",

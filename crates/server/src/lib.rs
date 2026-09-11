@@ -5,6 +5,7 @@
 
 pub mod apps;
 pub mod error;
+pub mod exec;
 pub mod relay_client;
 pub mod remote_id;
 pub mod webrtc_settings;
