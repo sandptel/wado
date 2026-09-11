@@ -67,12 +67,16 @@ struct RelayCtx {
     generation: Arc<AtomicU64>,
     relay_url: String,
     remote_id: String,
+    /// Latest per-stage render timings, answering `TimingRequest`. Latest-value-wins, so a
+    /// slow or absent reader never backs the compositor up.
+    timings: tokio::sync::watch::Receiver<wado_protocol::StageTimings>,
 }
 
 /// Spawn the relay client on a dedicated thread. Mirrors `website::start`.
 pub fn start(
     cmd_tx: CommandSender,
     input_tx: InputSender,
+    timings: tokio::sync::watch::Receiver<wado_protocol::StageTimings>,
     frame_rx: mpsc::Receiver<FrameMsg>,
     relay_url: String,
     remote_id: String,
@@ -86,7 +90,9 @@ pub fn start(
                 Err(e) => { error!("relay client: failed to build tokio runtime: {e}"); return; }
             };
             rt.block_on(async move {
-                if let Err(e) = run(cmd_tx, input_tx, frame_rx, relay_url, remote_id, log_bus).await {
+                if let Err(e) =
+                    run(cmd_tx, input_tx, timings, frame_rx, relay_url, remote_id, log_bus).await
+                {
                     error!("relay client exited with error: {e}");
                 }
             });
@@ -97,6 +103,7 @@ pub fn start(
 async fn run(
     cmd_tx: CommandSender,
     input_tx: InputSender,
+    timings: tokio::sync::watch::Receiver<wado_protocol::StageTimings>,
     mut frame_rx: mpsc::Receiver<FrameMsg>,
     relay_url: String,
     remote_id: String,
@@ -206,6 +213,7 @@ async fn run(
         generation: Arc::new(AtomicU64::new(0)),
         relay_url,
         remote_id,
+        timings,
     };
 
     // ── Reconnect loop ──────────────────────────────────────────────────────
@@ -367,6 +375,11 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             RelayMsg::AppsRequest => {
                 let apps = crate::apps::discover();
                 send_relay(&out_tx, &RelayMsg::AppsList { apps }).await.ok();
+            }
+
+            RelayMsg::TimingRequest => {
+                let timings = *ctx.timings.borrow();
+                send_relay(&out_tx, &RelayMsg::Timing { timings }).await.ok();
             }
 
             RelayMsg::SessionWindow { action } => {

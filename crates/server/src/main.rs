@@ -30,6 +30,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         wado::relay_client::start(
             handles.commands,
             handles.input,
+            handles.timings,
             frame_rx,
             relay_url,
             remote_id,
