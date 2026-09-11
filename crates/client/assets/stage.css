@@ -32,6 +32,15 @@
 }
 @keyframes banner-in { from { opacity: 0; transform: translateY(-4px); } }
 
+/* Decode warning: the viewing device cannot keep up with what it asked for. Distinct colour
+ * from the software-encoding banner because the fix is the opposite end of the pipe — the
+ * two must not be mistaken for each other at a glance. */
+.decodebanner {
+  background: var(--base0A); color: var(--base00);
+  padding: 6px 12px; font-size: 12px; text-align: center; line-height: 1.4;
+  animation: banner-in var(--dur) var(--ease);
+}
+
 /* Pipeline badge: green zero-copy, amber HW cpu-copy fallback, red software. */
 .pipebadge {
   font-family: var(--mono); font-size: 11px;
