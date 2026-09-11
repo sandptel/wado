@@ -82,7 +82,11 @@ impl Settings {
             relay_url: use_signal(|| DEFAULT_RELAY.to_string()),
             remote_id: use_signal(String::new),
 
-            res: use_signal(|| "1280x720".to_string()),
+            // Empty on purpose: no fixed resolution is the right default when the right one
+            // depends on the screen. The effect in `main` fills it with the device-exact
+            // option as soon as the bridge reports the screen, and an empty value is not on
+            // offer so it can never survive that.
+            res: use_signal(String::new),
             custom_w: use_signal(|| 1280),
             custom_h: use_signal(|| 720),
             fps: use_signal(|| 60),
@@ -135,6 +139,11 @@ pub struct Live {
     pub encoder_mode: Signal<String>,
     pub encoder_pipeline: Signal<String>,
 
+    /// The viewing device's physical screen in real pixels, once the bridge reports it.
+    /// Drives the device-exact resolution options — see `crate::res`.
+    pub screen_w: Signal<u32>,
+    pub screen_h: Signal<u32>,
+
     /// How far the connection got, as a count of completed stages (see `ui::status`).
     /// Relay mode reaches the video through four separate hops that fail for unrelated
     /// reasons, and a single status line cannot say which one you are stuck at.
@@ -167,6 +176,8 @@ impl Live {
             sheet_open: use_signal(|| false),
             encoder_mode: use_signal(String::new),
             encoder_pipeline: use_signal(String::new),
+            screen_w: use_signal(|| 0),
+            screen_h: use_signal(|| 0),
             conn_stage: use_signal(|| 0),
             conn_error: use_signal(String::new),
             apps: use_signal(Vec::new),

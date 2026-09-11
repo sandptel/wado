@@ -32,3 +32,20 @@ W.toggleFullscreen = async (w, h) => {
     }
   } catch (_) {}
 };
+
+// The device's physical screen, in real pixels. CSS pixels are integer-rounded, so a device
+// at DPR 2.625 reports 411 rather than 411.43 and the aspect drifts — multiplying back out
+// recovers the panel's true ratio, which is what a letterbox-free stream has to match.
+// `screen` and not `window`: the intended mode is fullscreen, where browser chrome is gone.
+W.reportScreen = () => {
+  const d = window.devicePixelRatio || 1;
+  emit({
+    type: "screen",
+    w: Math.round(screen.width * d),
+    h: Math.round(screen.height * d),
+  });
+};
+W.reportScreen();
+// Rotating swaps the axes. The running session cannot resize (invariant #8), so this only
+// changes what the *next* Start will offer — no live listener beyond this.
+window.addEventListener("orientationchange", () => setTimeout(W.reportScreen, 200));

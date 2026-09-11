@@ -12,6 +12,7 @@ mod bridge;
 mod cfg;
 mod debug;
 mod persist;
+mod res;
 mod state;
 mod theme;
 mod ui;
@@ -46,6 +47,28 @@ fn App() -> Element {
             return;
         }
         bridge::save(&persist::snapshot(ui));
+    });
+
+    // A saved resolution must not outlive the options that offer it. The device-exact list
+    // is only known once the bridge reports the screen, which can land either side of the
+    // saved blob — and a `res` matching no `<option>` renders as a blank select that starts
+    // a session at whatever the parse fallback is. So once both are in, a value that is not
+    // on offer is replaced by the device's own default rather than silently kept.
+    use_effect(move || {
+        let (w, h) = ((ui.live.screen_w)(), (ui.live.screen_h)());
+        if w == 0 || h == 0 || !(ui.live.loaded)() {
+            return;
+        }
+        let current = (ui.set.res)();
+        let offered = res::options(w, h)
+            .into_iter()
+            .map(|(v, _)| v)
+            .chain(["1280x720".into(), "1920x1080".into(), "custom".into()]);
+        if !offered.into_iter().any(|v| v == current) {
+            if let Some(d) = res::default_value(w, h) {
+                ui.set.res.clone().set(d);
+            }
+        }
     });
 
     // Keep the log panel pinned to the newest line, unless the user has scrolled up to read
