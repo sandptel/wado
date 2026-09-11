@@ -242,15 +242,23 @@ W._relayNegotiate = async (ws) => {
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
 
-  // Wait for ICE gathering before sending (non-trickle, consistent with server).
+  // Wait for ICE gathering before sending (non-trickle, consistent with server) — but only
+  // so long. "complete" needs every configured STUN server to answer or time out, and a
+  // phone that had both a host and a srflx candidate within 40 ms was still not complete
+  // 14 s later, so the handshake timeout fired and the offer was never sent at all.
+  // The candidates that matter arrive first; send what we have and let the rest go.
   await new Promise((resolve) => {
     if (pc.iceGatheringState === "complete") return resolve();
-    const check = () => {
-      if (pc.iceGatheringState === "complete") {
-        pc.removeEventListener("icegatheringstatechange", check);
-        resolve();
-      }
+    const done = () => {
+      clearTimeout(cap);
+      pc.removeEventListener("icegatheringstatechange", check);
+      resolve();
     };
+    const check = () => { if (pc.iceGatheringState === "complete") done(); };
+    const cap = setTimeout(() => {
+      rlog("ICE gathering still " + pc.iceGatheringState + " after 3 s — sending what we have");
+      done();
+    }, 3000);
     pc.addEventListener("icegatheringstatechange", check);
   });
 
