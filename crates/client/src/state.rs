@@ -135,6 +135,13 @@ pub struct Live {
     pub encoder_mode: Signal<String>,
     pub encoder_pipeline: Signal<String>,
 
+    /// How far the connection got, as a count of completed stages (see `ui::status`).
+    /// Relay mode reaches the video through four separate hops that fail for unrelated
+    /// reasons, and a single status line cannot say which one you are stuck at.
+    pub conn_stage: Signal<u8>,
+    /// Why the connection stopped where it did. Empty while nothing has failed.
+    pub conn_error: Signal<String>,
+
     /// Launchable applications, from the server. Empty until requested — and it stays empty
     /// on a server that could not be reached, which the free-text command box covers.
     pub apps: Signal<Vec<AppEntry>>,
@@ -160,6 +167,8 @@ impl Live {
             sheet_open: use_signal(|| false),
             encoder_mode: use_signal(String::new),
             encoder_pipeline: use_signal(String::new),
+            conn_stage: use_signal(|| 0),
+            conn_error: use_signal(String::new),
             apps: use_signal(Vec::new),
             fps: use_signal(|| None),
             ping: use_signal(|| None),
