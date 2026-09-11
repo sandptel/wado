@@ -9,7 +9,7 @@
 //! every holder sees the same state.
 
 use dioxus::prelude::*;
-use wado_protocol::logfmt::LogLine;
+use wado_protocol::{logfmt::LogLine, AppEntry};
 
 /// Default server the client talks to. Editable in the UI; the dev server typically runs the
 /// client on a different port and reaches the wado server here over CORS.
@@ -130,6 +130,10 @@ pub struct Live {
     pub encoder_mode: Signal<String>,
     pub encoder_pipeline: Signal<String>,
 
+    /// Launchable applications, from the server. Empty until requested — and it stays empty
+    /// on a server that could not be reached, which the free-text command box covers.
+    pub apps: Signal<Vec<AppEntry>>,
+
     pub fps: Signal<Option<f64>>,
     pub ping: Signal<Option<f64>>,
     /// Receiver playout-buffer depth in ms — latency `ping` cannot see.
@@ -151,6 +155,7 @@ impl Live {
             sheet_open: use_signal(|| false),
             encoder_mode: use_signal(String::new),
             encoder_pipeline: use_signal(String::new),
+            apps: use_signal(Vec::new),
             fps: use_signal(|| None),
             ping: use_signal(|| None),
             jbuf: use_signal(|| None),

@@ -58,6 +58,8 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/control.js"),
     "\n",
+    include_str!("js/apps.js"),
+    "\n",
     include_str!("js/lifecycle.js"),
 );
 
@@ -99,6 +101,9 @@ pub fn run(ui: Ui) {
         // was found", and leaving it false would disable saving forever on a first run.
         live.loaded.set(true);
         crate::debug::apply(ui);
+        // Direct mode can ask immediately; relay mode has no socket until a room is open, so
+        // it asks from relay.js on join_accepted instead.
+        let _ = document::eval("window.__wado.requestApps();").await;
         let _ = document::eval(&format!(
             "window.__wado.connectLogs({});",
             js(&(ui.set.server_addr)())
@@ -146,6 +151,13 @@ pub fn run(ui: Ui) {
                     );
                     live.dropped
                         .set(msg.get("dropped").and_then(|v| v.as_u64()));
+                }
+                "apps" => {
+                    live.apps.set(
+                        msg.get("apps")
+                            .and_then(|v| serde_json::from_value(v.clone()).ok())
+                            .unwrap_or_default(),
+                    );
                 }
                 "encoder" => {
                     live.encoder_mode.set(string("mode"));

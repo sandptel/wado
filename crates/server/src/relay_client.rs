@@ -300,6 +300,11 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 send_relay(&out_tx, &RelayMsg::SessionLaunched).await.ok();
             }
 
+            RelayMsg::AppsRequest => {
+                let apps = crate::apps::discover();
+                send_relay(&out_tx, &RelayMsg::AppsList { apps }).await.ok();
+            }
+
             RelayMsg::SessionWindow { action } => {
                 let _ = ctx.cmd_tx.send(CompositorCommand::Window(action));
                 send_relay(&out_tx, &RelayMsg::SessionWindowed).await.ok();

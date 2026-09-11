@@ -3,6 +3,7 @@
 //! `wado-compositor` crate; this crate drives it only through the typed command/frame
 //! boundary (see [`website::start`]).
 
+pub mod apps;
 pub mod error;
 pub mod relay_client;
 pub mod remote_id;

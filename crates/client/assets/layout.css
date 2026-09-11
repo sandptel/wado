@@ -165,3 +165,35 @@
  * different things — one on the session, one on this browser — and a mis-tap between them
  * should take deliberate aim. */
 .barsep { width: 1px; align-self: stretch; margin: 6px 2px; background: var(--base02); }
+
+/* ── launcher ─────────────────────────────────────────────────────────────────────────── */
+
+.applist {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  border: 1px solid var(--base02);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+.approw {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 0;
+  background: var(--base01);
+  color: var(--base05);
+  font-weight: 400;
+  text-align: left;
+  /* Each row is a fresh mount as the filter narrows, so the fade reads as "these are the
+   * matches now" rather than as rows silently swapping underneath the cursor. */
+  animation: row-in 120ms var(--ease);
+}
+.approw:hover { background: var(--base02); color: var(--base06); }
+.applist li + li .approw { border-top: 1px solid var(--base02); }
+.appname { font-size: 13px; }
+.appexec { font-size: 11px; color: var(--base03); font-family: var(--mono); }
+@keyframes row-in { from { opacity: 0; } }

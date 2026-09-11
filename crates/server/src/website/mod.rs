@@ -6,6 +6,7 @@
 //! app) that talks to these endpoints over CORS. The endpoints are:
 //!   - `POST /session/start` — body is a `wado_protocol::SessionConfig` (JSON).
 //!   - `POST /session/stop`  — tear the active session down.
+//!   - `GET  /apps` — the launchable applications found on this machine.
 //!   - `POST /session/control` — a JSON `SessionControl`: launch a command into the running session.
 //!   - `POST /offer`         — WebRTC SDP offer → answer (JSON).
 //!   - `GET  /events`        — live tracing logs as Server-Sent Events.
@@ -297,6 +298,14 @@ async fn handle_conn(mut stream: TcpStream, ctx: Arc<ServerCtx>) -> crate::Resul
         // GET rather than a new SSE event type: /events is a hand-rolled raw-TCP log
         // stream with no named-event support, and telemetry the client samples once a
         // second does not justify building that out.
+        // No session required: you pick what to launch before there is anything to launch
+        // it into. Scanned per request rather than cached — a package can be installed while
+        // the server is running, and the scan is a few milliseconds of directory reads.
+        ("GET", "/apps") => {
+            let apps = crate::apps::discover();
+            let body = serde_json::to_vec(&apps).unwrap_or_else(|_| b"[]".to_vec());
+            write_response(&mut stream, "200 OK", "application/json", &body).await?;
+        }
         ("GET", "/timing") => {
             let t = *ctx.timings.borrow();
             let queue_ms = ctx.queue_us.load(Ordering::Relaxed) as f64 / 1e3;

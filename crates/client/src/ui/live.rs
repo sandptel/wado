@@ -1,33 +1,19 @@
 //! Live group: settings that take effect the moment they change, mid-session.
 //!
 //! Two kinds live here and they behave the same way from the user's side: things the browser
-//! applies itself (move-mode, scroll) and things sent to the running session (launch). The
-//! distinction that mattered for grouping is "does this need a restart", and none of these do.
+//! applies itself (move-mode, scroll) and things sent to the running session (launch, in
+//! [`super::launcher`]). The distinction that mattered for grouping is "does this need a
+//! restart", and none of these do.
 
 use dioxus::prelude::*;
 
-use crate::{actions, bridge, state::Ui};
+use crate::{bridge, state::Ui};
 
 pub fn render(ui: Ui) -> Element {
     let mut s = ui.set;
-    let on = (ui.live.session_on)();
-    let can_launch = on && !(s.command)().trim().is_empty();
 
     rsx! {
-        label { "Command" }
-        p { class: "hint", "Spawn a command into the running session — as many as you like." }
-        input {
-            r#type: "text",
-            value: "{(s.command)()}",
-            placeholder: "e.g. weston-terminal",
-            oninput: move |e| s.command.set(e.value()),
-        }
-        button {
-            id: "launch", class: "wide",
-            disabled: !can_launch,
-            onclick: move |_| actions::launch(ui),
-            "Launch into session"
-        }
+        {super::launcher::render(ui)}
 
         label {
             class: "check",
