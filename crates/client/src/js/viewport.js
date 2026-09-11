@@ -43,6 +43,7 @@ W.reportScreen = () => {
     type: "screen",
     w: Math.round(screen.width * d),
     h: Math.round(screen.height * d),
+    dpr: d,
   });
 };
 W.reportScreen();

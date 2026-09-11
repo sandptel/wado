@@ -69,6 +69,16 @@ fn App() -> Element {
                 ui.set.res.clone().set(d);
             }
         }
+
+        // Same gate, same reason: pixel density is only known once the bridge reports it, and
+        // a scale chosen before then is a guess. Only an untouched default is replaced — an
+        // explicit choice, including a deliberate 1x, is left alone.
+        if (ui.set.scale)() == crate::state::SCALE_UNSET {
+            ui.set
+                .scale
+                .clone()
+                .set(res::default_scale((ui.live.screen_dpr)()).to_string());
+        }
     });
 
     // Keep the log panel pinned to the newest line, unless the user has scrolled up to read
