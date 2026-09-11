@@ -32,6 +32,9 @@ W.scrollg = {
   begin(e, video) {
     const g = W.gesture;
     if (!g) return false;
+    // A third contact must not restart the gesture. Without this it re-ran the whole begin:
+    // the scroll anchors jumped to the new pair, and the pinch baseline reset mid-zoom.
+    if (g.state === "scroll") return true;
     if (g.holdTimer) { clearTimeout(g.holdTimer); g.holdTimer = null; } // else: right-click
     // Retract anything the first finger already committed to.
     if (g.state === "tap" || g.state === "touch") {
