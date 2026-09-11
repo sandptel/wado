@@ -6,6 +6,7 @@
 //! - [`touch`](super::touch) — `Touch` / `CancelTouch` → `wl_touch` (touchscreens)
 //! - [`pointer`](super::pointer) — `PointerMotion` / `Button` / `Scroll` → `wl_pointer` (mouse,
 //!   cursorless)
+//! - [`pinch`](super::pinch) — `Pinch` → `zwp_pointer_gestures_v1`
 //! - [`window_drag`](super::window_drag) — `WindowDrag` → compositor window move
 //!
 //! This file only dispatches; it holds no synthesis logic of its own.
@@ -34,6 +35,9 @@ impl Wado {
             }
             InputEvent::Scroll { x, y, dx, dy, source, stop } => {
                 self.pointer_scroll(x, y, dx, dy, source, stop)
+            }
+            InputEvent::Pinch { phase, x, y, scale, rotation } => {
+                self.pinch(phase, x, y, scale, rotation)
             }
             InputEvent::WindowDrag { phase, x, y } => self.window_drag(phase, x, y),
             // Never reaches here in practice: the server answers Ping itself and does not

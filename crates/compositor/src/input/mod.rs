@@ -5,6 +5,7 @@
 
 pub mod common;
 pub mod keyboard;
+pub mod pinch;
 pub mod pointer;
 pub mod remote;
 pub mod touch;
