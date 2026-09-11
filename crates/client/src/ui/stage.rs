@@ -22,7 +22,7 @@ fn badge(pipeline: &str) -> (&'static str, &'static str) {
 }
 
 pub fn render(ui: Ui) -> Element {
-    let live = ui.live;
+    let mut live = ui.live;
     let on = (live.session_on)();
 
     // Invariant #5: unconditional while software encoding is active.
@@ -69,6 +69,11 @@ pub fn render(ui: Ui) -> Element {
     let decode_drop = (live.decode_drop_pct)();
 
     rsx! {
+        // Everything that floats over the picture lives in here with it. The video is
+        // absolutely positioned to fill this box, and an absolutely positioned element paints
+        // above its non-positioned siblings — so without this wrapper the video covered the
+        // log and shell panels entirely. They rendered; they were simply behind it.
+        div { id: "stage-video",
         if sw_encoding {
             div { class: "swbanner", "⚠ Software encoding — higher CPU use and latency" }
         }
@@ -111,9 +116,17 @@ pub fn render(ui: Ui) -> Element {
             }
         }
         video { id: "wado-video", autoplay: true, playsinline: true, muted: true }
+        }
         {super::term::render(ui)}
         details { id: "logs", open: (live.logs_open)(),
-            summary { "Logs" }
+            summary {
+                onclick: move |e| {
+                    e.prevent_default();
+                    let open = (live.logs_open)();
+                    live.logs_open.set(!open);
+                },
+                "Logs"
+            }
             div { id: "wado-logwrap",
                 for (i, line) in logs.iter().enumerate() {
                     div { key: "{i}", class: "logline l-{line.level}",

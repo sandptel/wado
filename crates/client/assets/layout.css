@@ -21,9 +21,12 @@
   overflow-y: auto;
 }
 
-/* position: relative unconditionally — the stage is the containing block for the video and
- * for every overlay on top of it. It used to be set only below the mobile breakpoint. */
-#stage { flex: 1; position: relative; min-width: 0; }
+/* A column: the picture takes what is left, the shell and log panels sit under it at their
+ * own heights. The picture's own box is #stage-video, which is what the overlays position
+ * against — the stage itself must not be, or an absolutely positioned video would paint over
+ * the panels below it. */
+#stage { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
+#stage-video { flex: 1; min-height: 0; position: relative; }
 
 .brand { margin-bottom: 4px; }
 
@@ -97,8 +100,6 @@
   padding: 0;
 }
 .barbtn:hover { color: var(--base06); background: var(--base02); }
-
-#stage { position: relative; }
 
 /* ── the sheet ────────────────────────────────────────────────────────────────────────── */
 
