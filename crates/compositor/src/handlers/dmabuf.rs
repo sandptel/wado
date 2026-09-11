@@ -43,9 +43,11 @@ impl DmabufHandler for Wado {
             Ok(_) => {
                 if first {
                     let f = dmabuf.format();
+                    let windows = self.space.elements().count();
                     tracing::info!(
                         format = %f.code,
                         modifier = ?f.modifier,
+                        windows,
                         "dmabuf path is live — a client is handing over GPU buffers"
                     );
                 }

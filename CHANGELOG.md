@@ -13,11 +13,11 @@ a phone's 1080 × 2422 that is roughly 10 MB per surface per frame. Version 4 wi
 advertised when the render node is known, so a client is also told *which* GPU to allocate on;
 version 3 otherwise.
 
-**Unmeasured so far.** One live sample had Chrome's GPU process holding zero dmabuf file
-descriptors, which suggests it may not be taking the path at all — so each session now says
-which it did, on both branches. If it turns out Chrome never uses it, the protocol is still
-right (any future GPU client needs it) but the saving described above is not being collected
-today.
+**Measured, and it works.** The first session on the new build logged
+`dmabuf path is live — a client is handing over GPU buffers`, with Chrome supplying `AB24`
+(ARGB8888) under an AMD vendor modifier — a tiled buffer, not a linear one, so it never touches
+the CPU. Each session now says which path it took, on both branches, so this stops being a
+question anyone has to go looking for an answer to.
 
 **Two-finger pinch and rotate** — `zwp_pointer_gestures_v1`.
 
