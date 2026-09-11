@@ -48,6 +48,10 @@ pub fn render(ui: Ui) -> Element {
         parts.join(" · ")
     };
     let show_stats = on && (show_fps || show_ping);
+    // Off unless asked for. It is the only chrome that sat across the top of the picture, and
+    // on a phone that is precisely the strip an application puts its own controls in — with
+    // it always on you could not see what you were tapping.
+    let show_statusbar = debug::on(ui, "statusbar");
 
     // Deliberately NOT summed into one total: the server legs and the browser legs are
     // measured on clocks that were never synchronised, and `input` is a round trip while the
@@ -68,21 +72,21 @@ pub fn render(ui: Ui) -> Element {
         if sw_encoding {
             div { class: "swbanner", "⚠ Software encoding — higher CPU use and latency" }
         }
-        div { id: "stagebar",
-            span {
-                "{(live.stagebar)()}"
-                if on {
-                    span { class: "kbdhint", " — tap to type · drag/scroll/long-press supported" }
-                }
-            }
-            span {
-                if show_badge {
-                    span { class: "pipebadge {badge_class}", title: "active encode pipeline",
-                        "{badge_label}"
+        if show_statusbar {
+            div { id: "stagebar",
+                // No input hint here any more. It is a first-run explanation rather than a
+                // status, and it is what forced this readout to span the full width — the
+                // reason it covered the row an application puts its own controls in.
+                span { "{(live.stagebar)()}" }
+                span {
+                    if show_badge {
+                        span { class: "pipebadge {badge_class}", title: "active encode pipeline",
+                            "{badge_label}"
+                        }
                     }
-                }
-                if show_stats {
-                    span { class: "stats", "{stats_text}" }
+                    if show_stats {
+                        span { class: "stats", "{stats_text}" }
+                    }
                 }
             }
         }

@@ -18,23 +18,32 @@
 #wado-video:focus { outline: 2px solid var(--base0B); outline-offset: -2px; }
 
 /* Floating chrome. pointer-events: none throughout — none of it is interactive, and a strip
- * that swallowed touches along the top edge of the stream would be a worse bug than the one
- * this fixes. Backgrounds are translucent so text stays legible over any picture. */
+ * that swallowed touches would be a worse bug than the one this fixes. Backgrounds are
+ * translucent so text stays legible over any picture.
+ *
+ * A pill in the corner rather than a bar across the top, and off by default: full width along
+ * the top edge is where an application draws its own controls, so the readout hid the thing
+ * you were trying to tap. Inset from the corner so it clears a rounded display and a notch. */
 #stagebar {
-  position: absolute; top: 0; left: 0; right: 0; z-index: 2;
+  position: absolute; top: 8px; right: 8px; z-index: 2;
+  max-width: calc(100% - 16px);
   pointer-events: none;
-  display: flex; justify-content: space-between; align-items: center;
-  gap: 8px;
-  padding: 6px 12px; font-size: 12px;
-  color: var(--base04); background: rgb(0 0 0 / 0.55);
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 10px; border-radius: 999px;
+  font-size: 11px; line-height: 1.5;
+  color: var(--base04); background: rgb(0 0 0 / 0.6);
+  backdrop-filter: blur(3px);
 }
-/* The software banner sits above it when present; DOM order makes this reliable. */
-.swbanner ~ #stagebar { top: 28px; }
+/* The stagebar text is the least useful half once the session is up; the numbers are why the
+ * overlay is on at all. Hidden on narrow screens so the pill stays a pill. */
+@media (max-width: 519px) { #stagebar > span:first-child { display: none; } }
+/* The software banner keeps the top edge (invariant #5 — it is not optional), so the pill
+ * drops below it when it is present. DOM order makes this reliable. */
+.swbanner ~ #stagebar { top: 36px; }
 #stagebar .stats {
   font-family: var(--mono); color: var(--base0B);
   font-variant-numeric: tabular-nums;
 }
-#stagebar .kbdhint { color: var(--base02); }
 
 /* Persistent software-encoding warning (invariant #5). Never gated by the debug switch: a
  * warning the user can turn off is not a warning. */
@@ -60,11 +69,16 @@
 /* Latency breakdown. Monospace and fixed-width values so the numbers do not jitter
  * horizontally as they update — the readout exists to show which stage grew, and shifting
  * columns make that much harder to see. For the same reason nothing here animates. */
+/* Bottom edge rather than top, for the same reason the status pill is in a corner: this one
+ * can be several rows tall, and the bottom of a phone screen is the one strip applications
+ * leave mostly alone. */
 #wado-latency {
   position: absolute; bottom: 0; left: 0; right: 0; z-index: 2;
   pointer-events: none;
-  display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 6px 12px;
-  background: rgb(0 0 0 / 0.55);
+  display: flex; flex-wrap: wrap; gap: 6px; margin: 0;
+  padding: 6px 12px calc(6px + env(safe-area-inset-bottom));
+  background: rgb(0 0 0 / 0.6);
+  backdrop-filter: blur(3px);
   font-family: var(--mono); font-size: 11px;
 }
 .latstage {
