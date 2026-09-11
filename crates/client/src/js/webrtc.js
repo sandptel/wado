@@ -85,6 +85,45 @@ W.connectWebRTC = async () => {
 // network. A small floor costs a fraction of a frame of latency and buys back smoothness.
 // Poke `W.playoutMs` from the console to feel the trade either way.
 W.playoutMs = 20;
+// Push an inflated playout buffer back down once the network has recovered.
+//
+// `jitterBufferTarget` is a target, not a cap. Chrome grows the buffer in one step when the
+// link misbehaves — a single 200 ms RTT spike took it from 8 ms to 68 ms — and then drains it
+// at a fraction of a millisecond per second, so one blip costs minutes of added latency that
+// the user feels as sluggishness. The hint is set once at connect and never re-evaluated.
+//
+// The condition is deliberately two-sided: the buffer must be well past what was asked for
+// AND the round trip must already be healthy again. Forcing the buffer down while the link is
+// still bad is how you trade latency for stutter, and Chrome grew it for a reason. This only
+// reclaims the buffer the network no longer needs.
+//
+// ponytail: re-asserting the same value and letting Chrome converge, rather than tracking a
+// target of our own. If Chrome ever stops honouring a repeat set, the next step is stepping
+// the target down gradually.
+const REASSERT_OVER_TARGET_MS = 25; // how far past the target counts as inflated
+const REASSERT_HEALTHY_RTT_MS = 60; // "the link is fine now"
+const REASSERT_MIN_GAP_MS = 4000;   // never thrash it
+let lastReassert = 0;
+
+W.reassertPlayout = (jbuf, ping) => {
+  if (jbuf === null || ping === null || !W.pc) return;
+  const target = W.playoutMs || 0;
+  if (jbuf <= target + REASSERT_OVER_TARGET_MS) return;
+  if (ping > REASSERT_HEALTHY_RTT_MS) return;
+  const now = Date.now();
+  if (now - lastReassert < REASSERT_MIN_GAP_MS) return;
+  lastReassert = now;
+  try {
+    const recv = W.pc.getReceivers().find((r) => r.track && r.track.kind === "video");
+    if (!recv) return;
+    W.minimizePlayoutDelay(recv);
+    W.rlog && W.rlog(
+      "playout reasserted: jbuf=" + Math.round(jbuf) + "ms rtt=" + Math.round(ping) +
+      "ms target=" + target + "ms"
+    );
+  } catch (_) {}
+};
+
 W.minimizePlayoutDelay = (recv) => {
   if (!recv) return "no receiver";
   const applied = [];
