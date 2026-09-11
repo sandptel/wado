@@ -1,0 +1,75 @@
+/* The video and everything drawn around it. */
+
+/* The stage ground is NOT themed. base16 includes light schemes, and a light surround bleeds
+ * onto the picture and shifts how the stream itself reads — the theme may not change the
+ * appearance of the thing being streamed. Chrome around it is themed normally. */
+#stage { background: #000; }
+
+#wado-video {
+  flex: 1; width: 100%; min-height: 0;
+  object-fit: contain;
+  background: #000;
+}
+#wado-video:focus { outline: 2px solid var(--base0B); outline-offset: -2px; }
+
+#stagebar {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 12px; font-size: 12px;
+  color: var(--base03); background: var(--base01);
+}
+#stagebar .stats {
+  font-family: var(--mono); color: var(--base0B);
+  font-variant-numeric: tabular-nums;
+}
+#stagebar .kbdhint { color: var(--base02); }
+
+/* Persistent software-encoding warning (invariant #5). Never gated by the debug switch: a
+ * warning the user can turn off is not a warning. */
+.swbanner {
+  background: var(--base09); color: var(--base00);
+  padding: 6px 12px; font-size: 12px; text-align: center;
+  animation: banner-in var(--dur) var(--ease);
+}
+@keyframes banner-in { from { opacity: 0; transform: translateY(-4px); } }
+
+/* Pipeline badge: green zero-copy, amber HW cpu-copy fallback, red software. */
+.pipebadge {
+  font-family: var(--mono); font-size: 11px;
+  padding: 1px 6px; border-radius: 3px; margin-right: 8px;
+}
+.pipebadge.badge-good { color: var(--base0B); border: 1px solid var(--base0B); }
+.pipebadge.badge-warn { color: var(--base0A); border: 1px solid var(--base0A); }
+.pipebadge.badge-bad  { color: var(--base08); border: 1px solid var(--base08); }
+
+/* Latency breakdown. Monospace and fixed-width values so the numbers do not jitter
+ * horizontally as they update — the readout exists to show which stage grew, and shifting
+ * columns make that much harder to see. For the same reason nothing here animates. */
+#wado-latency {
+  display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 0; padding: 0 12px;
+  font-family: var(--mono); font-size: 11px;
+}
+.latstage {
+  display: flex; gap: 5px; align-items: baseline;
+  padding: 2px 7px; border-radius: 10px;
+  background: var(--base01); border: 1px solid var(--base02);
+}
+.latname { color: var(--base03); }
+.latval {
+  color: var(--base0C); min-width: 3.2em; text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.latnote .latval { color: var(--base0A); }
+
+/* Live log panel. */
+#logs { border-top: 1px solid var(--base02); background: var(--base00); }
+#logs > summary { padding: 6px 12px; user-select: none; cursor: pointer; color: var(--base04); }
+#wado-logwrap {
+  height: 200px; overflow-y: auto; padding: 4px 12px 8px;
+  font-family: var(--mono); font-size: 11.5px; line-height: 1.45;
+}
+.logline { white-space: pre-wrap; word-break: break-word; }
+.lts { color: var(--base03); }
+.l-ERROR { color: var(--base08); }
+.l-WARN  { color: var(--base0A); }
+.l-INFO  { color: var(--base0B); }
+.l-DEBUG, .l-TRACE { color: var(--base0D); }

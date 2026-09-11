@@ -1,0 +1,175 @@
+//! Every piece of UI state, and nothing else — no rendering, no side effects.
+//!
+//! Split in two on one axis: [`Settings`] is what the user chose and what therefore survives
+//! a reload; [`Live`] is what the session is currently doing and is meaningless once it ends.
+//! Keeping them apart is what lets [`crate::persist`] serialise "the settings" without having
+//! to remember, field by field, that a frame counter is not a setting.
+//!
+//! Both are `Copy`: a `Signal` is a handle, not the value, so passing these around is free and
+//! every holder sees the same state.
+
+use dioxus::prelude::*;
+use wado_protocol::logfmt::LogLine;
+
+/// Default server the client talks to. Editable in the UI; the dev server typically runs the
+/// client on a different port and reaches the wado server here over CORS.
+pub const DEFAULT_SERVER: &str = "http://127.0.0.1:8080";
+
+/// Keep at most this many log lines in memory / the DOM.
+pub const MAX_LOG_LINES: usize = 500;
+
+/// User choices. Everything here is persisted by [`crate::persist`].
+///
+/// Grouped in the UI by *when it takes effect* — connection, session (needs a restart), live
+/// (instant), appearance, debug — rather than by subsystem, because "will this apply now or
+/// at Start?" is the question people actually get wrong.
+#[derive(Clone, Copy)]
+pub struct Settings {
+    // ── connection ──────────────────────────────────────────────────────────────
+    /// "direct" (HTTP straight to wado-server) or "relay" (everything via wado-relay).
+    pub conn_mode: Signal<String>,
+    pub server_addr: Signal<String>,
+    pub relay_url: Signal<String>,
+    pub remote_id: Signal<String>,
+
+    // ── session: read once at Start, locked while a session runs ────────────────
+    pub res: Signal<String>,
+    pub custom_w: Signal<u32>,
+    pub custom_h: Signal<u32>,
+    pub fps: Signal<u32>,
+    pub quality: Signal<String>,
+    pub bitrate: Signal<u32>,
+    pub encoder_backend: Signal<String>,
+    pub placement: Signal<String>,
+    pub focus_follows: Signal<bool>,
+    pub repeat_rate: Signal<i32>,
+    pub repeat_delay: Signal<i32>,
+    pub preset: Signal<String>,
+    pub keyframe: Signal<String>,
+
+    // ── live: applied immediately, editable mid-session ─────────────────────────
+    pub command: Signal<String>,
+    pub move_mode: Signal<bool>,
+    pub scroll_speed: Signal<f64>,
+    pub natural_scroll: Signal<bool>,
+
+    // ── appearance ──────────────────────────────────────────────────────────────
+    /// Bundled base16 scheme name; ignored while `theme_custom` parses.
+    pub theme: Signal<String>,
+    /// Raw text of a pasted base16 scheme. Kept verbatim so the box still shows what was
+    /// pasted after a reload, even though only the parsed values are applied.
+    pub theme_custom: Signal<String>,
+
+    // ── debug ───────────────────────────────────────────────────────────────────
+    /// Master switch for the whole debug group.
+    pub debug_master: Signal<bool>,
+    /// One flag per [`crate::debug::ITEMS`] entry, index-aligned. Persisted by `id`, so
+    /// reordering or removing an item cannot scramble the rest.
+    pub debug: Signal<Vec<bool>>,
+}
+
+impl Settings {
+    /// Must be called from inside a component — these are hooks.
+    pub fn new() -> Self {
+        Self {
+            conn_mode: use_signal(|| "direct".to_string()),
+            server_addr: use_signal(|| DEFAULT_SERVER.to_string()),
+            relay_url: use_signal(|| "ws://".to_string()),
+            remote_id: use_signal(String::new),
+
+            res: use_signal(|| "1280x720".to_string()),
+            custom_w: use_signal(|| 1280),
+            custom_h: use_signal(|| 720),
+            fps: use_signal(|| 60),
+            quality: use_signal(|| "balanced".to_string()),
+            bitrate: use_signal(|| 4000),
+            encoder_backend: use_signal(|| "auto".to_string()),
+            placement: use_signal(|| "center".to_string()),
+            focus_follows: use_signal(|| false),
+            repeat_rate: use_signal(|| 25),
+            repeat_delay: use_signal(|| 200),
+            preset: use_signal(String::new),
+            keyframe: use_signal(String::new),
+
+            command: use_signal(|| "weston-terminal".to_string()),
+            move_mode: use_signal(|| false),
+            scroll_speed: use_signal(|| 1.0),
+            natural_scroll: use_signal(|| false),
+
+            theme: use_signal(|| "default-dark".to_string()),
+            theme_custom: use_signal(String::new),
+
+            debug_master: use_signal(|| true),
+            debug: use_signal(|| crate::debug::ITEMS.iter().map(|i| i.default).collect()),
+        }
+    }
+}
+
+/// What the running session is doing. Reset on stop; never persisted.
+#[derive(Clone, Copy)]
+pub struct Live {
+    /// True once the saved settings blob has been applied.
+    ///
+    /// Exists because effects run before the bridge's async load completes: without this
+    /// gate the persist effect fires on mount with the defaults still in place and writes
+    /// them over the saved blob, so nothing would ever survive a reload.
+    pub loaded: Signal<bool>,
+    pub session_on: Signal<bool>,
+    pub status: Signal<String>,
+    pub stagebar: Signal<String>,
+    pub logs: Signal<Vec<LogLine>>,
+    pub logs_open: Signal<bool>,
+
+    /// What the server actually opened, from the `/session/start` reply: the hw/sw `mode`
+    /// drives the persistent software banner (invariant #5), the `pipeline` tier id drives
+    /// the stagebar badge.
+    pub encoder_mode: Signal<String>,
+    pub encoder_pipeline: Signal<String>,
+
+    pub fps: Signal<Option<f64>>,
+    pub ping: Signal<Option<f64>>,
+    /// Receiver playout-buffer depth in ms — latency `ping` cannot see.
+    pub jbuf: Signal<Option<f64>>,
+    /// Per-stage breakdown as (label, ms) in pipeline order; empty until the bridge reports.
+    pub stages: Signal<Vec<(String, f64)>>,
+    pub dropped: Signal<Option<u64>>,
+}
+
+impl Live {
+    pub fn new() -> Self {
+        Self {
+            loaded: use_signal(|| false),
+            session_on: use_signal(|| false),
+            status: use_signal(|| "idle".to_string()),
+            stagebar: use_signal(|| "No session.".to_string()),
+            logs: use_signal(Vec::new),
+            logs_open: use_signal(|| false),
+            encoder_mode: use_signal(String::new),
+            encoder_pipeline: use_signal(String::new),
+            fps: use_signal(|| None),
+            ping: use_signal(|| None),
+            jbuf: use_signal(|| None),
+            stages: use_signal(Vec::new),
+            dropped: use_signal(|| None),
+        }
+    }
+
+    /// Drop every per-session reading. Called on stop, on a failed start, and on give-up, so
+    /// the stagebar never shows a number left over from a session that is gone.
+    pub fn clear_telemetry(&mut self) {
+        self.fps.set(None);
+        self.ping.set(None);
+        self.jbuf.set(None);
+        self.stages.set(Vec::new());
+        self.dropped.set(None);
+        self.encoder_mode.set(String::new());
+        self.encoder_pipeline.set(String::new());
+    }
+}
+
+/// The two halves together — what every UI function receives.
+#[derive(Clone, Copy)]
+pub struct Ui {
+    pub set: Settings,
+    pub live: Live,
+}

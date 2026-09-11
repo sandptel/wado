@@ -1,0 +1,91 @@
+/* Ground rules: the base16 palette, the reset, and every form control.
+ *
+ * Colour is expressed only through the sixteen base16 variables. Nothing in any stylesheet
+ * may hard-code a hex value — that is what makes a scheme swap sixteen property writes in
+ * js/theme.js instead of a rebuild. The values below are the `default-dark` scheme, present
+ * so the page is themed before any script runs.
+ *
+ * Slot meanings (base16 spec): 00 ground · 01 surface · 02 border/selection · 03 dim ·
+ * 04/05 text · 06/07 bright · 08 red · 09 orange · 0A yellow · 0B green · 0C cyan ·
+ * 0D blue · 0E magenta · 0F brown. */
+:root {
+  --base00: #181818; --base01: #282828; --base02: #383838; --base03: #585858;
+  --base04: #b8b8b8; --base05: #d8d8d8; --base06: #e8e8e8; --base07: #f8f8f8;
+  --base08: #ab4642; --base09: #dc9656; --base0A: #f7ca88; --base0B: #a1b56c;
+  --base0C: #86c1b9; --base0D: #7cafc2; --base0E: #ba8baf; --base0F: #a16946;
+
+  --r: 6px;
+  --gap: 10px;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* One easing and one duration, shared by everything that moves. A single pair is what
+   * makes unrelated transitions read as one interface rather than six separate effects. */
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  --dur: 180ms;
+
+  color-scheme: dark;
+}
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--base00);
+  color: var(--base05);
+  font-family: system-ui, sans-serif;
+}
+
+h1 { font-size: 18px; margin: 0 0 4px; color: var(--base06); }
+.hint { font-size: 12px; color: var(--base03); margin: 0 0 var(--gap); }
+.hint.ok { color: var(--base0B); }
+.hint.bad { color: var(--base08); }
+
+label { display: block; font-size: 12px; color: var(--base04); margin: 12px 0 4px; }
+
+select, textarea,
+input[type=text], input[type=number] {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--base01);
+  color: var(--base06);
+  border: 1px solid var(--base02);
+  border-radius: var(--r);
+  padding: 6px 8px;
+  font-size: 14px;
+  font-family: inherit;
+  transition: border-color var(--dur) var(--ease);
+}
+textarea { font-family: var(--mono); font-size: 12px; resize: vertical; }
+select:focus, textarea:focus,
+input[type=text]:focus, input[type=number]:focus {
+  outline: none;
+  border-color: var(--base0D);
+}
+:disabled { opacity: .45; cursor: not-allowed; }
+
+input[type=range] { width: 100%; accent-color: var(--base0B); }
+
+/* Checkbox rows. Flex so the label text aligns with the box rather than the line box. */
+label.check {
+  display: flex; align-items: center; gap: 6px;
+  color: var(--base05); font-size: 13px;
+}
+label.check input[type=checkbox] { width: auto; flex: 0 0 auto; margin: 0; accent-color: var(--base0B); }
+label.check.master { color: var(--base06); font-size: 13px; }
+
+button {
+  border: 0; border-radius: var(--r); padding: 9px; font-size: 14px;
+  cursor: pointer; color: var(--base00); font-weight: 600;
+  transition: transform 90ms var(--ease), opacity var(--dur) var(--ease);
+}
+button:active:not(:disabled) { transform: scale(.97); }
+button.wide { width: 100%; margin-top: 8px; }
+#start  { background: var(--base0B); }
+#stop   { background: var(--base08); color: var(--base07); }
+#launch { background: var(--base0D); }
+button:disabled { background: var(--base02); color: var(--base03); cursor: default; }
+
+/* Everything that moves does so through transform/opacity only, so it stays on the
+ * compositor thread and never competes with video decode for layout or paint. */
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}

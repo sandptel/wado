@@ -32,7 +32,7 @@ W.connectWebRTC = async () => {
     W.reconnectAttempts = 0;
     W.startStats(pc);
     W.attachLatencyEcho();
-    W.latency.start(pc);
+    if (W.debugLatency) W.latency.start(pc);
     W.setupInputCapture();
   };
   pc.oniceconnectionstatechange = () => status("ICE: " + pc.iceConnectionState);

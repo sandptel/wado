@@ -1,0 +1,132 @@
+//! Session group: everything read once when a session starts.
+//!
+//! Every control here is disabled while a session runs. That is the whole point of the
+//! grouping — the compositor sizes its output and configures its encoder and input at Start
+//! and cannot be re-sized afterwards (invariant #8), so a control that looks editable but
+//! silently does nothing is worse than one that is visibly locked.
+
+use dioxus::prelude::*;
+
+use crate::state::Ui;
+
+pub fn render(ui: Ui) -> Element {
+    let mut s = ui.set;
+    let on = (ui.live.session_on)();
+    let custom_res = (s.res)() == "custom";
+    let custom_q = (s.quality)() == "custom";
+
+    rsx! {
+        label { "Resolution" }
+        select {
+            value: "{(s.res)()}", disabled: on,
+            onchange: move |e| s.res.set(e.value()),
+            option { value: "1280x720", "1280 × 720 (720p)" }
+            option { value: "1920x1080", "1920 × 1080 (1080p)" }
+            option { value: "1080x2400", "1080 × 2400 (phone portrait)" }
+            option { value: "2400x1080", "2400 × 1080 (phone landscape)" }
+            option { value: "custom", "Custom…" }
+        }
+        if custom_res {
+            div { class: "row",
+                input {
+                    r#type: "number", min: "16", step: "2", disabled: on,
+                    value: "{(s.custom_w)()}",
+                    oninput: move |e| if let Ok(v) = e.value().parse() { s.custom_w.set(v) },
+                }
+                input {
+                    r#type: "number", min: "16", step: "2", disabled: on,
+                    value: "{(s.custom_h)()}",
+                    oninput: move |e| if let Ok(v) = e.value().parse() { s.custom_h.set(v) },
+                }
+            }
+        }
+
+        label { "FPS" }
+        select {
+            value: "{(s.fps)()}", disabled: on,
+            onchange: move |e| if let Ok(v) = e.value().parse() { s.fps.set(v) },
+            option { value: "30", "30" }
+            option { value: "60", "60" }
+            option { value: "120", "120" }
+        }
+
+        label { "Quality" }
+        select {
+            value: "{(s.quality)()}", disabled: on,
+            onchange: move |e| s.quality.set(e.value()),
+            option { value: "reactivity", "Optimize reactivity (low latency)" }
+            option { value: "balanced", "Balanced" }
+            option { value: "quality", "Optimize image quality" }
+            option { value: "custom", "Custom bitrate…" }
+        }
+        if custom_q {
+            label { "Bitrate: {(s.bitrate)()} kbps" }
+            input {
+                r#type: "range", min: "500", max: "20000", step: "500", disabled: on,
+                value: "{(s.bitrate)()}",
+                oninput: move |e| if let Ok(v) = e.value().parse() { s.bitrate.set(v) },
+            }
+        }
+
+        label { "Encoder" }
+        select {
+            value: "{(s.encoder_backend)()}", disabled: on,
+            onchange: move |e| s.encoder_backend.set(e.value()),
+            option { value: "auto", "Auto (hardware if available)" }
+            option { value: "hardware", "Hardware only (GPU)" }
+            option { value: "software", "Software (x264)" }
+        }
+
+        label { "Window placement" }
+        select {
+            value: "{(s.placement)()}", disabled: on,
+            onchange: move |e| s.placement.set(e.value()),
+            option { value: "center", "Center" }
+            option { value: "top_left", "Top-left" }
+            option { value: "cascade", "Cascade" }
+            option { value: "maximized", "Maximized" }
+        }
+
+        label {
+            class: "check",
+            input {
+                r#type: "checkbox", checked: (s.focus_follows)(), disabled: on,
+                onchange: move |e| s.focus_follows.set(e.checked()),
+            }
+            " Focus follows pointer"
+        }
+
+        label { "Keyboard repeat" }
+        div { class: "row",
+            input {
+                r#type: "number", min: "1", disabled: on, value: "{(s.repeat_rate)()}",
+                oninput: move |e| if let Ok(v) = e.value().parse() { s.repeat_rate.set(v) },
+            }
+            input {
+                r#type: "number", min: "0", disabled: on, value: "{(s.repeat_delay)()}",
+                oninput: move |e| if let Ok(v) = e.value().parse() { s.repeat_delay.set(v) },
+            }
+        }
+        p { class: "hint", "rate (keys/s) · delay (ms)" }
+
+        details { class: "sub",
+            summary { "Encoder internals" }
+            label { "x264 preset" }
+            select {
+                value: "{(s.preset)()}", disabled: on,
+                onchange: move |e| s.preset.set(e.value()),
+                option { value: "", "(from quality)" }
+                option { value: "ultrafast", "ultrafast" }
+                option { value: "superfast", "superfast" }
+                option { value: "veryfast", "veryfast" }
+                option { value: "faster", "faster" }
+            }
+            label { "Keyframe interval (frames)" }
+            input {
+                r#type: "number", min: "1", placeholder: "(from quality)", disabled: on,
+                value: "{(s.keyframe)()}",
+                oninput: move |e| s.keyframe.set(e.value()),
+            }
+        }
+    }
+}
