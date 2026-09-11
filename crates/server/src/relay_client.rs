@@ -122,9 +122,34 @@ async fn run(
             // else in the log distinguishes them.
             let mut slow: u64 = 0;
             let mut worst = Duration::ZERO;
+            let mut worst_wait = Duration::ZERO;
+            let mut queued_total = Duration::ZERO;
+            let mut frames: u64 = 0;
             while let Some(frame) = frame_rx.recv().await {
                 let bytes = frame.data.len();
                 let key = is_keyframe(&frame.data);
+                // How long the frame sat between the compositor letting go and the pump
+                // picking it up. Relay mode has no /timing endpoint, so this leg — the one
+                // the compositor explicitly cannot see — was measured and then thrown away.
+                // It is also the leg that grows first when the pump falls behind, which
+                // makes it an early warning rather than a post-mortem.
+                let waited = frame.queued_at.elapsed();
+                if waited > worst_wait {
+                    worst_wait = waited;
+                }
+                queued_total += waited;
+                frames += 1;
+                if frames % 300 == 0 {
+                    info!(
+                        avg_queue_ms = (queued_total.as_millis() as u64) / frames.max(1),
+                        worst_queue_ms = worst_wait.as_millis() as u64,
+                        frames,
+                        "pump: queue wait over the last stretch"
+                    );
+                    queued_total = Duration::ZERO;
+                    worst_wait = Duration::ZERO;
+                    frames = 0;
+                }
                 // Relay mode has no /timing endpoint yet, so the queue stamp is unused
                 // here — the duration still matters (real elapsed time keeps the RTP clock
                 // on wall clock; see ChannelSink).
