@@ -111,6 +111,14 @@ pub fn start_session(
     // Version 4 (with feedback) when the device id is known, because feedback is how a client
     // is told *which* GPU to allocate on; version 3 (bare format list) otherwise, which is
     // still enough for a client to stop going through shm.
+    // A start that fails below this point leaves `session_active` false, so `stop_session`
+    // early-returns and never tears this down. Dropping any previous global here keeps the
+    // invariant simple: at most one, always the current renderer's.
+    if let Some(old) = state.dmabuf_global.take() {
+        state
+            .dmabuf_state
+            .destroy_global::<Wado>(&state.display_handle, old);
+    }
     match gpu.dev {
         Some(dev) => {
             let formats: Vec<_> = renderer.dmabuf_formats().into_iter().collect();
