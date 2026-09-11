@@ -6,6 +6,7 @@
 pub mod apps;
 pub mod error;
 pub mod exec;
+pub mod ice;
 pub mod relay_client;
 pub mod pty;
 pub mod remote_id;

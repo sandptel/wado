@@ -61,7 +61,6 @@ use webrtc::peer_connection::RTCPeerConnection;
 use webrtc::peer_connection::configuration::RTCConfiguration;
 use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
-use webrtc::ice_transport::ice_server::RTCIceServer;
 use webrtc::rtcp::payload_feedbacks::full_intra_request::FullIntraRequest;
 use webrtc::rtcp::payload_feedbacks::picture_loss_indication::PictureLossIndication;
 use webrtc::rtp_transceiver::rtp_codec::RTCRtpCodecCapability;
@@ -409,14 +408,11 @@ async fn handle_session_start(
 async fn handle_offer(ctx: &ServerCtx, offer_json: &str) -> crate::Result<String> {
     let offer: RTCSessionDescription = serde_json::from_str(offer_json)?;
 
-    // Add a STUN server so ICE can discover server-reflexive candidates, enabling
-    // cross-NAT connections when direct mode is port-forwarded.
-    // For pure localhost/LAN use, host candidates still work without STUN.
+    // STUN so ICE can discover server-reflexive candidates, enabling cross-NAT connections
+    // when direct mode is port-forwarded. For pure localhost/LAN use, host candidates still
+    // work without it. See `crate::ice` for why the list has three entries and not one.
     let pc = Arc::new(ctx.api.new_peer_connection(RTCConfiguration {
-        ice_servers: vec![RTCIceServer {
-            urls: vec!["stun:stun.l.google.com:19302".to_owned()],
-            ..Default::default()
-        }],
+        ice_servers: crate::ice::servers(),
         ..Default::default()
     }).await?);
 
