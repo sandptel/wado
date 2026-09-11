@@ -1,4 +1,4 @@
-use tracing_subscriber::{EnvFilter, fmt, prelude::*};
+use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt as _, prelude::*};
 use wado::website::{self, FRAME_CHANNEL_CAPACITY, logbus::LogBus};
 
 /// Where the control server listens in direct mode.
@@ -82,13 +82,34 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     Ok(())
 }
 
+/// The terminal's default verbosity.
+///
+/// Two things this fixes, both of which cost a debugging session. **wado's own crates default
+/// to `debug`**, because the previous blanket `info` meant every `debug!` anyone added to this
+/// codebase was dead in the live daemon — written, shipped, and silent, which looks exactly
+/// like the thing it was watching for never happening. And **`webrtc_ice` is muted to `warn`**:
+/// a single session teardown emits eight "Failed to close candidate … the agent is closed"
+/// lines, none of which has ever meant anything.
+///
+/// Per-lane detail needs no new code — a tracing target *is* the module path, so
+/// `RUST_LOG=wado_compositor::headless=debug,wado_compositor::input=trace` already works.
+/// `RUST_LOG` overrides this whole string when set.
+const DEFAULT_LOG: &str = "info,wado=debug,wado_compositor=debug,webrtc_ice=warn";
+
+/// What the client's log panel sees. Deliberately **not** the string above: the panel is a
+/// 200-line ring in front of a human, and wado's own debug traffic would push anything worth
+/// reading off the top of it within seconds.
+const PANEL_LOG: &str = "info";
+
 fn init_logging() -> LogBus {
     let log_bus = LogBus::new();
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    // Filters are per-layer, not on the registry. A registry-level filter gates every layer at
+    // once, which is what made the terminal and the client's panel share one verbosity — and
+    // why neither could be turned up without flooding the other.
+    let term = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(DEFAULT_LOG));
     tracing_subscriber::registry()
-        .with(filter)
-        .with(fmt::layer())
-        .with(log_bus.clone())
+        .with(fmt::layer().with_filter(term))
+        .with(log_bus.clone().with_filter(EnvFilter::new(PANEL_LOG)))
         .init();
     log_bus
 }

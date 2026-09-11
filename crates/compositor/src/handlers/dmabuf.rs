@@ -9,6 +9,7 @@
 //! it and answers. **The answer is not optional**: smithay warns "Compositor bug: Server
 //! ignored ImportNotifier" if the notifier is dropped, and the client waits forever.
 
+use smithay::backend::allocator::Buffer as _;
 use smithay::backend::allocator::dmabuf::Dmabuf;
 use smithay::backend::renderer::ImportDma;
 use smithay::wayland::dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier};
@@ -33,15 +34,28 @@ impl DmabufHandler for Wado {
             notifier.failed();
             return;
         };
+        let first = !self.dmabuf_logged;
+        self.dmabuf_logged = true;
         // Imported eagerly rather than at first use so a modifier the driver refuses is
         // reported as a protocol error now, while the client can still fall back to shm.
         // Deferring it turns the same failure into a blank window at render time.
         match renderer.import_dmabuf(&dmabuf, None) {
             Ok(_) => {
+                if first {
+                    let f = dmabuf.format();
+                    tracing::info!(
+                        format = %f.code,
+                        modifier = ?f.modifier,
+                        "dmabuf path is live — a client is handing over GPU buffers"
+                    );
+                }
                 let _ = notifier.successful::<Wado>();
             }
             Err(e) => {
-                tracing::warn!("dmabuf import rejected: {e}");
+                // `failed()` on a `create_immed` is a fatal protocol error, not a fallback to
+                // shm — the client dies. So this line means "the app you launched just
+                // disappeared", which is worth saying every time rather than once.
+                tracing::warn!("dmabuf import rejected, the client will be killed: {e}");
                 notifier.failed();
             }
         }

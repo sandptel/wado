@@ -70,6 +70,14 @@ pub struct Wado {
     /// the global exists. See `headless::start_session`.
     pub dmabuf_state: DmabufState,
     pub dmabuf_global: Option<DmabufGlobal>,
+    /// Whether this session has logged its first dmabuf import outcome yet.
+    ///
+    /// One line per session, not per buffer: the question "did any client take the GPU buffer
+    /// path, or is everything still going through `wl_shm`?" is a yes/no, and answering it per
+    /// buffer would bury it at 90 frames a second. Without this the only way to find out was
+    /// to catch a live session and count dmabuf fds in `/proc`, which is archaeology against a
+    /// window that closes.
+    pub dmabuf_logged: bool,
     /// wp-viewport. Its companion: a client drawing for a fractional scale needs to declare
     /// the destination size its buffer maps onto, or the rounding it just avoided reappears
     /// at composite time.
@@ -214,6 +222,7 @@ impl Wado {
             pointer_gestures_state,
             dmabuf_state,
             dmabuf_global: None,
+            dmabuf_logged: false,
             viewporter_state,
             popups,
             seat,
