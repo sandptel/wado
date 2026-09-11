@@ -40,7 +40,7 @@
 
 pub mod logbus;
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -107,6 +107,18 @@ struct ServerCtx {
     /// frame was actually picked up. Atomic so the pump task and the HTTP handlers can
     /// share it without a lock on the hot path.
     queue_us: Arc<AtomicU64>,
+    /// Unix-millis of the last HTTP request from a viewer. See [`viewer_watchdog`].
+    last_request: Arc<AtomicU64>,
+    /// Whether a session is running and has not been stopped. See [`viewer_watchdog`].
+    session_started: Arc<AtomicBool>,
+}
+
+/// Now, in unix milliseconds.
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 /// Start the control plane: spawn the tokio runtime (HTTP server + frame pump) on its
@@ -211,6 +223,8 @@ async fn run_server(
         input_tx,
         log_bus,
         active_pc: Arc::new(Mutex::new(None)),
+        last_request: Arc::new(AtomicU64::new(now_ms())),
+        session_started: Arc::new(AtomicBool::new(false)),
         generation: Arc::new(AtomicU64::new(0)),
         timings,
         queue_us,
@@ -219,8 +233,27 @@ async fn run_server(
     let listener = TcpListener::bind(&addr).await?;
     info!(%addr, "control server listening — connect with the wado-client app");
 
+    tokio::spawn(viewer_watchdog(
+        ctx.cmd_tx.clone(),
+        Arc::clone(&ctx.last_request),
+        Arc::clone(&ctx.session_started),
+        Arc::clone(&ctx.active_pc),
+    ));
+
     loop {
-        let (stream, _peer) = listener.accept().await?;
+        // `?` here was not a per-connection error: it exited `run_server` and left the
+        // process alive with a running compositor and no control plane — no way to stop the
+        // session, no way to start another. EMFILE and ECONNABORTED are transient and
+        // reachable from outside (an SSE client holds a socket indefinitely, and there is no
+        // connection cap), so shed the one connection and keep serving.
+        let (stream, _peer) = match listener.accept().await {
+            Ok(v) => v,
+            Err(e) => {
+                warn!("accept failed ({e}) — continuing to serve");
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                continue;
+            }
+        };
         let ctx = Arc::clone(&ctx);
         tokio::spawn(async move {
             if let Err(e) = handle_conn(stream, ctx).await {
@@ -249,6 +282,10 @@ async fn handle_conn(mut stream: TcpStream, ctx: Arc<ServerCtx>) -> crate::Resul
             return Ok(());
         }
     };
+
+    // Liveness for `viewer_watchdog`: a viewer polls this server constantly (stats, events,
+    // timings), so silence here means nobody is on the other end.
+    ctx.last_request.store(now_ms(), Ordering::Relaxed);
 
     let header_text = String::from_utf8_lossy(&buf[..header_end]);
     let mut lines = header_text.split("\r\n");
@@ -331,6 +368,7 @@ async fn handle_conn(mut stream: TcpStream, ctx: Arc<ServerCtx>) -> crate::Resul
         }
         ("POST", "/session/start") => match handle_session_start(&ctx, &body).await {
             Ok(info) => {
+                ctx.session_started.store(true, Ordering::SeqCst);
                 let body = serde_json::to_string(&info).unwrap_or_else(|_| "{}".into());
                 write_response(&mut stream, "200 OK", "application/json", body.as_bytes()).await?
             }
@@ -340,6 +378,7 @@ async fn handle_conn(mut stream: TcpStream, ctx: Arc<ServerCtx>) -> crate::Resul
             }
         },
         ("POST", "/session/stop") => {
+            ctx.session_started.store(false, Ordering::SeqCst);
             let _ = ctx.cmd_tx.send(CompositorCommand::Stop);
             write_response(&mut stream, "200 OK", "text/plain", b"stopped").await?;
         }
@@ -479,7 +518,7 @@ async fn handle_offer(ctx: &ServerCtx, offer_json: &str) -> crate::Result<String
 
     // This viewer's generation; only this generation may auto-stop the session.
     let my_gen = ctx.generation.fetch_add(1, Ordering::SeqCst) + 1;
-    *ctx.active_pc.lock().unwrap() = Some(Arc::clone(&pc));
+    *ctx.active_pc.lock().unwrap_or_else(|e| e.into_inner()) = Some(Arc::clone(&pc));
 
     // RTCP read loop: the browser sends PLI/FIR when it needs a keyframe.
     let cmd_tx_rtcp = ctx.cmd_tx.clone();
@@ -516,7 +555,7 @@ async fn handle_offer(ctx: &ServerCtx, offer_json: &str) -> crate::Result<String
                 if generation.load(Ordering::SeqCst) == my_gen {
                     info!("viewer gone — stopping session");
                     let _ = cmd_tx.send(CompositorCommand::Stop);
-                    *active_pc.lock().unwrap() = None;
+                    *active_pc.lock().unwrap_or_else(|e| e.into_inner()) = None;
                 }
             }
             _ => {}
@@ -618,4 +657,55 @@ async fn write_response(
 
 fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     haystack.windows(needle.len()).position(|w| w == needle)
+}
+
+/// How long a started session may go without a viewer before it is stopped. See the twin in
+/// `relay_client.rs` for the full reasoning.
+const VIEWER_GRACE: std::time::Duration = std::time::Duration::from_secs(45);
+
+/// Stop a direct-mode session whose viewer has vanished.
+///
+/// Direct mode had only two stop triggers: an explicit `POST /session/stop`, and the WebRTC
+/// peer reaching `Failed`/`Closed`. The second cannot fire at all in the window that matters:
+/// `POST /session/start` brings up the compositor, encoder and render loop **before** any peer
+/// connection exists, so a browser that dies, navigates away or loses the network before
+/// `POST /offer` leaves `active_pc` as `None` with no callback registered — nothing in the
+/// process can ever send `Stop`. The session then runs forever at full frame rate with no
+/// viewer, and `control.rs` rejects every later start with "a session is already active", so
+/// the daemon is unusable until restarted.
+///
+/// Two conditions, as in relay mode: silence alone would kill a connected-but-idle viewer, so
+/// the session is stopped only when HTTP has been silent *and* WebRTC is not connected.
+async fn viewer_watchdog(
+    cmd_tx: CmdSender,
+    last_request: Arc<AtomicU64>,
+    session_started: Arc<AtomicBool>,
+    active_pc: Arc<Mutex<Option<Arc<RTCPeerConnection>>>>,
+) {
+    let mut tick = tokio::time::interval(std::time::Duration::from_secs(5));
+    loop {
+        tick.tick().await;
+        if !session_started.load(Ordering::SeqCst) {
+            continue;
+        }
+        let silent_ms = now_ms().saturating_sub(last_request.load(Ordering::Relaxed));
+        if silent_ms < VIEWER_GRACE.as_millis() as u64 {
+            continue;
+        }
+        let connected = {
+            let pc = active_pc.lock().unwrap_or_else(|e| e.into_inner()).clone();
+            pc.map(|pc| pc.connection_state() == RTCPeerConnectionState::Connected)
+                .unwrap_or(false)
+        };
+        if connected {
+            continue;
+        }
+        warn!(
+            silent_ms,
+            "no sign of a viewer for {VIEWER_GRACE:?} and WebRTC is not connected — stopping \
+             the session so its applications do not outlive it"
+        );
+        session_started.store(false, Ordering::SeqCst);
+        let _ = cmd_tx.send(CompositorCommand::Stop);
+    }
 }
