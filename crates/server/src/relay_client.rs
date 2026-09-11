@@ -402,6 +402,10 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     // dropping a `Pty` kills the shell and, through SIGHUP, whatever it was running.
     let mut pty: Option<crate::pty::Pty> = None;
 
+    // Same lifetime as `pty`, for the same reason: these die with the connection that asked
+    // for them. Dropping the guard aborts the task, which drops the `Child`, which kills it.
+    let mut exec_tasks: Vec<AbortOnDrop> = Vec::new();
+
     // ── 4. Main message loop ─────────────────────────────────────────────────
     while let Some(frame) = ws_stream.next().await {
         let text = match frame {
@@ -475,8 +479,14 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 // Spawned rather than awaited: a command that never exits must not stop the
                 // relay loop from carrying input, frames or session control. The viewer's
                 // channel is cloned in, so output flows for as long as the socket lives.
+                //
+                // The handle is kept so the child dies with the connection that asked for it.
+                // Detached, a viewer who ran `sleep 1d` or a GUI app and then disconnected left
+                // it running forever: the task stayed parked on `exec::run`, so the `Child` was
+                // never dropped and its `kill_on_drop` never fired — and an exec child is not in
+                // `app_processes`, so `stop_session` does not reap it either.
                 let out_tx = out_tx.clone();
-                tokio::spawn(async move {
+                exec_tasks.push(AbortOnDrop(tokio::spawn(async move {
                     info!(command, "exec");
                     let (tx, mut rx) = mpsc::channel::<crate::exec::Line>(256);
                     let forward = {
@@ -509,7 +519,9 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     };
                     let _ = forward.await;
                     send_relay(&out_tx, &RelayMsg::ExecExit { code }).await.ok();
-                });
+                })));
+                // Finished commands would otherwise accumulate for the life of the connection.
+                exec_tasks.retain(|t| !t.0.is_finished());
             }
 
             RelayMsg::PtyOpen { cols, rows } => {
@@ -927,5 +939,17 @@ async fn viewer_watchdog(
         );
         session_started.store(false, Ordering::SeqCst);
         let _ = cmd_tx.send(CompositorCommand::Stop);
+    }
+}
+
+/// Aborts a spawned task when dropped — including on an unwind. Twin of the relay's guard.
+///
+/// Aborting an `exec` task drops the `Child` it is awaiting, and `exec::run` builds that child
+/// with `kill_on_drop(true)`, so the abort is what actually kills the process.
+struct AbortOnDrop(tokio::task::JoinHandle<()>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
     }
 }
