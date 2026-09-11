@@ -9,13 +9,13 @@
 pub mod appearance;
 pub mod bar;
 pub mod connection;
+pub mod console;
 pub mod debug;
 pub mod launcher;
 pub mod live;
 pub mod session;
 pub mod stage;
 pub mod status;
-pub mod term;
 
 use dioxus::prelude::*;
 

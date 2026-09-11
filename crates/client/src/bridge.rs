@@ -218,12 +218,14 @@ pub fn run(ui: Ui) {
                 // Both failure paths open the logs, because the reason is always in there.
                 "startFailed" => {
                     live.session_on.set(false);
-                    live.logs_open.set(true);
+                    live.console_open.set(true);
+                    live.console_tab.set("logs".to_string());
                     live.clear_telemetry();
                 }
                 "giveup" => {
                     live.session_on.set(false);
-                    live.logs_open.set(true);
+                    live.console_open.set(true);
+                    live.console_tab.set("logs".to_string());
                     live.clear_telemetry();
                     let _ = document::eval("window.__wado.stopSession();").await;
                     live.status.set("idle".to_string());

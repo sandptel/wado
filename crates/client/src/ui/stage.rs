@@ -22,7 +22,7 @@ fn badge(pipeline: &str) -> (&'static str, &'static str) {
 }
 
 pub fn render(ui: Ui) -> Element {
-    let mut live = ui.live;
+    let live = ui.live;
     let on = (live.session_on)();
 
     // Invariant #5: unconditional while software encoding is active.
@@ -59,7 +59,6 @@ pub fn render(ui: Ui) -> Element {
     let stages = (live.stages)();
     let show_lat = on && debug::on(ui, "latency") && !stages.is_empty();
     let dropped = (live.dropped)().unwrap_or(0);
-    let logs = live.logs.read().clone();
 
     // The server can be entirely healthy while the picture still stutters, because the
     // viewing device cannot decode what it asked for — measured here at 1080x2422/60, ~5%
@@ -117,24 +116,8 @@ pub fn render(ui: Ui) -> Element {
         }
         video { id: "wado-video", autoplay: true, playsinline: true, muted: true }
         }
-        {super::term::render(ui)}
-        details { id: "logs", open: (live.logs_open)(),
-            summary {
-                onclick: move |e| {
-                    e.prevent_default();
-                    let open = (live.logs_open)();
-                    live.logs_open.set(!open);
-                },
-                "Logs"
-            }
-            div { id: "wado-logwrap",
-                for (i, line) in logs.iter().enumerate() {
-                    div { key: "{i}", class: "logline l-{line.level}",
-                        span { class: "lts", "{line.ts}" }
-                        " {line.text}"
-                    }
-                }
-            }
-        }
+        // Over the picture, not under it: as a sibling below the video it took height off
+        // the stream and letterboxed it.
+        {super::console::render(ui)}
     }
 }

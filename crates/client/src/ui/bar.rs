@@ -63,20 +63,23 @@ pub fn render(ui: Ui) -> Element {
                 }
             }
 
-            // Beside the window actions, because it belongs to the same group: things you do
-            // to the running session. A session is required for the same reason they are —
-            // there is no shell to run in until one exists.
+            // One button for the console — shell and log together. Two buttons for two
+            // panels would be two rows of chrome over a phone screen that has none to give.
+            // Beside the window actions because it is the same kind of thing: something you
+            // do to the running session, and pointless without one.
             button {
                 class: "barbtn",
-                title: "Shell",
-                "aria-label": "Shell",
+                title: "Console (shell and log)",
+                "aria-label": "Console",
                 disabled: !(live.session_on)(),
                 onclick: move |_| {
-                    let open = !(live.term_open)();
-                    live.term_open.set(open);
-                    // Focus follows the reveal: opening a command line and then having to
-                    // tap it is one step too many on a phone.
-                    if open {
+                    let open = !(live.console_open)();
+                    live.console_open.set(open);
+                    // Focus follows the reveal, but only for the shell: opening a command
+                    // line and then having to tap it is a step too many on a phone. On the
+                    // log tab a focused input would raise the keyboard over what you opened
+                    // the panel to read.
+                    if open && (live.console_tab)() == "shell" {
                         bridge::call(
                             "setTimeout(function(){var e=document.getElementById('wado-terminput'); \
                              if(e) e.focus();}, 60);"

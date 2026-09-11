@@ -93,33 +93,72 @@
 }
 .latnote .latval { color: var(--base0A); }
 
-/* The session shell. Styled as a sibling of the log panel because that is what it is — same
- * collapsed height, same monospace, so the two read as one row of tools rather than two
- * unrelated things stacked. */
-#term { border-top: 1px solid var(--base02); background: var(--base00); }
-#term > summary { padding: 6px 12px; user-select: none; cursor: pointer; color: var(--base04); }
-#wado-termwrap {
-  height: 160px; overflow-y: auto; padding: 4px 12px;
-  font-family: var(--mono); font-size: 11.5px; line-height: 1.45;
+/* The console: shell and log in one sheet over the picture.
+ *
+ * Over, not under. As siblings below the video these took height off the stream and
+ * letterboxed it — a panel you are not reading should not cost picture. It is the only
+ * interactive overlay, so it is the only one with pointer-events; everything else floating
+ * over the video is deliberately inert.
+ *
+ * Sized in dvh because a fixed pixel height is wrong on every phone, and padded for the safe
+ * area because a command input under the home indicator cannot be typed into. */
+#console {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 4;
+  display: flex; flex-direction: column;
+  height: min(52dvh, 420px);
+  background: var(--base01);
+  border-top: 1px solid var(--base02);
+  border-radius: 14px 14px 0 0;
+  box-shadow: 0 -8px 24px rgb(0 0 0 / 0.35);
+  animation: console-in var(--dur) var(--ease);
 }
+@keyframes console-in { from { transform: translateY(12px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { #console { animation: none; } }
+
+.consoletabs {
+  display: flex; align-items: stretch; gap: 2px;
+  padding: 4px 6px 0;
+  border-bottom: 1px solid var(--base02);
+}
+/* 40px tall: a tab you miss on a moving train is worse than a tab that looks chunky. */
+.ctab {
+  min-height: 40px; padding: 0 16px;
+  background: none; border: 0; border-radius: 10px 10px 0 0;
+  color: var(--base03); font-size: 13px; cursor: pointer;
+}
+.ctab.on { color: var(--base06); background: var(--base00); }
+.ctab:hover { color: var(--base05); }
+.ctabgap { flex: 1; }
+.cclose { padding: 0 14px; font-size: 15px; }
+
+.consolebody {
+  flex: 1; min-height: 0; overflow-y: auto;
+  padding: 6px 12px;
+  background: var(--base00);
+  font-family: var(--mono); font-size: 11.5px; line-height: 1.45;
+  /* Momentum scrolling, and never rubber-band the page behind the sheet. */
+  overscroll-behavior: contain;
+}
+
 .termline { white-space: pre-wrap; word-break: break-word; color: var(--base05); }
 /* stderr apart from stdout: a command that printed nothing and one that failed loudly are
  * indistinguishable once the streams are merged. */
 .term-err { color: var(--base08); }
-.termrow { display: flex; gap: 6px; padding: 0 12px 8px; }
-.termrow input {
-  flex: 1; min-width: 0;
-  font-family: var(--mono); font-size: 12px;
-}
-.termrow button { flex: 0 0 auto; }
 
-/* Live log panel. */
-#logs { border-top: 1px solid var(--base02); background: var(--base00); }
-#logs > summary { padding: 6px 12px; user-select: none; cursor: pointer; color: var(--base04); }
-#wado-logwrap {
-  height: 200px; overflow-y: auto; padding: 4px 12px 8px;
-  font-family: var(--mono); font-size: 11.5px; line-height: 1.45;
+.termrow {
+  display: flex; gap: 6px; align-items: center;
+  padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+  background: var(--base01);
 }
+.termrow input {
+  flex: 1; min-width: 0; min-height: 40px;
+  font-family: var(--mono);
+  /* 16px exactly: anything smaller and iOS Safari zooms the page on focus, which on a
+   * streamed desktop means the picture jumps sideways as you start typing. */
+  font-size: 16px;
+}
+.termrow button { flex: 0 0 auto; min-height: 40px; padding: 0 16px; }
+
 .logline { white-space: pre-wrap; word-break: break-word; }
 .lts { color: var(--base03); }
 .l-ERROR { color: var(--base08); }
