@@ -35,6 +35,8 @@ use crate::{
 };
 
 pub struct Wado {
+    /// Per-stage render timing publisher. `None` only before [`crate::build`] installs it.
+    pub timing: Option<crate::timing::StageTimer>,
     pub start_time: std::time::Instant,
     pub socket_name: OsString,
     pub display_handle: DisplayHandle,
@@ -106,6 +108,22 @@ pub struct WindowMove {
 }
 
 impl Wado {
+    /// Write any pending Wayland protocol output to the clients' sockets.
+    ///
+    /// Must be called after EVERY event-loop dispatch, not just after rendering.
+    /// Synthesizing remote input (see [`Wado::handle_remote_input`]) only queues events
+    /// into each client's outgoing buffer; until this flush runs, the app has not
+    /// actually been told anything. Flushing solely at the tail of the render tick
+    /// quantises every remote input to the frame period with a variable phase — which is
+    /// exactly what remote input "feeling jittery" is. The server wires this into the
+    /// event loop's post-dispatch callback.
+    ///
+    /// Errors are intentionally swallowed: a dead or backed-up client socket is the
+    /// Wayland layer's problem to reap, not a reason to disturb the render loop.
+    pub fn flush_clients(&mut self) {
+        let _ = self.display_handle.flush_clients();
+    }
+
     pub fn new(event_loop: &mut EventLoop<'static, Self>, display: Display<Self>) -> Self {
         let start_time = std::time::Instant::now();
 
@@ -132,6 +150,7 @@ impl Wado {
         let loop_handle = event_loop.handle();
 
         Self {
+            timing: None,
             start_time,
             display_handle: dh,
             space,

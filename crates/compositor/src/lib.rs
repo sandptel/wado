@@ -29,9 +29,11 @@ pub mod grabs;
 pub mod handlers;
 pub mod headless;
 pub mod input;
+pub mod pacing;
 pub mod placement;
 pub mod sink;
 pub mod state;
+pub mod timing;
 
 use std::panic::AssertUnwindSafe;
 
@@ -47,6 +49,7 @@ use tokio::sync::mpsc;
 pub use control::CompositorCommand;
 pub use error::{CompositorError, Result};
 pub use sink::channel::FrameMsg;
+pub use wado_protocol::StageTimings;
 pub use state::Wado;
 pub use wado_protocol::InputEvent;
 
@@ -65,6 +68,8 @@ pub struct CompositorHandles {
     pub commands: CommandSender,
     /// Remote touch + keyboard events (separate, low-latency channel).
     pub input: InputSender,
+    /// Latest per-stage render timings (latest-value-wins; see [`timing`]).
+    pub timings: tokio::sync::watch::Receiver<StageTimings>,
 }
 
 /// Build the compositor: create the event loop, display, and [`Wado`] state, claim the
@@ -81,7 +86,12 @@ pub fn build(
         EventLoop::try_new().map_err(|e| CompositorError::Other(format!("event loop: {e}")))?;
     let display: Display<Wado> =
         Display::new().map_err(|e| CompositorError::Other(format!("display: {e}")))?;
-    let state = Wado::new(&mut event_loop, display);
+    let mut state = Wado::new(&mut event_loop, display);
+
+    // Per-stage timing publisher. Created here, not per session, so the server's receiver
+    // survives stop/start cycles and never has to be re-plumbed.
+    let (stage_timer, timings) = timing::StageTimer::new();
+    state.timing = Some(stage_timer);
 
     // Apps spawned later (on session start) connect to this socket.
     unsafe { std::env::set_var("WAYLAND_DISPLAY", &state.socket_name) };
@@ -123,5 +133,5 @@ pub fn build(
         })
         .map_err(|e| CompositorError::Other(format!("insert input source: {e}")))?;
 
-    Ok((event_loop, state, CompositorHandles { commands: cmd_tx, input: input_tx }))
+    Ok((event_loop, state, CompositorHandles { commands: cmd_tx, input: input_tx, timings }))
 }

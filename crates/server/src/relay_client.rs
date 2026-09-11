@@ -116,8 +116,15 @@ async fn run(
     {
         let track_pump = Arc::clone(&track);
         tokio::spawn(async move {
-            while let Some((buf, dur)) = frame_rx.recv().await {
-                let sample = Sample { data: Bytes::from(buf), duration: dur, ..Default::default() };
+            while let Some(frame) = frame_rx.recv().await {
+                // Relay mode has no /timing endpoint yet, so the queue stamp is unused
+                // here — the duration still matters (real elapsed time keeps the RTP clock
+                // on wall clock; see ChannelSink).
+                let sample = Sample {
+                    data: Bytes::from(frame.data),
+                    duration: frame.duration,
+                    ..Default::default()
+                };
                 if let Err(e) = track_pump.write_sample(&sample).await {
                     warn!("relay client: write_sample: {e}");
                 }
