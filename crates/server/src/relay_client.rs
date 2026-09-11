@@ -190,11 +190,18 @@ async fn run(
                     // an IDR. If the stalls are keyframes, the fix is the keyframe — not the
                     // channel depth, and not the bitrate.
                     if took > Duration::from_millis(100) {
+                        // write_sample packetizes and then awaits once per RTP packet, in
+                        // series. Cost per packet is therefore the number that says whether a
+                        // stall is the frame's size or a fixed price paid per await — and
+                        // measured here it is roughly constant per packet across frames that
+                        // differ twofold in size, which points at the latter.
+                        let packets = (bytes / MTU_PAYLOAD).max(1);
                         warn!(
                             took_ms = took.as_millis() as u64,
                             bytes,
                             keyframe = key,
-                            kbits = (bytes * 8 / 1000),
+                            packets,
+                            us_per_packet = (took.as_micros() as usize / packets),
                             "write_sample stall"
                         );
                     }
@@ -428,6 +435,11 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
 /// Create a new RTCPeerConnection, attach the shared track, wire input data
 /// channel, RTCP PLI → ForceKeyframe, state-change → Stop, gather ICE, answer.
 ///
+/// Bytes of payload per RTP packet, near enough. Only used to turn a frame size into a packet
+/// count for the stall trace, so the usual 1200-byte MTU budget is close enough to be useful
+/// and exactness would not change what the number says.
+const MTU_PAYLOAD: usize = 1200;
+
 /// Whether an Annex-B access unit contains an IDR slice (NAL type 5).
 ///
 /// Only the first few NAL headers are examined: SPS/PPS are prepended to IDR frames, so the
