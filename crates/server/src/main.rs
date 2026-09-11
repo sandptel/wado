@@ -7,6 +7,23 @@ const DEFAULT_CONTROL_ADDR: &str = "127.0.0.1:8080";
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let log_bus = init_logging();
 
+    // A debug build cannot meet the latency target and does not fail in a way that looks
+    // like a build problem: it looks like a network or encoder fault. SRTP encrypts and
+    // authenticates every RTP packet, `write_sample` awaits once per packet, and unoptimised
+    // that adds up to `write_sample` stalls of 100-200 ms, a jitter buffer climbing past
+    // 40 ms, and frame drops at 1080p — all of which read as "the transport is too slow".
+    // Diagnosing that from the symptoms cost hours once. It says so now instead.
+    //
+    // A warning, not a refusal: `cargo run` for a quick check is legitimate, and the log
+    // bus carries this line to the client's log panel too.
+    if cfg!(debug_assertions) {
+        tracing::warn!(
+            "DEBUG BUILD — unoptimised SRTP and packetisation will stall the frame pump and \
+             inflate latency. Measurements taken from this build are not meaningful. \
+             Use `cargo build --release` and run `./target/release/wado` for anything real."
+        );
+    }
+
     let (frame_tx, frame_rx) = tokio::sync::mpsc::channel(FRAME_CHANNEL_CAPACITY);
     let (mut event_loop, mut state, handles) = wado_compositor::build(frame_tx)?;
 
