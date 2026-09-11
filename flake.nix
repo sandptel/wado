@@ -45,7 +45,7 @@
 
           wado = pkgs.rustPlatform.buildRustPackage {
             pname = "wado";
-            version = "0.0.1";
+            version = "0.0.2";
             inherit src;
 
             cargoLock = {
