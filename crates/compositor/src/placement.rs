@@ -7,6 +7,7 @@
 
 use smithay::{
     desktop::Window,
+    reexports::wayland_protocols::xdg::shell::server::xdg_toplevel,
     reexports::wayland_server::protocol::wl_surface::WlSurface,
     utils::{Logical, Point},
 };
@@ -28,7 +29,14 @@ impl Wado {
             Placement::Maximized => {
                 if let Some(geo) = output_geo {
                     let xdg = window.toplevel().unwrap();
-                    xdg.with_pending_state(|s| s.size = Some(geo.size));
+                    // The state, not only the size. Apps draw differently when they know they
+                    // are maximized, and it is also what `WindowAction::Maximize` reads to
+                    // decide whether its toggle should maximize or restore — without it, the
+                    // first press on a start-maximized window would maximize it again.
+                    xdg.with_pending_state(|s| {
+                        s.size = Some(geo.size);
+                        s.states.set(xdg_toplevel::State::Maximized);
+                    });
                     xdg.send_pending_configure();
                 }
                 self.space.map_element(window, (0, 0), false);

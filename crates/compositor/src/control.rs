@@ -16,7 +16,7 @@
 use std::time::Duration;
 
 use tokio::sync::{mpsc, oneshot};
-use wado_protocol::SessionInfo;
+use wado_protocol::{SessionInfo, WindowAction};
 
 use crate::{
     Wado,
@@ -40,6 +40,8 @@ pub enum CompositorCommand {
     /// Make the next encoded frame a forced IDR keyframe. Sent when a viewer
     /// connects or the browser requests one via RTCP PLI/FIR.
     ForceKeyframe,
+    /// Act on the focused window. See [`crate::window`].
+    Window(WindowAction),
 }
 
 /// Run one command on the calloop thread. `frame_tx` is the pump sender, cloned
@@ -58,6 +60,13 @@ pub fn handle_command(state: &mut Wado, cmd: CompositorCommand, frame_tx: &mpsc:
             }
         }
         CompositorCommand::ForceKeyframe => headless::force_keyframe(state),
+        CompositorCommand::Window(action) => {
+            if state.session_active {
+                state.window_action(action);
+            } else {
+                tracing::warn!(?action, "window action ignored — no active session");
+            }
+        }
     }
 }
 

@@ -11,6 +11,17 @@ use dioxus::prelude::*;
 
 use crate::{bridge, cfg, state::Ui};
 
+/// The window actions, in the order they sit on the bar: the two that change a window's size
+/// first, then the destructive one, then the one that moves on. `close` is deliberately not
+/// adjacent to `cycle` — a mis-tap between "next window" and "close this window" is the one
+/// mistake here that cannot be undone.
+const WINDOW_ACTIONS: &[(&str, &str, &str)] = &[
+    ("maximize", "❐", "Maximize / restore"),
+    ("minimize", "—", "Send to back"),
+    ("close", "✕", "Close window"),
+    ("cycle_focus", "⇄", "Next window"),
+];
+
 pub fn render(ui: Ui) -> Element {
     let mut live = ui.live;
     let open = (live.sheet_open)();
@@ -26,6 +37,23 @@ pub fn render(ui: Ui) -> Element {
                 onclick: move |_| live.sheet_open.set(!open),
                 "⚙"
             }
+            // Window actions need a running session to act on; the bar itself does not.
+            for (action, glyph, title) in WINDOW_ACTIONS {
+                button {
+                    key: "{action}",
+                    class: "barbtn",
+                    title: "{title}",
+                    "aria-label": "{title}",
+                    disabled: !(live.session_on)(),
+                    onclick: move |_| bridge::call(format!(
+                        "window.__wado.windowAction({});", bridge::js(action)
+                    )),
+                    "{glyph}"
+                }
+            }
+
+            span { class: "barsep" }
+
             button {
                 class: "barbtn",
                 title: "Fullscreen",

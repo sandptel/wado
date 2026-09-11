@@ -34,6 +34,7 @@ pub mod placement;
 pub mod sink;
 pub mod state;
 pub mod timing;
+mod window;
 
 use std::panic::AssertUnwindSafe;
 

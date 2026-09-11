@@ -48,7 +48,9 @@ pub const RELAY_JOIN_BASE_PATH: &str = "/join";
 /// `528-491-307`, `528 491 307`, and `528491307` all compare equal. Both the
 /// relay (register + join) and the server apply this before any comparison.
 pub fn normalize_remote_id(id: &str) -> String {
-    id.chars().filter(|c| !c.is_whitespace() && *c != '-').collect()
+    id.chars()
+        .filter(|c| !c.is_whitespace() && *c != '-')
+        .collect()
 }
 
 /// Human-readable form of a Remote ID: 9 digits grouped as `XXX-XXX-XXX`.
@@ -78,53 +80,91 @@ pub enum RelayMsg {
 
     // ── Relay → server (handshake) ──────────────────────────────────────────
     /// Ack: server successfully registered.
-    Registered { remote_id: String },
+    Registered {
+        remote_id: String,
+    },
     /// A client has joined the room and is waiting for WebRTC negotiation.
     /// Future confirmation gate: the relay will hold the join here until the
     /// server replies Approve/Deny (new variants), only then sending JoinAccepted.
-    PeerConnected { room_id: String, client_addr: String },
+    PeerConnected {
+        room_id: String,
+        client_addr: String,
+    },
 
     // ── Relay → client (handshake) ──────────────────────────────────────────
     /// Join accepted; room is open. (The client never sends a join message —
     /// connecting to `/join/:remote_id` with a valid Remote ID is the join.)
-    JoinAccepted { remote_id: String, room_id: String },
+    JoinAccepted {
+        remote_id: String,
+        room_id: String,
+    },
     /// Join denied (no server online with this Remote ID, room full, …).
-    JoinDenied { reason: String },
+    JoinDenied {
+        reason: String,
+    },
 
     // ── Session control: client → server (forwarded by relay) ───────────────
     /// Ask the server to start a compositor session with the given config.
-    SessionStart { config: SessionConfig },
+    SessionStart {
+        config: SessionConfig,
+    },
     /// Ask the server to stop the running session.
     SessionStop,
     /// Spawn a command into the running session.
-    SessionLaunch { command: String },
+    SessionLaunch {
+        command: String,
+    },
+    /// Act on the running session's focused window.
+    ///
+    /// A peer variant rather than a nesting inside `SessionLaunch`: this enum is flat and
+    /// forwarded verbatim, so one variant per action is the idiom here and costs the relay
+    /// nothing. (HTTP consolidates instead — see [`crate::SessionControl`].)
+    SessionWindow {
+        action: crate::WindowAction,
+    },
 
     // ── Session control: server → client (forwarded by relay) ───────────────
     /// Session started OK; carries encoder/pipeline info.
-    SessionStarted { info: SessionInfo },
+    SessionStarted {
+        info: SessionInfo,
+    },
     /// Session stopped cleanly.
     SessionStopped,
     /// A launch command was accepted.
     SessionLaunched,
+    /// A window action was accepted.
+    SessionWindowed,
     /// A session operation failed.
-    SessionError { message: String },
+    SessionError {
+        message: String,
+    },
 
     // ── Live logs: server → client (forwarded by relay) ─────────────────────
     /// One tracing log line in `LEVEL|HH:MM:SS|text` format.
-    Log { line: String },
+    Log {
+        line: String,
+    },
 
     // ── WebRTC signaling (bidirectional, forwarded by relay) ─────────────────
     /// Client's SDP offer JSON (with all ICE candidates gathered, non-trickle).
-    SdpOffer { sdp: String },
+    SdpOffer {
+        sdp: String,
+    },
     /// Server's SDP answer JSON (with all ICE candidates gathered, non-trickle).
-    SdpAnswer { sdp: String },
+    SdpAnswer {
+        sdp: String,
+    },
     /// A single Trickle-ICE candidate (for future trickle ICE support).
-    IceCandidate { candidate: String },
+    IceCandidate {
+        candidate: String,
+    },
 
     // ── Keepalive ────────────────────────────────────────────────────────────
     Ping,
     Pong,
 
     // ── Generic error ────────────────────────────────────────────────────────
-    Error { message: String },
+    Error {
+        message: String,
+    },
 }

@@ -56,6 +56,8 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/settings.js"),
     "\n",
+    include_str!("js/control.js"),
+    "\n",
     include_str!("js/lifecycle.js"),
 );
 

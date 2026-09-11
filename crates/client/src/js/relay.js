@@ -14,7 +14,6 @@
 //   W.relayStop()
 //     Sends SessionStop via relay and closes the WS.
 //
-//   W.relayLaunch(command)
 //     Sends SessionLaunch via relay.
 //
 // State:
@@ -219,10 +218,3 @@ W.relayStop = () => {
   W.relayMode = false;
 };
 
-W.relayLaunch = async (command) => {
-  if (!W.relayWs || W.relayWs.readyState !== WebSocket.OPEN) {
-    status("relay: not connected");
-    return;
-  }
-  W.relayWs.send(JSON.stringify({ type: "session_launch", command }));
-};

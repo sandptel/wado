@@ -6,20 +6,24 @@
 //! This crate is deliberately dependency-light (just `serde`) so it compiles for
 //! both the host (server) and the `wasm32` (web client) targets.
 
+pub mod control;
 pub mod relay;
 
 use serde::{Deserialize, Serialize};
 
 /// HTTP endpoints the client talks to on the server. Shared as constants so the
 /// two sides cannot disagree on a path.
+pub use control::{SessionControl, WindowAction};
+
 pub mod endpoints {
     /// `POST` a [`crate::SessionConfig`] (JSON) to start a session.
     pub const SESSION_START: &str = "/session/start";
     /// `POST` (empty) to tear the active session down.
     pub const SESSION_STOP: &str = "/session/stop";
-    /// `POST` a JSON-encoded command string to spawn into the *running* session
-    /// (in addition to any started ones). Lets the client launch apps in realtime.
-    pub const SESSION_LAUNCH: &str = "/session/launch";
+    /// `POST` a JSON [`crate::SessionControl`] to act on the *running* session — launch a
+    /// command, or act on the focused window. One route for every verb: the previous
+    /// one-route-per-verb shape meant a new HTTP handler *and* a new relay message for each.
+    pub const SESSION_CONTROL: &str = "/session/control";
     /// `POST` a WebRTC SDP offer (JSON); the answer comes back as JSON.
     pub const OFFER: &str = "/offer";
     /// `GET` the live tracing log stream as Server-Sent Events.
@@ -265,7 +269,11 @@ pub struct InputConfig {
 impl Default for InputConfig {
     fn default() -> Self {
         // Mirrors the historical `seat.add_keyboard(_, 200, 25)` defaults.
-        Self { repeat_rate: 25, repeat_delay: 200, focus_follows_pointer: false }
+        Self {
+            repeat_rate: 25,
+            repeat_delay: 200,
+            focus_follows_pointer: false,
+        }
     }
 }
 

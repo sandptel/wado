@@ -7,3 +7,9 @@ description = "Shared wire types between the wado server and its clients."
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
+
+# Test-only: the wire-format tests assert the exact JSON the browser hand-writes. The crate
+# itself stays serialisation-format agnostic.
+[dev-dependencies]
+serde_json = "1"
+
