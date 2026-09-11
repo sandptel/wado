@@ -6,39 +6,31 @@
 const BTN_MAP = { 0: "left", 1: "middle", 2: "right" };
 
 W.mouse = {
-  _raf: null,
-  _pending: null,
-  _flushMotion() {
-    W.mouse._raf = null;
-    const p = W.mouse._pending;
-    W.mouse._pending = null;
-    if (p) W.sendInput({ t: "pointer_motion", x: p.x, y: p.y });
-  },
-
   down(e, video) {
     const n = W.normPoint(e.clientX, e.clientY, video);
     if (!n) return;
     if (W.moveMode && e.button === 0) {
       W.mouseDragging = true;
-      W.sendInput({ t: "window_drag", phase: "down", x: n.x, y: n.y });
+      W.coalesce.now({ t: "window_drag", phase: "down", x: n.x, y: n.y });
       return;
     }
     const b = BTN_MAP[e.button];
     if (!b) return;
-    W.sendInput({ t: "button", x: n.x, y: n.y, button: b, pressed: true });
+    W.coalesce.now({ t: "button", x: n.x, y: n.y, button: b, pressed: true });
   },
 
   move(e, video) {
     const n = W.normPoint(e.clientX, e.clientY, video);
     if (!n) return;
     if (W.showTouches && e.buttons) W.overlay.mark(e.clientX, e.clientY);
+    // Both branches coalesce. Drag motion used to send on every `pointermove`, which at
+    // 1000 Hz saturated the input channel and made dragging lag further behind the longer
+    // it went on — the one path that most needed rate-limiting was the one that lacked it.
     if (W.mouseDragging) {
-      W.sendInput({ t: "window_drag", phase: "motion", x: n.x, y: n.y });
+      W.coalesce.queue("window_drag", { t: "window_drag", phase: "motion", x: n.x, y: n.y });
       return;
     }
-    // Coalesce hover/motion to one event per animation frame.
-    W.mouse._pending = n;
-    if (W.mouse._raf == null) W.mouse._raf = requestAnimationFrame(W.mouse._flushMotion);
+    W.coalesce.queue("pointer_motion", { t: "pointer_motion", x: n.x, y: n.y });
   },
 
   up(e, video) {
@@ -46,12 +38,14 @@ W.mouse = {
     if (!n) return;
     if (W.mouseDragging) {
       W.mouseDragging = false;
-      W.sendInput({ t: "window_drag", phase: "up", x: n.x, y: n.y });
+      // `now` flushes the queued motion first, so the release can't overtake it and snap
+      // the window back to a stale position.
+      W.coalesce.now({ t: "window_drag", phase: "up", x: n.x, y: n.y });
       return;
     }
     const b = BTN_MAP[e.button];
     if (!b) return;
-    W.sendInput({ t: "button", x: n.x, y: n.y, button: b, pressed: false });
+    W.coalesce.now({ t: "button", x: n.x, y: n.y, button: b, pressed: false });
   },
 
   wheel(e, video) {
