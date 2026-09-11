@@ -177,7 +177,19 @@ pub fn start_session(
         .map_err(|e| CompositorError::Other(format!("insert render timer: {e}")))?;
     state.render_timer_token = Some(token);
 
-    info!(width = ec.width, height = ec.height, fps = ec.fps, "compositor session active");
+    // Every knob, not just the three that were here. A drop or latency warning is only
+    // actionable next to the settings that produced it, and `Quality::Balanced` in the
+    // request says nothing — the derived CBR target is the number that matters.
+    info!(
+        width = ec.width,
+        height = ec.height,
+        fps = ec.fps,
+        bitrate_kbps = ec.bitrate_kbps,
+        keyframe_interval = ec.keyframe_interval,
+        preset = ?ec.preset,
+        backend = ?ec.backend,
+        "compositor session active"
+    );
     Ok(encoder_report)
 }
 

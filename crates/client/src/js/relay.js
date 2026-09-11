@@ -32,7 +32,9 @@ W._relayAnswer = null;
 // `error` non-empty marks the stage it is passed with as the one that failed.
 const phase = (stage, error) => emit({ type: "phase", stage, error: error || "" });
 
-const rlog = (line) => {
+// On W because the bridge files are concatenated and stats.js must not depend on
+// whichever order that happens in.
+const rlog = W.rlog = (line) => {
   emit({ type: "log", line: "INFO|" + new Date().toTimeString().slice(0, 8) + "|browser: " + line });
   const ws = W.relayWs;
   if (ws && ws.readyState === WebSocket.OPEN) {
