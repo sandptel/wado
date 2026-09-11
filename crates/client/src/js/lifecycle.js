@@ -73,8 +73,10 @@ W.launch = async (command) => {
 W.stopSession = async () => {
   W.sessionOn = false;
   W.stopStats();
+  W.latency.stop();
   W.resetInput();
   W.inputDC = null;
+  W.motionDC = null;
   if (W.pc) { try { W.pc.close(); } catch (_) {} W.pc = null; }
   const v = document.getElementById("wado-video");
   if (v) v.srcObject = null;

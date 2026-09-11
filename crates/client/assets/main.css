@@ -53,3 +53,15 @@ details label input[type=checkbox] { width: auto; flex: 0 0 auto; margin: 0; }
 .lts { color: #666; }
 .l-ERROR { color: #f66; } .l-WARN { color: #fd6; }
 .l-INFO { color: #9c9; } .l-DEBUG, .l-TRACE { color: #789; }
+
+/* Latency breakdown (Debug → "Latency breakdown"). One row of stage:value chips in
+   pipeline order. Monospace and fixed-width values so the numbers don't jitter
+   horizontally as they update — the readout is for spotting which stage grows, and
+   shifting columns make that much harder to see. */
+#wado-latency { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 0;
+  font-family: ui-monospace, monospace; font-size: 11px; }
+.latstage { display: flex; gap: 5px; align-items: baseline;
+  padding: 2px 7px; border-radius: 10px; background: #1b1f24; border: 1px solid #2a3138; }
+.latname { color: #7f8c98; }
+.latval { color: #cfe3f2; min-width: 3.2em; text-align: right; font-variant-numeric: tabular-nums; }
+.latnote .latval { color: #fd6; }

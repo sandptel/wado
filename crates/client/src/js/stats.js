@@ -10,7 +10,7 @@ W.startStats = (pc) => {
     if (!W.pc || W.pc !== pc) { W.stopStats(); return; } // pc replaced (reconnect)
     let stats;
     try { stats = await pc.getStats(); } catch (_) { return; }
-    let fps = null, ping = null;
+    let fps = null, ping = null, jbuf = null;
     stats.forEach((r) => {
       if (r.type === "inbound-rtp" && (r.kind === "video" || r.mediaType === "video")) {
         if (typeof r.framesPerSecond === "number") {
@@ -21,6 +21,14 @@ W.startStats = (pc) => {
           }
           lastFrames = r.framesDecoded;
           lastTs = r.timestamp;
+        }
+        // Milliseconds of receiver playout buffer: cumulative delay / frames emitted.
+        // This is latency RTT cannot see, so it is the number that tells us whether the
+        // browser is sitting on frames (see W.minimizePlayoutDelay in webrtc.js).
+        if (typeof r.jitterBufferDelay === "number" &&
+            typeof r.jitterBufferEmittedCount === "number" &&
+            r.jitterBufferEmittedCount > 0) {
+          jbuf = (r.jitterBufferDelay / r.jitterBufferEmittedCount) * 1000;
         }
       } else if (r.type === "candidate-pair" && (r.nominated || r.state === "succeeded")) {
         if (typeof r.currentRoundTripTime === "number") ping = r.currentRoundTripTime * 1000;
@@ -33,7 +41,7 @@ W.startStats = (pc) => {
         }
       });
     }
-    emit({ type: "stats", fps, ping });
+    emit({ type: "stats", fps, ping, jbuf });
   }, 1000);
 };
 

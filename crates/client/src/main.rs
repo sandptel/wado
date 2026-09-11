@@ -25,11 +25,15 @@ const BRIDGE_JS: &str = concat!(
     "\n",
     include_str!("js/stats.js"),
     "\n",
+    include_str!("js/latency.js"),
+    "\n",
     include_str!("js/webrtc.js"),
     "\n",
     include_str!("js/relay.js"),
     "\n",
     include_str!("js/input_core.js"),
+    "\n",
+    include_str!("js/input_coalesce.js"),
     "\n",
     include_str!("js/input_pointer.js"),
     "\n",
@@ -99,6 +103,7 @@ fn App() -> Element {
     let mut show_touches = use_signal(|| false);
     let mut show_fps = use_signal(|| true);
     let mut show_ping = use_signal(|| true);
+    let mut show_latency = use_signal(|| false);
     // Requested encoder backend: "auto" | "hardware" | "software" (the panel picker).
     let mut encoder_backend = use_signal(|| "auto".to_string());
     // What the server actually opened, from the /session/start response: the hw/sw `mode`
@@ -113,6 +118,12 @@ fn App() -> Element {
     // Live stream telemetry from the WebRTC bridge (None until reported / when idle).
     let mut stat_fps = use_signal(|| Option::<f64>::None);
     let mut stat_ping = use_signal(|| Option::<f64>::None);
+    // Receiver playout-buffer depth in ms — latency that `ping` cannot see.
+    let mut stat_jbuf = use_signal(|| Option::<f64>::None);
+    // Per-stage latency breakdown, as (label, milliseconds) in pipeline order. Empty until
+    // the bridge reports; see js/latency.js for where each figure is measured.
+    let mut stage_lat = use_signal(Vec::<(String, f64)>::new);
+    let mut stat_dropped = use_signal(|| Option::<u64>::None);
 
     // ── bridge: run the JS bridge once, connect logs, drain events into signals ──
     use_future(move || async move {
@@ -135,6 +146,29 @@ fn App() -> Element {
                 "stats" => {
                     stat_fps.set(msg.get("fps").and_then(|v| v.as_f64()));
                     stat_ping.set(msg.get("ping").and_then(|v| v.as_f64()));
+                    stat_jbuf.set(msg.get("jbuf").and_then(|v| v.as_f64()));
+                }
+                "latency" => {
+                    // Pipeline order, so the row reads left-to-right the way a frame and
+                    // an input event actually travel. Stages the browser could not measure
+                    // this tick are skipped rather than shown as zero.
+                    let num = |k: &str| msg.get(k).and_then(|v| v.as_f64());
+                    let stages = [
+                        ("capture", num("capture")),
+                        ("encode", num("encode")),
+                        ("queue", num("queue")),
+                        ("net", num("net")),
+                        ("buf", num("buf")),
+                        ("decode", num("decode")),
+                        ("input", num("input")),
+                    ];
+                    stage_lat.set(
+                        stages
+                            .iter()
+                            .filter_map(|(k, v)| v.map(|v| ((*k).to_string(), v)))
+                            .collect(),
+                    );
+                    stat_dropped.set(msg.get("dropped").and_then(|v| v.as_u64()));
                 }
                 "encoder" => {
                     encoder_mode.set(
@@ -158,6 +192,9 @@ fn App() -> Element {
                     logs_open.set(true);
                     stat_fps.set(None);
                     stat_ping.set(None);
+                    stat_jbuf.set(None);
+                    stage_lat.set(Vec::new());
+                    stat_dropped.set(None);
                     encoder_mode.set(String::new());
                     encoder_pipeline.set(String::new());
                 }
@@ -285,11 +322,17 @@ fn App() -> Element {
     let log_items = logs.read().clone();
     let fps_text = stat_fps().map(|f| format!("{f:.0} fps")).unwrap_or_else(|| "— fps".into());
     let ping_text = stat_ping().map(|p| format!("{p:.0} ms")).unwrap_or_else(|| "— ms".into());
+    // Shown next to ping because the two answer different questions: ping is the network,
+    // buf is how long the browser then sat on each frame before painting it.
+    let jbuf_text = stat_jbuf().map(|b| format!("{b:.0} ms buf")).unwrap_or_default();
     // The Debug toggles decide which stats appear in the stagebar.
     let stats_text = {
         let mut parts = Vec::new();
         if show_fps() { parts.push(fps_text); }
-        if show_ping() { parts.push(ping_text); }
+        if show_ping() {
+            parts.push(ping_text);
+            if !jbuf_text.is_empty() { parts.push(jbuf_text); }
+        }
         parts.join(" · ")
     };
     let show_stats = on && (show_fps() || show_ping());
@@ -305,6 +348,14 @@ fn App() -> Element {
         _ => ("", ""),
     };
     let show_badge = on && !badge_label.is_empty();
+
+    // Latency breakdown rows. Deliberately NOT summed into one total: the server legs and
+    // the browser legs are measured on clocks that were never synchronised, and `input` is
+    // a round trip while the rest are one-way, so adding them would produce a confident
+    // number that means nothing. Shown as the stages they are.
+    let lat_rows = stage_lat();
+    let show_lat = on && show_latency() && !lat_rows.is_empty();
+    let lat_dropped = stat_dropped().unwrap_or(0);
 
     rsx! {
         document::Stylesheet { href: asset!("/assets/main.css") }
@@ -531,6 +582,13 @@ fn App() -> Element {
                     }
                     " Show ping"
                 }
+                label {
+                    input {
+                        r#type: "checkbox", checked: show_latency(),
+                        onchange: move |e| show_latency.set(e.checked()),
+                    }
+                    " Latency breakdown (per stage)"
+                }
             }
 
             details {
@@ -580,6 +638,20 @@ fn App() -> Element {
                     }
                     if show_stats {
                         span { class: "stats", "{stats_text}" }
+                    }
+                }
+            }
+            if show_lat {
+                div { id: "wado-latency",
+                    for (label, ms) in lat_rows.iter() {
+                        span { key: "{label}", class: "latstage",
+                            span { class: "latname", "{label}" }
+                            span { class: "latval", "{ms:.1}" }
+                        }
+                    }
+                    span { class: "latstage latnote",
+                        span { class: "latname", "dropped" }
+                        span { class: "latval", "{lat_dropped}" }
                     }
                 }
             }
