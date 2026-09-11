@@ -129,7 +129,12 @@ W.minimizePlayoutDelay = (recv) => {
   const applied = [];
   try {
     const ms = Math.max(0, W.playoutMs || 0);
-    if ("jitterBufferTarget" in recv) { recv.jitterBufferTarget = ms; applied.push("jitterBufferTarget=" + ms); }
+    if ("jitterBufferTarget" in recv) {
+      recv.jitterBufferTarget = ms;
+      // Read back, not just set: a hint the browser silently declines looks identical to
+      // one it honours until you compare this against jbuf.
+      applied.push("jitterBufferTarget=" + ms + "(readback=" + recv.jitterBufferTarget + ")");
+    }
     if ("playoutDelayHint" in recv) { recv.playoutDelayHint = ms / 1000; applied.push("playoutDelayHint=" + ms + "ms"); }
   } catch (e) {
     return "threw: " + e;
