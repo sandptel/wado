@@ -25,6 +25,17 @@ W.relayWs = null;
 W.relayMode = false;
 W._relayAnswer = null;
 
+// A phone's console is unreachable mid-field-test, so diagnostics go two ways: into the
+// in-page log panel, and over the relay WS to the server, which logs them next to its own.
+// That is the only way the two halves of a failed negotiation end up in one place.
+const rlog = (line) => {
+  emit({ type: "log", line: "INFO|" + new Date().toTimeString().slice(0, 8) + "|browser: " + line });
+  const ws = W.relayWs;
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    try { ws.send(JSON.stringify({ type: "client_log", line })); } catch (_) {}
+  }
+};
+
 // ── Main entry point ──────────────────────────────────────────────────────────
 
 W.relayConnect = async (relayUrl, remoteId, config) => {
@@ -39,6 +50,7 @@ W.relayConnect = async (relayUrl, remoteId, config) => {
                + "/join/" + encodeURIComponent(id);
 
   status("relay: connecting to " + relayUrl + "…");
+  emit({ type: "log", line: "INFO|" + new Date().toTimeString().slice(0, 8) + "|browser: dialing " + wsUrl });
 
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(wsUrl);
@@ -49,9 +61,11 @@ W.relayConnect = async (relayUrl, remoteId, config) => {
       ws.close();
     }, 15000);
 
+    ws.onopen = () => rlog("relay WS open — awaiting join verdict");
+
     ws.onerror = () => {
       clearTimeout(timeout);
-      reject(new Error("relay: WebSocket error"));
+      reject(new Error("relay: WebSocket error (relay unreachable or TLS/mixed-content blocked)"));
     };
 
     ws.onmessage = async (ev) => {
@@ -61,6 +75,7 @@ W.relayConnect = async (relayUrl, remoteId, config) => {
       switch (msg.type) {
         // ── Handshake (the WS path was the join; just await the verdict) ─────
         case "join_accepted":
+          rlog("join accepted — a daemon is registered for this Remote ID");
           status("relay: joined — starting session…");
           // Ask the server to start a compositor session.
           ws.send(JSON.stringify({ type: "session_start", config }));
@@ -82,6 +97,7 @@ W.relayConnect = async (relayUrl, remoteId, config) => {
             emit({ type: "encoder", mode: msg.info.encoder.mode, pipeline: msg.info.encoder.pipeline || "" });
           }
           W.sessionOn = true;
+          rlog("session started — encoder " + ((msg.info && msg.info.encoder && msg.info.encoder.mode) || "?"));
           stagebar("Session running — negotiating WebRTC…");
           // Now negotiate WebRTC through the relay.
           try {
@@ -144,7 +160,8 @@ W.relayConnect = async (relayUrl, remoteId, config) => {
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (ev) => {
+      rlog("relay WS closed — code " + ev.code + (ev.reason ? " " + ev.reason : ""));
       W.relayWs = null;
       if (W.sessionOn) status("relay: connection closed");
     };
@@ -168,6 +185,7 @@ W._relayNegotiate = async (ws) => {
   W.inputDC = pc.createDataChannel(INPUT_CHANNEL, { ordered: true });
 
   pc.ontrack = (ev) => {
+    rlog("track received — media is flowing");
     const v = document.getElementById("wado-video");
     if (v) v.srcObject = ev.streams[0];
     stagebar("Streaming (relay).");
@@ -180,10 +198,24 @@ W._relayNegotiate = async (ws) => {
     W.setupInputCapture();
   };
 
-  pc.oniceconnectionstatechange = () => status("ICE: " + pc.iceConnectionState);
+  pc.oniceconnectionstatechange = () => {
+    rlog("ICE state: " + pc.iceConnectionState);
+    status("ICE: " + pc.iceConnectionState);
+  };
   pc.onconnectionstatechange = () => {
+    rlog("peer state: " + pc.connectionState);
     if (W.pc && W.pc.connectionState === "failed") W.handleFailure();
   };
+
+  // Candidate types are the diagnosis. "host" only means STUN never answered — on a
+  // carrier NAT that is the end of it, and the fix is a TURN server, not this code.
+  const seenTypes = new Set();
+  pc.onicecandidate = (ev) => {
+    if (!ev.candidate) { rlog("ICE gathering complete — types: " + ([...seenTypes].join(",") || "none")); return; }
+    const m = /(?: typ )(\w+)/.exec(ev.candidate.candidate);
+    if (m && !seenTypes.has(m[1])) { seenTypes.add(m[1]); rlog("first " + m[1] + " candidate: " + ev.candidate.candidate); }
+  };
+  pc.onicecandidateerror = (ev) => rlog("ICE candidate error " + ev.errorCode + " from " + ev.url + " — " + ev.errorText);
 
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
@@ -200,6 +232,7 @@ W._relayNegotiate = async (ws) => {
     pc.addEventListener("icegatheringstatechange", check);
   });
 
+  rlog("sending offer — " + (pc.localDescription.sdp.match(/a=candidate:/g) || []).length + " candidates");
   ws.send(JSON.stringify({ type: "sdp_offer", sdp: JSON.stringify(pc.localDescription) }));
 
   // Wait for SDP answer (relay forwards it from server).
@@ -211,7 +244,9 @@ W._relayNegotiate = async (ws) => {
     }, 30000);
   });
 
+  rlog("answer received — " + (answerSdp.match(/a=candidate:/g) || []).length + " candidates");
   await pc.setRemoteDescription(JSON.parse(answerSdp));
+  rlog("remote description set — ICE checking starts now");
   status("connected via relay");
 };
 
