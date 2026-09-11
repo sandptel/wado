@@ -27,6 +27,7 @@ pub struct Saved {
     pub res: Option<String>,
     pub custom_w: Option<u32>,
     pub custom_h: Option<u32>,
+    pub scale: Option<String>,
     pub fps: Option<u32>,
     pub quality: Option<String>,
     pub bitrate: Option<u32>,
@@ -66,6 +67,7 @@ pub fn snapshot(ui: Ui) -> Saved {
         res: Some((s.res)()),
         custom_w: Some((s.custom_w)()),
         custom_h: Some((s.custom_h)()),
+        scale: Some((s.scale)()),
         fps: Some((s.fps)()),
         quality: Some((s.quality)()),
         bitrate: Some((s.bitrate)()),
@@ -117,6 +119,7 @@ pub fn restore(ui: Ui, saved: Saved) {
     put!(res);
     put!(custom_w);
     put!(custom_h);
+    put!(scale);
     put!(fps);
     put!(quality);
     put!(bitrate);

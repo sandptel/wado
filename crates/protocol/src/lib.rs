@@ -183,6 +183,14 @@ pub struct SessionConfig {
     pub width: u32,
     pub height: u32,
     pub fps: u32,
+    /// Output scale factor, as Hyprland's `monitor=...,scale=` means it: how many physical
+    /// pixels one logical pixel is drawn with. The output keeps its pixel size and apps get a
+    /// smaller logical area, so text and controls come out proportionally bigger — which is
+    /// what makes a desktop app usable on a phone-sized output. 1.0 leaves it alone.
+    ///
+    /// Not an encoder knob: the encoded frame is `width x height` whatever this says.
+    #[serde(default = "default_scale")]
+    pub scale: f32,
     pub quality: Quality,
     /// Advanced override: x264 preset name ("ultrafast".."veryfast"). Falls back to
     /// the quality preset's default when absent.
@@ -201,6 +209,11 @@ pub struct SessionConfig {
     /// Encoder backend preference (hardware vs software). Applied at session start.
     #[serde(default)]
     pub encoder: EncoderPref,
+}
+
+/// Unscaled. Anything else is an explicit choice.
+fn default_scale() -> f32 {
+    1.0
 }
 
 /// Encoder-backend selection for a session (the "Compositor settings → encoder" group).

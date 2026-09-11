@@ -84,7 +84,8 @@ fn start(
 
     // Sessions always start blank; apps are spawned at runtime via CompositorCommand::Launch.
     // start_session emits its own tracing logs and reports the encoder it actually opened.
-    let encoder_report = headless::start_session(state, &encoder, sink).map_err(|e| e.to_string())?;
+    let encoder_report =
+        headless::start_session(state, &encoder, config.scale, sink).map_err(|e| e.to_string())?;
 
     // Apply the per-domain behaviour settings (atomic sub-structs of SessionConfig).
     if let Some(keyboard) = state.seat.get_keyboard() {
