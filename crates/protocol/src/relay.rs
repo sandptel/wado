@@ -114,6 +114,12 @@ pub enum RelayMsg {
     SessionLaunch {
         command: String,
     },
+    /// Ask for the list of launchable applications.
+    ///
+    /// Relay mode has no HTTP path to the server, so the `GET /apps` route needs a message
+    /// counterpart. Unlike the session verbs this needs no running session — you pick what to
+    /// launch before there is anything to launch it into.
+    AppsRequest,
     /// Act on the running session's focused window.
     ///
     /// A peer variant rather than a nesting inside `SessionLaunch`: this enum is flat and
@@ -134,6 +140,10 @@ pub enum RelayMsg {
     SessionLaunched,
     /// A window action was accepted.
     SessionWindowed,
+    /// The launchable applications the server found.
+    AppsList {
+        apps: Vec<crate::AppEntry>,
+    },
     /// A session operation failed.
     SessionError {
         message: String,

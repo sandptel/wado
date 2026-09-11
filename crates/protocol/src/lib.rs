@@ -6,6 +6,7 @@
 //! This crate is deliberately dependency-light (just `serde`) so it compiles for
 //! both the host (server) and the `wasm32` (web client) targets.
 
+pub mod apps;
 pub mod control;
 pub mod relay;
 
@@ -13,6 +14,7 @@ use serde::{Deserialize, Serialize};
 
 /// HTTP endpoints the client talks to on the server. Shared as constants so the
 /// two sides cannot disagree on a path.
+pub use apps::AppEntry;
 pub use control::{SessionControl, WindowAction};
 
 pub mod endpoints {
@@ -28,6 +30,9 @@ pub mod endpoints {
     pub const OFFER: &str = "/offer";
     /// `GET` the live tracing log stream as Server-Sent Events.
     pub const EVENTS: &str = "/events";
+    /// `GET` the installed applications the server can launch, as a JSON array of
+    /// [`crate::AppEntry`].
+    pub const APPS: &str = "/apps";
 }
 
 /// Label of the WebRTC **data channel** the client opens to carry input

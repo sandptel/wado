@@ -65,6 +65,9 @@ W.relayConnect = async (relayUrl, remoteId, config) => {
           // Ask the server to start a compositor session.
           ws.send(JSON.stringify({ type: "session_start", config }));
           break;
+          // The socket only exists from here, so this is the earliest the app
+          // list can be fetched in relay mode. Direct mode asks at page load.
+          W.requestApps();
 
         case "join_denied":
           clearTimeout(timeout);
@@ -115,6 +118,11 @@ W.relayConnect = async (relayUrl, remoteId, config) => {
           if (W.pc && msg.candidate) {
             try { await W.pc.addIceCandidate(JSON.parse(msg.candidate)); } catch (_) {}
           }
+          break;
+
+        // ── Launchable applications ──────────────────────────────────────────
+        case "apps_list":
+          emit({ type: "apps", apps: msg.apps || [] });
           break;
 
         // ── Live logs forwarded from the server ───────────────────────────────
