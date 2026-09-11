@@ -65,6 +65,14 @@ pub struct Settings {
 
     // ── appearance ──────────────────────────────────────────────────────────────
     /// Bundled base16 scheme name; ignored while `theme_custom` parses.
+    /// Whether the docked desktop panel is showing. Only meaningful above the layout
+    /// breakpoint — below it the panel is a sheet and `Live::sheet_open` governs instead.
+    ///
+    /// Lives here rather than in `Live` because it is persisted, and persistence reads this
+    /// struct. Persisted unlike `sheet_open`, for a reason: a sheet covering the video on
+    /// load is never what anyone wanted, but someone who collapsed the panel means it.
+    pub panel_open: Signal<bool>,
+
     pub theme: Signal<String>,
     /// Raw text of a pasted base16 scheme. Kept verbatim so the box still shows what was
     /// pasted after a reload, even though only the parsed values are applied.
@@ -113,6 +121,7 @@ impl Settings {
             scroll_speed: use_signal(|| 1.0),
             natural_scroll: use_signal(|| false),
 
+            panel_open: use_signal(|| true),
             theme: use_signal(|| "default-dark".to_string()),
             theme_custom: use_signal(String::new),
 

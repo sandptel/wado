@@ -44,6 +44,7 @@ pub struct Saved {
     pub scroll_speed: Option<f64>,
     pub natural_scroll: Option<bool>,
 
+    pub panel_open: Option<bool>,
     pub theme: Option<String>,
     pub theme_custom: Option<String>,
 
@@ -84,6 +85,7 @@ pub fn snapshot(ui: Ui) -> Saved {
         scroll_speed: Some((s.scroll_speed)()),
         natural_scroll: Some((s.natural_scroll)()),
 
+        panel_open: Some((s.panel_open)()),
         theme: Some((s.theme)()),
         theme_custom: Some((s.theme_custom)()),
 
@@ -134,6 +136,7 @@ pub fn restore(ui: Ui, saved: Saved) {
     put!(move_mode);
     put!(scroll_speed);
     put!(natural_scroll);
+    put!(panel_open);
     put!(theme);
     put!(theme_custom);
     put!(debug_master);

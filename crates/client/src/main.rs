@@ -101,7 +101,12 @@ fn App() -> Element {
         // `sheet` on the shell is what the layout breakpoint reads to decide whether the
         // panel is docked beside the video or slid over it. One markup tree, two
         // presentations — the alternative is two panels to keep in sync.
-        div { class: "app", "data-sheet": if (ui.live.sheet_open)() { "open" } else { "shut" },
+        div {
+            class: "app",
+            "data-sheet": if (ui.live.sheet_open)() { "open" } else { "shut" },
+            // Read only above the breakpoint, where the panel is a docked column. Below it
+            // the panel is a sheet and `data-sheet` governs, so this attribute is inert.
+            "data-panel": if (ui.set.panel_open)() { "open" } else { "shut" },
             // Dismiss-on-tap-away. Present only below the breakpoint (CSS), where the
             // panel covers the video and the bar's toggle is underneath it.
             div {

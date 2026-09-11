@@ -24,7 +24,9 @@ const WINDOW_ACTIONS: &[(&str, &str, &str)] = &[
 
 pub fn render(ui: Ui) -> Element {
     let mut live = ui.live;
+    let mut set = ui.set;
     let open = (live.sheet_open)();
+    let panel = (set.panel_open)();
 
     rsx! {
         // No `idle` class here: the bar starts visible and js/bar.js fades it on a timer.
@@ -36,6 +38,15 @@ pub fn render(ui: Ui) -> Element {
                 "aria-label": "Settings",
                 onclick: move |_| live.sheet_open.set(!open),
                 "⚙"
+            }
+            // Desktop counterpart of the ⚙: below the breakpoint the panel is a sheet the
+            // scrim already dismisses, so this is hidden there rather than duplicating it.
+            button {
+                class: "barbtn docked-only",
+                title: if panel { "Hide settings panel" } else { "Show settings panel" },
+                "aria-label": if panel { "Hide settings panel" } else { "Show settings panel" },
+                onclick: move |_| set.panel_open.set(!panel),
+                if panel { "⟨" } else { "⟩" }
             }
             // Window actions need a running session to act on; the bar itself does not.
             for (action, glyph, title) in WINDOW_ACTIONS {
