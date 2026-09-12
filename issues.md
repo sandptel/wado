@@ -176,6 +176,30 @@ the benign reading.
 
 ---
 
+## I11 · A session with no window yet is indistinguishable from a broken one · **open, low**
+
+Two of seventeen sessions this run ended with `windows=0` — the compositor never had a surface
+to composite, so the viewer saw black. Both were stopped by the user within about eight seconds,
+which is around how long a cold Chrome takes to map its first window here.
+
+```
+compositor session active width=720 height=1614 fps=60 …
+… 8 s later, no window ever mapped …
+dmabuf path unused this session — every client buffer went through wl_shm windows=0
+compositor session stopped — resources released
+```
+
+**Not a fault in itself** — an application takes time to start. The gap is that nothing says so:
+once WebRTC connects, the status reads as running and the picture is black, which is exactly what
+a genuinely broken session looks like. The viewer's reasonable response is to stop and retry,
+which restarts the cold start and can loop.
+
+The compositor already knows `windows == 0`; saying "waiting for the application to open a
+window" until the first surface maps would close it. **No process leak involved** — `ps` shows no
+orphaned Chrome between sessions, so `proc::spawn`'s cleanup is doing its job.
+
+---
+
 ## I6 · The quick-tunnel URL is the rig's weakest link · **open, known**
 
 `DEFAULT_RELAY` in `crates/client/src/state.rs` is a cloudflare quick-tunnel URL that changes
