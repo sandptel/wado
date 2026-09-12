@@ -130,23 +130,26 @@ W.minimizePlayoutDelay = (recv) => {
 // spent its attempts on a fetch that could never succeed and then printed "giving up". The
 // relay-mode re-offer was already written (`W._relayNegotiate`); nothing called it.
 //
-// The relay WS is a separate connection from the peer connection, so it is normally still up
-// when ICE dies — which is the whole point: stay joined to the relay, rebuild only WebRTC.
+// The relay link is a separate connection from the peer connection, so it is normally still up
+// when ICE dies — which is the whole point: stay joined to the relay, rebuild only WebRTC. And
+// when it is *not* up, this is not the code that has to fix it: `relay_link.js` reconnects on
+// its own, and its `__up` handler re-asks for the session. Rejecting here just costs one retry.
 W.reconnectWebRTC = () => {
   if (!W.relayMode) return W.connectWebRTC();
-  const ws = W.relayWs;
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
-    return Promise.reject(new Error("relay socket is down — nothing to negotiate through"));
+  if (!W.relayUp) {
+    return Promise.reject(new Error("the relay link is down — it is reconnecting on its own"));
   }
   W.stopStats();
-  return W._relayNegotiate(ws);
+  return W._relayNegotiate();
 };
 
 // Retry the WebRTC connection with backoff; the compositor session keeps running.
 //
-// The budget is sized against the server's `VIEWER_GRACE` (45 s), which is now the only thing
-// that stops a session: giving up before it expires would strand a session the viewer could
-// still have reclaimed. Capped exponential — 0.5, 1, 2, 4, then 5 s — sums to ~37 s.
+// The budget is sized against the server's `VIEWER_GRACE`, which is the only thing that stops a
+// session: giving up before it expires strands a session the viewer could still have reclaimed.
+// The grace is 600 s now (see `relay_client.rs` — a detached session costs nothing to keep), so
+// the budget went 10 → 30 attempts. Capped exponential — 0.5, 1, 2, 4, then 5 s — sums to ~2 min,
+// after which the relay link is still up and a reconnect will pick the session back up anyway.
 W.handleFailure = () => {
   if (!W.sessionOn) return;
   if (W.reconnectAttempts >= W.MAX_RECONNECTS) {
