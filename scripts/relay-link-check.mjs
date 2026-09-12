@@ -56,6 +56,15 @@ function makeWorld() {
     drop(code = 1006) { this.readyState = 3; if (this.onclose) this.onclose({ code }); }
     accept() { this.open(); this.deliver({ type: "join_accepted", remote_id: "1", room_id: "r" }); }
   }
+  // A real localStorage, because the reload-resume path lives in it. Without this the stub-free
+  // `try/catch` in relay.js swallows a ReferenceError and every case below passes vacuously —
+  // which is exactly what happened the first time these were written.
+  const store = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => store.set(k, String(v)),
+    removeItem: (k) => store.delete(k),
+  };
   const events = [];
   const W = {
     requestApps: () => events.push("apps_request"),
@@ -75,7 +84,7 @@ function makeWorld() {
     W, emit, status, stagebar, "input", FakeWS,
   );
   W._relayNegotiate = () => { events.push("negotiate"); return Promise.resolve(); };
-  return { W, sockets, events };
+  return { W, sockets, events, store };
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
@@ -210,6 +219,76 @@ const rejoins = (s) => s.sent.filter((m) => m.type === "session_rejoin").length;
   const back = sockets[sockets.length - 1];
   back.accept();
   check("a reconnect after an explicit stop asks for nothing", started(back), 0);
+}
+
+// ── 8. A page torn down mid-session takes its session back on the next load ──
+//
+// The live failure this closes, measured 2026-09-13 02:14:35: `pagehide persisted=false`, a
+// fresh load, and then the prompt — a human pressing Rejoin 4.2 s later for something they
+// never chose to leave. `sessionOn` is a JS variable and does not survive a page teardown.
+{
+  // First page: a session comes up, which leaves the crumb.
+  const a = makeWorld();
+  a.W.relayConnect("ws://r", "1", { width: 1, scale: 1.75 });
+  a.W.outputScale = 1.75;
+  a.sockets[0].accept();
+  a.sockets[0].deliver({ type: "session_started", info: { encoder: { mode: "hardware" } } });
+  await tick();
+  check("a live session leaves a crumb", a.store.has("wado.watching"), true);
+
+  // Second page: same browser, no session state at all. Nothing is pressed.
+  const b = makeWorld();
+  b.store.set("wado.watching", a.store.get("wado.watching"));
+  b.W.relayDial("ws://r", "1");
+  b.sockets[0].accept();
+  check("a cold load takes the session back by itself", rejoins(b.sockets[0]), 1);
+  check("…without a prompt", b.events.filter((e) => e === "emit:sessionAlive").length, 0);
+  check("…and without starting anything", started(b.sockets[0]), 0);
+  check("…restoring the scale the scroll conversion needs", b.W.outputScale, 1.75);
+
+  b.sockets[0].deliver({ type: "session_started", info: { encoder: { mode: "hardware" } } });
+  await tick();
+  check("…and ends up streaming", b.W.sessionOn, true);
+}
+
+// ── 9. The crumb cannot resurrect anything it should not ─────────────────────
+{
+  // Stale: older than the server grace, so there is nothing left to rejoin.
+  const w = makeWorld();
+  w.store.set("wado.watching", JSON.stringify({ t: Date.now() - 700000, scale: 1 }));
+  w.W.relayDial("ws://r", "1");
+  w.sockets[0].accept();
+  // Counting the verbs, not the frames: `rlog` puts a client_log down the socket on every
+  // link-up, so "sent nothing at all" was never the right assertion.
+  check("a stale crumb rejoins nothing", [rejoins(w.sockets[0]), started(w.sockets[0])], [0, 0]);
+}
+{
+  // No crumb at all — a browser that has never watched anything.
+  const w = makeWorld();
+  w.W.relayDial("ws://r", "1");
+  w.sockets[0].accept();
+  check("no crumb rejoins nothing", [rejoins(w.sockets[0]), started(w.sockets[0])], [0, 0]);
+}
+{
+  // The crumb was fresh but the session had in fact expired. A cold load has no config, so the
+  // only honest move is to go quiet — never to start a session nobody pressed for.
+  const w = makeWorld();
+  w.store.set("wado.watching", JSON.stringify({ t: Date.now(), scale: 1 }));
+  w.W.relayDial("ws://r", "1");
+  w.sockets[0].accept();
+  w.sockets[0].deliver({ type: "session_error", message: "the session ended before you could rejoin it" });
+  check("a failed cold rejoin starts nothing", started(w.sockets[0]), 0);
+  check("…and drops the crumb", w.store.has("wado.watching"), false);
+}
+{
+  // An explicit stop means the viewer is done. The next load must not drag it back.
+  const w = makeWorld();
+  w.W.relayConnect("ws://r", "1", { width: 1 });
+  w.sockets[0].accept();
+  w.sockets[0].deliver({ type: "session_started", info: { encoder: { mode: "hardware" } } });
+  await tick();
+  w.W.relayStop();
+  check("an explicit stop clears the crumb", w.store.has("wado.watching"), false);
 }
 
 console.log(failures ? `\n${failures} failing` : "\nall relay-link checks pass");
