@@ -154,6 +154,28 @@ See `plan/reports/2026-09-12-latency-roaming.md` for the full breakdown.
 
 ---
 
+## I10 · `surface missing from known popups` — one ERROR from smithay, cause unknown · **open, low**
+
+Seen once, `2026-09-12` 17:37:55, immediately before an `xdg_activation` request with
+`app_id=None`. One occurrence in a daemon run of an hour with dozens of sessions, so it is rare
+rather than harmless — the difference has not been established.
+
+```
+ERROR smithay::wayland::shell::xdg: surface missing from known popups
+DEBUG wado_compositor::handlers::activation: activation request — raising and focusing app_id=None
+```
+
+It is logged by smithay, not by wado, and nothing in wado reacted to it. The plausible reading is
+a popup destroyed between its map and its teardown — routine during menu churn in a browser — in
+which case it is noise from upstream. **Filed rather than dismissed** because an `ERROR` that
+nobody has explained is exactly the kind of thing that turns out to matter later, and one line in
+this file costs nothing.
+
+Next occurrence: note what was on screen. If it correlates with a menu or a file dialog, it is
+the benign reading.
+
+---
+
 ## I6 · The quick-tunnel URL is the rig's weakest link · **open, known**
 
 `DEFAULT_RELAY` in `crates/client/src/state.rs` is a cloudflare quick-tunnel URL that changes
