@@ -1,3 +1,4 @@
+mod activation;
 mod compositor;
 mod decoration;
 mod dmabuf;
