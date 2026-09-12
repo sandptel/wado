@@ -64,24 +64,26 @@ compositor side, and nothing will until a session runs two windows with a text f
 
 ---
 
-## I4 · Chromium may never bind the protocol without a launch flag · **open, hypothesis**
+## I4 · ~~Chromium may never bind the protocol without a launch flag~~ · **WITHDRAWN**
 
-The session launches `google-chrome-stable`. Chromium is believed to bind
-`zwp_text_input_manager_v3` only when started with `--enable-wayland-ime`; without it, tapping a
-text field produces no request and the keyboard cannot rise.
+**Refuted by measurement, `2026-09-12` 17:18:19**, twelve minutes after it was written:
 
-**Stated as a hypothesis, not a fact** — it has not been verified against Chromium's source or
-observed here. `c686c6e` adds the line that settles it:
+```
+11:48:19.472  launched session application command=".../google-chrome-stable"
+11:48:19.693  a client bound zwp_text_input_manager_v3
+```
 
-| log | meaning |
-|---|---|
-| no `bound the text-input protocol` line | the app never asked — the launch flag is the fix, not the code |
-| bound, but no `took text focus` | it bound and is not using it |
-| took text focus, no keyboard | the client half |
+Chrome bound the global **220 ms after launch, with no `--enable-wayland-ime` flag**. The
+hypothesis was stated as a hypothesis and the discriminator was built rather than the fix — which
+is the only reason this cost twelve minutes instead of a wasted launch-flag change.
 
-**Needs a decision, not a commit:** should wado append `--enable-wayland-ime` when launching a
-Chromium binary? That is app-specific flag injection in a launcher, and it belongs in the
-Decision Log rather than in a quiet patch.
+**The question it raised is therefore closed too:** wado does *not* need to inject
+`--enable-wayland-ime` when launching a Chromium binary. Do not add it.
+
+**What is still open** is the next link in the chain: binding the manager is not the same as
+*using* it. Chrome must send `enable` + `commit` when a text field takes focus for the keyboard to
+rise, and no `text input focus changed` line has been seen yet. That is the remaining unknown, and
+the same log answers it.
 
 ---
 
