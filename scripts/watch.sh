@@ -21,7 +21,7 @@ function say(s) { print t() " " s; fflush() }
 /compositor session active/ {
   w=kv("width"); h=kv("height"); f=kv("fps"); b=kv("bitrate_kbps")
   say("▶ SESSION  " w "x" h "@" f "  " clean(kv("backend")) " " b "kbps  bpp=" clean(kv("bits_per_px")) "  scale=" kv("scale"))
-  live=1; last_beat=systime(); next }
+  live=1; last_beat=systime(); tgtfps=f+0; next }
 
 /compositor session stopped/ { say("■ SESSION  stopped"); live=0; next }
 /viewer gone — stopping session/ { say("■ VIEWER   gone — session stopping"); next }
@@ -67,9 +67,23 @@ function say(s) { print t() " " s; fflush() }
   else if (lostd > 0)
     say("  ↳ NETWORK  server clean (render " rfps "/" rtgt " fps, pump p99=" lp99 "ms over=" lov \
         "), " lostd " packets lost ⇒ the path, not either machine")
-  else
-    say("  ↳ DEVICE   server clean and nothing lost ⇒ the phone received it and could not " \
-        "keep up (decode/drop)")
+  else {
+    # Low frame rate with a *healthy* decoder and nothing lost is not the phone: the frames
+    # never arrived to be decoded. Calling that DEVICE sends the viewer to lower settings that
+    # were never the constraint — which this rule did, on a session decoding in 6.8 ms against
+    # a 16.7 ms budget. Decode distress has to be shown, not assumed.
+    dec = match(line, /dec=[0-9.]+/) ? substr(line, RSTART+4, RLENGTH-4) + 0 : 0
+    drp = match(line, /framesDropped=[0-9]+/) ? substr(line, RSTART+14, RLENGTH-14) + 0 : 0
+    ddrop = (last_drop > 0 && drp >= last_drop) ? drp - last_drop : 0
+    last_drop = drp
+    budget = (tgtfps > 0) ? 1000 / tgtfps : 0
+    if ((budget > 0 && dec >= budget * 0.9) || ddrop > 2)
+      say("  ↳ DEVICE   decode " dec "ms vs a " int(budget*10)/10 "ms budget, +" ddrop \
+          " frames dropped after arriving ⇒ the phone cannot keep up")
+    else
+      say("  ↳ SENDER   decode only " dec "ms and +" ddrop " dropped — the phone is fine. " \
+          "Fewer frames arrived than were asked for: look for shedding or a starved encoder")
+  }
   next }
 /browser: stats/ { cfps=kv("fps"); crtt=kv("rtt"); next }
 # The conclusion computed on the phone, emitted only when it changes. Worth relaying every
