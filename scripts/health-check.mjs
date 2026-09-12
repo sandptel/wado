@@ -57,16 +57,16 @@ check("server stopped producing", T,
   "the server", "bad");
 
 // A link too small for the stream is a network fault *before* any packet is lost.
-check("link too small, and it shows", T,
-  { fps: 60, ping: 30, dec: 4.0, jitter: 4, kbps: 1300, lossPct: 0.1, decodeDropPct: 0, availableKbps: 1400 },
-  "network", "bad");
-
-// The same shortfall with nothing suffering is NOT a fault. Chrome's availableIncomingBitrate
-// tracks the received rate while uncongested, so a static screen sending 600 kbps reports a
-// 600 kbps "link" — and the old rule called that a broken network once a second.
-check("low link estimate with a healthy stream is not a fault", T,
-  { fps: 90, ping: 30, dec: 4.0, jitter: 4, kbps: 700, lossPct: 0.0, decodeDropPct: 0, availableKbps: 750 },
+// availableIncomingBitrate has no vote — see the note in health.js. Measured live at 123 kbps
+// while 9.4 Mbps was flowing with zero loss at 60/60 fps, so a rule keyed on it accuses the
+// network while the stream is perfect. Both directions of that error are pinned here.
+check("absurd link estimate does not accuse the network", T,
+  { fps: 90, ping: 30, dec: 4.0, jitter: 4, kbps: 7800, lossPct: 0.0, decodeDropPct: 0, availableKbps: 123 },
   "healthy", "ok");
+
+check("a genuinely small link still shows up, as loss", T,
+  { fps: 60, ping: 30, dec: 4.0, jitter: 4, kbps: 1300, lossPct: 4.0, decodeDropPct: 0, availableKbps: 1400 },
+  "network", "bad");
 
 // A still screen encodes to almost nothing. Throughput alone must never accuse the server.
 check("idle screen is not a fault", T,
@@ -74,8 +74,9 @@ check("idle screen is not a fault", T,
   "healthy", "ok");
 
 // The verdict is also relayed to the daemon log, on change only — that is what makes a
-// session diagnosable afterwards. Six distinct verdicts above, so six lines and no repeats.
-if (logged.length !== 6) { failures++; console.log(`FAIL rlog: ${logged.length} lines, want 6`); }
+// session diagnosable afterwards. The seven cases above change verdict every time, so seven
+// lines; a case repeating the previous verdict would correctly produce none.
+if (logged.length !== 7) { failures++; console.log(`FAIL rlog: ${logged.length} lines, want 7`); }
 else console.log(`ok   relayed ${logged.length} verdict lines, e.g. ${JSON.stringify(logged[1])}`);
 
 console.log(failures ? `\n${failures} FAILED` : "\nall passed");

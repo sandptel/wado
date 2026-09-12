@@ -73,12 +73,15 @@ W.health = (s) => {
   }
   // A link that cannot carry the stream is a network fault even with zero loss today: the
   // encoder is about to be told to back off, or the queue is about to grow.
-  const suffering = (fps !== null && s.targetFps > 0 && fps < s.targetFps * 0.9) ||
-                    (s.lossPct !== null && s.lossPct >= LOSS_WARN);
-  if (suffering && haveKbps !== null && targetKbps > 0 && haveKbps < targetKbps) {
-    worse(haveKbps < targetKbps / 2 ? "bad" : "warn", "network",
-          "link offers " + mbps(haveKbps) + ", stream wants " + mbps(targetKbps));
-  }
+  // ⛔ There is deliberately no rule on `availableIncomingBitrate`. It was tried twice and it
+  // lies in both directions: while nothing is congested Chrome tracks the *received* rate with
+  // it, so a static screen reports a tiny "link"; and measured here on 2026-09-12 it reported
+  // 123 kbps while 9.4 Mbps was demonstrably flowing, zero loss, 60/60 fps. A field that can be
+  // off by a factor of seventy-six is not evidence about anything. It stays on the strip as a
+  // figure to look at and has no vote.
+  //
+  // Nothing is lost by that: a link genuinely too small for the stream shows up as loss or as a
+  // frame-rate shortfall, and both already have rules above.
 
   // — device — it all arrived; this phone cannot keep up with it.
   if (s.decodeDropPct !== null && s.decodeDropPct >= DEVICE_DROP_WARN) {
