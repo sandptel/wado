@@ -21,7 +21,7 @@ function say(s) { print t() " " s; fflush() }
 /compositor session active/ {
   w=kv("width"); h=kv("height"); f=kv("fps"); b=kv("bitrate_kbps")
   say("▶ SESSION  " w "x" h "@" f "  " clean(kv("backend")) " " b "kbps  bpp=" clean(kv("bits_per_px")) "  scale=" kv("scale"))
-  live=1; last_beat=systime(); tgtfps=f+0; next }
+  live=1; last_beat=systime(); tgtfps=f+0; tgtkbps=b+0; next }
 
 /compositor session stopped/ { say("■ SESSION  stopped"); live=0; stopped_t=systime(); next }
 /viewer gone — stopping session/ { say("■ VIEWER   gone — session stopping"); next }
@@ -118,6 +118,18 @@ function say(s) { print t() " " s; fflush() }
       say("  ↳ UNCLEAR  decode load " int(duty*100) "% has headroom yet +" ddrop " frames were " \
           "dropped after arriving, round trip " crtt_n "ms — most likely part-frames from the " \
           "path, not the decoder")
+      next
+    }
+    # The decoder can only be blamed when the stream is actually being delivered. If throughput
+    # is far under the CBR target the decoder is *waiting*, and `dec` measures that wait — which
+    # is why a 720p stream at 22% of its bitrate reported a higher decode load than 1080p at full
+    # rate. This one condition subsumes the loss and round-trip special cases above: all three
+    # were the same mistake, reading a starved receiver as an overloaded one.
+    gkbps = match(line, /kbps=[0-9]+/) ? substr(line, RSTART+5, RLENGTH-5) + 0 : 0
+    starved = (tgtkbps > 0 && gkbps > 0 && gkbps < tgtkbps * 0.6)
+    if (duty >= 0.9 && starved) {
+      say("  ↳ UNCLEAR  decode load reads " int(duty*100) "% but only " gkbps " of " tgtkbps \
+          "kbps is arriving — a decoder waiting for frames looks identical to one overloaded")
       next
     }
     if (duty >= 0.9)
