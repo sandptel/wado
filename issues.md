@@ -10,7 +10,7 @@ Last updated: `2026-09-12`
 
 ---
 
-## I1 · No adaptive response to a receiver that cannot keep up · **fixed, unverified live**
+## I1 · No adaptive response to a receiver that cannot keep up · **fixed and seen working; one field bug found and fixed**
 
 **The failure.** A2 of the roaming run: the server pushed 90 fps into a phone managing 15, for 86
 seconds, and never noticed — every server-side metric was perfect throughout. The client measured
@@ -47,9 +47,39 @@ would have cut the frame rate of a stream that was not arriving in the first pla
 `the PHONE asked for it` or `the LINK`. A shed that could have come from either would have undone
 the side attribution the rest of the run was spent building.
 
-**Tests:** 6 new cases in `congestion.rs` (12 total), 4 new in `scripts/health-check.mjs` (11
-total), 4 monitor rules replay-tested. **Not yet seen working on a real phone** — nobody has
-watched a `SHED ... the PHONE asked for it` line appear and the picture settle.
+**Seen working `2026-09-12` 21:43**, and it exposed a bug the unit tests could not: the flag
+**oscillated**. The compositor walked `1 -> 2 -> 1 -> 2` for a minute, one round trip roughly
+every 1.5 s, with `dropped_in_window=0` throughout — so the strain path was firing end to end,
+and doing the one thing `congestion.rs` says is worse than doing nothing.
+
+```
+16:13:22  shedding render ticks — the viewer says its decoder is saturated  from=1 to=2 strained=true
+16:13:23  viewer reported a change in decoder strain strained=false
+16:13:24  shedding render ticks — clean windows — easing back toward full rate from=2 to=1
+16:13:28  viewer reported a change in decoder strain strained=true
+16:13:30  shedding render ticks — the viewer says its decoder is saturated  from=1 to=2 strained=true
+```
+
+**Cause, in the client.** `reportStrain(saturated && side === "your device")` mixed *this tick's*
+decode reading with the *settled* verdict. A decode time working near its budget crosses the line
+every second or two, so `saturated` flipped while `side` stayed settled — reaching straight past
+the `SETTLE_TICKS` hysteresis that existed two lines above to prevent exactly this.
+
+Now `reportStrain(side === "your device")`, settled and nothing else. Sufficient on its own:
+both device rules live inside the `arriving` branch, so that side cannot be reached unless the
+stream was genuinely turning up.
+
+**The test that was missing.** Every strain case fed a *constant*, and a constant cannot flap.
+The new case settles the verdict and then dips under the threshold every few ticks — what a
+decoder at its limit actually looks like. Against the shipped code it produces 13 flips; against
+the fix, one report.
+
+**Tests:** 6 new in `congestion.rs` (12 total), 5 new in `scripts/health-check.mjs` (12 total),
+4 monitor rules replay-tested.
+
+**Still to watch:** whether one step (90 → 45 effective) is enough for this phone at
+1080x2422, or whether it settles at the `MAX_DIVISOR` floor. The step is deliberately slow, so
+give it ~6 s to find its level.
 
 ## I2 · A reconnect can establish WebRTC with no session behind it · **open**
 
