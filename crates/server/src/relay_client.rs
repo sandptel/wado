@@ -21,7 +21,7 @@
 use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use bytes::Bytes;
 use futures_util::{FutureExt, SinkExt, StreamExt};
@@ -79,6 +79,9 @@ struct RelayCtx {
     /// tell a frame rate *it asked us to reduce* from a compositor that has stopped producing.
     /// Latest-value-wins and marked changed on attach, for the same reasons as `text_input`.
     shedding: tokio::sync::watch::Receiver<u32>,
+    /// Bitrate actually written to the video track over the last stretch, in kbps. Forwarded to
+    /// the viewer — see [`wado_protocol::RelayMsg::SentKbps`] for why it has to be.
+    sent_kbps: tokio::sync::watch::Receiver<u32>,
     /// Unix-millis of the last moment a viewer's peer connection was seen `Connected`. See
     /// [`viewer_watchdog`] — this, not relay silence, is how long there has been no viewer.
     last_connected: Arc<AtomicU64>,
@@ -151,6 +154,9 @@ async fn run(
         "video".to_owned(),
         "wado".to_owned(),
     ));
+    // What actually leaves this process, measured at the track. Published for the viewer, which
+    // otherwise sees only what arrived and must guess which end lost the difference.
+    let (sent_kbps_tx, sent_kbps) = tokio::sync::watch::channel(0u32);
     {
         let track_pump = Arc::clone(&track);
         tokio::spawn(async move {
@@ -173,6 +179,11 @@ async fn run(
             let mut key_bytes_total: usize = 0;
             let mut key_count: u64 = 0;
             let mut p_bytes_total: usize = 0;
+            // Bytes actually handed to the track, and the wall clock they took. This is the one
+            // number that separates "the sender stopped" from "the path ate it", and only this
+            // process has it — see `RelayMsg::SentKbps`.
+            let mut stretch_bytes: usize = 0;
+            let mut stretch_start = Instant::now();
             while let Some(frame) = frame_rx.recv().await {
                 let bytes = frame.data.len();
                 let key = is_keyframe(&frame.data);
@@ -187,6 +198,7 @@ async fn run(
                 }
                 queued_total += waited;
                 frames += 1;
+                stretch_bytes += bytes;
                 if key {
                     key_count += 1;
                     key_bytes_total += bytes;
@@ -195,6 +207,22 @@ async fn run(
                     p_bytes_total += bytes;
                 }
                 if frames % 300 == 0 {
+                    // Tell the viewer what actually left here. Without it the viewer sees only
+                    // what arrived and has to guess which end lost the difference — and it has
+                    // guessed wrong twice, measured: 2026-09-12 22:33 (2.4 Mbps of 5.35 sent) and
+                    // 2026-09-13 01:19 (524 kbps of 5.13 sent), both reported as `bad the server`
+                    // with `lost=0` while the render loop held 90/90 fps.
+                    let secs = stretch_start.elapsed().as_secs_f64();
+                    if secs > 0.0 {
+                        let kbps = ((stretch_bytes as f64 * 8.0) / secs / 1000.0) as u32;
+                        // A watch channel, not the relay socket: this task is spawned once and
+                        // outlives every relay connection, so it cannot hold a sender that a
+                        // reconnect replaces.
+                        let _ = sent_kbps_tx.send(kbps);
+                    }
+                    stretch_bytes = 0;
+                    stretch_start = Instant::now();
+
                     let p_frames = frames - key_count;
                     info!(
                         avg_queue_ms = (queued_total.as_millis() as u64) / frames.max(1),
@@ -307,6 +335,7 @@ async fn run(
         log_bus,
         text_input,
         shedding,
+        sent_kbps,
         active_pc: Arc::new(Mutex::new(None)),
         generation: Arc::new(AtomicU64::new(0)),
         last_connected: Arc::new(AtomicU64::new(now_ms())),
@@ -467,6 +496,22 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             while rx.changed().await.is_ok() {
                 let divisor = *rx.borrow_and_update();
                 let _ = send_relay_nowait(&out_tx_sh, &RelayMsg::Shedding { divisor }).await;
+            }
+        })
+    };
+
+    // Third of the same shape (see `text_input_task`, `shedding_task`): latest-value-wins state,
+    // marked changed so a viewer attaching mid-session gets the current figure immediately.
+    let sent_kbps_task = {
+        let mut rx = ctx.sent_kbps.clone();
+        let out_tx_sk = out_tx.clone();
+        tokio::spawn(async move {
+            rx.mark_changed();
+            while rx.changed().await.is_ok() {
+                let kbps = *rx.borrow_and_update();
+                if kbps > 0 {
+                    let _ = send_relay_nowait(&out_tx_sk, &RelayMsg::SentKbps { kbps }).await;
+                }
             }
         })
     };
@@ -698,6 +743,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     log_task.abort();
     text_input_task.abort();
     shedding_task.abort();
+    sent_kbps_task.abort();
     write_task.abort();
     Ok(())
 }
