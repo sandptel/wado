@@ -98,6 +98,25 @@ shedding state are the candidates) pushed to the client. Not built.
 
 ---
 
+## I8 · The playout buffer ratchets and never drains · **open, one-tap fix exists but is manual**
+
+**Observed** `2026-09-12` 17:10: `jbuf` **1081 ms** while `rtt` was **84 ms** and `jtarget` was
+36 ms. A second of felt lag on a path that had already recovered. This is the single largest
+perceived-latency term measured in the whole roaming run, and `rtt` cannot see it — a viewer
+saying "it feels a second behind" and a readout saying "84 ms ping" are both correct.
+
+The buffer inflates on an rtt spike to absorb jitter and does not come back down. ⟳ Resync fixes
+it in one tap by rebuilding the peer connection, which is the only thing that resets it.
+
+**Why this is an issue and not just a feature request:** the condition is *specific*, *already
+measured every second on the client*, and *one-tap fixable* — `jbuf` far above `jtarget` while
+loss is low. The verdict strip already names faults and suggests settings; this is the one case
+where it could offer the **action**. Today the user has to know that ⟳ exists and what it does.
+
+See `plan/reports/2026-09-12-latency-roaming.md` for the full breakdown.
+
+---
+
 ## I6 · The quick-tunnel URL is the rig's weakest link · **open, known**
 
 `DEFAULT_RELAY` in `crates/client/src/state.rs` is a cloudflare quick-tunnel URL that changes
