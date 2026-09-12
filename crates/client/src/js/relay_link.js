@@ -1,0 +1,172 @@
+// wado bridge — the relay **link**. One job: keep a WebSocket to wado-relay open, and hand
+// each message to whoever registered for its type.
+//
+// It knows nothing about sessions, WebRTC or encoders. `relay.js` is what knows those, and it
+// talks to the daemon through here.
+//
+// ## Why this is its own file, and its own lifetime
+//
+// The link used to be created *inside* one connection attempt's promise: the socket, a single
+// 15 s "connection timed out" reject, the join verdict, `session_start` and the whole WebRTC
+// negotiation all lived in one closure, and `ws.onclose` did nothing but null the handle. Three
+// consequences, all of them things the user has hit:
+//
+//   * Every attempt re-dialled from nothing. A phone coming out of a lift paid for a fresh
+//     WebSocket, a fresh TLS handshake through the tunnel and a fresh join before it could even
+//     ask to come back — and if any of that was slow, the 15 s timer rejected the whole attempt.
+//   * One timeout covered four different waits, so "handshake stalled" was the answer whether
+//     the relay was down, no daemon was registered, or the encoder was merely slow to open.
+//   * A dropped socket could not be retried, because the thing that would retry it was the
+//     promise that had already rejected.
+//
+// So: the link is dialled once, as early as the relay URL is known, and it stays up. Reconnects
+// are its own business, with backoff, **forever** — a page that is open is a viewer that wants
+// to be connected. Pressing Start on a warm link sends one message down a socket that is
+// already open, which is what the user asked for: *"why don't we stay connected to the relay
+// whenever we can beforehand and just create the webrtc connection?"*
+//
+// Exposed:
+//   W.relayDial(url, id)      idempotent — dial, keep up, reconnect. Re-targets on change.
+//   W.relayDrop()             deliberate teardown; stops retrying until the next relayDial.
+//   W.relayOn(type, fn)       register the handler for one message type. Two synthetic types:
+//                             "__up" when the join is accepted, "__down" when the socket closes.
+//   W.relaySendMsg(obj)       send if the socket is open; returns false if it was not.
+//   W.relayUp                 true between join_accepted and the socket closing.
+//   W.relayWs                 the live socket — kept for the callers that still reach for it.
+
+W.relayUp = false;
+W.relayWs = null;
+W._relayTarget = null;      // {url, id, wsUrl}
+W._relayRetry = null;       // pending reconnect timer
+W._relayTries = 0;
+W._relayHandlers = {};      // type -> fn, plus the synthetic "__up" / "__down"
+
+// Backoff: quick at first because most reconnects are a blip, capped low enough that a phone
+// coming back from a dead zone is reconnected in seconds rather than on some slow schedule it
+// happened to land in. Never gives up — see the header.
+const LINK_BACKOFF_MAX = 15000;
+const linkDelay = (n) => Math.min(500 * Math.pow(2, Math.max(0, n - 1)), LINK_BACKOFF_MAX);
+
+const toWsUrl = (relayUrl, id) => {
+  const base = String(relayUrl).replace(/^https:\/\//, "wss://").replace(/^http:\/\//, "ws://");
+  return base.replace(/\/+$/, "") + "/join/" + encodeURIComponent(String(id).replace(/[\s-]/g, ""));
+};
+
+W.relayOn = (type, fn) => { W._relayHandlers[type] = fn; };
+
+function fire(type, msg) {
+  const h = W._relayHandlers[type];
+  if (!h) return;
+  try { h(msg); } catch (e) { if (W.rlog) W.rlog("relay handler " + type + " threw: " + e); }
+}
+
+W.relaySendMsg = (obj) => {
+  const ws = W.relayWs;
+  if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+  try { ws.send(JSON.stringify(obj)); return true; } catch (_) { return false; }
+};
+
+W.relayDial = (url, id) => {
+  if (!url || !id) return false;
+  const wsUrl = toWsUrl(url, id);
+  // Already pointed at this relay and either connected or mid-dial: nothing to do. This is what
+  // makes the call idempotent, so Start can call it unconditionally.
+  if (W._relayTarget && W._relayTarget.wsUrl === wsUrl && W.relayWs &&
+      (W.relayWs.readyState === WebSocket.OPEN || W.relayWs.readyState === WebSocket.CONNECTING)) {
+    return true;
+  }
+  W.relayDrop(true);
+  W._relayTarget = { url, id, wsUrl };
+  W._relayTries = 0;
+  W.relayMode = true;
+  openLink();
+  return true;
+};
+
+// `silent` is the re-target case: we are about to dial somewhere else, so this is not a
+// user-visible disconnection.
+W.relayDrop = (silent) => {
+  if (W._relayRetry) { clearTimeout(W._relayRetry); W._relayRetry = null; }
+  W._relayTarget = null;
+  const ws = W.relayWs;
+  W.relayWs = null;
+  W.relayUp = false;
+  if (ws) { try { ws.onclose = null; ws.close(); } catch (_) {} }
+  if (!silent) W.relayMode = false;
+};
+
+function scheduleRelink() {
+  if (!W._relayTarget || W._relayRetry) return;
+  W._relayTries += 1;
+  const ms = linkDelay(W._relayTries);
+  if (W.rlog) W.rlog("relay link down — retry " + W._relayTries + " in " + ms + " ms");
+  W._relayRetry = setTimeout(() => { W._relayRetry = null; openLink(); }, ms);
+}
+
+function openLink() {
+  const target = W._relayTarget;
+  if (!target) return;
+  let ws;
+  try {
+    ws = new WebSocket(target.wsUrl);
+  } catch (_) {
+    scheduleRelink();
+    return;
+  }
+  W.relayWs = ws;
+
+  ws.onopen = () => {
+    // Not "up" yet: the join verdict decides. Connecting to /join/<id> IS the join, so the
+    // first message tells us whether a daemon is registered for this Remote ID.
+    if (W._relayStage !== undefined) W._relayStage = 1;
+    if (W.relayPhase) W.relayPhase(1, "");
+  };
+
+  ws.onmessage = (ev) => {
+    let msg;
+    try { msg = JSON.parse(ev.data); } catch (_) { return; }
+
+    // Answered here rather than in a handler: the link's own liveness is the link's business,
+    // and it must keep working even with no session and nothing registered.
+    if (msg.type === "ping") { W.relaySendMsg({ type: "pong" }); return; }
+
+    if (msg.type === "join_accepted") {
+      W.relayUp = true;
+      W._relayTries = 0;
+      if (W._relayStage !== undefined) W._relayStage = 2;
+      if (W.relayPhase) W.relayPhase(2, "");
+      if (W.rlog) W.rlog("relay link up — a daemon is registered for this Remote ID");
+      fire("__up");
+      return;
+    }
+    if (msg.type === "join_denied") {
+      // Retryable, not fatal. "No daemon for this Remote ID" is usually a daemon that is
+      // restarting, and the old code turned it into a dead end the user had to press Start to
+      // leave. The socket closes on its own; `onclose` schedules the next try.
+      if (W.relayPhase) W.relayPhase(1, msg.reason || "no daemon answered for this Remote ID");
+      if (W.rlog) W.rlog("join denied: " + (msg.reason || "?") + " — will keep trying");
+      return;
+    }
+
+    fire(msg.type, msg);
+  };
+
+  // A socket error is always followed by a close, so there is nothing to do here that `onclose`
+  // does not already do. Swallowing it stops an unhandled rejection in the console.
+  ws.onerror = () => {};
+
+  ws.onclose = (ev) => {
+    if (W.relayWs === ws) { W.relayWs = null; W.relayUp = false; }
+    if (W.rlog) W.rlog("relay link closed — code " + (ev && ev.code));
+    fire("__down");
+    scheduleRelink();
+  };
+}
+
+// Dial at load if this browser already knows where to go. The settings blob is the same one the
+// Rust UI writes, so a device that has connected once is connected again before anything is
+// pressed — which is the point of the whole file.
+try {
+  const s = W.loadSettings ? W.loadSettings() : {};
+  if (s && s.relay_url && s.remote_id) W.relayDial(s.relay_url, s.remote_id);
+} catch (_) {}

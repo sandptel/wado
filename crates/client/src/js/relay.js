@@ -1,29 +1,27 @@
-// wado bridge — Relay mode. Manages the WebSocket connection to wado-relay,
-// acting as the full signaling + session control channel when relay mode is
-// selected. Replaces the direct HTTP path (/session/start, /offer, /events).
+// wado bridge — Relay mode **sessions**. Everything that is about a compositor session,
+// spoken over the link that `relay_link.js` keeps open.
 //
-// Auth model: a single Remote ID is both the address and the access token.
-// Connecting to ws://<relay>/join/<remoteId> IS the join — no join message;
-// the first message from the relay is join_accepted or join_denied.
+// The split is the point. This file used to own the socket as well, welded into one attempt's
+// promise — see the header of `relay_link.js` for what that cost. Here there are no attempts
+// and no connection promise: messages arrive, handlers run, and the link is somebody else's
+// problem. A session that was streaming when the network went away is resumed by a handler
+// firing on a socket this file never opened.
+//
+// Auth model: a single Remote ID is both the address and the access token. Connecting to
+// ws://<relay>/join/<remoteId> IS the join — the first message is join_accepted or join_denied.
 //
 // Exposed:
-//   W.relayConnect(relayUrl, remoteId, config)
-//     Opens relay WS, sends SessionStart on acceptance, negotiates WebRTC,
-//     resolves when the peer connection is established.
-//
-//   W.relayStop()
-//     Sends SessionStop via relay and closes the WS.
-//
-//     Sends SessionLaunch via relay.
-//
-// State:
-//   W.relayWs         — the active relay WebSocket (null when idle)
-//   W.relayMode       — true while a relay connection is active
-//   W._relayAnswer    — resolves with the SDP answer JSON string
+//   W.relayConnect(relayUrl, remoteId, config)  ensure the link, then ask for a session
+//   W.relayStop()                               stop the session; the link stays up
+//   W.relayRejoin() / W.relayDropStart()        the two answers to the session_alive prompt
 
-W.relayWs = null;
-W.relayMode = false;
 W._relayAnswer = null;
+W._relayConfig = null;
+W._relayWanted = false;     // the viewer has asked for a session and not asked to stop
+W._relayChoice = null;      // {config} — no promise; see relayRejoin
+W._relayDropPending = false;
+W._relayResuming = false;
+W._relaySessionTimer = null;
 
 // A phone's console is unreachable mid-field-test, so diagnostics go two ways: into the
 // in-page log panel, and over the relay WS to the server, which logs them next to its own.
@@ -31,228 +29,213 @@ W._relayAnswer = null;
 // Stage 0 = nothing, 1 = relay reachable, 2 = daemon online, 3 = session up, 4 = video.
 // `error` non-empty marks the stage it is passed with as the one that failed.
 const phase = (stage, error) => emit({ type: "phase", stage, error: error || "" });
+W.relayPhase = phase;
+W._relayStage = 0;
 
-// On W because the bridge files are concatenated and stats.js must not depend on
-// whichever order that happens in.
 const rlog = W.rlog = (line) => {
   emit({ type: "log", line: "INFO|" + new Date().toTimeString().slice(0, 8) + "|browser: " + line });
-  const ws = W.relayWs;
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    try { ws.send(JSON.stringify({ type: "client_log", line })); } catch (_) {}
-  }
+  W.relaySendMsg({ type: "client_log", line });
 };
+
+// ── The one timeout, and what it is actually for ─────────────────────────────
+//
+// Per *request*, not per connection. The old code had a single 15 s timer covering the dial,
+// the join, the session start and the whole WebRTC negotiation, and rejected the lot with one
+// of three guessed messages. Dialling and joining now belong to the link, which retries them
+// forever instead of giving up; what is left here is the only wait a human is actually blocked
+// on — "I pressed Start, is a session coming?" — and it is armed only while that is true.
+const SESSION_WAIT_MS = 20000;
+function armSessionWait() {
+  clearSessionWait();
+  W._relaySessionTimer = setTimeout(() => {
+    W._relaySessionTimer = null;
+    phase(2, "the daemon is online but the session never started");
+    status("relay: the daemon did not answer the session request");
+    emit({ type: "startFailed" });
+  }, SESSION_WAIT_MS);
+}
+function clearSessionWait() {
+  if (W._relaySessionTimer) { clearTimeout(W._relaySessionTimer); W._relaySessionTimer = null; }
+}
 
 // ── Main entry point ──────────────────────────────────────────────────────────
 
-W.relayConnect = async (relayUrl, remoteId, config) => {
+W.relayConnect = (relayUrl, remoteId, config) => {
+  W._relayConfig = config;
+  W._relayWanted = true;
   W.relayMode = true;
   W._relayStage = 0;
-  if (W.relayWs) { try { W.relayWs.close(); } catch (_) {} W.relayWs = null; }
-
-  // Normalize the Remote ID: 528-491-307 / "528 491 307" / 528491307 are equal.
-  const id = String(remoteId).replace(/[\s-]/g, "");
-
-  const wsUrl = relayUrl.replace(/^https?:\/\//, (m) => m === "https://" ? "wss://" : "ws://")
-                         .replace(/^ws(s?):\/\/(.*)$/, (_, s, rest) => `ws${s}://${rest}`)
-               + "/join/" + encodeURIComponent(id);
-
   phase(0, "");
   status("relay: connecting to " + relayUrl + "…");
-  emit({ type: "log", line: "INFO|" + new Date().toTimeString().slice(0, 8) + "|browser: dialing " + wsUrl });
-
-  return new Promise((resolve, reject) => {
-    const ws = new WebSocket(wsUrl);
-    W.relayWs = ws;
-
-    // Named per stage: the same 15 s expiry used to report "connection timed out" whether
-      // the relay was down, the daemon absent, or the encoder merely slow to open.
-    const timeout = setTimeout(() => {
-      const stuck = ["relay unreachable — check the relay URL and that it is running",
-                     "relay reachable but no daemon answered for this Remote ID",
-                     "daemon is up but the session never started"][W._relayStage || 0]
-                     || "handshake stalled";
-      phase(W._relayStage || 0, stuck);
-      reject(new Error("relay: " + stuck));
-      ws.close();
-    }, 15000);
-
-    ws.onopen = () => { W._relayStage = 1; phase(1, ""); rlog("relay WS open — awaiting join verdict"); };
-
-    ws.onerror = () => {
-      clearTimeout(timeout);
-      reject(new Error("relay: WebSocket error (relay unreachable or TLS/mixed-content blocked)"));
-    };
-
-    ws.onmessage = async (ev) => {
-      let msg;
-      try { msg = JSON.parse(ev.data); } catch (_) { return; }
-
-      switch (msg.type) {
-        // ── Handshake (the WS path was the join; just await the verdict) ─────
-        case "join_accepted":
-          W._relayStage = 2; phase(2, "");
-          rlog("join accepted — a daemon is registered for this Remote ID");
-          status("relay: joined — starting session…");
-          // Ask the server to start a compositor session.
-          ws.send(JSON.stringify({ type: "session_start", config }));
-          // The socket only exists from here, so this is the earliest the app list can be
-          // fetched in relay mode. Direct mode asks at page load instead.
-          W.requestApps();
-          break;
-
-        case "join_denied":
-          phase(1, msg.reason || "join denied");
-          clearTimeout(timeout);
-          reject(new Error("relay: " + (msg.reason || "join denied")));
-          ws.close();
-          break;
-
-        // The focused application asked for (or gave up) text input. See osk.js — this is
-        // what raises the phone keyboard on a text field without anyone pressing ⌨.
-        case "text_input":
-          W.textInput(!!msg.active);
-          break;
-
-        // The compositor is sending 1 render tick in N. The verdict has to know, or it measures
-        // the effect of a mitigation this phone asked for and reports it as the server failing.
-        case "shedding":
-          W.setShedding(msg.divisor);
-          break;
-
-        // ── Session control responses ────────────────────────────────────────
-        case "session_started":
-          // Surface encoder info (invariant #5 — software banner).
-          if (msg.info && msg.info.encoder) {
-            emit({ type: "encoder", mode: msg.info.encoder.mode, pipeline: msg.info.encoder.pipeline || "" });
-            // The yardsticks the health verdict measures against. They come from the server
-            // because only the server knows what `Balanced` resolved to at this resolution —
-            // and a decode time judged against a guessed budget accuses the wrong machine.
-            W.setTargetKbps(msg.info.encoder.bitrate_kbps || 0);
-            W.setTargetFps(msg.info.encoder.fps || 0);
-          }
-          W.sessionOn = true;
-          W._relayStage = 3; phase(3, "");
-          rlog("session started — encoder " + ((msg.info && msg.info.encoder && msg.info.encoder.mode) || "?"));
-          stagebar("Session running — negotiating WebRTC…");
-          // Now negotiate WebRTC through the relay.
-          try {
-            await W._relayNegotiate(ws);
-            clearTimeout(timeout);
-            resolve();
-          } catch (e) {
-            clearTimeout(timeout);
-            reject(e);
-          }
-          break;
-
-        case "session_error":
-          phase(2, msg.message || "session failed to start");
-          clearTimeout(timeout);
-          status("relay: session error — " + (msg.message || "unknown"));
-          emit({ type: "startFailed" });
-          reject(new Error("relay: session error: " + (msg.message || "unknown")));
-          ws.close();
-          break;
-
-        // A session was already running. This is a question, not a failure — so the socket
-        // stays open and the 15 s handshake timeout is cancelled: it exists to catch a stalled
-        // handshake, and a human reading a prompt is not one. `W._relayChoice` is what the two
-        // buttons resolve against; until one is pressed nothing else happens on this socket.
-        case "session_alive":
-          W._relayStage = 2; phase(2, "");
-          clearTimeout(timeout);
-          W._relayChoice = { ws, config, resolve, reject };
-          rlog("a session is already running — waiting for rejoin or drop");
-          status("relay: a session is already running");
-          emit({
-            type: "sessionAlive",
-            mode: (msg.info && msg.info.encoder && msg.info.encoder.mode) || "",
-            pipeline: (msg.info && msg.info.encoder && msg.info.encoder.pipeline) || "",
-          });
-          break;
-
-        case "session_stopped":
-          // Half of a drop-and-restart: the new session cannot be asked for until the old one is
-          // actually gone, so the request waits here rather than racing the stop.
-          if (W._relayDropPending) {
-            W._relayDropPending = false;
-            rlog("previous session dropped — starting a new one");
-            status("relay: starting session…");
-            ws.send(JSON.stringify({ type: "session_start", config }));
-            break;
-          }
-          if (W.sessionOn) {
-            W.sessionOn = false;
-            stagebar("Session stopped.");
-          }
-          break;
-
-        // ── WebRTC signaling ─────────────────────────────────────────────────
-        case "sdp_answer":
-          if (W._relayAnswer) { W._relayAnswer(msg.sdp); W._relayAnswer = null; }
-          break;
-
-        case "ice_candidate":
-          if (W.pc && msg.candidate) {
-            try { await W.pc.addIceCandidate(JSON.parse(msg.candidate)); } catch (_) {}
-          }
-          break;
-
-
-        // Straight to the emulator rather than through a Dioxus signal: terminal output
-        // arrives in small bursts at high rate, and routing it through a re-render would
-        // make the shell feel slower than the video behind it.
-        case "pty_output":
-          W.ptyOutput(msg.data || "");
-          break;
-
-        case "pty_exit":
-          W.ptyExited();
-          break;
-
-        // ── Server render timings (relay's answer to GET /timing) ────────────
-        // Stashed rather than resolved through a promise: the collector runs on its own
-        // 1 Hz tick and uses the most recent reply, so one dropped answer costs a stale
-        // sample instead of a stalled breakdown.
-        case "timing":
-          W._lastTiming = msg.timings || null;
-          break;
-
-        // ── Launchable applications ──────────────────────────────────────────
-        case "apps_list":
-          emit({ type: "apps", apps: msg.apps || [] });
-          break;
-
-        // ── Live logs forwarded from the server ───────────────────────────────
-        case "log":
-          if (msg.line) emit({ type: "log", line: msg.line });
-          break;
-
-        // ── Keepalive ────────────────────────────────────────────────────────
-        case "ping":
-          ws.send(JSON.stringify({ type: "pong" }));
-          break;
-
-        case "error":
-          status("relay error: " + (msg.message || "?"));
-          break;
-
-        default:
-          break;
-      }
-    };
-
-    ws.onclose = (ev) => {
-      rlog("relay WS closed — code " + ev.code + (ev.reason ? " " + ev.reason : ""));
-      W.relayWs = null;
-      if (W.sessionOn) status("relay: connection closed");
-    };
-  });
+  W.relayDial(relayUrl, remoteId);
+  // Warm link — the case this whole split exists for. One message down a socket that is already
+  // open: no dial, no TLS handshake through the tunnel, no join, no 15 s timer.
+  if (W.relayUp) onLinkUp();
+  // Nothing to await. The UI is driven by the emits in the handlers below, so a caller that
+  // used to block on a connection promise now returns and lets the stage bar speak.
+  return Promise.resolve();
 };
 
-// ── WebRTC negotiation via relay WS (replaces the HTTP /offer call) ───────────
+// `session_start` doubles as the query: the daemon answers `session_alive` when one is already
+// running and `session_started` when it made a new one. A separate SessionQuery message would
+// add a protocol variant, a relay pass-through and a server arm to learn what this already says.
+function askForSession() {
+  if (!W._relayConfig) return;
+  armSessionWait();
+  W.relaySendMsg({ type: "session_start", config: W._relayConfig });
+}
 
-W._relayNegotiate = async (ws) => {
+// ── Link events ───────────────────────────────────────────────────────────────
+
+// The link came up — first time, or back after an outage. Both take the same action, and that
+// is deliberate: "ask the daemon for a session" already means "…or tell me about the one that
+// is running", so there is no branch to get wrong.
+function onLinkUp() {
+  if (!W._relayWanted || !W._relayConfig) return;
+  W.requestApps();
+  if (W.sessionOn) {
+    // We were streaming when the link went away. Do not prompt — the viewer never chose to
+    // leave, and a dialog after a tunnel is a dialog nobody wanted. `session_alive` will be
+    // taken straight back; `session_error` means the grace ran out and we start fresh.
+    W._relayResuming = true;
+    rlog("link back — checking whether the session survived");
+    status("relay: reconnecting to the running session…");
+  } else {
+    status("relay: joined — starting session…");
+  }
+  askForSession();
+}
+W.relayOn("__up", onLinkUp);
+
+W.relayOn("__down", () => {
+  // A two-message handshake must not survive the socket it was half-spoken on. If the link
+  // reconnects between the stop and the start, this flag would fire a session_start nobody
+  // asked for.
+  W._relayDropPending = false;
+  W._relayResuming = false;
+  clearSessionWait();
+  if (W.sessionOn) status("relay: link lost — holding the session, reconnecting…");
+});
+
+// ── Session control responses ─────────────────────────────────────────────────
+
+W.relayOn("session_started", async (msg) => {
+  clearSessionWait();
+  W._relayResuming = false;
+  if (msg.info && msg.info.encoder) {
+    emit({ type: "encoder", mode: msg.info.encoder.mode, pipeline: msg.info.encoder.pipeline || "" });
+    // The yardsticks the health verdict measures against. They come from the server because
+    // only the server knows what `Balanced` resolved to at this resolution — and a decode time
+    // judged against a guessed budget accuses the wrong machine.
+    W.setTargetKbps(msg.info.encoder.bitrate_kbps || 0);
+    W.setTargetFps(msg.info.encoder.fps || 0);
+  }
+  W.sessionOn = true;
+  W._relayStage = 3; phase(3, "");
+  rlog("session ready — encoder " + ((msg.info && msg.info.encoder && msg.info.encoder.mode) || "?"));
+  stagebar("Session running — negotiating WebRTC…");
+  try {
+    await W._relayNegotiate();
+  } catch (e) {
+    rlog("negotiation failed: " + (e && e.message ? e.message : e));
+    status("relay: " + (e && e.message ? e.message : e));
+  }
+});
+
+W.relayOn("session_alive", (msg) => {
+  clearSessionWait();
+  W._relayStage = 2; phase(2, "");
+  if (W._relayResuming) {
+    W._relayResuming = false;
+    rlog("the session survived the outage — rejoining");
+    status("relay: rejoining…");
+    armSessionWait();
+    W.relaySendMsg({ type: "session_rejoin" });
+    return;
+  }
+  W._relayChoice = { config: W._relayConfig };
+  rlog("a session is already running — waiting for rejoin or drop");
+  status("relay: a session is already running");
+  emit({
+    type: "sessionAlive",
+    mode: (msg.info && msg.info.encoder && msg.info.encoder.mode) || "",
+    pipeline: (msg.info && msg.info.encoder && msg.info.encoder.pipeline) || "",
+  });
+});
+
+W.relayOn("session_error", (msg) => {
+  clearSessionWait();
+  const why = msg.message || "unknown";
+  // The resume case needs its own branch: `sessionOn` deliberately stays true across an outage
+  // now, so a client whose session *did* expire would otherwise renegotiate forever against
+  // something that is gone. Clear the flag and ask for a fresh one.
+  if (W._relayResuming) {
+    W._relayResuming = false;
+    W.sessionOn = false;
+    rlog("the session did not survive: " + why + " — starting a fresh one");
+    status("relay: previous session gone — starting fresh");
+    askForSession();
+    return;
+  }
+  phase(2, why);
+  status("relay: session error — " + why);
+  emit({ type: "startFailed" });
+});
+
+W.relayOn("session_stopped", () => {
+  // Half of a drop-and-restart: the new session cannot be asked for until the old one is
+  // actually gone, so the request waits here rather than racing the stop.
+  if (W._relayDropPending) {
+    W._relayDropPending = false;
+    rlog("previous session dropped — starting a new one");
+    status("relay: starting session…");
+    askForSession();
+    return;
+  }
+  if (W.sessionOn) {
+    W.sessionOn = false;
+    stagebar("Session stopped.");
+  }
+});
+
+// ── Server → client state ─────────────────────────────────────────────────────
+
+// The focused application asked for (or gave up) text input. See osk.js — this is what raises
+// the phone keyboard on a text field without anyone pressing ⌨.
+W.relayOn("text_input", (msg) => W.textInput(!!msg.active));
+
+// The compositor is sending 1 render tick in N. The verdict has to know, or it measures the
+// effect of a mitigation this phone asked for and reports it as the server failing.
+W.relayOn("shedding", (msg) => W.setShedding(msg.divisor));
+
+W.relayOn("sdp_answer", (msg) => {
+  if (W._relayAnswer) { W._relayAnswer(msg.sdp); W._relayAnswer = null; }
+});
+
+W.relayOn("ice_candidate", async (msg) => {
+  if (W.pc && msg.candidate) {
+    try { await W.pc.addIceCandidate(JSON.parse(msg.candidate)); } catch (_) {}
+  }
+});
+
+// Straight to the emulator rather than through a Dioxus signal: terminal output arrives in
+// small bursts at high rate, and routing it through a re-render would make the shell feel
+// slower than the video behind it.
+W.relayOn("pty_output", (msg) => W.ptyOutput(msg.data || ""));
+W.relayOn("pty_exit", () => W.ptyExited());
+
+// Stashed rather than resolved through a promise: the collector runs on its own 1 Hz tick and
+// uses the most recent reply, so one dropped answer costs a stale sample instead of a stalled
+// breakdown.
+W.relayOn("timing", (msg) => { W._lastTiming = msg.timings || null; });
+
+W.relayOn("apps_list", (msg) => emit({ type: "apps", apps: msg.apps || [] }));
+W.relayOn("log", (msg) => { if (msg.line) emit({ type: "log", line: msg.line }); });
+W.relayOn("error", (msg) => status("relay error: " + (msg.message || "?")));
+
+// ── WebRTC negotiation over the relay link (replaces the HTTP /offer call) ────
+
+W._relayNegotiate = async () => {
   if (W.pc) { try { W.pc.close(); } catch (_) {} }
 
   const pc = new RTCPeerConnection({
@@ -336,14 +319,18 @@ W._relayNegotiate = async (ws) => {
   });
 
   rlog("sending offer — " + (pc.localDescription.sdp.match(/a=candidate:/g) || []).length + " candidates");
-  ws.send(JSON.stringify({ type: "sdp_offer", sdp: JSON.stringify(pc.localDescription) }));
+  if (!W.relaySendMsg({ type: "sdp_offer", sdp: JSON.stringify(pc.localDescription) })) {
+    throw new Error("the relay link went away before the offer could be sent");
+  }
 
-  // Wait for SDP answer (relay forwards it from server).
+  // Per-request, and it rejects rather than hanging: the link can reconnect underneath this
+  // wait, and a promise nobody ever settles is how a viewer ends up staring at "negotiating".
   const answerSdp = await new Promise((resolve, reject) => {
     W._relayAnswer = resolve;
     setTimeout(() => {
+      if (W._relayAnswer !== resolve) return;   // already answered
       W._relayAnswer = null;
-      reject(new Error("relay: SDP answer timed out (30 s)"));
+      reject(new Error("the daemon did not answer the offer within 30 s"));
     }, 30000);
   });
 
@@ -355,20 +342,13 @@ W._relayNegotiate = async (ws) => {
 
 // ── Session control helpers ───────────────────────────────────────────────────
 
-// One place that knows the socket might not be there. Every pty verb is fire-and-forget:
-// a keystroke that misses the socket is a keystroke the shell never saw, and the terminal
-// showing nothing is the right feedback for that.
-function relaySend(obj) {
-  const ws = W.relayWs;
-  if (!ws || ws.readyState !== WebSocket.OPEN) return false;
-  try { ws.send(JSON.stringify(obj)); return true; } catch (_) { return false; }
-}
+// Every pty verb is fire-and-forget: a keystroke that misses the socket is a keystroke the
+// shell never saw, and the terminal showing nothing is the right feedback for that.
+const relaySend = (obj) => W.relaySendMsg(obj);
 
 // The client's own verdict on its decoder, going back to the daemon so the render loop can shed
 // rather than the viewer having to read a suggestion and change a setting. See js/health.js for
 // the hysteresis and the arrival gate; `crates/compositor/src/congestion.rs` for what it does.
-// Fire-and-forget like the pty verbs: a strain report that misses the socket is superseded by
-// the next change, and the compositor's last value stands until then.
 W.relayStrain = (strained) => relaySend({ type: "viewer_strain", strained });
 
 W.ptyOpen = (cols, rows) => relaySend({ type: "pty_open", cols, rows });
@@ -376,45 +356,43 @@ W.ptyInput = (data) => relaySend({ type: "pty_input", data });
 W.ptyResize = (cols, rows) => relaySend({ type: "pty_resize", cols, rows });
 W.ptyClose = () => relaySend({ type: "pty_close" });
 
+// Stops the *session*. The link stays up, because the page is still open and the next Start
+// should be one message rather than a fresh dial — which is the whole point of the split.
 W.relayStop = () => {
-  if (W.relayWs && W.relayWs.readyState === WebSocket.OPEN) {
-    W.relayWs.send(JSON.stringify({ type: "session_stop" }));
-    W.relayWs.close();
-  }
-  W.relayWs = null;
-  W.relayMode = false;
+  clearSessionWait();
+  W._relayWanted = false;
+  W._relayResuming = false;
+  W._relayDropPending = false;
+  relaySend({ type: "session_stop" });
 };
-
 
 // ── The answer to `session_alive` ────────────────────────────────────────────
 //
-// Two exits from one prompt, both driving the socket that is already open and parked. Neither
-// re-dials: the join succeeded, and it is only the session question that is outstanding.
+// Two exits from one prompt, both driving the link that is already open. Neither re-dials, and
+// neither settles a promise: the prompt can now be raised by a reconnect that no `await` is
+// waiting on, so anything holding a `resolve` here would throw on the press.
 
 /// Attach to the running session. Windows, applications and their state all survive; the daemon
 /// forces a keyframe so the picture starts immediately rather than at the next periodic one.
 W.relayRejoin = () => {
-  const c = W._relayChoice;
-  if (!c) return false;
+  if (!W._relayChoice) return false;
   W._relayChoice = null;
   emit({ type: "sessionAliveCleared" });
   status("relay: rejoining the running session…");
-  c.ws.send(JSON.stringify({ type: "session_rejoin" }));
-  return true;
+  armSessionWait();
+  return relaySend({ type: "session_rejoin" });
 };
 
 /// Stop the running session and start a fresh one with *this* viewer's settings.
 ///
-/// Two steps, not one: `session_start` on a live session is what produced the prompt in the first
-/// place, so the stop has to be acknowledged before the start is sent. The `session_stopped`
-/// handler above is the other half.
+/// Two steps, not one: `session_start` on a live session is what produced the prompt in the
+/// first place, so the stop has to be acknowledged before the start is sent. The
+/// `session_stopped` handler above is the other half.
 W.relayDropStart = () => {
-  const c = W._relayChoice;
-  if (!c) return false;
+  if (!W._relayChoice) return false;
   W._relayChoice = null;
   W._relayDropPending = true;
   emit({ type: "sessionAliveCleared" });
   status("relay: stopping the previous session…");
-  c.ws.send(JSON.stringify({ type: "session_stop" }));
-  return true;
+  return relaySend({ type: "session_stop" });
 };

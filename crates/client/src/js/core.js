@@ -20,7 +20,11 @@ W.logES = null;
 W.server = "";
 W.sessionOn = false;
 W.reconnectAttempts = 0;
-W.MAX_RECONNECTS = 10;
+// The WebRTC retry budget. It was 10 (~37 s) because it had to fit inside a 45 s server-side
+// grace; the grace is 600 s now and the relay link is persistent, so giving up at half a minute
+// was the last place a viewer still got told "connection lost" for a network that came back.
+// ~2 minutes of trying, which is what a dead zone actually costs.
+W.MAX_RECONNECTS = 30;
 W.statsTimer = null;
 
 // Input state.

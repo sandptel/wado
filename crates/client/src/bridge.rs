@@ -36,6 +36,11 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/webrtc.js"),
     "\n",
+    // Before `relay.js`: that file calls `W.relayOn(...)` at load to register its handlers, and
+    // this is what defines it. The dial at the bottom of `relay_link` is safe here — opening a
+    // socket takes at least a tick, and `relay.js` registers synchronously in the same eval.
+    include_str!("js/relay_link.js"),
+    "\n",
     include_str!("js/relay.js"),
     "\n",
     include_str!("js/input_core.js"),

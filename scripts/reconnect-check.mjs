@@ -47,10 +47,10 @@ const check = (name, got, want) => {
 
 // 1. Relay mode, socket up — the relay path, and only the relay path.
 {
-  const W = { relayMode: true, sessionOn: true, relayWs: { readyState: OPEN } };
+  const W = { relayMode: true, sessionOn: true, relayUp: true };
   const calls = load(W);
   await W.reconnectWebRTC();
-  check("relay mode re-offers through the relay WS", calls, ["relay"]);
+  check("relay mode re-offers through the relay link", calls, ["relay"]);
 }
 
 // 2. Direct mode — unchanged.
@@ -61,18 +61,19 @@ const check = (name, got, want) => {
   check("direct mode still re-offers over HTTP", calls, ["direct"]);
 }
 
-// 3. Relay mode with a dead socket — reject rather than silently take the wrong path.
+// 3. Relay mode with the link down — reject rather than silently take the wrong path. The link
+//    reconnects on its own (see relay_link.js), so rejecting costs one retry, not the session.
 {
-  const W = { relayMode: true, sessionOn: true, relayWs: null };
+  const W = { relayMode: true, sessionOn: true, relayUp: false };
   const calls = load(W);
   let rejected = false;
   await W.reconnectWebRTC().catch(() => { rejected = true; });
-  check("a closed relay WS rejects instead of falling back to HTTP", [rejected, ...calls], [true]);
+  check("a down relay link rejects instead of falling back to HTTP", [rejected, ...calls], [true]);
 }
 
 // 4. handleFailure routes through the same chooser, on a timer.
 {
-  const W = { relayMode: true, sessionOn: true, relayWs: { readyState: OPEN }, reconnectAttempts: 0 };
+  const W = { relayMode: true, sessionOn: true, relayUp: true, reconnectAttempts: 0 };
   const calls = load(W);
   W.handleFailure();
   check("handleFailure counts the attempt before waiting", W.reconnectAttempts, 1);
@@ -82,22 +83,28 @@ const check = (name, got, want) => {
 
 // 5. resync — the manual lever against the jitter-buffer ratchet — must not use the HTTP path.
 {
-  const W = { relayMode: true, sessionOn: true, relayWs: { readyState: OPEN }, reconnectAttempts: 4 };
+  const W = { relayMode: true, sessionOn: true, relayUp: true, reconnectAttempts: 4 };
   const calls = load(W);
   await W.resync();
   check("resync re-offers via relay and clears the attempt count",
     [calls.filter((c) => c === "relay" || c === "direct"), W.reconnectAttempts], [["relay"], 0]);
 }
 
-// 6. The retry budget must outlast the server's 45 s VIEWER_GRACE, or a reclaimable session is
-//    abandoned. Sum the capped backoff the same way handleFailure computes it.
+// 6. The retry budget must fit inside the server's VIEWER_GRACE, or a reclaimable session is
+//    abandoned while the daemon is still holding it. Both numbers are read from the source, so
+//    moving one and not the other fails here rather than in the field — which is exactly what
+//    happened when the grace went 45 s -> 600 s and the budget stayed at ~37 s.
 {
   // MAX_RECONNECTS lives in core.js, which is concatenated ahead of webrtc.js.
   const core = readFileSync(new URL("../crates/client/src/js/core.js", import.meta.url), "utf8");
   const max = Number(/W\.MAX_RECONNECTS\s*=\s*(\d+)/.exec(core)[1]);
+  const rs = readFileSync(new URL("../crates/server/src/relay_client.rs", import.meta.url), "utf8");
+  const graceMs = Number(/VIEWER_GRACE:\s*std::time::Duration\s*=\s*std::time::Duration::from_secs\((\d+)\)/.exec(rs)[1]) * 1000;
   let total = 0;
   for (let n = 1; n <= max; n++) total += Math.min(500 * Math.pow(2, n - 1), 5000);
-  check("retry budget spans most of the 45 s server grace", total >= 30000 && total <= 45000, true);
+  check("the retry budget fits inside the server grace", total < graceMs, true);
+  // And is not so short that an ordinary dead zone outlasts it.
+  check("the retry budget outlasts a two-minute dead zone", total >= 120000, true);
 }
 
 console.log(failures ? `\n${failures} failed` : "\nall checks passed");
