@@ -78,6 +78,12 @@ pub fn render(ui: Ui) -> Element {
             if !h.detail.is_empty() {
                 span { class: "healthdetail", "{h.detail}" }
             }
+            // The suggestion, not another number. For every fault the verdict can name there is
+            // one setting that helps, and the person holding the phone should not have to infer
+            // it from a decode time in milliseconds.
+            if !h.fix.is_empty() {
+                span { class: "healthfix", "{h.fix}" }
+            }
             if !bandwidth.is_empty() {
                 span { class: "healthbw", "{bandwidth}" }
             }
