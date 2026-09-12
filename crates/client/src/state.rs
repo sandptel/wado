@@ -18,7 +18,7 @@ pub const DEFAULT_SERVER: &str = "http://127.0.0.1:8080";
 /// Default relay the client dials in relay mode. Editable in the UI.
 /// ponytail: a trycloudflare quick tunnel — ephemeral, it changes every `cloudflared`
 /// restart. Replace when the relay gets a stable hostname.
-pub const DEFAULT_RELAY: &str = "https://accompanying-dec-wind-release.trycloudflare.com";
+pub const DEFAULT_RELAY: &str = "https://pam-names-tags-remembered.trycloudflare.com";
 
 /// Marks a scale that has never been chosen — neither by the user nor from pixel density.
 /// Not a valid option value, so it cannot survive the effect that resolves it.
