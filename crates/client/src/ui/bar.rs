@@ -89,6 +89,30 @@ pub fn render(ui: Ui) -> Element {
                 "❯_"
             }
 
+            // A phone has no keys. Focusing a hidden input is what raises the soft keyboard;
+            // `zwp_text_input_v3` cannot do this job because smithay drops every text-input
+            // request with no input-method client bound. See `js/osk.js`.
+            button {
+                class: if (live.osk_on)() { "barbtn active" } else { "barbtn" },
+                title: "Keyboard",
+                "aria-label": "Keyboard",
+                disabled: !(live.session_on)(),
+                onclick: move |_| bridge::call("window.__wado.oskToggle();".to_string()),
+                "⌨"
+            }
+
+            // A fresh peer connection, which is the only thing that resets the browser's
+            // playout buffer after a network hitch has permanently inflated it. The compositor
+            // session survives — windows, apps and the shell are not tied to the connection.
+            button {
+                class: "barbtn",
+                title: "Resync video (rebuilds the connection, keeps the session)",
+                "aria-label": "Resync video",
+                disabled: !(live.session_on)(),
+                onclick: move |_| bridge::call("window.__wado.resync();".to_string()),
+                "⟳"
+            }
+
             span { class: "barsep" }
 
             button {

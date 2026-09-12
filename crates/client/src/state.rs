@@ -173,6 +173,13 @@ pub struct Live {
     /// the pipeline delivered and the viewer could not keep up.
     pub decode_drop_pct: Signal<f64>,
 
+    /// Measured panel refresh rate in Hz, `None` until `js/refresh.js` has timed enough
+    /// frames (about a second after load) or if the tab was backgrounded while measuring.
+    pub refresh_hz: Signal<Option<u32>>,
+    /// Whether the on-screen keyboard's hidden input currently holds focus. Reported by the
+    /// browser rather than assumed, because a back gesture closes the keyboard without
+    /// anyone pressing the button.
+    pub osk_on: Signal<bool>,
     pub screen_w: Signal<u32>,
     pub screen_h: Signal<u32>,
     /// The device's pixel density. Drives the default output scale the way a desktop
@@ -213,6 +220,8 @@ impl Live {
             encoder_mode: use_signal(String::new),
             encoder_pipeline: use_signal(String::new),
             decode_drop_pct: use_signal(|| 0.0),
+            refresh_hz: use_signal(|| None),
+            osk_on: use_signal(|| false),
             screen_w: use_signal(|| 0),
             screen_dpr: use_signal(|| 0.0),
             screen_h: use_signal(|| 0),

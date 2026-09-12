@@ -100,6 +100,32 @@
   padding: 0;
 }
 .barbtn:hover { color: var(--base06); background: var(--base02); }
+/* A toggle that is currently on — today only the keyboard button. Reads as pressed rather
+ * than merely hovered, because on a touch screen there is no hover to compare against. */
+.barbtn.active { color: var(--base00); background: var(--base0D); }
+
+/* The on-screen keyboard's input.
+ *
+ * Visually gone, deliberately NOT invisible to the browser: `display:none`, `visibility:hidden`,
+ * `opacity:0` and a zero-size box all make a mobile browser refuse to raise the soft keyboard
+ * for it, which is the entire purpose of the element. So it keeps a real 1x1 box, stays on
+ * screen, and is clipped instead. `caret-color: transparent` hides the one thing that would
+ * otherwise blink over the video. See js/osk.js. */
+#wado-osk {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  clip-path: inset(50%);
+  background: transparent;
+  color: transparent;
+  caret-color: transparent;
+  font-size: 16px; /* below 16px iOS zooms the page on focus */
+  z-index: -1;
+}
 
 /* ── the sheet ────────────────────────────────────────────────────────────────────────── */
 
