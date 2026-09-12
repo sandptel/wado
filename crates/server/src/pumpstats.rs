@@ -35,7 +35,11 @@ pub struct Summary {
 
 impl PumpStats {
     pub fn new() -> Self {
-        Self { samples: Vec::with_capacity(STRETCH), budget_overruns: 0, started: Instant::now() }
+        Self {
+            samples: Vec::with_capacity(STRETCH),
+            budget_overruns: 0,
+            started: Instant::now(),
+        }
     }
 
     /// Record one frame's pump time.
@@ -104,7 +108,10 @@ mod tests {
         }
         p.record(Duration::from_millis(400));
         let s = p.due().unwrap();
-        assert_eq!(s.p50, 2.0, "the median is what the threshold log could never show");
+        assert_eq!(
+            s.p50, 2.0,
+            "the median is what the threshold log could never show"
+        );
         assert_eq!(s.max, 400.0, "and the outlier is still visible");
     }
 }
