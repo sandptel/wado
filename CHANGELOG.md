@@ -2,18 +2,10 @@
 
 ## Unreleased
 
-### Fixed
+## v0.0.3 — `2026-09-12`
 
-**Scrolling asked for about 1.6x too much finger.**
-
-Touch and wheel deltas were measured in the *viewer's* pixels and spent in the *session's*, with
-nothing converting between them — so dragging a page moved it roughly two-thirds as far as your
-finger went. The speed slider could not fix this, because the right number depends on your screen
-size, the session resolution and its scale, and changes whenever any of them does.
-
-Both scroll paths now convert properly, which gives the thing a touchscreen is supposed to do:
-content moves exactly as far as your finger does, measured on the glass. The same bug was making a
-real mouse wheel under-scroll on desktop viewers, and that is fixed with it.
+Four Wayland protocols, the scroll fix, and the first thing that responds to a link it cannot
+keep up with.
 
 ### Added
 
@@ -28,7 +20,8 @@ find and tap. Toolkits have always passed a token through for this; wado now lis
 (`wp_presentation`), which is what GTK and Chrome use to keep an animation smooth instead of
 guessing. wado answers with the instant compositing finished, and explicitly does **not** claim
 the hardware guarantees a real display would provide — a confident wrong answer here is worse for
-an app than no answer, which is why this one waited.
+an app than no answer, which is why this one waited. Confirmed live with two independent
+toolkits, Chrome and GTK4.
 
 *Solid backdrops stop costing a full frame.* The grey sheet behind a dialog is one colour, and a
 toolkit can now say so in a single pixel rather than allocating and uploading a screen-sized image
@@ -36,12 +29,38 @@ every time it changes (`wp_single_pixel_buffer_v1`).
 
 *Apps can declare what they are drawing* — video, a game, a photo (`wp_content_type_v1`). Nothing
 acts on the hint yet, and it is in the log for a reason: whether the encoder should treat video
-differently is worth answering only once we know real apps bother to say.
+differently is worth answering only once we know real apps bother to say. So far none have.
 
 Two protocols stay unimplemented on purpose. Cursor shapes are meaningless in a session that
 draws no cursor. Frame-pacing (`wp_fifo_v1`, `wp_commit_timing_v1`) needs the render loop to be
 able to hold a finished surface back until it is due, which it currently cannot — and advertising
 the promise without keeping it would make pacing worse, not better.
+
+**Reconnecting offers a choice instead of a dead end.**
+
+A session that was still running used to answer a returning viewer with "a session is already
+active" and hang up — leaving the session alive, visible in the logs, and unreachable. Now you are
+told what is running and asked: **rejoin it**, keeping its windows and applications exactly as you
+left them, or **drop it** and start fresh with this device's settings.
+
+There is deliberately no default. Rejoining silently would ignore a resolution or scale you just
+changed, because a session's output cannot be resized once open; dropping silently would kill
+someone's work because their tunnel hiccuped.
+
+**Clients can hand over GPU buffers** — `zwp_linux_dmabuf_v1`.
+
+`wl_shm` was the only buffer path on offer, so a GPU application had to render on the GPU,
+read the result back to the CPU, write it into shared memory, and have the compositor upload
+it to a texture again — two full copies of every window, every frame, on the render tick. At
+a phone's 1080 × 2422 that is roughly 10 MB per surface per frame. Version 4 with feedback is
+advertised when the render node is known, so a client is also told *which* GPU to allocate on;
+version 3 otherwise.
+
+**Two-finger pinch and rotate** — `zwp_pointer_gestures_v1`.
+
+A two-finger drag now produces a scroll axis *and* a pinch. That is what a touchpad emits and
+what toolkits are written against — so the pinch's own translation is deliberately sent as
+zero, or an app pans twice for one drag.
 
 **Windows are borderless** — `zxdg_decoration_v1`, answered server-side.
 
@@ -74,7 +93,28 @@ belongs to the browser's receiver, and a receiver is created fresh with each con
 on purpose — doing it automatically would fire hardest on exactly the bad links where dropping a
 connection helps least.
 
+**A one-command test rig.** `scripts/rig.sh` starts the relay, the tunnel and the daemon, and
+prints the relay address and Remote ID you need to connect. `--daemon` restarts just the daemon
+after a rebuild, which matters because restarting the tunnel changes its address and invalidates
+whatever your phone is pointed at.
+
 ### Changed
+
+**The compositor stops making frames the network cannot take.**
+
+Measured on a tethered mobile link: 420 encoded frames discarded in a single session — captured,
+composited, encoded, and thrown away, six seconds of video that cost a GPU readback each and was
+never going to be seen. The render loop now watches how many frames the sender is refusing and
+renders less often when that number moves, easing back only after the link has been clear for a
+while. Backing off quickly and recovering slowly is deliberate: a link this variable will
+oscillate under symmetric control, and flicking between smooth and stuttering looks worse than a
+steady lower rate.
+
+**This is not bandwidth estimation and does not adjust quality.** The encoder's bitrate is fixed
+when a session opens and neither backend can change it on the fly, so the only lever the render
+loop holds is how often it produces a frame at all. What it buys is that congestion now costs
+frame rate instead of costing work — the frames it skips are exactly the ones that were being
+discarded anyway. Real link measurement remains the open problem.
 
 **Logs answer two questions they used to leave open.**
 
@@ -87,37 +127,6 @@ The video pump used to log only stalls past 100 ms, which hides the shape of eve
 pipeline that is fast with rare spikes and one that is slow all the time produce identical
 warnings. It now reports the full distribution once per few seconds, and still calls out
 individual stalls.
-
-### Removed
-
-**The old one-shot command runner.** The real shell replaced it; nothing could reach it any
-more. 272 lines across four crates, and with them a way for a process to outlive the session
-that started it.
-
-### Added
-
-**Clients can hand over GPU buffers** — `zwp_linux_dmabuf_v1`.
-
-`wl_shm` was the only buffer path on offer, so a GPU application had to render on the GPU,
-read the result back to the CPU, write it into shared memory, and have the compositor upload
-it to a texture again — two full copies of every window, every frame, on the render tick. At
-a phone's 1080 × 2422 that is roughly 10 MB per surface per frame. Version 4 with feedback is
-advertised when the render node is known, so a client is also told *which* GPU to allocate on;
-version 3 otherwise.
-
-**Measured, and it works.** The first session on the new build logged
-`dmabuf path is live — a client is handing over GPU buffers`, with Chrome supplying `AB24`
-(ARGB8888) under an AMD vendor modifier — a tiled buffer, not a linear one, so it never touches
-the CPU. Each session now says which path it took, on both branches, so this stops being a
-question anyone has to go looking for an answer to.
-
-**Two-finger pinch and rotate** — `zwp_pointer_gestures_v1`.
-
-A two-finger drag now produces a scroll axis *and* a pinch. That is what a touchpad emits and
-what toolkits are written against — so the pinch's own translation is deliberately sent as
-zero, or an app pans twice for one drag.
-
-### Changed
 
 **Logs say where things went wrong instead of going quiet.**
 
@@ -141,6 +150,17 @@ only way to see the population that the integer fallback actually serves.
 
 ### Fixed
 
+**Scrolling asked for about 1.6x too much finger.**
+
+Touch and wheel deltas were measured in the *viewer's* pixels and spent in the *session's*, with
+nothing converting between them — so dragging a page moved it roughly two-thirds as far as your
+finger went. The speed slider could not fix this, because the right number depends on your screen
+size, the session resolution and its scale, and changes whenever any of them does.
+
+Both scroll paths now convert properly, which gives the thing a touchscreen is supposed to do:
+content moves exactly as far as your finger does, measured on the glass. The same bug was making a
+real mouse wheel under-scroll on desktop viewers, and that is fixed with it.
+
 **Fractional scale was implemented and then rounded away.**
 
 The requested scale was rounded to a whole number *before* it reached either consumer, so a
@@ -158,6 +178,16 @@ legacy client slightly soft instead, which costs almost nothing through an H.264
 A disconnect or an input reset drops the gesture with no end event, and windows outlive
 sessions here, so the orphan survived into the next one. The open/closed state is tracked on
 the compositor side now; a new pinch closes any open one first.
+
+**A client could ask for an output large enough to take the daemon down.** Session dimensions
+arrived from the network unbounded, so a request for 100000 x 100000 was a forty-gigabyte
+allocation attempt. Clamped to a supported range, and the clamp is logged.
+
+### Removed
+
+**The old one-shot command runner.** The real shell replaced it; nothing could reach it any
+more. 272 lines across four crates, and with them a way for a process to outlive the session
+that started it.
 
 ### Retracted
 
