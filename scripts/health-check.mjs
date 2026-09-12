@@ -11,6 +11,8 @@ import { readFileSync } from "node:fs";
 const src = readFileSync(new URL("../crates/client/src/js/health.js", import.meta.url), "utf8");
 let out = null;
 const W = {};
+let logged = [];
+W.rlog = (l) => logged.push(l);   // the bridge supplies this; here it is captured
 const emit = (m) => { out = m; };
 new Function("W", "emit", src)(W, emit);
 
@@ -56,6 +58,11 @@ check("link too small", T,
 check("idle screen is not a fault", T,
   { fps: 90, ping: 27, dec: 3.0, jitter: 3, kbps: 60, lossPct: 0.0, decodeDropPct: 0, availableKbps: 20000 },
   "healthy", "ok");
+
+// The verdict is also relayed to the daemon log, on change only — that is what makes a
+// session diagnosable afterwards. Six distinct verdicts above, so six lines and no repeats.
+if (logged.length !== 6) { failures++; console.log(`FAIL rlog: ${logged.length} lines, want 6`); }
+else console.log(`ok   relayed ${logged.length} verdict lines, e.g. ${JSON.stringify(logged[1])}`);
 
 console.log(failures ? `\n${failures} FAILED` : "\nall passed");
 process.exit(failures ? 1 : 0);
