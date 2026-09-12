@@ -332,6 +332,8 @@ pub fn launch_command(state: &mut Wado, command: &str) {
         warn!("empty command — nothing to launch");
         return;
     }
+    let command = &with_ime_flag(command);
+
     // Through a shell and in its own process group — see `proc::spawn`.
     //
     // This grants no access that did not exist: the field was already free-form and spawned
@@ -346,6 +348,38 @@ pub fn launch_command(state: &mut Wado, command: &str) {
         // Not fatal to the session: the stream still runs, the window is just empty.
         Err(e) => tracing::error!("failed to launch session app {command:?}: {e}"),
     }
+}
+
+/// Add `--enable-wayland-ime` to a Chromium-family command that does not already have it.
+///
+/// **Why this is not the app's business.** Chromium binds `zwp_text_input_manager_v3` whether or
+/// not the flag is present — observed here, repeatedly — but binding is not using: without the
+/// flag it never constructs the Wayland input-method context, so it never calls `enable` on a text
+/// field and the compositor never learns that one is focused. The phone keyboard then only opens
+/// from the ⌨ button. A `.desktop` file written for a laptop has no reason to carry the flag, and
+/// the user did not type the command, so this is the only place that can add it.
+///
+/// A previous run withdrew the claim that this flag was needed, on the grounds that the protocol
+/// was bound without it. That reasoning was wrong: what was observed was the bind, and the thing
+/// that is missing is the `enable`.
+///
+/// Substring matching on the program name only, deliberately. It is a launcher hint, not a
+/// security boundary — the command was already free-form.
+fn with_ime_flag(command: &str) -> String {
+    const FLAG: &str = "--enable-wayland-ime";
+    if command.contains(FLAG) {
+        return command.to_string();
+    }
+    let program = command.split_whitespace().next().unwrap_or_default();
+    let program = program.rsplit('/').next().unwrap_or(program);
+    if !["chromium", "chrome", "google-chrome", "brave", "vivaldi", "microsoft-edge"]
+        .iter()
+        .any(|p| program.contains(p))
+    {
+        return command.to_string();
+    }
+    info!(program, "adding {FLAG} so the app can ask for text input");
+    format!("{command} {FLAG}")
 }
 
 /// Tear down the active session and free its resources. Idempotent.
@@ -757,5 +791,36 @@ mod tests {
         assert!(at120 < 0.05 && at120 > 0.01, "unexpected magnitude: {at120}");
         // No panic and no NaN on a degenerate config.
         assert_eq!(bits_per_pixel(&cfg(0)), 0.0);
+    }
+}
+
+#[cfg(test)]
+mod ime_flag_tests {
+    use super::with_ime_flag;
+
+    #[test]
+    fn chromium_family_gets_the_flag_once() {
+        assert_eq!(with_ime_flag("chromium"), "chromium --enable-wayland-ime");
+        assert_eq!(
+            with_ime_flag("/usr/bin/google-chrome-stable --new-window"),
+            "/usr/bin/google-chrome-stable --new-window --enable-wayland-ime"
+        );
+        // Already there, in any position — do not add a second copy.
+        let already = "chromium --enable-wayland-ime --new-window";
+        assert_eq!(with_ime_flag(already), already);
+    }
+
+    #[test]
+    fn everything_else_is_left_alone() {
+        for cmd in ["foot", "nautilus --new-window", "firefox", ""] {
+            assert_eq!(with_ime_flag(cmd), cmd);
+        }
+    }
+
+    /// The match is on the program, not the arguments — a path that merely mentions a browser
+    /// must not turn an unrelated command into a Chromium launch.
+    #[test]
+    fn only_the_program_name_is_matched() {
+        assert_eq!(with_ime_flag("foot -e ./chrome-notes.sh"), "foot -e ./chrome-notes.sh");
     }
 }
