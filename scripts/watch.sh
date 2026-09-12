@@ -77,6 +77,10 @@ function say(s) { print t() " " s; fflush() }
 # The one line that says the text-input protocol is working end to end. An app focusing a text
 # field should produce active=true here and a keyboard on the phone; active=true with no keyboard
 # narrows the fault to the client half, and no line at all means the app never bound the protocol.
+# Which apps can use the protocol at all. An app that never appears here will never raise the
+# keyboard however many text fields it has — Chromium needs --enable-wayland-ime to bind it.
+/bound zwp_text_input_manager_v3/ { say("⌨ TEXTIN   a client bound the text-input protocol"); next }
+
 /text input focus changed/ {
   say((kv("active") == "true" ? "⌨ TEXTIN   an app took text focus — the phone keyboard should rise" \
                               : "⌨ TEXTIN   text focus released"))

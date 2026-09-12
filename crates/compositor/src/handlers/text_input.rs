@@ -134,6 +134,12 @@ impl GlobalDispatch<ZwpTextInputManagerV3, ()> for Wado {
         _global_data: &(),
         data_init: &mut DataInit<'_, Self>,
     ) {
+        // Logged because the alternative is guessing. "The keyboard did not come up" has two
+        // very different causes — the app never asked for text input, or it asked and the
+        // client did not respond — and only this line separates them. Chromium, notably, binds
+        // this global only when started with `--enable-wayland-ime`; without it no amount of
+        // tapping a text field produces a request, and nothing else in the log would say so.
+        tracing::info!("a client bound zwp_text_input_manager_v3");
         data_init.init(resource, ());
     }
 }
