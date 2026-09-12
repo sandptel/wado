@@ -760,7 +760,31 @@ async fn handle_sdp_offer(
 
     // Generation guard: only the current viewer's teardown stops the session.
     let my_gen = ctx.generation.fetch_add(1, Ordering::SeqCst) + 1;
-    *ctx.active_pc.lock().unwrap_or_else(|e| e.into_inner()) = Some(Arc::clone(&pc));
+    let previous = ctx
+        .active_pc
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .replace(Arc::clone(&pc));
+
+    // Dropping an `RTCPeerConnection` does NOT free it: webrtc-rs holds the ICE agent, its
+    // gathering tasks and its UDP sockets behind internal `Arc`s, and only `close()` tears them
+    // down. Replacing the handle without closing leaks a socket set per re-offer.
+    //
+    // Observed 2026-09-12: after a few hours of reconnect churn the daemon began answering with
+    // `2 candidates (host)` and then `0 candidates (none)` — no srflx, eventually not even a host
+    // candidate — and no client could connect until it was restarted. Sockets it could no longer
+    // get. Re-offers are about to become the normal recovery path rather than a rare one, so this
+    // has to be right before that change is worth anything.
+    //
+    // Spawned rather than awaited: `close()` waits on the agent's own tasks, and this is the
+    // negotiation path — the new answer must not queue behind the old connection's shutdown.
+    if let Some(old) = previous {
+        tokio::spawn(async move {
+            if let Err(e) = old.close().await {
+                warn!("relay client: closing the previous peer connection: {e}");
+            }
+        });
+    }
 
     // RTCP read loop: PLI/FIR → ForceKeyframe.
     {

@@ -253,3 +253,39 @@ Raising it trades preserved state against holding Chrome, the encoder and the GP
 watching. **That is the user's call, not a code decision** — left at 45 s until asked, with the
 client's retry budget (~37 s, `scripts/reconnect-check.mjs` case 6) sized to fit inside it. Both
 numbers move together or the client abandons a session the server would still have honoured.
+
+---
+
+## I14 · The daemon ran out of ICE ports and stopped answering with candidates · **fixed, mechanism confirmed by construction**
+
+**Observed** `2026-09-12`, after ~2.5 hours of reconnect churn. The daemon's ICE answers decayed:
+`8 candidates (host,srflx)` all afternoon, then at 18:19:25 `2 candidates (host)`, then from
+18:19:41 onward **`0 candidates (none)`** on every negotiation. The client's offer was still a
+healthy 8. No client could connect, and the user reported it as *"connection can not be
+established past relay"*. A daemon restart fixed it instantly.
+
+**Mechanism.** `webrtc_settings.rs` pins ICE to **101 UDP ports** (`EphemeralUDP::new(50000,
+50100)`) so a host firewall can open exactly that range. `relay_client.rs` replaced
+`ctx.active_pc` on every re-offer and **dropped** the old `RTCPeerConnection` — but dropping one
+frees nothing in webrtc-rs: the ICE agent, its gathering tasks and its bound sockets sit behind
+internal `Arc`s and are released only by `close().await`. Every negotiation therefore leaked its
+sockets. Measured on the fresh daemon: 4 ports in the range after one negotiation, **8 after two**, with
+nothing released in between — so the pool is gone after roughly 25 negotiations, which the run
+passed well before 18:19.
+
+That also explains the shape of the decay. Port exhaustion is gradual, so gathering first loses
+the srflx candidates (fewer sockets to probe from), then the host ones, then all of them. It is
+not a STUN failure, despite the log line saying so.
+
+**Not fd exhaustion** — the daemon's limit is 524288 and it was holding 20. The narrow *port*
+range is the whole constraint.
+
+**Fixed** by closing the previous peer connection when it is replaced, spawned rather than
+awaited so the new answer does not queue behind the old connection's shutdown. This became
+urgent rather than tidy with the same change: re-offers are now the normal recovery path, so the
+leak would have been hit in minutes instead of hours.
+
+**Still worth adding** — nothing warns as the pool drains. An answer with zero candidates is
+reported as "STUN timed out", which accuses the network for a local resource leak. A count of
+bound ports in the range, logged when an answer carries fewer candidates than the last one, would
+have named this in one line.
