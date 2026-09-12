@@ -18,11 +18,11 @@ new Function("W", "emit", src)(W, emit);
 
 let failures = 0;
 const check = (name, target, snapshot, wantSide, wantState) => {
-  W.setTargetKbps(target.kbps);
+  W.setTargetKbps(target.kbps);        // also resets the warm-up
   const s = { fps: null, ping: null, jbuf: null, dec: null, jitter: null, kbps: null,
               lossPct: null, decodeDropPct: null, availableKbps: null,
               targetFps: target.fps, ...snapshot };
-  W.health(s);
+  for (let i = 0; i < 6; i++) W.health(s);   // burn the warm-up, then the real verdict
   const ok = out.side === wantSide && out.state === wantState;
   if (!ok) { failures++; console.log(`FAIL ${name}: got ${out.state}/${out.side} "${out.detail}", want ${wantState}/${wantSide}`); }
   else console.log(`ok   ${name}  →  ${out.state}/${out.side}  ${out.detail}`);
@@ -50,9 +50,16 @@ check("server stopped producing", T,
   "the server", "bad");
 
 // A link too small for the stream is a network fault *before* any packet is lost.
-check("link too small", T,
-  { fps: 90, ping: 30, dec: 4.0, jitter: 4, kbps: 1300, lossPct: 0.1, decodeDropPct: 0, availableKbps: 1400 },
+check("link too small, and it shows", T,
+  { fps: 60, ping: 30, dec: 4.0, jitter: 4, kbps: 1300, lossPct: 0.1, decodeDropPct: 0, availableKbps: 1400 },
   "network", "bad");
+
+// The same shortfall with nothing suffering is NOT a fault. Chrome's availableIncomingBitrate
+// tracks the received rate while uncongested, so a static screen sending 600 kbps reports a
+// 600 kbps "link" — and the old rule called that a broken network once a second.
+check("low link estimate with a healthy stream is not a fault", T,
+  { fps: 90, ping: 30, dec: 4.0, jitter: 4, kbps: 700, lossPct: 0.0, decodeDropPct: 0, availableKbps: 750 },
+  "healthy", "ok");
 
 // A still screen encodes to almost nothing. Throughput alone must never accuse the server.
 check("idle screen is not a fault", T,
