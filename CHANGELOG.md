@@ -4,6 +4,32 @@
 
 ### Added
 
+**Four Wayland protocols apps expect a compositor to speak.**
+
+*Launched apps come to the front.* An app started from the picker or the shell used to draw its
+first window behind whatever already had focus — on a phone, a strip of window you then had to
+find and tap. Toolkits have always passed a token through for this; wado now listens
+(`xdg_activation_v1`). Tokens work once.
+
+*Animations can pace themselves.* Apps can now ask when a frame was actually shown
+(`wp_presentation`), which is what GTK and Chrome use to keep an animation smooth instead of
+guessing. wado answers with the instant compositing finished, and explicitly does **not** claim
+the hardware guarantees a real display would provide — a confident wrong answer here is worse for
+an app than no answer, which is why this one waited.
+
+*Solid backdrops stop costing a full frame.* The grey sheet behind a dialog is one colour, and a
+toolkit can now say so in a single pixel rather than allocating and uploading a screen-sized image
+every time it changes (`wp_single_pixel_buffer_v1`).
+
+*Apps can declare what they are drawing* — video, a game, a photo (`wp_content_type_v1`). Nothing
+acts on the hint yet, and it is in the log for a reason: whether the encoder should treat video
+differently is worth answering only once we know real apps bother to say.
+
+Two protocols stay unimplemented on purpose. Cursor shapes are meaningless in a session that
+draws no cursor. Frame-pacing (`wp_fifo_v1`, `wp_commit_timing_v1`) needs the render loop to be
+able to hold a finished surface back until it is due, which it currently cannot — and advertising
+the promise without keeping it would make pacing worse, not better.
+
 **Windows are borderless** — `zxdg_decoration_v1`, answered server-side.
 
 Apps stop drawing their own titlebar, shadow and frame. On a phone that strip cost scarce
