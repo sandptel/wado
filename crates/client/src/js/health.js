@@ -87,7 +87,23 @@ W.health = (s) => {
 
   emit({ type: "health", state, side, detail,
          needKbps: targetKbps || null, haveKbps, gotKbps });
+
+  // On change only, up the relay to the daemon log. Two reasons, and the second is the one
+  // that matters: it puts the *client's own conclusion* next to the server's numbers in one
+  // file, so a session can be diagnosed afterwards without a human having been watching; and
+  // it is the only way to tell, from outside the phone, that the verdict is being computed at
+  // all — a strip that never renders and a strip that renders "healthy" look identical from
+  // here. On change only, because at 1 Hz this is a log line per second per viewer.
+  const now = state + "/" + side + "/" + detail;
+  if (now !== lastVerdict) {
+    lastVerdict = now;
+    W.rlog("verdict " + state + " " + side + (detail ? " — " + detail : "") +
+           (targetKbps ? "  [got " + mbps(gotKbps || 0) + " of " + mbps(targetKbps) +
+            (haveKbps ? ", link " + mbps(haveKbps) : "") + "]" : ""));
+  }
 };
+
+let lastVerdict = "";
 
 function mbps(k) {
   return k >= 1000 ? (k / 1000).toFixed(1) + " Mbps" : Math.round(k) + " kbps";
