@@ -10,6 +10,9 @@
 
 W.start = async (server, config, relayOpts) => {
   W.server = server;
+  // The scroll paths convert CSS pixels to the session's logical pixels and need this scale
+  // to do it. Taken from the config the UI already hands us rather than plumbed separately.
+  W.outputScale = config && config.scale > 0 ? config.scale : 1;
   // Before either branch: a session with no touch input for minutes would otherwise let the
   // phone sleep, and the resulting pagehide tears the session down.
   W.wake.acquire();

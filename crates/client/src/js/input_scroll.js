@@ -119,7 +119,10 @@ W.scrollg = {
     // crosses the page — see input_accel.js. Taken once from the combined magnitude rather
     // than per axis, or a diagonal drag would accelerate its two axes by different amounts
     // and curve away from the finger.
-    const speed = (W.scrollSpeed || 1) * W.scrollAccel.gain(Math.hypot(dx, dy));
+    // `cssToLogical` is what makes the content keep up with the finger: dx is in the viewer's
+    // CSS pixels and the axis is consumed in the session's logical ones. See input_units.js.
+    const speed =
+      (W.scrollSpeed || 1) * W.scrollAccel.gain(Math.hypot(dx, dy)) * W.cssToLogical(video);
     W.sendInput({
       t: "scroll",
       x: n.x,
