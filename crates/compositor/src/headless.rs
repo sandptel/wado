@@ -119,6 +119,7 @@ pub fn start_session(
     // invariant simple: at most one, always the current renderer's.
     state.dmabuf_logged = false;
     state.frame_seq = 0;
+    state.content_type_log.clear();
     if let Some(old) = state.dmabuf_global.take() {
         state
             .dmabuf_state

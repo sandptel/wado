@@ -20,6 +20,7 @@ use smithay::{
     utils::{Clock, Logical, Monotonic, Point},
     wayland::{
         compositor::{CompositorClientState, CompositorState},
+        content_type::ContentTypeState,
         dmabuf::{DmabufGlobal, DmabufState},
         fractional_scale::FractionalScaleManagerState,
         output::OutputManagerState,
@@ -104,6 +105,11 @@ pub struct Wado {
     /// width × height allocation plus a texture upload every time it is damaged. The renderer
     /// already handles `BufferType::SinglePixel`, so advertising it is the whole change.
     pub single_pixel_buffer_state: SinglePixelBufferState,
+    /// wp-content-type-v1. Advertised so apps can declare `Video`/`Game`/`Photo`; nothing reads
+    /// the hint yet — see `handlers/content_type.rs` for why logging it is the whole point.
+    pub content_type_state: ContentTypeState,
+    /// Per-surface content-type change log. Cleared on session stop.
+    pub content_type_log: crate::handlers::content_type::ContentTypeLog,
     /// `CLOCK_MONOTONIC`, read for presentation timestamps. `start_time.elapsed()` is *not*
     /// interchangeable with this: frame callbacks take an arbitrary millisecond counter, but a
     /// presentation timestamp is compared by the client against its own reading of the clock id
@@ -228,6 +234,7 @@ impl Wado {
         // id disagrees, so these two must name the same clock.
         let presentation_state = PresentationState::new::<Self>(&dh, clock.id() as u32);
         let single_pixel_buffer_state = SinglePixelBufferState::new::<Self>(&dh);
+        let content_type_state = ContentTypeState::new::<Self>(&dh);
 
         let mut seat_state = SeatState::new();
         let mut seat: Seat<Self> = seat_state.new_wl_seat(&dh, "headless");
@@ -266,6 +273,8 @@ impl Wado {
             xdg_activation_state,
             presentation_state,
             single_pixel_buffer_state,
+            content_type_state,
+            content_type_log: Default::default(),
             clock,
             frame_seq: 0,
             popups,

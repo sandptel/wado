@@ -41,6 +41,7 @@ impl CompositorHandler for Wado {
             }
         };
 
+        self.content_type_log.observe(surface);
         xdg_shell::handle_commit(&mut self.popups, &self.space, surface);
         resize_grab::handle_commit(&mut self.space, surface);
         self.apply_pending_placement(surface);
