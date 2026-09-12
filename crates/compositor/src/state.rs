@@ -28,6 +28,7 @@ use smithay::{
         selection::data_device::DataDeviceState,
         shell::xdg::{XdgShellState, decoration::XdgDecorationState},
         shm::ShmState,
+        single_pixel_buffer::SinglePixelBufferState,
         socket::ListeningSocketSource,
         viewporter::ViewporterState,
         xdg_activation::XdgActivationState,
@@ -97,6 +98,12 @@ pub struct Wado {
     /// `HwClock`/`HwCompletion`/`Vsync` flags set: those claim a display pipeline that does not
     /// exist here. See `headless::render_tick` for why a wrong answer is worse than none.
     pub presentation_state: PresentationState,
+    /// wp-single-pixel-buffer-v1. A one-pixel solid-colour `wl_buffer` with no shm pool and no
+    /// upload behind it. Toolkits use it for the thing that is most expensive to do the long
+    /// way here: a full-screen opaque backdrop behind a dialog, which as a real buffer is a
+    /// width × height allocation plus a texture upload every time it is damaged. The renderer
+    /// already handles `BufferType::SinglePixel`, so advertising it is the whole change.
+    pub single_pixel_buffer_state: SinglePixelBufferState,
     /// `CLOCK_MONOTONIC`, read for presentation timestamps. `start_time.elapsed()` is *not*
     /// interchangeable with this: frame callbacks take an arbitrary millisecond counter, but a
     /// presentation timestamp is compared by the client against its own reading of the clock id
@@ -220,6 +227,7 @@ impl Wado {
         // the same id from the `Time<Monotonic>` it is handed and discards any callback whose
         // id disagrees, so these two must name the same clock.
         let presentation_state = PresentationState::new::<Self>(&dh, clock.id() as u32);
+        let single_pixel_buffer_state = SinglePixelBufferState::new::<Self>(&dh);
 
         let mut seat_state = SeatState::new();
         let mut seat: Seat<Self> = seat_state.new_wl_seat(&dh, "headless");
@@ -257,6 +265,7 @@ impl Wado {
             viewporter_state,
             xdg_activation_state,
             presentation_state,
+            single_pixel_buffer_state,
             clock,
             frame_seq: 0,
             popups,
