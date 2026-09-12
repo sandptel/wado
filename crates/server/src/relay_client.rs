@@ -141,6 +141,7 @@ async fn run(
             // between "the link is saturated" and "the pump is the bottleneck", and nothing
             // else in the log distinguishes them.
             let mut slow: u64 = 0;
+            let mut pump = crate::pumpstats::PumpStats::new();
             let mut worst = Duration::ZERO;
             let mut worst_wait = Duration::ZERO;
             let mut queued_total = Duration::ZERO;
@@ -211,7 +212,27 @@ async fn run(
                 let took = t0.elapsed();
                 let runq = crate::sched::run_delay_ns().saturating_sub(runq0);
                 let budget = frame.duration;
+                // EVERY frame, not just the slow ones. The `> 100 ms` warning below reports
+                // outliers and cannot report their context: with only outliers logged there is
+                // no way to tell a pump that is healthy-with-rare-spikes from one that is
+                // chronically late, and `memory/latency/07` records a pattern that was read off
+                // that censored view and turned out not to exist. Percentiles come from the
+                // whole distribution or they are not percentiles.
+                pump.record(took);
+                if let Some(line) = pump.due() {
+                    tracing::info!(
+                        frames = line.n,
+                        p50_ms = format!("{:.1}", line.p50),
+                        p90_ms = format!("{:.1}", line.p90),
+                        p99_ms = format!("{:.1}", line.p99),
+                        max_ms = format!("{:.1}", line.max),
+                        over_budget = line.over_budget,
+                        budget_ms = budget.as_millis() as u64,
+                        "write_sample distribution over the last stretch"
+                    );
+                }
                 if took > budget {
+                    pump.record_over_budget();
                     slow += 1;
                     if took > worst { worst = took; }
                     // Same once-per-60 cadence as the drop counter, so the two lines pair up.
