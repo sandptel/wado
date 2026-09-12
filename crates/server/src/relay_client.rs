@@ -788,18 +788,27 @@ async fn handle_sdp_offer(
     {
         let cmd_tx = ctx.cmd_tx.clone();
         let generation = Arc::clone(&ctx.generation);
-        let session_started = Arc::clone(&ctx.session_started);
         pc.on_peer_connection_state_change(Box::new(move |state| {
             match state {
                 RTCPeerConnectionState::Connected => {
                     info!("relay client: viewer connected via WebRTC");
                     let _ = cmd_tx.send(CompositorCommand::ForceKeyframe);
                 }
+                // NOT a teardown. A peer connection dying is a *transport* event — a cell
+                // handoff, a tunnel change, a few seconds in a lift — and killing the session
+                // here meant every one of those cost the viewer their windows, their
+                // applications and a cold Chrome launch. Measured 2026-09-12: rtt spiked to
+                // 2191 ms at 17:57:32 and the session was gone at 17:57:33.
+                //
+                // `viewer_watchdog` is the only teardown now. It waits `VIEWER_GRACE` of
+                // relay-link silence *and* a non-connected peer connection, so a viewer that
+                // re-offers through the still-open relay socket keeps everything it had.
                 RTCPeerConnectionState::Failed | RTCPeerConnectionState::Closed => {
                     if generation.load(Ordering::SeqCst) == my_gen {
-                        info!("relay client: viewer gone — stopping session");
-                        session_started.store(false, Ordering::SeqCst);
-                        let _ = cmd_tx.send(CompositorCommand::Stop);
+                        info!(
+                            "relay client: peer connection {state:?} — session kept, waiting for \
+                             a re-offer (the watchdog stops it if no viewer comes back)"
+                        );
                     }
                 }
                 other => info!(?other, "relay client: peer connection state"),

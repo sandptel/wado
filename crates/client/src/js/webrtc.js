@@ -123,7 +123,30 @@ W.minimizePlayoutDelay = (recv) => {
   return applied.length ? applied.join(" ") : "unsupported by this browser";
 };
 
+// Re-offer over whichever signalling path this session is using.
+//
+// The bug this exists to fix: `connectWebRTC` POSTs to `W.server + "/offer"`, an endpoint that
+// only exists in direct mode. In relay mode every recovery — `handleFailure` *and* `resync` —
+// spent its attempts on a fetch that could never succeed and then printed "giving up". The
+// relay-mode re-offer was already written (`W._relayNegotiate`); nothing called it.
+//
+// The relay WS is a separate connection from the peer connection, so it is normally still up
+// when ICE dies — which is the whole point: stay joined to the relay, rebuild only WebRTC.
+W.reconnectWebRTC = () => {
+  if (!W.relayMode) return W.connectWebRTC();
+  const ws = W.relayWs;
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    return Promise.reject(new Error("relay socket is down — nothing to negotiate through"));
+  }
+  W.stopStats();
+  return W._relayNegotiate(ws);
+};
+
 // Retry the WebRTC connection with backoff; the compositor session keeps running.
+//
+// The budget is sized against the server's `VIEWER_GRACE` (45 s), which is now the only thing
+// that stops a session: giving up before it expires would strand a session the viewer could
+// still have reclaimed. Capped exponential — 0.5, 1, 2, 4, then 5 s — sums to ~37 s.
 W.handleFailure = () => {
   if (!W.sessionOn) return;
   if (W.reconnectAttempts >= W.MAX_RECONNECTS) {
@@ -132,11 +155,11 @@ W.handleFailure = () => {
     return;
   }
   W.reconnectAttempts++;
-  const delay = 500 * Math.pow(2, W.reconnectAttempts - 1);
+  const delay = Math.min(500 * Math.pow(2, W.reconnectAttempts - 1), 5000);
   status(`connection lost — reconnecting (${W.reconnectAttempts}/${W.MAX_RECONNECTS})…`);
   setTimeout(() => {
     if (!W.sessionOn) return;
-    W.connectWebRTC().catch(() => W.handleFailure());
+    W.reconnectWebRTC().catch(() => W.handleFailure());
   }, delay);
 };
 
@@ -157,7 +180,7 @@ W.resync = async () => {
   stagebar("Resyncing…");
   W.reconnectAttempts = 0;
   try {
-    await W.connectWebRTC();
+    await W.reconnectWebRTC();
     status("resync: new peer connection");
   } catch (e) {
     status("resync failed: " + e);
