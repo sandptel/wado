@@ -58,6 +58,17 @@ W.start = async (server, config, relayOpts) => {
   }
 };
 
+// Apply settings to a running session. Relay mode only for now: the direct HTTP transport has
+// no route for it, and relay is the path a phone actually uses.
+//
+// ponytail: no direct-mode branch. Add `POST /session/reconfigure` when something needs it.
+W.reconfigure = (config) => {
+  W.outputScale = config && config.scale > 0 ? config.scale : 1;
+  if (W.relayMode) return W.relayReconfigure(config);
+  status("applying settings needs relay mode");
+  return false;
+};
+
 W.stopSession = async () => {
   W.sessionOn = false;
   W.wake.release();

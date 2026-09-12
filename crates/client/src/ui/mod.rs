@@ -68,6 +68,7 @@ pub fn panel(ui: Ui) -> Element {
 
         div { class: "btns",
             button { id: "start", disabled: on, onclick: move |_| actions::start(ui), "Start" }
+            button { id: "apply", disabled: !on, onclick: move |_| actions::apply(ui), "Apply" }
             button { id: "stop", disabled: !on, onclick: move |_| actions::stop(ui), "Stop" }
         }
         div { id: "status", "{(ui.live.status)()}" }

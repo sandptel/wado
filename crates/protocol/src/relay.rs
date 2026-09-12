@@ -132,6 +132,23 @@ pub enum RelayMsg {
     SessionRejoin,
     /// Ask the server to stop the running session.
     SessionStop,
+    /// Change the shape of the **running** session — resolution, aspect ratio, frame rate,
+    /// bitrate — without stopping it.
+    ///
+    /// The alternative was `SessionStop` + `SessionStart`, and that kills every application the
+    /// session launched: "change the bitrate" meant "lose your browser", which is why nobody
+    /// could do it while connected. Only the encoder, the capture target and the `Output` depend
+    /// on these numbers; the desktop does not, and is left alone.
+    ///
+    /// Answered with [`RelayMsg::SessionReconfigured`] rather than
+    /// [`RelayMsg::SessionStarted`] — deliberately a different message, because
+    /// `SessionStarted` is what tells a client to negotiate WebRTC, and a reconfigure must
+    /// **not** renegotiate. The track is the same one; only the stream's SPS changes, which a
+    /// decoder handles from the forced IDR. Renegotiating would cost a fresh ICE round and a
+    /// black screen to change a number.
+    SessionReconfigure {
+        config: SessionConfig,
+    },
     /// Spawn a command into the running session.
     SessionLaunch {
         command: String,
@@ -172,6 +189,12 @@ pub enum RelayMsg {
     },
     /// Session stopped cleanly.
     SessionStopped,
+    /// The running session changed shape. Carries the *new* [`SessionInfo`], so the client can
+    /// re-aim its health verdict: the decode budget is `1000 / fps` and the arrival comparison
+    /// is against the CBR target, and both just moved. See [`RelayMsg::SessionReconfigure`].
+    SessionReconfigured {
+        info: SessionInfo,
+    },
     /// A launch command was accepted.
     SessionLaunched,
     /// A window action was accepted.

@@ -36,6 +36,18 @@ pub fn launch(ui: Ui) {
     bridge::call(format!("window.__wado.launch({});", bridge::js(&command)));
 }
 
+/// Apply the current settings to the session that is **already running**.
+///
+/// The difference from `start` that matters: nothing is torn down. Before this existed,
+/// changing a bitrate or a resolution meant Stop then Start, and Stop kills every application
+/// the session launched — so the cost of turning one knob was the browser and everything in it.
+pub fn apply(ui: Ui) {
+    let mut live = ui.live;
+    let config = cfg::build(ui);
+    live.status.set("applying…".to_string());
+    bridge::call(format!("window.__wado.reconfigure({});", bridge::js(&config)));
+}
+
 pub fn stop(ui: Ui) {
     let mut live = ui.live;
     live.session_on.set(false);
