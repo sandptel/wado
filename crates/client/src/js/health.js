@@ -23,7 +23,11 @@
 // What the session asked the encoder for, in kbps. Set when a session starts — without it the
 // bandwidth half can say what is arriving but not whether that is enough.
 let targetKbps = 0;
-W.setTargetKbps = (n) => { targetKbps = +n || 0; };
+W.setTargetKbps = (n) => { targetKbps = +n || 0; warm = 0; };
+
+// Ticks to ignore after a session starts. See the note on `warm` at the first use.
+const WARMUP_TICKS = 5;
+let warm = 0;
 
 // Loss this bad is a broken path, not a blip. Below it a stream recovers by itself.
 const LOSS_WARN = 0.5, LOSS_BAD = 3.0;       // percent of packets in the window
@@ -39,6 +43,13 @@ const STARVED_FRAC = 0.25;
 
 // `s` is the snapshot stats.js already computed; extras are the fields only this file reads.
 W.health = (s) => {
+  // Warm-up: the first seconds of a connection are ramp, not steady state, and every rule here
+  // reads a one-second rate. Report healthy rather than nothing, so the strip still appears.
+  if (warm++ < WARMUP_TICKS) {
+    emit({ type: "health", state: "ok", side: "connecting", detail: "",
+           needKbps: targetKbps || null, haveKbps: s.availableKbps, gotKbps: s.kbps });
+    return;
+  }
   const fps = s.fps, budget = s.targetFps > 0 ? 1000 / s.targetFps : null;
   const haveKbps = s.availableKbps;          // link capacity the browser estimates
   const gotKbps = s.kbps;                    // what the video track is actually receiving
@@ -62,7 +73,9 @@ W.health = (s) => {
   }
   // A link that cannot carry the stream is a network fault even with zero loss today: the
   // encoder is about to be told to back off, or the queue is about to grow.
-  if (haveKbps !== null && targetKbps > 0 && haveKbps < targetKbps) {
+  const suffering = (fps !== null && s.targetFps > 0 && fps < s.targetFps * 0.9) ||
+                    (s.lossPct !== null && s.lossPct >= LOSS_WARN);
+  if (suffering && haveKbps !== null && targetKbps > 0 && haveKbps < targetKbps) {
     worse(haveKbps < targetKbps / 2 ? "bad" : "warn", "network",
           "link offers " + mbps(haveKbps) + ", stream wants " + mbps(targetKbps));
   }
@@ -94,7 +107,7 @@ W.health = (s) => {
   // it is the only way to tell, from outside the phone, that the verdict is being computed at
   // all — a strip that never renders and a strip that renders "healthy" look identical from
   // here. On change only, because at 1 Hz this is a log line per second per viewer.
-  const now = state + "/" + side + "/" + detail;
+  const now = state + "/" + side;
   if (now !== lastVerdict) {
     lastVerdict = now;
     if (W.rlog) W.rlog("verdict " + state + " " + side + (detail ? " — " + detail : "") +

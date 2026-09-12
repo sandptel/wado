@@ -59,9 +59,11 @@ function say(s) { print t() " " s; fflush() }
   # the same second is what separates the three causes, and only this process sees both.
   lostd = match(line, /\(\+[0-9]+\)/) ? substr(line, RSTART+2, RLENGTH-3) + 0 : 0
   fresh = (srv_t > 0 && systime() - srv_t <= 5)
+  netfresh = (net_t > 0 && systime() - net_t <= 5)
   if (fresh && srv_bad)
-    say("  ↳ SERVER   the server was struggling at the same moment (render " rfps "/" rtgt \
-        " fps, pump over=" lov ") ⇒ this is OURS, not the link")
+    say("  ↳ SERVER   " srv_why " at the same moment ⇒ this is OURS, not the link")
+  else if (netfresh)
+    say("  ↳ NETWORK  " net_why " ⇒ congestion, not either machine")
   else if (lostd > 0)
     say("  ↳ NETWORK  server clean (render " rfps "/" rtgt " fps, pump p99=" lp99 "ms over=" lov \
         "), " lostd " packets lost ⇒ the path, not either machine")
@@ -74,6 +76,10 @@ function say(s) { print t() " " s; fflush() }
 # time: it is the receiver view of the same second the lines above describe from the sender end.
 /browser: verdict/ {
   sub(/.*browser: verdict /,"")
+  # Key on the verdict, not the figures behind it: those move every tick and are not the change.
+  key=$0; sub(/ *\[.*/,"",key); sub(/ —.*/,"",key)
+  if (key == last_verdict && systime() - last_verdict_t < 60) next
+  last_verdict=key; last_verdict_t=systime()
   say(($0 ~ /^ok/ ? "◆" : $0 ~ /^bad/ ? "✖" : "⚠") " VERDICT  " $0 "   ← computed on the phone")
   next }
 
@@ -88,11 +94,19 @@ function say(s) { print t() " " s; fflush() }
   if (lq+0 > 50) say("⚠ PUMP     queue backed up " lq "ms — encoder ahead of the network   ← sender side")
   next }
 /write_sample slower than the frame budget/ { say("⚠ PUMP     chronically late: worst=" kv("worst_ms") "ms last=" kv("last_ms") "ms budget=" kv("budget_ms") "ms"); next }
-/took_ms/ { srv_bad=1; srv_t=systime(); say("✖ STALL    " kv("took_ms") "ms write_sample  runq=" kv("runq_ms") "ms " (kv("runq_ms")+0 > kv("took_ms")/2 ? "(CPU starvation)" : "(blocked, not CPU)")); next }
+/took_ms/ {
+  starved = (kv("runq_ms")+0 > kv("took_ms")/2)
+  srv_t=systime(); srv_bad=starved; srv_why = starved ? "a " kv("took_ms") "ms stall with the thread runnable" : ""
+  if (!starved) { net_t=systime(); net_why="the pump blocked " kv("took_ms") "ms with runq 0 — the socket would not take bytes" }
+  say("✖ STALL    " kv("took_ms") "ms write_sample  runq=" kv("runq_ms") "ms " (starved ? "(CPU starvation — ours)" : "(blocked on the socket — the link)"))
+  next }
 
 /render loop is behind/ { srv_bad=1; srv_t=systime(); rfps=clean(kv("fps")); rtgt=kv("target_fps"); say("⚠ RENDER   " clean(kv("fps")) "/" kv("target_fps") " fps  mean=" clean(kv("mean_ms")) "ms budget=" clean(kv("budget_ms")) "ms   ← server GPU/CPU"); next }
 /render pacing healthy/ { rfps=clean(kv("fps")); rtgt=kv("target_fps"); srv_bad=0; srv_t=systime(); next }
-/shed|shedding/ { say("⚠ SHED     " $0); next }
+/shedding render ticks/ {
+  srv_t=systime(); srv_bad=1; srv_why="the compositor was shedding render ticks (the pump could not take them)"
+  say("⚠ SHED     render ticks dropped: 1 in " kv("to") " (was 1 in " kv("from") "), " kv("dropped_in_window") " dropped in the window")
+  next }
 
 /relay client: connection to relay lost/ { say("✖ RELAY    connection lost — reconnecting"); next }
 /cannot reach relay|relay still unreachable/ { say("✖ RELAY    unreachable — daemon is orphaned from the tunnel"); next }
