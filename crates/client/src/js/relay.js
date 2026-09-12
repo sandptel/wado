@@ -98,10 +98,22 @@ const rlog = W.rlog = (line) => {
 // forever instead of giving up; what is left here is the only wait a human is actually blocked
 // on — "I pressed Start, is a session coming?" — and it is armed only while that is true.
 const SESSION_WAIT_MS = 20000;
-function armSessionWait() {
+
+// `kind` decides what an expiry *means*, and that distinction is load-bearing.
+//
+// "start" failing means there is no session, so the UI should say so. "change" failing means
+// the request was not answered — the session is still running and still ours. Firing
+// `startFailed` for a change would set `session_on = false` in the Rust UI while the daemon
+// holds a live session and the crumb says we are watching it: three answers, two of them wrong.
+function armSessionWait(kind = "start") {
   clearSessionWait();
   W._relaySessionTimer = setTimeout(() => {
     W._relaySessionTimer = null;
+    if (kind === "change") {
+      rlog("the daemon did not answer the change request within 20 s");
+      status("relay: no answer to that change — the session is still running");
+      return;
+    }
     phase(2, "the daemon is online but the session never started");
     status("relay: the daemon did not answer the session request");
     emit({ type: "startFailed" });
@@ -228,7 +240,7 @@ W.relayOn("session_alive", (msg) => {
     W._relayResuming = false;
     rlog("the session survived the outage — rejoining");
     status("relay: rejoining…");
-    armSessionWait();
+    armSessionWait("change");
     W.relaySendMsg({ type: "session_rejoin" });
     return;
   }
@@ -463,7 +475,7 @@ W.relayReconfigure = (config) => {
   W._relayConfig = config;
   // The scroll conversion is in logical pixels and the scale may have just changed under it.
   W.outputScale = config && config.scale > 0 ? config.scale : 1;
-  armSessionWait();
+  armSessionWait("change");
   return relaySend({ type: "session_reconfigure", config });
 };
 
@@ -503,7 +515,7 @@ W.relayRejoin = () => {
   W._relayChoice = null;
   emit({ type: "sessionAliveCleared" });
   status("relay: rejoining the running session…");
-  armSessionWait();
+  armSessionWait("change");
   return true;
 };
 
