@@ -90,6 +90,20 @@ pub enum RelayMsg {
         room_id: String,
         client_addr: String,
     },
+    /// The viewer's WebSocket closed. The room is gone; the **session is not**.
+    ///
+    /// This replaces a synthesized `{"type":"session_stop"}` the relay used to send here. That
+    /// was written when the only teardown was the WebRTC peer state reaching `Failed`/`Closed`,
+    /// which never happens when ICE never completed — so a timed-out client left `session_active`
+    /// set forever. `viewer_watchdog` covers that case now, by two independent clocks.
+    ///
+    /// The old line meanwhile converted **any** socket close — a cell handoff, a screen lock, a
+    /// tunnel hiccup — into an instant full teardown, taking the windows and every launched
+    /// application with it and giving the grace period nothing to grace. A viewer going away is
+    /// not a request to stop; it is the absence of a request.
+    PeerDisconnected {
+        room_id: String,
+    },
 
     // ── Relay → client (handshake) ──────────────────────────────────────────
     /// Join accepted; room is open. (The client never sends a join message —
