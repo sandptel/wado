@@ -29,6 +29,7 @@ use smithay::{
         shm::ShmState,
         socket::ListeningSocketSource,
         viewporter::ViewporterState,
+        xdg_activation::XdgActivationState,
     },
 };
 
@@ -86,6 +87,9 @@ pub struct Wado {
     /// the destination size its buffer maps onto, or the rounding it just avoided reappears
     /// at composite time.
     pub viewporter_state: ViewporterState,
+    /// xdg-activation-v1. The launcher's half of "raise the window I just started": a toolkit
+    /// passes the token through `exec`, and without the global it has no way to ask at all.
+    pub xdg_activation_state: XdgActivationState,
     pub popups: PopupManager,
     pub seat: Seat<Self>,
 
@@ -195,6 +199,7 @@ impl Wado {
         // binds the seat, and one that appears later is one it never asks for again.
         let pointer_gestures_state = PointerGesturesState::new::<Self>(&dh);
         let dmabuf_state = DmabufState::new();
+        let xdg_activation_state = XdgActivationState::new::<Self>(&dh);
 
         let mut seat_state = SeatState::new();
         let mut seat: Seat<Self> = seat_state.new_wl_seat(&dh, "headless");
@@ -230,6 +235,7 @@ impl Wado {
             dmabuf_global: None,
             dmabuf_logged: false,
             viewporter_state,
+            xdg_activation_state,
             popups,
             seat,
             renderer: None,
