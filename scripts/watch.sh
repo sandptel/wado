@@ -23,7 +23,7 @@ function say(s) { print t() " " s; fflush() }
   say("▶ SESSION  " w "x" h "@" f "  " clean(kv("backend")) " " b "kbps  bpp=" clean(kv("bits_per_px")) "  scale=" kv("scale"))
   live=1; last_beat=systime(); tgtfps=f+0; next }
 
-/compositor session stopped/ { say("■ SESSION  stopped"); live=0; next }
+/compositor session stopped/ { say("■ SESSION  stopped"); live=0; stopped_t=systime(); next }
 /viewer gone — stopping session/ { say("■ VIEWER   gone — session stopping"); next }
 /no sign of a viewer/           { say("■ VIEWER   never arrived — watchdog reaped the session"); next }
 /viewer connected via WebRTC/   { say("● VIEWER   connected (WebRTC up)"); next }
@@ -38,6 +38,7 @@ function say(s) { print t() " " s; fflush() }
   s=kv("state")
   if (s=="?" && match($0, /state changed: [a-z]+/)) s=substr($0, RSTART+15, RLENGTH-15)
   s=tolower(s)
+  if (s ~ /failed|disconnected/ && stopped_t > 0 && systime() - stopped_t <= 90) next
   if (s == last_ice) next
   last_ice=s
   say((s ~ /^connected$|completed/ ? "◆" : s ~ /failed|disconnected/ ? "✖" : "◇") " ICE      " s)
