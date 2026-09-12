@@ -17,12 +17,13 @@ use smithay::{
             protocol::wl_surface::WlSurface,
         },
     },
-    utils::{Logical, Point},
+    utils::{Clock, Logical, Monotonic, Point},
     wayland::{
         compositor::{CompositorClientState, CompositorState},
         dmabuf::{DmabufGlobal, DmabufState},
         fractional_scale::FractionalScaleManagerState,
         output::OutputManagerState,
+        presentation::PresentationState,
         pointer_gestures::PointerGesturesState,
         selection::data_device::DataDeviceState,
         shell::xdg::{XdgShellState, decoration::XdgDecorationState},
@@ -90,6 +91,20 @@ pub struct Wado {
     /// xdg-activation-v1. The launcher's half of "raise the window I just started": a toolkit
     /// passes the token through `exec`, and without the global it has no way to ask at all.
     pub xdg_activation_state: XdgActivationState,
+    /// wp-presentation. Answers "when was the frame I drew actually shown?" — the timestamp
+    /// GTK and Chrome pace their animations against. wado has no scanout, so the honest answer
+    /// is the instant the render tick finished compositing, with none of the
+    /// `HwClock`/`HwCompletion`/`Vsync` flags set: those claim a display pipeline that does not
+    /// exist here. See `headless::render_tick` for why a wrong answer is worse than none.
+    pub presentation_state: PresentationState,
+    /// `CLOCK_MONOTONIC`, read for presentation timestamps. `start_time.elapsed()` is *not*
+    /// interchangeable with this: frame callbacks take an arbitrary millisecond counter, but a
+    /// presentation timestamp is compared by the client against its own reading of the clock id
+    /// the global advertises — so an uptime-relative value would put every frame hours in the
+    /// past.
+    pub clock: Clock<Monotonic>,
+    /// Per-output presentation sequence number: frames composited since the session started.
+    pub frame_seq: u64,
     pub popups: PopupManager,
     pub seat: Seat<Self>,
 
@@ -200,6 +215,11 @@ impl Wado {
         let pointer_gestures_state = PointerGesturesState::new::<Self>(&dh);
         let dmabuf_state = DmabufState::new();
         let xdg_activation_state = XdgActivationState::new::<Self>(&dh);
+        let clock = Clock::<Monotonic>::new();
+        // The clock id is part of the global: `OutputPresentationFeedback::presented` derives
+        // the same id from the `Time<Monotonic>` it is handed and discards any callback whose
+        // id disagrees, so these two must name the same clock.
+        let presentation_state = PresentationState::new::<Self>(&dh, clock.id() as u32);
 
         let mut seat_state = SeatState::new();
         let mut seat: Seat<Self> = seat_state.new_wl_seat(&dh, "headless");
@@ -236,6 +256,9 @@ impl Wado {
             dmabuf_logged: false,
             viewporter_state,
             xdg_activation_state,
+            presentation_state,
+            clock,
+            frame_seq: 0,
             popups,
             seat,
             renderer: None,

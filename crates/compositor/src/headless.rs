@@ -11,8 +11,11 @@ use smithay::{
             gles::{GlesRenderer, GlesTarget},
         },
     },
+    desktop::utils::OutputPresentationFeedback,
     output::{Mode, Output, PhysicalProperties, Subpixel},
     reexports::calloop::timer::{TimeoutAction, Timer},
+    reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback,
+    wayland::presentation::Refresh,
     utils::{Buffer, Size, Transform},
 };
 
@@ -115,6 +118,7 @@ pub fn start_session(
     // early-returns and never tears this down. Dropping any previous global here keeps the
     // invariant simple: at most one, always the current renderer's.
     state.dmabuf_logged = false;
+    state.frame_seq = 0;
     if let Some(old) = state.dmabuf_global.take() {
         state
             .dmabuf_state
@@ -581,6 +585,11 @@ fn render_tick(state: &mut Wado) -> crate::Result<()> {
         }
     };
 
+    // Presentation feedback is answered from this, so it has to say whether the composite
+    // actually reached the pipeline — not whether the encoder emitted a NAL this tick (it
+    // legitimately holds frames).
+    let composited = result.is_ok();
+
     match result {
         Ok(Some(nal_bytes)) => {
             if let Some(sink) = state.frame_sink.as_mut() {
@@ -603,6 +612,35 @@ fn render_tick(state: &mut Wado) -> crate::Result<()> {
     }
 
     // Post-frame bookkeeping (after the capture/encode borrows are released).
+    //
+    // Presentation feedback is collected and answered in this one block, deliberately: a
+    // callback that is taken and never answered leaves the client waiting forever, the same
+    // failure mode as an unanswered dmabuf `ImportNotifier`. Collecting here means there is no
+    // path between the take and the answer that can return early. (`OutputPresentationFeedback`
+    // also discards on drop, so even a panic between the two cannot strand a client.)
+    //
+    // `Refresh` comes from the output mode rather than a separate constant so the rate a client
+    // is told matches the one `wl_output` advertises. The flags are empty on purpose: `Vsync`,
+    // `HwClock` and `HwCompletion` each assert a property of a real scanout, and `ZeroCopy`
+    // would claim the frame went to a display instead of an encoder. Empty is the honest
+    // encoding of "software composite, timestamped as accurately as this loop can".
+    let mut feedback = OutputPresentationFeedback::new(&output);
+    for window in state.space.elements() {
+        window.take_presentation_feedback(&mut feedback, |_, _| Some(output.clone()), |_, _| {
+            wp_presentation_feedback::Kind::empty()
+        });
+    }
+    if composited {
+        let refresh = output
+            .current_mode()
+            .map(|m| Refresh::fixed(Duration::from_secs_f64(1000.0 / m.refresh as f64)))
+            .unwrap_or(Refresh::Unknown);
+        feedback.presented(state.clock.now(), refresh, state.frame_seq, wp_presentation_feedback::Kind::empty());
+    }
+    // Not `+= 1` on the presented branch only: the sequence counts composites, and a client
+    // seeing a gap is being told the truth about a frame it never got.
+    state.frame_seq += 1;
+
     state.space.elements().for_each(|window| {
         window.send_frame(
             &output,
