@@ -112,6 +112,11 @@ W.relayConnect = async (relayUrl, remoteId, config) => {
           // Surface encoder info (invariant #5 — software banner).
           if (msg.info && msg.info.encoder) {
             emit({ type: "encoder", mode: msg.info.encoder.mode, pipeline: msg.info.encoder.pipeline || "" });
+            // The yardsticks the health verdict measures against. They come from the server
+            // because only the server knows what `Balanced` resolved to at this resolution —
+            // and a decode time judged against a guessed budget accuses the wrong machine.
+            W.setTargetKbps(msg.info.encoder.bitrate_kbps || 0);
+            W.setTargetFps(msg.info.encoder.fps || 0);
           }
           W.sessionOn = true;
           W._relayStage = 3; phase(3, "");

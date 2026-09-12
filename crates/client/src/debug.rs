@@ -34,6 +34,15 @@ pub const ITEMS: &[Item] = &[
         js: None,
     },
     Item {
+        // On by default, unlike everything else here. It is the one view that answers the
+        // question people actually have when the picture misbehaves — *whose fault is it* —
+        // and it draws nothing at all while the answer is "nobody's".
+        id: "health",
+        label: "Health verdict (who is at fault)",
+        default: true,
+        js: None,
+    },
+    Item {
         id: "fps",
         label: "Show FPS",
         default: true,

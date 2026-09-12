@@ -26,11 +26,15 @@ impl Tier {
             Tier::VaapiCpu => (EncoderMode::Hardware, "h264", "vaapi", "vaapi-cpu"),
             Tier::X264 => (EncoderMode::Software, "h264", "x264", "x264-cpu"),
         };
+        // bitrate and fps are filled in by the caller, which is the only place that holds the
+        // resolved `EncoderConfig`. A tier does not know what it was configured with.
         EncoderReport {
             mode,
             codec: codec.into(),
             backend: backend.into(),
             pipeline: pipeline.into(),
+            bitrate_kbps: 0,
+            fps: 0,
         }
     }
 

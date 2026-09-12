@@ -97,6 +97,8 @@ pub fn render(ui: Ui) -> Element {
                 }
             }
         }
+        // Above the latency breakdown: the verdict first, the evidence under it.
+        {super::health::render(ui)}
         if show_lat {
             div { id: "wado-latency",
                 for (label, ms) in stages.iter() {

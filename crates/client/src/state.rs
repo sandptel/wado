@@ -212,6 +212,25 @@ pub struct Live {
     /// Per-stage breakdown as (label, ms) in pipeline order; empty until the bridge reports.
     pub stages: Signal<Vec<(String, f64)>>,
     pub dropped: Signal<Option<u64>>,
+    /// The one-line verdict: which of the three machines in this picture is at fault.
+    /// Computed in `js/health.js`; see there for why it is a verdict and not another number.
+    pub health: Signal<Health>,
+}
+
+/// A verdict over the live stats. `state` is `"ok" | "warn" | "bad"` and drives the colour;
+/// `side` names who is at fault in the user's own terms ("network", "your device", "the
+/// server"); `detail` is the number that justifies it.
+#[derive(Clone, PartialEq, Default)]
+pub struct Health {
+    pub state: String,
+    pub side: String,
+    pub detail: String,
+    /// The CBR target the server built the encoder with.
+    pub need_kbps: Option<f64>,
+    /// What the browser estimates the link can carry.
+    pub have_kbps: Option<f64>,
+    /// What the video track is actually receiving.
+    pub got_kbps: Option<f64>,
 }
 
 impl Live {
@@ -242,6 +261,7 @@ impl Live {
             jbuf: use_signal(|| None),
             stages: use_signal(Vec::new),
             dropped: use_signal(|| None),
+            health: use_signal(Health::default),
         }
     }
 
@@ -255,6 +275,7 @@ impl Live {
         self.dropped.set(None);
         self.encoder_mode.set(String::new());
         self.encoder_pipeline.set(String::new());
+        self.health.set(Health::default());
     }
 }
 

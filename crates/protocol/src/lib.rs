@@ -294,6 +294,18 @@ pub struct EncoderReport {
     /// Lets the client mark a *fallback* path. Defaults empty for older servers.
     #[serde(default)]
     pub pipeline: String,
+    /// The CBR target the encoder was actually built with, in kbps.
+    ///
+    /// The client cannot derive this: `Quality::Balanced` is a word, and the kbps it becomes
+    /// depends on the resolution and frame rate the *server* resolved. Without it the client
+    /// can say what is arriving but not whether that is what was asked for — which is exactly
+    /// the comparison that separates "the link is too small" from "the server stopped sending".
+    #[serde(default)]
+    pub bitrate_kbps: u32,
+    /// The frame rate the encoder was built for. The decode budget is `1000 / fps`, and a
+    /// decode time measured against the wrong budget accuses the wrong machine.
+    #[serde(default)]
+    pub fps: u32,
 }
 
 /// Whether a running session is encoding in hardware or software.
