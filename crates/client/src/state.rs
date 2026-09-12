@@ -155,21 +155,6 @@ pub struct Live {
     pub console_open: Signal<bool>,
     pub console_tab: Signal<String>,
 
-    /// Terminal output: `(text, is_stderr)`. Capped like the log, for the same reason — an
-    /// unbounded command would otherwise grow the DOM until the page dies.
-    ///
-    /// Kept apart from the log rather than interleaved: they answer different questions, and
-    /// a command's output mixed into the server's tracing makes both harder to read.
-    pub term: Signal<Vec<(String, bool)>>,
-    /// What is typed in the console, kept apart from `Settings::command`.
-    ///
-    /// They were the same signal, so typing in the console rewrote the launcher's field in
-    /// the settings panel and the other way round. They look alike and are not: the launcher
-    /// holds a saved application to start with a session, the console holds a line you are
-    /// typing right now. Not persisted, for the same reason.
-    pub term_input: Signal<String>,
-    /// True while a command is running, so the input can say so and refuse a second one.
-    pub term_busy: Signal<bool>,
     /// Whether the settings sheet is up. Only meaningful below the layout breakpoint — above
     /// it the panel is docked and this is ignored. Not persisted: reopening a page with the
     /// settings sheet already covering the video is never what someone wanted.
@@ -224,9 +209,6 @@ impl Live {
             logs: use_signal(Vec::new),
             console_open: use_signal(|| false),
             console_tab: use_signal(|| "shell".to_string()),
-            term: use_signal(Vec::new),
-            term_input: use_signal(String::new),
-            term_busy: use_signal(|| false),
             sheet_open: use_signal(|| false),
             encoder_mode: use_signal(String::new),
             encoder_pipeline: use_signal(String::new),

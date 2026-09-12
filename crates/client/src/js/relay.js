@@ -155,14 +155,6 @@ W.relayConnect = async (relayUrl, remoteId, config) => {
           }
           break;
 
-        // ── Terminal ─────────────────────────────────────────────────────────
-        case "exec_output":
-          emit({ type: "exec", line: msg.line || "", err: !!msg.err });
-          break;
-
-        case "exec_exit":
-          emit({ type: "execExit", code: msg.code });
-          break;
 
         // Straight to the emulator rather than through a Dioxus signal: terminal output
         // arrives in small bursts at high rate, and routing it through a re-render would
@@ -319,10 +311,6 @@ W._relayNegotiate = async (ws) => {
 };
 
 // ── Session control helpers ───────────────────────────────────────────────────
-
-// Send a command to the session's shell. Relay-only: direct mode reaches the server over
-// HTTP and would need its own route, which nothing has asked for yet.
-W.relayExec = (command) => relaySend({ type: "exec", command });
 
 // One place that knows the socket might not be there. Every pty verb is fire-and-forget:
 // a keystroke that misses the socket is a keystroke the shell never saw, and the terminal

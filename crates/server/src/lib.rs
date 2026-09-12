@@ -5,7 +5,6 @@
 
 pub mod apps;
 pub mod error;
-pub mod exec;
 pub mod ice;
 pub mod panic_log;
 pub mod relay_client;
