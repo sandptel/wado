@@ -87,6 +87,41 @@ the same log answers it.
 
 ---
 
+## I9 · `Reactivity` emits a keyframe every second at **7× the per-frame budget** · **open, measured**
+
+**Measured** `2026-09-12` 17:51, live, `1080×2422 @90`, `Reactivity` (5676 kbps):
+
+| | |
+|---|---|
+| CBR per-frame budget | 5676 / 90 = 63 kbit = **7 kB** |
+| measured P-frames | **7 kB** — exactly on budget |
+| measured keyframes | **46–51 kB** — **7× the budget** |
+| cadence | 3–4 per 300 frames ⇒ **one per second** (`Reactivity` sets GOP = fps) |
+
+Every second the stream emits one frame seven times the size of the budget, and the pump must
+clear it inside a single 11 ms frame period — an instantaneous demand of roughly **36 Mbps** on a
+link that was offering **1.4 Mbps**.
+
+**Correlates with the dominant failure of the roaming run.** ICE held 3.3 s and 8.1 s on two
+consecutive `Reactivity`/90 fps sessions before `disconnected`; `Balanced`/60 fps sessions earlier
+the same hour ran for three and five minutes. (The `failed` state that follows is always exactly
+30 s later — that is the ICE timer, not information.)
+
+⚠️ **This is a mechanism plus a correlation, not a proof.** The sample is two sessions, the user
+was moving, and a later `Reactivity`/90 session ran healthily at 89/90 fps with rtt 42 ms.
+
+**The refuting measurement:** same link, same fps, `Balanced` (GOP = 2 × fps) against `Reactivity`
+(GOP = fps). If the disconnect rate does not move, the burst is not the cause.
+
+**It also sits against invariant 7.** `CLAUDE.md` says *"keyframes on demand rather than periodic
+… on-demand IDR is how that goal is met instead"*, and the codebase has on-demand IDR (PLI/FIR →
+`ForceKeyframe`). But `conf/mod.rs:130` gives `Reactivity` a **1-second periodic GOP**, and the
+other tiers 2 seconds. If on-demand IDR is the mechanism, a periodic GOP an order of magnitude
+longer would cost nothing in recovery and remove the burst entirely. **That is a Decision Log
+question, not a patch to make quietly.**
+
+---
+
 ## I5 · A too-small link is only detectable indirectly · **open, by design for now**
 
 `availableIncomingBitrate` was removed from the verdict in `1315cf9` because it lies in both
