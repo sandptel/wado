@@ -110,7 +110,17 @@ function say(s) { print t() " " s; fflush() }
     # merely the reciprocal of the rate it managed.
     afps = match(line, /fps=[0-9.]+/) ? substr(line, RSTART+4, RLENGTH-4) + 0 : 0
     duty = (dec >= 0 && afps > 0) ? afps * dec / 1000 : -1
-    if ((duty >= 0.9) || ddrop > 2)
+    # Drops alone do not identify a side. A decoder with headroom that is nonetheless discarding
+    # frames is usually discarding *incomplete* ones, which is the path; a 497 ms round trip one
+    # millisecond under the cutoff above is still a broken path. Rather than tune the threshold —
+    # which only moves the cliff — say what is known and stop short of the accusation.
+    if (duty < 0.9 && ddrop > 2) {
+      say("  ↳ UNCLEAR  decode load " int(duty*100) "% has headroom yet +" ddrop " frames were " \
+          "dropped after arriving, round trip " crtt_n "ms — most likely part-frames from the " \
+          "path, not the decoder")
+      next
+    }
+    if (duty >= 0.9)
       say("  ↳ DEVICE   decode load " int(duty*100) "% (" dec "ms x " afps "fps, budget " \
           int(budget*10)/10 "ms)" (ddrop >= 0 ? ", +" ddrop " dropped after arriving" : "") \
           (duty >= 0.9 ? (duty > 1.05 ? " ⇒ past capacity, or decoding on several threads" : " ⇒ saturated") : " ⇒ dropping frames though decode has headroom"))
