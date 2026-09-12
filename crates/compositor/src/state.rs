@@ -147,6 +147,9 @@ pub struct Wado {
     /// or a second device — has no way back to that answer, and "a session is already active" is
     /// not enough to decide whether to join it. See `CompositorCommand::Status`.
     pub encoder_report: Option<wado_protocol::EncoderReport>,
+    /// Render-tick shedding when the pump cannot take the frames we are making.
+    /// See `crate::congestion` — this is a mitigation, not bandwidth estimation.
+    pub congestion: crate::congestion::Congestion,
     pub frame_sink: Option<Box<dyn FrameSink>>,
     pub output: Option<Output>,
     /// The output's wl_output global, removed on session stop so a fresh session
@@ -302,6 +305,7 @@ impl Wado {
             current_tier: None,
             encoder_config: None,
             encoder_report: None,
+            congestion: Default::default(),
             frame_sink: None,
             output: None,
             output_global: None,

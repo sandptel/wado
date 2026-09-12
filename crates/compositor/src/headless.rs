@@ -120,6 +120,7 @@ pub fn start_session(
     state.dmabuf_logged = false;
     state.frame_seq = 0;
     state.presentation_logged = false;
+    state.congestion.reset();
     state.content_type_log.clear();
     if let Some(old) = state.dmabuf_global.take() {
         state
@@ -566,9 +567,22 @@ fn render_tick(state: &mut Wado) -> crate::Result<()> {
     // before we may rebuild the pipeline on failure.
     let tick_start = Instant::now();
 
+    // Shed this tick if the pump has been refusing frames. Deliberately decided *here* —
+    // before anything is captured, encoded or collected — because the point is to not do the
+    // work, and because a skip taken later would have to unpick the presentation-feedback
+    // bookkeeping below. See `crate::congestion` for why the signal is the sink's drop count.
+    //
+    // What still happens on a shed tick, and must: the frame callbacks at the end of this
+    // function. A client that stops receiving them stops drawing entirely, which would turn a
+    // reduced frame rate into the freeze this exists to avoid.
+    let dropped_total = state.frame_sink.as_ref().map_or(0, |s| s.dropped());
+    let render_this_tick = state.congestion.should_render(dropped_total);
+
     // The block yields the encode result plus how long each stage took, so neither
     // duration needs a dummy initial value.
-    let (result, capture_dur, encode_dur): (crate::Result<Option<Vec<u8>>>, Duration, Duration) = {
+    let (result, capture_dur, encode_dur): (crate::Result<Option<Vec<u8>>>, Duration, Duration) = if !render_this_tick {
+        (Ok(None), Duration::ZERO, Duration::ZERO)
+    } else {
         let renderer = state.renderer.as_mut().unwrap();
         let capture = state.capture.as_mut().unwrap();
         let damage_tracker = state.damage_tracker.as_mut().unwrap();
@@ -619,7 +633,7 @@ fn render_tick(state: &mut Wado) -> crate::Result<()> {
         }
     }
 
-    if let Some(timing) = state.timing.as_mut() {
+    if let Some(timing) = state.timing.as_mut().filter(|_| render_this_tick) {
         // `queue` is measured by the pump (it is the only side that knows when the frame
         // was taken), so it is not passed here — see `StageTimings::queue_ms`.
         timing.frame(tick_start, capture_dur, encode_dur, Duration::ZERO);
@@ -642,9 +656,14 @@ fn render_tick(state: &mut Wado) -> crate::Result<()> {
     // The count is taken in the flags closure because `OutputPresentationFeedback` does not
     // expose how much it collected, and without it this protocol would be the one thing in the
     // log that only ever speaks when the answer is yes — the hole the dmabuf verdict already had.
+    // A shed tick collects nothing. That is the correct answer rather than a convenient one:
+    // the client's buffer genuinely has not been presented yet, so its callbacks stay pending in
+    // the surface's cached state and are answered by the next tick that does composite. The
+    // alternative — collecting and discarding them every shed tick — would be a stream of
+    // `discarded` events for frames that are still perfectly on their way to being shown.
     let fb_surfaces = std::cell::Cell::new(0usize);
     let mut feedback = OutputPresentationFeedback::new(&output);
-    for window in state.space.elements() {
+    for window in state.space.elements().filter(|_| render_this_tick) {
         window.take_presentation_feedback(
             &mut feedback,
             |_, _| Some(output.clone()),
@@ -669,7 +688,7 @@ fn render_tick(state: &mut Wado) -> crate::Result<()> {
             "presentation feedback answered — a client is pacing on our timestamps"
         );
     }
-    if composited {
+    if composited && render_this_tick {
         let refresh = output
             .current_mode()
             .map(|m| Refresh::fixed(Duration::from_secs_f64(1000.0 / m.refresh as f64)))
@@ -677,8 +696,11 @@ fn render_tick(state: &mut Wado) -> crate::Result<()> {
         feedback.presented(state.clock.now(), refresh, state.frame_seq, wp_presentation_feedback::Kind::empty());
     }
     // Not `+= 1` on the presented branch only: the sequence counts composites, and a client
-    // seeing a gap is being told the truth about a frame it never got.
-    state.frame_seq += 1;
+    // seeing a gap is being told the truth about a frame it never got. A shed tick is not a
+    // composite at all, so it does not advance it.
+    if render_this_tick {
+        state.frame_seq += 1;
+    }
 
     state.space.elements().for_each(|window| {
         window.send_frame(

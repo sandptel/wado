@@ -92,8 +92,37 @@ impl WadoConfig {
 ///
 /// A free function (not an inherent method) because `SessionConfig` is defined in
 /// the `wado-protocol` crate — the orphan rule forbids adding inherent impls here.
+/// Largest output wado will open, per axis.
+///
+/// `SessionConfig` arrives from the client and its width/height were unbounded: a request for
+/// 100000 x 100000 is a ~40 GB allocation attempt and takes the daemon down. That is a denial of
+/// service behind the Remote-ID gate rather than a remote exploit, which is why it sat below the
+/// panic class — but it is one clamp, and an unbounded allocation driven by a network peer should
+/// not be left standing.
+///
+/// 8192 because it clears 8K (7680) on either axis while staying inside what the GLES max
+/// texture size and both encoders will actually accept. A client asking for more has either
+/// mis-parsed its own screen size or is not a client.
+const MAX_DIMENSION: u32 = 8192;
+
+/// Smallest output. Zero would divide by zero in the logical geometry; below 16 nothing can
+/// encode (H.264 works in 16x16 macroblocks).
+const MIN_DIMENSION: u32 = 16;
+
 pub fn to_encoder_config(config: &SessionConfig) -> EncoderConfig {
     let fps = config.fps.max(1);
+    // Clamped before anything derives a buffer size, a bitrate or a texture from them.
+    let width = config.width.clamp(MIN_DIMENSION, MAX_DIMENSION);
+    let height = config.height.clamp(MIN_DIMENSION, MAX_DIMENSION);
+    if (width, height) != (config.width, config.height) {
+        tracing::warn!(
+            requested_width = config.width,
+            requested_height = config.height,
+            width,
+            height,
+            "session dimensions clamped to the supported range"
+        );
+    }
     // The preset's budget at 1280x720; `bitrate::for_resolution` scales it to the output
     // actually being encoded. A Custom bitrate is passed through untouched — someone typing
     // a number means that number, not a number to be rescaled behind their back.
@@ -105,11 +134,11 @@ pub fn to_encoder_config(config: &SessionConfig) -> EncoderConfig {
     };
     let bitrate_kbps = match config.quality {
         Quality::Custom { bitrate_kbps } => bitrate_kbps,
-        _ => bitrate::for_resolution(base_kbps, config.width, config.height),
+        _ => bitrate::for_resolution(base_kbps, width, height),
     };
     EncoderConfig {
-        width: config.width,
-        height: config.height,
+        width,
+        height,
         fps,
         bitrate_kbps,
         keyframe_interval: config.keyframe_interval.unwrap_or(default_kf),

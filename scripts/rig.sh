@@ -19,9 +19,14 @@
 #   * **Release only.** A debug daemon does not look broken, it looks like a slow pipeline —
 #     see the note in daemon.sh for the session that cost.
 #
-# Usage:  scripts/rig.sh            start (reuses the existing binaries)
-#         scripts/rig.sh --build    rebuild release first
+# Usage:  scripts/rig.sh            start everything (reuses the existing binaries)
+#         scripts/rig.sh --build    rebuild release first, then start everything
+#         scripts/rig.sh --daemon   restart ONLY the daemon, keeping relay and tunnel up
 #         scripts/rig.sh --stop     stop everything and exit
+#
+# `--daemon` is the one to use mid-test after a rebuild: restarting the tunnel rotates the
+# quick-tunnel URL, which invalidates whatever the phone is pointed at. The daemon is the only
+# piece that has to move when the code changes.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -39,11 +44,13 @@ stop_all() {
   sleep 1
 }
 
+DAEMON_ONLY=0
 case "${1:-}" in
   --stop) stop_all; echo "rig stopped"; exit 0 ;;
   --build) nice -n 19 cargo build --release -p wado -p wado-relay ;;
+  --daemon) DAEMON_ONLY=1 ;;
   "") ;;
-  *) echo "usage: $0 [--build|--stop]" >&2; exit 2 ;;
+  *) echo "usage: $0 [--build|--daemon|--stop]" >&2; exit 2 ;;
 esac
 
 for bin in wado wado-relay; do
@@ -54,7 +61,13 @@ CF="$(command -v cloudflared || true)"
 [ -n "$CF" ] || CF="$(ls -d /nix/store/*cloudflared*/bin/cloudflared 2>/dev/null | tail -1 || true)"
 [ -n "$CF" ] || { echo "cloudflared not found on PATH or in /nix/store" >&2; exit 1; }
 
-stop_all
+if [ "$DAEMON_ONLY" = 1 ]; then
+  pgrep -x wado-relay  >/dev/null || { echo "relay is not running — start the full rig first" >&2; exit 1; }
+  pgrep -x cloudflared >/dev/null || { echo "tunnel is not running — start the full rig first" >&2; exit 1; }
+  pkill -x wado 2>/dev/null || true
+  sleep 1
+else
+  stop_all
 
 setsid nohup ./target/release/wado-relay --log-level info \
   > "$LOGS/relay.log" 2>&1 < /dev/null &
@@ -74,14 +87,21 @@ setsid nohup "$CF" tunnel --url "http://localhost:$RELAY_PORT" \
   --protocol http2 --edge-ip-version 4 \
   > "$LOGS/tunnel.log" 2>&1 < /dev/null &
 
+fi
+
+# Read back rather than remember: on --daemon the tunnel was never restarted, so the URL still in
+# its log is the live one.
 URL=""
 for _ in $(seq 60); do
   URL="$(grep -om1 'https://[a-z0-9-]*\.trycloudflare\.com' "$LOGS/tunnel.log" || true)"
   [ -n "$URL" ] && break
+  [ "$DAEMON_ONLY" = 1 ] && break
   sleep 0.5
 done
-[ -n "$URL" ] && say >/dev/null || echo "WARNING: no tunnel URL after 30s — see $LOGS/tunnel.log" >&2
+[ -n "$URL" ] || echo "WARNING: no tunnel URL found — see $LOGS/tunnel.log" >&2
 
+# Truncated so the readiness greps below cannot match a previous run's lines.
+: > "$LOGS/daemon.log"
 setsid env WADO_RELAY_URL="ws://127.0.0.1:$RELAY_PORT" \
   nohup ./target/release/wado > "$LOGS/daemon.log" 2>&1 < /dev/null &
 
