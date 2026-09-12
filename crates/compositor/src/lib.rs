@@ -81,6 +81,9 @@ pub struct CompositorHandles {
     /// A `bool` over a watch channel, deliberately: it is state, not an event, so a viewer that
     /// connects mid-session gets the current answer rather than having missed the transition.
     pub text_input: tokio::sync::watch::Receiver<bool>,
+    /// The render-tick divisor in force — see [`congestion`]. Forwarded to the viewer so it can
+    /// tell a frame rate *it asked us to reduce* from a compositor that has stopped producing.
+    pub shedding: tokio::sync::watch::Receiver<u32>,
 }
 
 /// Build the compositor: create the event loop, display, and [`Wado`] state, claim the
@@ -166,9 +169,10 @@ pub fn build(
         .map_err(|e| CompositorError::Other(format!("insert signal source: {e}")))?;
 
     let text_input = state.text_input_tx.subscribe();
+    let shedding = state.shedding_tx.subscribe();
     Ok((
         event_loop,
         state,
-        CompositorHandles { commands: cmd_tx, input: input_tx, timings, text_input },
+        CompositorHandles { commands: cmd_tx, input: input_tx, timings, text_input, shedding },
     ))
 }

@@ -81,7 +81,13 @@ function say(s) { print t() " " s; fflush() }
         ? substr(line, RSTART+4, RLENGTH-4) : "?") "ms)")
     next
   }
-  if (fresh && srv_bad)
+  # 20 s, not a few: client samples are rate-limited to one per 15 s above, so a window shorter
+  # than that would almost always have expired by the time a sample got through to be explained.
+  if (phone_shed_t > 0 && systime() - phone_shed_t <= 20)
+    say("  ↳ DEVICE   frame rate is down because the PHONE asked for it — we are sending 1 in " \
+        phone_shed_to " render ticks after it reported its decoder saturated. Working as intended; " \
+        "if it does not settle, the resolution is the next lever")
+  else if (fresh && srv_bad)
     say("  ↳ SERVER   " srv_why " at the same moment ⇒ this is OURS, not the link")
   else if (netfresh)
     say("  ↳ NETWORK  " net_why " ⇒ congestion, not either machine")
@@ -195,14 +201,19 @@ function say(s) { print t() " " s; fflush() }
 # which. Blaming the pump for a step the viewer asked for would undo the whole point of the
 # side attribution below.
 /shedding render ticks/ {
-  srv_t=systime(); srv_bad=1
   if (index($0, "decoder is saturated") > 0) {
-    srv_why="the compositor was shedding render ticks because the viewer said its decoder was saturated"
+    # NOT srv_bad. The server shedding because the phone asked it to is the server working, and
+    # marking it a fault made the very next client sample read
+    #   SERVER ... this is OURS, not the link
+    # about a frame rate the phone had requested. Observed 2026-09-12 21:47:28, one minute after
+    # the feature shipped. It gets its own marker so the sample below can say so correctly.
+    phone_shed_t=systime(); phone_shed_to=kv("to")
     say("⚠ SHED     render ticks dropped: 1 in " kv("to") " (was 1 in " kv("from") ") — the PHONE asked for it (decoder saturated)")
   } else if (index($0, "easing back") > 0) {
-    srv_bad=0
+    srv_bad=0; srv_t=systime(); phone_shed_t=0
     say("◆ SHED     easing back: 1 in " kv("to") " (was 1 in " kv("from") ") — recovering toward full rate")
   } else {
+    srv_t=systime(); srv_bad=1
     srv_why="the compositor was shedding render ticks (the pump could not take them)"
     say("⚠ SHED     render ticks dropped: 1 in " kv("to") " (was 1 in " kv("from") "), " kv("dropped_in_window") " dropped in the window — the LINK")
   }

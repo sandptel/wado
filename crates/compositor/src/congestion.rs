@@ -52,6 +52,26 @@ const RECOVER_WINDOWS: u32 = 3;
 /// drops, so it gets a symmetric, unhurried response rather than the drop path's immediate halve.
 const STRAIN_WINDOWS: u32 = 3;
 
+/// How much more patient recovery gets after each strain-driven step down, and the ceiling on it.
+///
+/// **Why recovery cannot simply be symmetric here.** The viewer measures its decoder *under the
+/// mitigation*, so shedding destroys the evidence that justified shedding — and the release is
+/// then "the symptom went away", which it always does. Measured 2026-09-12, both cycles:
+///
+/// | | strain asserted at | after shedding to 1-in-4 | released |
+/// |---|---|---|---|
+/// | 16:17 | 4.8 of 5.7 Mbps arriving | 816 kbps | 3 windows later |
+/// | 16:18 | 6.0 of 5.7 Mbps arriving | 1.6 Mbps | 3 windows later |
+///
+/// Every release happened at divisor 4 and none at 1, which is the signature of a loop feeding on
+/// its own output. Slowing recovery by a constant only lengthens the period. Making the patience
+/// *grow* converges: each probe back toward full rate costs one brief saturation, and the probes
+/// get rarer until the rate sits where the phone can hold it.
+const PATIENCE_FACTOR: u32 = 4;
+/// ~3.5 minutes of clean windows at 90 fps. Far enough apart that a probe is not felt as pumping,
+/// close enough that a phone which has genuinely cooled down still gets its frame rate back.
+const PATIENCE_MAX: u32 = 320;
+
 /// What moved the divisor. Carried into the log line so a `SHED` event stays attributable to a
 /// side — the run that built the network/device/server attribution would be undone by a shed
 /// that could have come from either.
@@ -95,11 +115,14 @@ pub struct Congestion {
     clean: u32,
     /// Consecutive windows in which the viewer reported strain.
     strain: u32,
+    /// Clean windows currently required to climb one step. Grows with each strain-driven step
+    /// down; see [`PATIENCE_FACTOR`].
+    patience: u32,
 }
 
 impl Default for Congestion {
     fn default() -> Self {
-        Self { divisor: 1, tick: 0, last_dropped: 0, clean: 0, strain: 0 }
+        Self { divisor: 1, tick: 0, last_dropped: 0, clean: 0, strain: 0, patience: RECOVER_WINDOWS }
     }
 }
 
@@ -124,13 +147,14 @@ impl Congestion {
             let delta = dropped_total.saturating_sub(self.last_dropped);
             self.last_dropped = dropped_total;
             self.tick = 0;
-            let next = decide(delta, strained, self.divisor, self.clean, self.strain);
+            let next = decide(delta, strained, self.divisor, self.clean, self.strain, self.patience);
             if next.divisor != self.divisor {
                 tracing::info!(
                     from = self.divisor,
                     to = next.divisor,
                     dropped_in_window = delta,
                     strained,
+                    patience = next.patience,
                     "shedding render ticks — {}",
                     next.reason.as_str()
                 );
@@ -138,6 +162,7 @@ impl Congestion {
             self.divisor = next.divisor;
             self.clean = next.clean;
             self.strain = next.strain;
+            self.patience = next.patience;
         }
         render
     }
@@ -148,6 +173,7 @@ struct Decision {
     divisor: u32,
     clean: u32,
     strain: u32,
+    patience: u32,
     reason: Reason,
 }
 
@@ -158,6 +184,7 @@ fn decide(
     divisor: u32,
     clean: u32,
     strain: u32,
+    patience: u32,
 ) -> Decision {
     if dropped_in_window > 0 {
         // Back off immediately and forget any accumulated recovery: one dropped frame means the
@@ -167,6 +194,7 @@ fn decide(
             divisor: (divisor * 2).min(MAX_DIVISOR),
             clean: 0,
             strain: if strained { strain + 1 } else { 0 },
+            patience,
             reason: Reason::Drops,
         };
     }
@@ -180,18 +208,27 @@ fn decide(
                 divisor: divisor * 2,
                 clean: 0,
                 strain: 0,
+                // The probe that follows must be rarer than the last one, or the loop above
+                // repeats forever at the same period.
+                patience: (patience * PATIENCE_FACTOR).min(PATIENCE_MAX),
                 reason: Reason::Strain,
             };
         }
         // Held, and recovery credit is not accrued: a strained viewer must never climb back.
-        return Decision { divisor, clean: 0, strain, reason: Reason::Strain };
+        return Decision { divisor, clean: 0, strain, patience, reason: Reason::Strain };
     }
-    if divisor > 1 && clean + 1 >= RECOVER_WINDOWS {
-        // One step back toward full rate, and the recovery counter restarts — so climbing from
-        // 4 to 1 takes RECOVER_WINDOWS clean windows per step, not one for the whole way.
-        return Decision { divisor: divisor / 2, clean: 0, strain: 0, reason: Reason::Recover };
+    if divisor > 1 && clean + 1 >= patience {
+        // One step back toward full rate, and the counter restarts — so climbing from 4 to 1
+        // costs the full patience per step, not one wait for the whole way.
+        return Decision {
+            divisor: divisor / 2,
+            clean: 0,
+            strain: 0,
+            patience,
+            reason: Reason::Recover,
+        };
     }
-    Decision { divisor, clean: clean + 1, strain: 0, reason: Reason::Recover }
+    Decision { divisor, clean: clean + 1, strain: 0, patience, reason: Reason::Recover }
 }
 
 #[cfg(test)]
@@ -200,8 +237,13 @@ mod tests {
 
     /// `decide` with no strain — the shape every pre-existing test was written against.
     fn drops(dropped: u64, divisor: u32, clean: u32) -> (u32, u32) {
-        let d = decide(dropped, false, divisor, clean, 0);
+        let d = decide(dropped, false, divisor, clean, 0, RECOVER_WINDOWS);
         (d.divisor, d.clean)
+    }
+
+    /// `decide` for the strain path, at whatever patience the caller is testing.
+    fn strainy(divisor: u32, clean: u32, strain: u32, patience: u32) -> Decision {
+        decide(0, true, divisor, clean, strain, patience)
     }
 
     #[test]
@@ -287,24 +329,24 @@ mod tests {
         // The failure this guards is the one a latched 1 Hz boolean invites: at 90 fps with the
         // divisor already at 4, a window closes in under a second, so acting on the first
         // strained window would reach the floor before the phone could measure the last step.
-        let mut d = decide(0, true, 1, 0, 0);
+        let mut d = strainy(1, 0, 0, RECOVER_WINDOWS);
         assert_eq!((d.divisor, d.strain), (1, 1));
-        d = decide(0, true, 1, 0, d.strain);
+        d = strainy(1, 0, d.strain, RECOVER_WINDOWS);
         assert_eq!((d.divisor, d.strain), (1, 2));
-        d = decide(0, true, 1, 0, d.strain);
+        d = strainy(1, 0, d.strain, RECOVER_WINDOWS);
         assert_eq!((d.divisor, d.strain), (2, 0), "the third strained window steps down");
     }
 
     #[test]
     fn strain_blocks_recovery_without_stepping_down_again_immediately() {
         // Held at 2 with the recovery credit refused — a strained viewer must never climb back.
-        let d = decide(0, true, 2, 2, 0);
+        let d = strainy(2, 2, 0, RECOVER_WINDOWS);
         assert_eq!((d.divisor, d.clean), (2, 0));
     }
 
     #[test]
     fn strain_stops_at_the_floor_like_drops_do() {
-        let d = decide(0, true, MAX_DIVISOR, 0, STRAIN_WINDOWS);
+        let d = strainy(MAX_DIVISOR, 0, STRAIN_WINDOWS, RECOVER_WINDOWS);
         assert_eq!(d.divisor, MAX_DIVISOR);
     }
 
@@ -317,10 +359,40 @@ mod tests {
             c.should_render(0, true);
         }
         assert_eq!(c.divisor(), 2, "three strained windows should have stepped down once");
-        for _ in 0..(WINDOW_TICKS * RECOVER_WINDOWS) {
+        // Patience has grown to RECOVER_WINDOWS * PATIENCE_FACTOR by now, so the old
+        // three-window wait is no longer enough — that is the point.
+        for _ in 0..(WINDOW_TICKS * RECOVER_WINDOWS * PATIENCE_FACTOR) {
             c.should_render(0, false);
         }
         assert_eq!(c.divisor(), 1);
+    }
+
+    #[test]
+    fn each_strain_step_makes_the_next_probe_rarer() {
+        // The loop this breaks, measured 2026-09-12: shed, throughput collapses, the client stops
+        // reporting strain *because* of the shed, recover, saturate, repeat — every release at
+        // divisor 4, never at 1. A constant recovery delay only sets the period of that; growing
+        // patience is what makes the probes rare enough to converge.
+        let a = strainy(1, 0, STRAIN_WINDOWS - 1, RECOVER_WINDOWS);
+        assert_eq!(a.divisor, 2);
+        assert_eq!(a.patience, RECOVER_WINDOWS * PATIENCE_FACTOR);
+        let b = strainy(2, 0, STRAIN_WINDOWS - 1, a.patience);
+        assert_eq!(b.divisor, 4);
+        assert_eq!(b.patience, RECOVER_WINDOWS * PATIENCE_FACTOR * PATIENCE_FACTOR);
+        // Bounded, or a long session would eventually never recover at all.
+        let mut p = b.patience;
+        for _ in 0..10 {
+            p = (p * PATIENCE_FACTOR).min(PATIENCE_MAX);
+        }
+        assert_eq!(p, PATIENCE_MAX);
+    }
+
+    #[test]
+    fn a_pump_drop_does_not_inflate_strain_patience() {
+        // Only the self-measuring signal needs the growing wait. The drop counter is observed
+        // locally and is not affected by the mitigation, so its recovery stays quick.
+        let d = decide(9, false, 1, 0, 0, RECOVER_WINDOWS);
+        assert_eq!((d.divisor, d.patience), (2, RECOVER_WINDOWS));
     }
 
     #[test]
@@ -329,7 +401,7 @@ mod tests {
         // so it wins the step and the log line — otherwise a network problem would be reported
         // to the user as their phone being too slow, which is the attribution this run exists
         // to keep straight.
-        let d = decide(5, true, 1, 0, 0);
+        let d = decide(5, true, 1, 0, 0, RECOVER_WINDOWS);
         assert_eq!(d.divisor, 2);
         assert_eq!(d.reason, Reason::Drops);
         // And strain is still counted, so it is not starved of credit by a noisy link.

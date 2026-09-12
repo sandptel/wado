@@ -123,6 +123,7 @@ pub fn start_session(
     state.congestion.reset();
     // Belongs to the viewer that just left; a new one has not said anything yet.
     state.viewer_strained = false;
+    let _ = state.shedding_tx.send(1);
     state.content_type_log.clear();
     if let Some(old) = state.dmabuf_global.take() {
         state
@@ -618,6 +619,12 @@ fn render_tick(state: &mut Wado) -> crate::Result<()> {
     // reduced frame rate into the freeze this exists to avoid.
     let dropped_total = state.frame_sink.as_ref().map_or(0, |s| s.dropped());
     let render_this_tick = state.congestion.should_render(dropped_total, state.viewer_strained);
+    // On change only — it is state the viewer latches, and the divisor changes at most once per
+    // decision window anyway.
+    state.shedding_tx.send_if_modified(|cur| {
+        let now = state.congestion.divisor();
+        if *cur == now { false } else { *cur = now; true }
+    });
 
     // The block yields the encode result plus how long each stage took, so neither
     // duration needs a dummy initial value.

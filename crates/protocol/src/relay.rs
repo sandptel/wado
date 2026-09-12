@@ -238,6 +238,18 @@ pub enum RelayMsg {
     TextInput {
         active: bool,
     },
+    /// How many render ticks in every N the compositor is actually sending — server → client.
+    ///
+    /// 1 means nothing is being shed. Anything higher is a mitigation the *viewer* asked for (or
+    /// the pump did), and the viewer has to be told, because otherwise it measures the effect and
+    /// blames the sender: measured 2026-09-12 16:17:33, `bad the server — only 816 kbps arriving
+    /// of 5.7 Mbps` about a frame rate the phone had requested three seconds earlier.
+    ///
+    /// **State, not an event**, like [`RelayMsg::TextInput`]: sent on change and once when a
+    /// viewer attaches, so one joining a shedding session is not misled either.
+    Shedding {
+        divisor: u32,
+    },
     /// The viewer's decoder is, or is no longer, saturated — client → server.
     ///
     /// The one congestion signal the server cannot measure for itself. It can see its own pump

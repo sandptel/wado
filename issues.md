@@ -77,9 +77,48 @@ the fix, one report.
 **Tests:** 6 new in `congestion.rs` (12 total), 5 new in `scripts/health-check.mjs` (12 total),
 4 monitor rules replay-tested.
 
-**Still to watch:** whether one step (90 → 45 effective) is enough for this phone at
-1080x2422, or whether it settles at the `MAX_DIVISOR` floor. The step is deliberately slow, so
-give it ~6 s to find its level.
+### The loop fed on its own output — `2026-09-12` 21:47
+
+With the flap fixed, a slower cycle remained: `1 → 2 → 4 → 2 → 1`, about ten seconds per lap.
+Not a tuning problem. Correlating every release against the divisor in force:
+
+| | strain asserted at | after shedding to 1-in-4 | released |
+|---|---|---|---|
+| 16:17 | 4.8 of 5.7 Mbps arriving (85%) | 816 kbps (**14%**) | `bad the server` |
+| 16:18 | 6.0 of 5.7 Mbps arriving | 1.6 Mbps (28%) | `ok healthy` |
+
+Every release landed at divisor 4 and none at divisor 1. **The viewer measures saturation under
+the mitigation**, so shedding destroys the evidence that justified shedding, and the release
+condition is "the symptom went away" — which it always does. A constant recovery delay only sets
+the period of that.
+
+**Two fixes, because there were two faults.**
+
+1. **Recovery patience grows** (`PATIENCE_FACTOR = 4`, capped at `PATIENCE_MAX = 320` windows —
+   about 3.5 minutes at 90 fps). Each strain-driven step down makes the next probe back toward
+   full rate rarer, so the loop converges in two or three laps instead of running forever. The
+   probe itself is inherent: whether the phone can hold a higher rate is not knowable without
+   trying it. The pump-drop path keeps the quick recovery — it is measured locally and is not
+   affected by the mitigation.
+
+2. **`RelayMsg::Shedding { divisor }`, server → client.** At 16:17:33 the strip read
+   `bad the server — only 816 kbps arriving of 5.7 Mbps` about a frame rate the phone had asked
+   for three seconds earlier — wado accusing itself, the exact failure written into
+   `plan/memory/shared/verification.md` earlier the same evening. The client now scales its
+   expected throughput, its decode budget and its arrival gate by the divisor. A genuinely dead
+   sender is still caught underneath an active shed, and a phone still over budget *at the
+   reduced rate* is still named.
+
+Without the scaling, a comfortable phone under a 1-in-4 shed reads `bad your device — decode
+20.0 ms against a 11.1 ms budget` and ratchets the shedding to the floor. Pinned by test.
+
+**Monitor:** a strain-driven shed no longer sets `srv_bad`. It was making the next client sample
+read `SERVER … this is OURS, not the link` about a shed the phone requested; there is now a
+`DEVICE` verdict that says so plainly.
+
+**Tests:** `congestion.rs` 14, `scripts/health-check.mjs` 15, monitor rules replay-tested. Two of
+the new cases were checked against the *shipped* code and fail there — the flap case produces 13
+flips, the shed case misattributes to the device.
 
 ## I2 · A reconnect can establish WebRTC with no session behind it · **open**
 
@@ -93,6 +132,21 @@ one. `scripts/watch.sh` now flags it as `✖ ORPHAN`, which is detection, not a 
 **Unresolved and deliberately not guessed at:** should a reconnect with no session *start* one,
 or say plainly that there is nothing to attach to? It belongs with the rejoin work (`f599da4`),
 which already had to answer the mirror-image question.
+
+> **One cause found and fixed, `2026-09-12` 21:46:53.** The client sent `session_stop` on
+> `pagehide` — which on a phone fires on an app switch, a pulled-down shade or a screen lock, not
+> only on close. The session and every window died while the page kept its WebRTC connection and
+> data channel alive, and the viewer went on swiping into it for ten seconds
+> (`input dropped — no active session`).
+>
+> Relay mode now sends nothing on `pagehide`. `viewer_watchdog` is the replacement and is
+> browser-independent; the beacon predates it. Direct mode keeps the beacon, having no watchdog
+> of its own. `event.persisted` is logged rather than trusted — bfcache eligibility is revoked by
+> an open WebSocket or WebRTC connection in several Chromium versions, so the flag may read
+> `false` on the very app switch it is meant to identify, and the next one will say.
+>
+> This does not close I2 — a reconnect can still find no session by other routes — but it removes
+> the one that was firing routinely.
 
 ---
 

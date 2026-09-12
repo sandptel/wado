@@ -152,6 +152,45 @@ check("a starved decoder is not the phone's fault", T,
   want("strain clears when the phone recovers", strains.slice(before), [false]);
 }
 
+// ── A shed the phone asked for is not the server failing ─────────────────────────────────────
+//
+// Measured 2026-09-12 16:17:33, one minute after the backoff shipped: the strip read
+// `bad the server — only 816 kbps arriving of 5.7 Mbps` about a frame rate this phone had
+// requested three seconds earlier. Shedding legitimately cuts both the bitrate and the frame
+// rate, so every term in the starvation rule reads as a dead sender unless it scales.
+{
+  const shed = (divisor, snapshot, wantSide, wantState) => {
+    W.setTargetKbps(T.kbps);
+    W.setShedding(divisor);
+    const s = { fps: null, ping: null, jbuf: null, dec: null, jitter: null, kbps: null,
+                lossPct: null, decodeDropPct: null, availableKbps: null,
+                targetFps: T.fps, ...snapshot };
+    for (let i = 0; i < 9; i++) W.health(s);
+    const ok = out.side === wantSide && out.state === wantState;
+    if (!ok) { failures++; console.log(`FAIL shed 1-in-${divisor}: got ${out.state}/${out.side} "${out.detail}", want ${wantState}/${wantSide}`); }
+    else console.log(`ok   shed 1-in-${divisor}  →  ${out.state}/${out.side}  ${out.detail}`);
+  };
+
+  // 1 tick in 4 of an 8 Mbps / 90 fps session: ~2 Mbps and ~22 fps is exactly right, and the
+  // decode budget is 44 ms, not 11 — the phone has four times as long per frame.
+  shed(4, { fps: 22, ping: 30, dec: 20.0, jitter: 4, kbps: 2000, lossPct: 0.0,
+            decodeDropPct: 0.0, availableKbps: 20000 },
+       "healthy", "ok");
+
+  // The same shed, but nothing is actually arriving: a dead sender must still be caught
+  // underneath an active mitigation, or shedding becomes a blindfold.
+  shed(4, { fps: 3, ping: 30, dec: 3.0, jitter: 3, kbps: 90, lossPct: 0.0,
+            decodeDropPct: 0, availableKbps: 20000 },
+       "the server", "bad");
+
+  // And the phone can still be over its budget at the reduced rate — 50 ms against 44 ms.
+  shed(4, { fps: 21, ping: 30, dec: 50.0, jitter: 4, kbps: 2000, lossPct: 0.0,
+            decodeDropPct: 3.0, availableKbps: 20000 },
+       "your device", "bad");
+
+  W.setShedding(1);   // leave the module as the next case expects it
+}
+
 // The relay is "on change only", and the invariant that actually matters is that no two
 // consecutive lines are the same — a count is brittle, because a session legitimately logs a
 // settled verdict after the reset each case performs.

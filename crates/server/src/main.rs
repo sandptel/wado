@@ -49,6 +49,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             handles.input,
             handles.timings,
             handles.text_input,
+            handles.shedding,
             frame_rx,
             relay_url,
             remote_id,
