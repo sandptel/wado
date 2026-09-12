@@ -121,6 +121,8 @@ pub fn start_session(
     state.frame_seq = 0;
     state.presentation_logged = false;
     state.congestion.reset();
+    // Belongs to the viewer that just left; a new one has not said anything yet.
+    state.viewer_strained = false;
     state.content_type_log.clear();
     if let Some(old) = state.dmabuf_global.take() {
         state
@@ -615,7 +617,7 @@ fn render_tick(state: &mut Wado) -> crate::Result<()> {
     // function. A client that stops receiving them stops drawing entirely, which would turn a
     // reduced frame rate into the freeze this exists to avoid.
     let dropped_total = state.frame_sink.as_ref().map_or(0, |s| s.dropped());
-    let render_this_tick = state.congestion.should_render(dropped_total);
+    let render_this_tick = state.congestion.should_render(dropped_total, state.viewer_strained);
 
     // The block yields the encode result plus how long each stage took, so neither
     // duration needs a dummy initial value.

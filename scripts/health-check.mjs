@@ -12,7 +12,9 @@ const src = readFileSync(new URL("../crates/client/src/js/health.js", import.met
 let out = null;
 const W = {};
 let logged = [];
+let strains = [];
 W.rlog = (l) => logged.push(l);   // the bridge supplies this; here it is captured
+W.relayStrain = (b) => strains.push(b);   // what would go up the wire to the daemon
 const emit = (m) => { out = m; };
 new Function("W", "emit", src)(W, emit);
 
@@ -72,6 +74,59 @@ check("a genuinely small link still shows up, as loss", T,
 check("idle screen is not a fault", T,
   { fps: 90, ping: 27, dec: 3.0, jitter: 3, kbps: 60, lossPct: 0.0, decodeDropPct: 0, availableKbps: 20000 },
   "healthy", "ok");
+
+// ── The decoder can only be blamed for a stream that reached it ──────────────────────────────
+//
+// Observed live 2026-09-12 20:36:56: the strip read "bad your device — decode 48.7 ms" while
+// 69 kbps of 5.7 Mbps was arriving. That is a decoder idling between packets, not one drowning,
+// and the monitor said UNCLEAR about the very same sample. The client had the numbers first and
+// got it wrong.
+check("a starved decoder is not the phone's fault", T,
+  { fps: 12, ping: 30, dec: 48.7, jitter: 6, kbps: 400, lossPct: 0.0, decodeDropPct: 30.0,
+    availableKbps: 20000 },
+  "the server", "bad");
+
+// ── What gets sent to the daemon ─────────────────────────────────────────────────────────────
+{
+  const run = (target, snapshot, ticks = 9) => {
+    W.setTargetKbps(target.kbps);
+    const s = { fps: null, ping: null, jbuf: null, dec: null, jitter: null, kbps: null,
+                lossPct: null, decodeDropPct: null, availableKbps: null,
+                targetFps: target.fps, ...snapshot };
+    for (let i = 0; i < ticks; i++) W.health(s);
+  };
+  const want = (name, got, expected) => {
+    const ok = JSON.stringify(got) === JSON.stringify(expected);
+    if (!ok) { failures++; console.log(`FAIL ${name}: got ${JSON.stringify(got)}, want ${JSON.stringify(expected)}`); }
+    else console.log(`ok   ${name}`);
+  };
+
+  // Saturated and everything arriving: report once, not once per tick. The daemon latches it.
+  strains = [];
+  run(T, { fps: 88, ping: 30, dec: 12.0, jitter: 4, kbps: 7800, lossPct: 0.0, decodeDropPct: 6.0,
+           availableKbps: 20000 });
+  want("strain is reported once, not every tick", strains, [true]);
+
+  // The same decode time on a starved stream must send nothing at all — not even `false`.
+  // Both sides start at "not strained", so silence is the agreement; a message here would be
+  // noise on the very link that is already the problem. And shedding would make it worse, by
+  // cutting the frame rate of a stream that is not arriving in the first place.
+  strains = [];
+  run(T, { fps: 12, ping: 30, dec: 48.7, jitter: 6, kbps: 400, lossPct: 0.0, decodeDropPct: 30.0,
+           availableKbps: 20000 });
+  want("a starved decoder reports no strain", strains, []);
+
+  // And it clears: otherwise the daemon sheds for the rest of the session on one bad minute.
+  strains = [];
+  run(T, { fps: 88, ping: 30, dec: 12.0, jitter: 4, kbps: 7800, lossPct: 0.0, decodeDropPct: 6.0,
+           availableKbps: 20000 });
+  const before = strains.length;
+  for (let i = 0; i < 6; i++) {
+    W.health({ fps: 90, ping: 27, dec: 3.0, jitter: 3, kbps: 7800, lossPct: 0.0,
+               decodeDropPct: 0.0, availableKbps: 20000, targetFps: T.fps, jitterBufferTarget: null });
+  }
+  want("strain clears when the phone recovers", strains.slice(before), [false]);
+}
 
 // The relay is "on change only", and the invariant that actually matters is that no two
 // consecutive lines are the same — a count is brittle, because a session legitimately logs a

@@ -238,6 +238,19 @@ pub enum RelayMsg {
     TextInput {
         active: bool,
     },
+    /// The viewer's decoder is, or is no longer, saturated — client → server.
+    ///
+    /// The one congestion signal the server cannot measure for itself. It can see its own pump
+    /// back up; it cannot see a phone decoding 15 of the 90 frames a second it is being sent,
+    /// which has been measured here with every server-side metric clean for 86 seconds.
+    ///
+    /// **State, not an event**, like [`RelayMsg::TextInput`]: sent only when the client's
+    /// *settled* verdict changes, so between messages the last value stands. The client gates it
+    /// on the stream actually arriving — a decoder starved of frames looks identical to an
+    /// overloaded one, and shedding for the first makes a network fault worse.
+    ViewerStrain {
+        strained: bool,
+    },
     /// One diagnostic line from the browser, client → server. The phone's console is
     /// unreachable during a field test, so the client ships what it sees — ICE candidate
     /// types above all — to the server, which logs it.

@@ -358,6 +358,13 @@ function relaySend(obj) {
   try { ws.send(JSON.stringify(obj)); return true; } catch (_) { return false; }
 }
 
+// The client's own verdict on its decoder, going back to the daemon so the render loop can shed
+// rather than the viewer having to read a suggestion and change a setting. See js/health.js for
+// the hysteresis and the arrival gate; `crates/compositor/src/congestion.rs` for what it does.
+// Fire-and-forget like the pty verbs: a strain report that misses the socket is superseded by
+// the next change, and the compositor's last value stands until then.
+W.relayStrain = (strained) => relaySend({ type: "viewer_strain", strained });
+
 W.ptyOpen = (cols, rows) => relaySend({ type: "pty_open", cols, rows });
 W.ptyInput = (data) => relaySend({ type: "pty_input", data });
 W.ptyResize = (cols, rows) => relaySend({ type: "pty_resize", cols, rows });

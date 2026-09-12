@@ -158,6 +158,10 @@ pub struct Wado {
     /// Render-tick shedding when the pump cannot take the frames we are making.
     /// See `crate::congestion` — this is a mitigation, not bandwidth estimation.
     pub congestion: crate::congestion::Congestion,
+    /// The viewer's latest word on whether its own decoder is keeping up. Nothing in this
+    /// process can observe that, so it is the one congestion input that has to be told to us.
+    /// A latched level, updated about once a second; see `CompositorCommand::ViewerStrain`.
+    pub viewer_strained: bool,
     pub frame_sink: Option<Box<dyn FrameSink>>,
     pub output: Option<Output>,
     /// The output's wl_output global, removed on session stop so a fresh session
@@ -336,6 +340,7 @@ impl Wado {
             encoder_config: None,
             encoder_report: None,
             congestion: Default::default(),
+            viewer_strained: false,
             frame_sink: None,
             output: None,
             output_global: None,

@@ -15,14 +15,25 @@
 //! them is strictly less work for exactly the same output, which is what makes this safe: the
 //! worst case of shedding is the case we are already in.
 //!
-//! **The signal** is `ChannelSink`'s drop counter, which lives in this process — no round trip,
-//! no RTCP, nothing to negotiate. It is monotonic, so what matters is the *delta* over a window;
-//! a level would latch on the first hiccup of the session and never clear.
+//! **Two signals, two speeds.**
 //!
-//! **The law is asymmetric on purpose**: halve the rate on the first window that drops anything,
-//! and ease back one step only after several consecutive clean windows. Symmetric control on a
-//! link this bursty oscillates, and oscillation between smooth and stuttering reads worse to a
-//! viewer than a steady lower rate.
+//! The first is `ChannelSink`'s drop counter, which lives in this process — no round trip, no
+//! RTCP, nothing to negotiate. It says the *network* could not take what we made. It is
+//! monotonic, so what matters is the delta over a window; a level would latch on the first
+//! hiccup of the session and never clear.
+//!
+//! The second is the viewer saying its *decoder* is saturated. Nothing in this process can see
+//! that: measured 2026-09-12, the server pushed 90 fps into a phone managing 15 for 86 seconds
+//! with every server-side metric perfect throughout. The client computes it (`js/health.js`) and
+//! sends a settled boolean; see `CompositorCommand::ViewerStrain`.
+//!
+//! **The law is asymmetric on purpose, and differently so for each signal**: drops halve the
+//! rate on the first window that sees any, because by the time drops are plural the viewer has
+//! already seen it. Strain steps down only after several consecutive windows asserting it,
+//! because it is a level rather than an event — it arrives at 1 Hz, stays latched between
+//! updates, and a window at 90 fps and divisor 4 closes in under a second, so treating it as a
+//! trigger would walk straight to the floor no matter what the phone was doing. Recovery is
+//! slow in both directions, and strain blocks it outright.
 
 /// Ticks per decision window. At 60 fps this is one second; at 120, half of one. Deliberately
 /// counted in ticks rather than wall time: the thing being controlled is the tick, and a window
@@ -35,6 +46,34 @@ pub const MAX_DIVISOR: u32 = 4;
 
 /// Consecutive clean windows before easing back one step.
 const RECOVER_WINDOWS: u32 = 3;
+
+/// Consecutive strained windows before stepping down one. Equal to [`RECOVER_WINDOWS`]
+/// deliberately: the viewer's decoder is a slow-moving thing compared with a burst of pump
+/// drops, so it gets a symmetric, unhurried response rather than the drop path's immediate halve.
+const STRAIN_WINDOWS: u32 = 3;
+
+/// What moved the divisor. Carried into the log line so a `SHED` event stays attributable to a
+/// side — the run that built the network/device/server attribution would be undone by a shed
+/// that could have come from either.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reason {
+    /// The pump could not take the frames — the link.
+    Drops,
+    /// The viewer says its decoder is saturated — the phone.
+    Strain,
+    /// Easing back toward full rate.
+    Recover,
+}
+
+impl Reason {
+    fn as_str(self) -> &'static str {
+        match self {
+            Reason::Drops => "the pump could not take the frames we were making",
+            Reason::Strain => "the viewer says its decoder is saturated",
+            Reason::Recover => "clean windows — easing back toward full rate",
+        }
+    }
+}
 
 /// How often the render loop renders: 1 = every tick, 2 = every other, 4 = every fourth.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,11 +93,13 @@ pub struct Congestion {
     last_dropped: u64,
     /// Consecutive windows with no drops.
     clean: u32,
+    /// Consecutive windows in which the viewer reported strain.
+    strain: u32,
 }
 
 impl Default for Congestion {
     fn default() -> Self {
-        Self { divisor: 1, tick: 0, last_dropped: 0, clean: 0 }
+        Self { divisor: 1, tick: 0, last_dropped: 0, clean: 0, strain: 0 }
     }
 }
 
@@ -74,56 +115,100 @@ impl Congestion {
 
     /// Should this tick render? Advances the window and re-decides when it closes.
     ///
-    /// `dropped_total` is the sink's monotonic counter.
-    pub fn should_render(&mut self, dropped_total: u64) -> bool {
+    /// `dropped_total` is the sink's monotonic counter. `strained` is the viewer's latest word
+    /// on its own decoder — a latched level, not an event.
+    pub fn should_render(&mut self, dropped_total: u64, strained: bool) -> bool {
         let render = self.tick % self.divisor == 0;
         self.tick += 1;
         if self.tick >= WINDOW_TICKS {
             let delta = dropped_total.saturating_sub(self.last_dropped);
             self.last_dropped = dropped_total;
             self.tick = 0;
-            let (divisor, clean) = decide(delta, self.divisor, self.clean);
-            if divisor != self.divisor {
+            let next = decide(delta, strained, self.divisor, self.clean, self.strain);
+            if next.divisor != self.divisor {
                 tracing::info!(
                     from = self.divisor,
-                    to = divisor,
+                    to = next.divisor,
                     dropped_in_window = delta,
-                    "shedding render ticks — the pump could not take the frames we were making"
+                    strained,
+                    "shedding render ticks — {}",
+                    next.reason.as_str()
                 );
             }
-            self.divisor = divisor;
-            self.clean = clean;
+            self.divisor = next.divisor;
+            self.clean = next.clean;
+            self.strain = next.strain;
         }
         render
     }
 }
 
+/// The outcome of one decision window.
+struct Decision {
+    divisor: u32,
+    clean: u32,
+    strain: u32,
+    reason: Reason,
+}
+
 /// The decision itself, kept pure so it is testable without a session, a link or a GPU.
-///
-/// Returns the new divisor and the new clean-window count.
-fn decide(dropped_in_window: u64, divisor: u32, clean: u32) -> (u32, u32) {
+fn decide(
+    dropped_in_window: u64,
+    strained: bool,
+    divisor: u32,
+    clean: u32,
+    strain: u32,
+) -> Decision {
     if dropped_in_window > 0 {
         // Back off immediately and forget any accumulated recovery: one dropped frame means the
-        // pump is at its limit right now, and the credit earned before that is stale.
-        ((divisor * 2).min(MAX_DIVISOR), 0)
-    } else if divisor > 1 && clean + 1 >= RECOVER_WINDOWS {
+        // pump is at its limit right now, and the credit earned before that is stale. Checked
+        // first because it is the faster signal and the one measured locally.
+        return Decision {
+            divisor: (divisor * 2).min(MAX_DIVISOR),
+            clean: 0,
+            strain: if strained { strain + 1 } else { 0 },
+            reason: Reason::Drops,
+        };
+    }
+    if strained {
+        // A level, so it is counted, not acted on. Stepping down on the first strained window
+        // would reach the floor in well under a second at a high frame rate, long before the
+        // viewer could have measured the effect of the previous step.
+        let strain = strain + 1;
+        if divisor < MAX_DIVISOR && strain >= STRAIN_WINDOWS {
+            return Decision {
+                divisor: divisor * 2,
+                clean: 0,
+                strain: 0,
+                reason: Reason::Strain,
+            };
+        }
+        // Held, and recovery credit is not accrued: a strained viewer must never climb back.
+        return Decision { divisor, clean: 0, strain, reason: Reason::Strain };
+    }
+    if divisor > 1 && clean + 1 >= RECOVER_WINDOWS {
         // One step back toward full rate, and the recovery counter restarts — so climbing from
         // 4 to 1 takes RECOVER_WINDOWS clean windows per step, not one for the whole way.
-        (divisor / 2, 0)
-    } else {
-        (divisor, clean + 1)
+        return Decision { divisor: divisor / 2, clean: 0, strain: 0, reason: Reason::Recover };
     }
+    Decision { divisor, clean: clean + 1, strain: 0, reason: Reason::Recover }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// `decide` with no strain — the shape every pre-existing test was written against.
+    fn drops(dropped: u64, divisor: u32, clean: u32) -> (u32, u32) {
+        let d = decide(dropped, false, divisor, clean, 0);
+        (d.divisor, d.clean)
+    }
+
     #[test]
     fn a_clean_link_never_sheds() {
         let mut c = Congestion::default();
         for i in 0..(WINDOW_TICKS * 10) {
-            assert!(c.should_render(0), "tick {i} was shed on a link with no drops");
+            assert!(c.should_render(0, false), "tick {i} was shed on a link with no drops");
         }
         assert_eq!(c.divisor(), 1);
     }
@@ -132,32 +217,32 @@ mod tests {
     fn one_dropped_frame_halves_the_rate() {
         // The asymmetry that matters: a single drop is enough, because by the time drops are
         // plural the viewer has already seen it.
-        assert_eq!(decide(1, 1, 0), (2, 0));
-        assert_eq!(decide(60, 2, 0), (4, 0));
+        assert_eq!(drops(1, 1, 0), (2, 0));
+        assert_eq!(drops(60, 2, 0), (4, 0));
     }
 
     #[test]
     fn shedding_stops_at_the_floor() {
         // Past MAX_DIVISOR the stream stops being video. Sustained drops must not walk it to 8.
-        assert_eq!(decide(60, 4, 0), (MAX_DIVISOR, 0));
-        assert_eq!(decide(60, MAX_DIVISOR, 0), (MAX_DIVISOR, 0));
+        assert_eq!(drops(60, 4, 0), (MAX_DIVISOR, 0));
+        assert_eq!(drops(60, MAX_DIVISOR, 0), (MAX_DIVISOR, 0));
     }
 
     #[test]
     fn recovery_is_slower_than_back_off() {
         // Two clean windows are not enough; the third releases one step.
-        assert_eq!(decide(0, 4, 0), (4, 1));
-        assert_eq!(decide(0, 4, 1), (4, 2));
-        assert_eq!(decide(0, 4, 2), (2, 0));
+        assert_eq!(drops(0, 4, 0), (4, 1));
+        assert_eq!(drops(0, 4, 1), (4, 2));
+        assert_eq!(drops(0, 4, 2), (2, 0));
         // And the counter restarts, so 4 -> 1 costs 2 * RECOVER_WINDOWS clean windows.
-        assert_eq!(decide(0, 2, 0), (2, 1));
-        assert_eq!(decide(0, 2, 2), (1, 0));
+        assert_eq!(drops(0, 2, 0), (2, 1));
+        assert_eq!(drops(0, 2, 2), (1, 0));
     }
 
     #[test]
     fn a_drop_during_recovery_resets_the_credit() {
         // Otherwise a link that drops one frame per window would still climb back to full rate.
-        assert_eq!(decide(1, 4, 2), (MAX_DIVISOR, 0));
+        assert_eq!(drops(1, 4, 2), (MAX_DIVISOR, 0));
     }
 
     #[test]
@@ -165,13 +250,13 @@ mod tests {
         let mut c = Congestion::default();
         // Drive it into shedding: one window with drops.
         for _ in 0..WINDOW_TICKS {
-            c.should_render(0);
+            c.should_render(0, false);
         }
         for _ in 0..WINDOW_TICKS {
-            c.should_render(5);
+            c.should_render(5, false);
         }
         assert_eq!(c.divisor(), 2);
-        let rendered = (0..WINDOW_TICKS).filter(|_| c.should_render(5)).count();
+        let rendered = (0..WINDOW_TICKS).filter(|_| c.should_render(5, false)).count();
         assert_eq!(rendered as u32, WINDOW_TICKS / 2);
     }
 
@@ -181,17 +266,73 @@ mod tests {
         // would latch on the first hiccup and shed for the rest of the session.
         let mut c = Congestion::default();
         for _ in 0..WINDOW_TICKS {
-            c.should_render(0);
+            c.should_render(0, false);
         }
         // One window with drops: back off.
         for _ in 0..WINDOW_TICKS {
-            c.should_render(100);
+            c.should_render(100, false);
         }
         assert_eq!(c.divisor(), 2);
         // The counter stays at 100 — no *new* drops — so this must read as clean and recover.
         for _ in 0..(WINDOW_TICKS * RECOVER_WINDOWS) {
-            c.should_render(100);
+            c.should_render(100, false);
         }
         assert_eq!(c.divisor(), 1, "a static counter was misread as ongoing congestion");
+    }
+
+    // ── The viewer's decoder ──────────────────────────────────────────────────────────────
+
+    #[test]
+    fn strain_takes_several_windows_to_move_anything() {
+        // The failure this guards is the one a latched 1 Hz boolean invites: at 90 fps with the
+        // divisor already at 4, a window closes in under a second, so acting on the first
+        // strained window would reach the floor before the phone could measure the last step.
+        let mut d = decide(0, true, 1, 0, 0);
+        assert_eq!((d.divisor, d.strain), (1, 1));
+        d = decide(0, true, 1, 0, d.strain);
+        assert_eq!((d.divisor, d.strain), (1, 2));
+        d = decide(0, true, 1, 0, d.strain);
+        assert_eq!((d.divisor, d.strain), (2, 0), "the third strained window steps down");
+    }
+
+    #[test]
+    fn strain_blocks_recovery_without_stepping_down_again_immediately() {
+        // Held at 2 with the recovery credit refused — a strained viewer must never climb back.
+        let d = decide(0, true, 2, 2, 0);
+        assert_eq!((d.divisor, d.clean), (2, 0));
+    }
+
+    #[test]
+    fn strain_stops_at_the_floor_like_drops_do() {
+        let d = decide(0, true, MAX_DIVISOR, 0, STRAIN_WINDOWS);
+        assert_eq!(d.divisor, MAX_DIVISOR);
+    }
+
+    #[test]
+    fn a_viewer_that_stops_complaining_recovers() {
+        // Strain clears, the clean windows accrue, and the rate climbs back. Without this the
+        // feature is a one-way ratchet and a single bad minute costs the rest of the session.
+        let mut c = Congestion::default();
+        for _ in 0..(WINDOW_TICKS * STRAIN_WINDOWS) {
+            c.should_render(0, true);
+        }
+        assert_eq!(c.divisor(), 2, "three strained windows should have stepped down once");
+        for _ in 0..(WINDOW_TICKS * RECOVER_WINDOWS) {
+            c.should_render(0, false);
+        }
+        assert_eq!(c.divisor(), 1);
+    }
+
+    #[test]
+    fn drops_outrank_strain_and_are_attributed_as_such() {
+        // Both signals at once. The link is the faster-moving fault and the one measured here,
+        // so it wins the step and the log line — otherwise a network problem would be reported
+        // to the user as their phone being too slow, which is the attribution this run exists
+        // to keep straight.
+        let d = decide(5, true, 1, 0, 0);
+        assert_eq!(d.divisor, 2);
+        assert_eq!(d.reason, Reason::Drops);
+        // And strain is still counted, so it is not starved of credit by a noisy link.
+        assert_eq!(d.strain, 1);
     }
 }
