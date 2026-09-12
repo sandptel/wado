@@ -195,7 +195,31 @@
 }
 .healthside { color: var(--base05); font-weight: 600; }
 .healthdetail { color: var(--base06); }
-.healthbw { color: var(--base04); margin-left: auto; padding-left: 8px; white-space: nowrap; }
+.healthbw { color: var(--base04); margin-left: auto; padding-left: 8px; white-space: nowrap;
+  font-variant-numeric: tabular-nums; }
+.healthlink { color: var(--base03); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* Phone: keep the verdict, drop the supporting evidence.
+ *
+ * The strip is absolutely positioned over the picture, so its only cost is the picture it
+ * covers — and at 400 CSS px the full form (dot, verdict, reason, 4.8 / 5.7 Mbps, link figure)
+ * wrapped to two lines and took a visible band off the top of the video. What survives is what
+ * a glance is for: the colour, the word, and whether the stream is getting what it asked for.
+ * The reason and the link capacity are still one tap away in the debug readouts. */
+@media (max-width: 519px) {
+  .health { font-size: 11px; gap: 6px; padding: 3px 8px 3px 6px; }
+  .healthdetail, .healthlink { display: none; }
+  .healthdot { width: 7px; height: 7px; }
+}
+
+/* The latency breakdown is per-stage by nature and cannot be shortened without losing the thing
+ * it exists to show — which stage grew. So on a phone it gets smaller rather than fewer: tighter
+ * chips, a narrower value column, and no wasted width on the name. */
+@media (max-width: 519px) {
+  #wado-latency { font-size: 10px; gap: 4px; padding: 4px 8px calc(4px + env(safe-area-inset-bottom)); }
+  .latstage { padding: 1px 5px; gap: 3px; }
+  .latval { min-width: 2.6em; }
+}
 
 /* The three states. Colour carries the severity and the word carries the meaning — neither
  * alone, because a colour is unreadable to some viewers and a word is slow to read for all. */

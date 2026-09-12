@@ -79,12 +79,18 @@ pub fn render(ui: Ui) -> Element {
         // Over the picture, because it is blocking: the connection is parked until it is
         // answered, and there is nothing behind it to look at yet.
         {super::rejoin::render(ui)}
-        if show_statusbar {
+        // The pill appears for the *numbers* as well as the status text. It used to render only
+        // when `statusbar` was on, which silently made the fps and ping switches do nothing on
+        // their own — turning on "fps" and seeing no frame rate reads as a broken readout, not as
+        // a second switch you were supposed to find.
+        if show_statusbar || show_stats {
             div { id: "stagebar",
                 // No input hint here any more. It is a first-run explanation rather than a
                 // status, and it is what forced this readout to span the full width — the
                 // reason it covered the row an application puts its own controls in.
-                span { "{(live.stagebar)()}" }
+                if show_statusbar {
+                    span { "{(live.stagebar)()}" }
+                }
                 span {
                     if show_badge {
                         span { class: "pipebadge {badge_class}", title: "active encode pipeline",

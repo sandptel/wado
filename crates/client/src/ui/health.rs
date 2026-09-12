@@ -23,6 +23,23 @@ fn rate(kbps: f64) -> String {
     }
 }
 
+/// Two rates that are being compared, printed with **one** unit between them.
+///
+/// `4.8 Mbps of 5.7 Mbps` is the same comparison as `4.8 / 5.7 Mbps` and half again as wide; on a
+/// phone the difference decided whether the strip fitted. Falls back to two full rates when the
+/// numbers land in different units, because `600 / 5.7 Mbps` would be a lie.
+fn pair(got: f64, need: f64) -> String {
+    let both_mbps = got >= 1000.0 && need >= 1000.0;
+    let both_kbps = got < 1000.0 && need < 1000.0;
+    if both_mbps {
+        format!("{:.1} / {:.1} Mbps", got / 1000.0, need / 1000.0)
+    } else if both_kbps {
+        format!("{got:.0} / {need:.0} kbps")
+    } else {
+        format!("{} / {}", rate(got), rate(need))
+    }
+}
+
 pub fn render(ui: Ui) -> Element {
     let live = ui.live;
     if !(live.session_on)() || !debug::on(ui, "health") {
@@ -45,15 +62,14 @@ pub fn render(ui: Ui) -> Element {
     // Needed vs available, side by side, because that pair is the whole bandwidth question and
     // either number alone answers nothing: 600 kbps arriving is healthy for a still screen and
     // a catastrophe for a moving one, and only the target says which.
-    let bandwidth = match (h.got_kbps, h.need_kbps, h.have_kbps) {
-        (Some(got), Some(need), Some(have)) if need > 0.0 => {
-            format!("{} of {} · link {}", rate(got), rate(need), rate(have))
-        }
-        (Some(got), Some(need), None) if need > 0.0 => format!("{} of {}", rate(got), rate(need)),
-        (Some(got), _, Some(have)) => format!("{} · link {}", rate(got), rate(have)),
-        (Some(got), _, None) => rate(got),
+    // Split in two so the phone can drop the second half. The pair is the question — is the
+    // stream getting what it asked for — and the link figure is supporting evidence.
+    let bandwidth = match (h.got_kbps, h.need_kbps) {
+        (Some(got), Some(need)) if need > 0.0 => pair(got, need),
+        (Some(got), _) => rate(got),
         _ => String::new(),
     };
+    let link = h.have_kbps.map(rate).unwrap_or_default();
 
     rsx! {
         div { class: "health health-{h.state}",
@@ -65,6 +81,37 @@ pub fn render(ui: Ui) -> Element {
             if !bandwidth.is_empty() {
                 span { class: "healthbw", "{bandwidth}" }
             }
+            if !link.is_empty() {
+                span { class: "healthlink", title: "measured link capacity", "↓{link}" }
+            }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_shared_unit_is_printed_once() {
+        // The whole point: half the width of "4.8 Mbps of 5.7 Mbps".
+        assert_eq!(pair(4800.0, 5676.0), "4.8 / 5.7 Mbps");
+        assert_eq!(pair(600.0, 900.0), "600 / 900 kbps");
+    }
+
+    #[test]
+    fn a_straddled_boundary_keeps_both_units() {
+        // "600 / 5.7 Mbps" would read as 600 Mbps. Width is not worth a wrong number.
+        assert_eq!(pair(600.0, 5676.0), "600 kbps / 5.7 Mbps");
+        assert_eq!(pair(4800.0, 900.0), "4.8 Mbps / 900 kbps");
+    }
+
+    #[test]
+    fn the_boundary_itself_is_mbps_on_both_sides() {
+        // 1000 kbps is the switch-over in `rate`; `pair` must agree with it or the two readouts
+        // disagree about the same number.
+        assert_eq!(pair(1000.0, 1000.0), "1.0 / 1.0 Mbps");
+        assert_eq!(rate(1000.0), "1.0 Mbps");
+        assert_eq!(rate(999.0), "999 kbps");
     }
 }
