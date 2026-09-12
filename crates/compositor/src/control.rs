@@ -61,6 +61,17 @@ pub enum CompositorCommand {
     /// pump back up; it cannot see a phone decoding 15 of the 90 frames a second it is being
     /// sent, which is a failure that has been measured here with every server-side metric clean.
     ViewerStrain(bool),
+    /// A viewer's media path came up, or went away. **Not** a session lifecycle verb.
+    ///
+    /// The session outlives its viewers by design; this only says whether there is currently
+    /// anyone to render for. `false` pauses the render tick and keeps everything else — the
+    /// windows, the applications, the Wayland clients' frame callbacks. `true` resumes and
+    /// resets the per-viewer state, because none of the previous viewer's history is about
+    /// this one.
+    ///
+    /// The direct HTTP transport never sends it, and so keeps its old always-rendering
+    /// behaviour rather than depending on a message it does not know to send.
+    ViewerAttached(bool),
 }
 
 /// Run one command on the calloop thread. `frame_tx` is the pump sender, cloned
@@ -87,6 +98,9 @@ pub fn handle_command(state: &mut Wado, cmd: CompositorCommand, frame_tx: &mpsc:
             }
         }
         CompositorCommand::ForceKeyframe => headless::force_keyframe(state),
+        CompositorCommand::ViewerAttached(attached) => {
+            headless::set_viewer_attached(state, attached)
+        }
         CompositorCommand::ViewerStrain(strained) => {
             if state.viewer_strained != strained {
                 tracing::info!(strained, "viewer reported a change in decoder strain");

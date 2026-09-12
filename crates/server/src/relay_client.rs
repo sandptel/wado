@@ -547,6 +547,33 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 info!(room_id = %room_id, client = %client_addr, "relay client: peer connected");
             }
 
+            RelayMsg::PeerDisconnected { room_id } => {
+                // Deliberately *not* a teardown. See `RelayMsg::PeerDisconnected`: the relay used
+                // to synthesize a `SessionStop` here, which made every dropped socket cost the
+                // viewer their windows and their applications. The session stays up and
+                // `viewer_watchdog` is left to decide, which is the only place that decision
+                // belongs — it is the one thing here with a clock.
+                //
+                // The peer connection *is* closed, because it is certainly dead and webrtc-rs
+                // releases its ICE sockets only on `close().await`, never on `Drop` (I14). Left
+                // open, each abandoned viewer holds four of the 101 pinned UDP ports until the
+                // next offer happens to replace it.
+                let _ = ctx.cmd_tx.send(CompositorCommand::ViewerAttached(false));
+                let dead = ctx.active_pc.lock().unwrap_or_else(|e| e.into_inner()).take();
+                if let Some(pc) = dead {
+                    tokio::spawn(async move {
+                        if let Err(e) = pc.close().await {
+                            warn!("relay client: closing a departed viewer's peer connection: {e}");
+                        }
+                    });
+                }
+                info!(
+                    room_id = %room_id,
+                    "relay client: viewer disconnected — session kept, {VIEWER_GRACE:?} of grace \
+                     starts from the last moment it was connected"
+                );
+            }
+
             RelayMsg::SessionStart { config } => {
                 // A session already running is not an error, it is a choice. Telling the viewer
                 // "a session is already active" and closing the socket — which is what this did —
@@ -593,15 +620,11 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     Some(info) => {
                         ctx.session_started.store(true, Ordering::SeqCst);
                         ctx.last_connected.store(now_ms(), Ordering::Relaxed);
-                        // Same reasoning as the keyframe below, for the other piece of
-                        // per-viewer state: the strain flag belongs to whoever was watching
-                        // before, and a rejoin does not restart the session that holds it. A new
-                        // decoder starts with no history and must not inherit a shed.
-                        let _ = ctx.cmd_tx.send(CompositorCommand::ViewerStrain(false));
-                        // The new viewer's decoder has no reference frame, so without this it
-                        // shows nothing until the next periodic keyframe — up to two seconds of
-                        // black on a rejoin that otherwise worked.
-                        let _ = ctx.cmd_tx.send(CompositorCommand::ForceKeyframe);
+                        // The per-viewer reset (strain, shed divisor, congestion window) and the
+                        // keyframe used to be sent from here by hand. They belong to
+                        // `ViewerAttached`, which the peer-connection handler sends when this
+                        // viewer's media path actually comes up — the rejoin message itself only
+                        // means the button was pressed.
                         info!("relay client: viewer rejoined the running session");
                         send_relay(&out_tx, &RelayMsg::SessionStarted { info }).await.ok();
                     }
@@ -910,6 +933,11 @@ async fn handle_sdp_offer(
                 RTCPeerConnectionState::Connected => {
                     info!("relay client: viewer connected via WebRTC");
                     last_connected.store(now_ms(), Ordering::Relaxed);
+                    // Resume rendering and reset the per-viewer state. The keyframe is sent
+                    // here as well as inside `set_viewer_attached` because that call is a
+                    // no-op when a viewer was already attached — a second device connecting
+                    // still needs something its decoder can start from.
+                    let _ = cmd_tx.send(CompositorCommand::ViewerAttached(true));
                     let _ = cmd_tx.send(CompositorCommand::ForceKeyframe);
                 }
                 // NOT a teardown. A peer connection dying is a *transport* event — a cell
@@ -921,8 +949,15 @@ async fn handle_sdp_offer(
                 // `viewer_watchdog` is the only teardown now. It waits `VIEWER_GRACE` of
                 // relay-link silence *and* a non-connected peer connection, so a viewer that
                 // re-offers through the still-open relay socket keeps everything it had.
-                RTCPeerConnectionState::Failed | RTCPeerConnectionState::Closed => {
+                RTCPeerConnectionState::Failed
+                | RTCPeerConnectionState::Closed
+                | RTCPeerConnectionState::Disconnected => {
                     if generation.load(Ordering::SeqCst) == my_gen {
+                        // Stop rendering for a viewer that is not receiving. `Disconnected` is
+                        // included on purpose: it is the transient case — a lift, a handoff —
+                        // and it is precisely when there is no point encoding into a dead path.
+                        // Resuming costs one keyframe.
+                        let _ = cmd_tx.send(CompositorCommand::ViewerAttached(false));
                         info!(
                             "relay client: peer connection {state:?} — session kept, waiting for \
                              a re-offer (the watchdog stops it if no viewer comes back)"
@@ -1053,9 +1088,16 @@ mod pump_tests {
 
 /// How long a started session may go without any sign of its viewer before it is stopped.
 ///
-/// Generous, because a session outliving its viewer by half a minute costs nothing while a
-/// session killed out from under a live viewer costs everything.
-const VIEWER_GRACE: std::time::Duration = std::time::Duration::from_secs(45);
+/// Ten minutes, raised from 45 s once a detached session stopped costing anything to keep. The
+/// old number was not chosen for the user's networks — it was chosen because a session with no
+/// viewer still rendered and encoded 90 frames a second for nobody, so leaving one running was
+/// expensive and reaping it quickly was the lesser evil. `ViewerAttached(false)` pauses the
+/// render tick instead, which removes the reason to be stingy: what is left running is the
+/// desktop and the applications the user put in it, which is the thing they asked to keep.
+///
+/// A dead zone on a commute routinely outlasted 45 s, so the old value reaped exactly the
+/// sessions this branch exists to preserve.
+const VIEWER_GRACE: std::time::Duration = std::time::Duration::from_secs(600);
 
 /// Stop a session whose viewer has vanished without saying so.
 ///

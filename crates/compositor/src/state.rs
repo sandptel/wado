@@ -170,6 +170,18 @@ pub struct Wado {
     /// process can observe that, so it is the one congestion input that has to be told to us.
     /// A latched level, updated about once a second; see `CompositorCommand::ViewerStrain`.
     pub viewer_strained: bool,
+    /// Whether anyone is actually watching. **The session's lifetime is not its viewer's.**
+    ///
+    /// Rendering and encoding for nobody is the reason a session with no viewer was expensive
+    /// enough to need reaping in the first place; pausing here is what lets the grace period be
+    /// generous instead of a race the user keeps losing. Window state stays live either way —
+    /// a paused tick still sends frame callbacks, so clients keep drawing and a reattach finds
+    /// the desktop as it was, not frozen mid-frame.
+    ///
+    /// Starts `true` and is only ever lowered by an explicit `ViewerAttached(false)`. That is
+    /// deliberate: the direct HTTP path never sends the command at all, so it keeps exactly its
+    /// old behaviour rather than going black on a flag it does not know about.
+    pub viewer_attached: bool,
     pub frame_sink: Option<Box<dyn FrameSink>>,
     pub output: Option<Output>,
     /// The output's wl_output global, removed on session stop so a fresh session
@@ -350,6 +362,7 @@ impl Wado {
             encoder_report: None,
             congestion: Default::default(),
             viewer_strained: false,
+            viewer_attached: true,
             frame_sink: None,
             output: None,
             output_global: None,

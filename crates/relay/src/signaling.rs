@@ -257,13 +257,22 @@ async fn join_loop(socket: WebSocket, remote_id: String, addr: SocketAddr, state
     // `_fwd_task` aborts itself on drop — including when this function unwinds. See
     // `AbortOnDrop`.
     state.rooms.remove(&remote_id);
-    // Tell the server the viewer is gone. Its own teardown hangs off the WebRTC peer
-    // state, which never reaches Failed/Closed when ICE never completed in the first
-    // place — so without this a timed-out client leaves `session_active` set forever
-    // and every later join is refused with "a session is already active".
-    // ponytail: synthesized rather than forwarded; a PeerDisconnected variant is the
-    // clean version. Ordering is safe — a later PeerConnected rides the same inbox.
-    let _ = server_inbox_tx.send(r#"{"type":"session_stop"}"#.to_string()).await;
+    // Tell the server the viewer is gone — and nothing more than that.
+    //
+    // This used to synthesize `{"type":"session_stop"}`. The reason was real at the time: the
+    // server's only teardown hung off the WebRTC peer state, which never reaches Failed/Closed
+    // when ICE never completed, so a timed-out client left `session_active` set forever and every
+    // later join was refused. `viewer_watchdog` covers that case now, by two clocks that do not
+    // depend on any single event.
+    //
+    // What the synthesized stop cost in the meantime: **any** socket close became an instant
+    // teardown. A cell handoff, a screen lock, a tunnel hiccup — each one killed the windows and
+    // every application the session had launched, before the 45 s grace period downstream could
+    // look at it even once. A viewer going away is not a request to stop.
+    if let Ok(text) = serde_json::to_string(&RelayMsg::PeerDisconnected { room_id: room_id.clone() })
+    {
+        let _ = server_inbox_tx.send(text).await;
+    }
     info!(
         remote_id = %display_remote_id(&remote_id),
         room_id = %room_id,

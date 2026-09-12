@@ -123,6 +123,7 @@ pub fn start_session(
     state.congestion.reset();
     // Belongs to the viewer that just left; a new one has not said anything yet.
     state.viewer_strained = false;
+    state.viewer_attached = true;
     let _ = state.shedding_tx.send(1);
     state.content_type_log.clear();
     if let Some(old) = state.dmabuf_global.take() {
@@ -586,6 +587,35 @@ fn downgrade_pipeline(state: &mut Wado) {
 
 /// Request that the next encoded frame be a forced IDR keyframe. Called when a new
 /// viewer connects or the browser sends a PLI/FIR (picture loss). No-op if idle.
+/// A viewer attached or went away. **Never** a session teardown — see `state.viewer_attached`.
+///
+/// This is also the one place per-viewer state is reset, which used to be spread across
+/// `start_session` (congestion, strain, shed divisor) and the relay client's rejoin handler
+/// (strain, keyframe). Two places that had to stay in sync and did not: a rejoin skipped
+/// `start_session`, so a new decoder inherited the divisor the *previous* viewer's phone had
+/// asked for and was throttled from its first frame for a fault it never had.
+pub fn set_viewer_attached(state: &mut Wado, attached: bool) {
+    if state.viewer_attached == attached {
+        return;
+    }
+    state.viewer_attached = attached;
+    if attached {
+        // A fresh decoder has no history, and none of the old one's is about it.
+        state.congestion.reset();
+        state.viewer_strained = false;
+        let _ = state.shedding_tx.send(1);
+        // It also has no reference frame, so without this it shows black until the next
+        // periodic keyframe — up to two seconds on a reattach that otherwise worked.
+        force_keyframe(state);
+        info!("viewer attached — rendering resumed");
+    } else {
+        info!(
+            windows = state.space.elements().count(),
+            "viewer detached — rendering paused; the session and its applications are kept"
+        );
+    }
+}
+
 pub fn force_keyframe(state: &mut Wado) {
     if let Some(encoder) = state.encoder.as_mut() {
         encoder.force_idr_next();
@@ -618,7 +648,12 @@ fn render_tick(state: &mut Wado) -> crate::Result<()> {
     // function. A client that stops receiving them stops drawing entirely, which would turn a
     // reduced frame rate into the freeze this exists to avoid.
     let dropped_total = state.frame_sink.as_ref().map_or(0, |s| s.dropped());
-    let render_this_tick = state.congestion.should_render(dropped_total, state.viewer_strained);
+    // Nobody watching: render nothing. Not a mitigation like shedding — there is simply no
+    // consumer, and every frame made here would be encoded, handed to a pump with no peer
+    // connection behind it, and dropped. Congestion is not consulted (and so does not advance
+    // its window) because a detached stretch says nothing about how a link was coping.
+    let render_this_tick = state.viewer_attached
+        && state.congestion.should_render(dropped_total, state.viewer_strained);
     // On change only — it is state the viewer latches, and the divisor changes at most once per
     // decision window anyway.
     state.shedding_tx.send_if_modified(|cur| {
