@@ -350,6 +350,43 @@ WebRTC was connected, say), not a shorter grace. Not worth building until it is 
 
 ---
 
+## I15 · The 45 s grace granted no grace — the watchdog was on the wrong clock · **fixed, measured**
+
+**Observed** `2026-09-12` 22:34, live, on the build that had shipped three hours earlier:
+
+```
+17:04:03.875  peer connection Failed — session kept, waiting for a re-offer
+17:04:06.433  no sign of a viewer for 45s and WebRTC is not connected — stopping
+              the session ... silent_ms=47699
+17:04:06.499  compositor session stopped — resources released
+```
+
+**2.56 seconds**, not 45. The evening's headline fix — stop tearing sessions down on a transient
+peer-connection failure — was undone one layer along by the watchdog that was supposed to be its
+only remaining teardown. The client's ~37 s retry budget never got a chance to run.
+
+**Cause.** `viewer_watchdog` required relay-link silence for `VIEWER_GRACE` *and* a non-connected
+peer connection. That reads as two conditions and is really one, because **a healthy viewer is
+silent on the relay link**: its media and its input ride WebRTC, and it speaks to the relay only
+when something changes. `silent_ms=47699` — the grace had already elapsed *before* the fault, so
+the second condition flipping was the whole decision.
+
+**Fix.** The first clock is now *how long since a viewer was last actually connected*, which is
+the thing "no viewer" was always trying to measure — sampled every tick while a peer connection is
+`Connected`, and reset when a session starts or is rejoined so a viewer that never arrives is
+still reaped. Relay silence stays as a genuine second clock: a viewer whose WebRTC is down but who
+is **re-offering through the relay right now** is present, and killing the session it is trying to
+rejoin is the worst available move. Both clocks must be old.
+
+Extracted as `should_reap(gone_ms, silent_ms, connected)` and covered by 5 tests, one of which is
+the measured numbers above.
+
+**The general shape, and it is the third time tonight:** *a proxy signal was standing in for the
+thing that mattered.* Relay silence for viewer absence here; `saturated` this tick for the settled
+verdict in I1; `Drop` for release in I14. Each read plausibly and measured something else.
+
+---
+
 ## I13 · `VIEWER_GRACE` is now load-bearing at 45 s · **open, needs a real measurement**
 
 With the immediate teardown gone, 45 s is the entire budget a viewer has to come back before its

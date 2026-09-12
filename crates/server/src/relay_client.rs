@@ -79,6 +79,9 @@ struct RelayCtx {
     /// tell a frame rate *it asked us to reduce* from a compositor that has stopped producing.
     /// Latest-value-wins and marked changed on attach, for the same reasons as `text_input`.
     shedding: tokio::sync::watch::Receiver<u32>,
+    /// Unix-millis of the last moment a viewer's peer connection was seen `Connected`. See
+    /// [`viewer_watchdog`] — this, not relay silence, is how long there has been no viewer.
+    last_connected: Arc<AtomicU64>,
     /// Unix-millis of the last message received from the relay. See [`viewer_watchdog`].
     last_relay_msg: Arc<AtomicU64>,
     /// Whether a session was started for a viewer and has not been stopped. See
@@ -306,6 +309,7 @@ async fn run(
         shedding,
         active_pc: Arc::new(Mutex::new(None)),
         generation: Arc::new(AtomicU64::new(0)),
+        last_connected: Arc::new(AtomicU64::new(now_ms())),
         last_relay_msg: Arc::new(AtomicU64::new(now_ms())),
         session_started: Arc::new(AtomicBool::new(false)),
         relay_url,
@@ -315,6 +319,7 @@ async fn run(
 
     tokio::spawn(viewer_watchdog(
         ctx.cmd_tx.clone(),
+        Arc::clone(&ctx.last_connected),
         Arc::clone(&ctx.last_relay_msg),
         Arc::clone(&ctx.session_started),
         Arc::clone(&ctx.active_pc),
@@ -508,6 +513,9 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     continue;
                 }
                 ctx.session_started.store(true, Ordering::SeqCst);
+                // The grace period starts now: a viewer that asked for a session but never
+                // completes ICE must still be reaped, and it has never been connected.
+                ctx.last_connected.store(now_ms(), Ordering::Relaxed);
                 let (reply_tx, reply_rx) = oneshot::channel();
                 if ctx.cmd_tx.send(CompositorCommand::Start { config, reply: reply_tx }).is_err() {
                     send_relay(&out_tx, &RelayMsg::SessionError {
@@ -539,6 +547,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 match live_session(&ctx).await {
                     Some(info) => {
                         ctx.session_started.store(true, Ordering::SeqCst);
+                        ctx.last_connected.store(now_ms(), Ordering::Relaxed);
                         // Same reasoning as the keyframe below, for the other piece of
                         // per-viewer state: the strain flag belongs to whoever was watching
                         // before, and a rejoin does not restart the session that holds it. A new
@@ -849,10 +858,12 @@ async fn handle_sdp_offer(
     {
         let cmd_tx = ctx.cmd_tx.clone();
         let generation = Arc::clone(&ctx.generation);
+        let last_connected = Arc::clone(&ctx.last_connected);
         pc.on_peer_connection_state_change(Box::new(move |state| {
             match state {
                 RTCPeerConnectionState::Connected => {
                     info!("relay client: viewer connected via WebRTC");
+                    last_connected.store(now_ms(), Ordering::Relaxed);
                     let _ = cmd_tx.send(CompositorCommand::ForceKeyframe);
                 }
                 // NOT a teardown. A peer connection dying is a *transport* event — a cell
@@ -1011,12 +1022,24 @@ const VIEWER_GRACE: std::time::Duration = std::time::Duration::from_secs(45);
 /// an empty room is the same failure the process-group cleanup fixed, arriving by a different
 /// door.
 ///
-/// **Why two conditions and not one.** Silence on the relay link is not enough on its own: a
-/// viewer that is connected and quiet would be killed. So the session is stopped only when the
-/// signalling link has been silent *and* WebRTC is not connected. Either one alone is normal;
-/// together they mean there is no viewer by any route.
+/// **Why two clocks and not one, and why relay silence is not one of them on its own.**
+///
+/// This first required only that the relay link had been silent for the grace period and that
+/// WebRTC was not connected. That reads as two conditions and is really one, because **a healthy
+/// viewer is silent on the relay link**: its media and its input are on WebRTC, and it speaks to
+/// the relay only when something changes. Measured 2026-09-12 22:34:06 — ICE reached `Failed` and
+/// the session was reaped **three seconds** later, with `silent_ms=47699`. The grace period had
+/// already elapsed before the fault, so it granted no grace at all and the work that stopped the
+/// peer-connection handler from tearing sessions down was undone one layer along.
+///
+/// So the first clock is now **how long it has been since a viewer was last actually connected**,
+/// which is the thing "no viewer" was always trying to measure. Relay silence stays as the second
+/// clock, and it earns its place: a viewer whose WebRTC is down but who is re-offering through the
+/// relay right now is *present*, and killing the session it is trying to rejoin is the worst
+/// available move. Both must be old before anything is stopped.
 async fn viewer_watchdog(
     cmd_tx: CommandSender,
+    last_connected: Arc<AtomicU64>,
     last_relay_msg: Arc<AtomicU64>,
     session_started: Arc<AtomicBool>,
     active_pc: Arc<Mutex<Option<Arc<RTCPeerConnection>>>>,
@@ -1027,10 +1050,6 @@ async fn viewer_watchdog(
         if !session_started.load(Ordering::SeqCst) {
             continue;
         }
-        let silent_ms = now_ms().saturating_sub(last_relay_msg.load(Ordering::Relaxed));
-        if silent_ms < VIEWER_GRACE.as_millis() as u64 {
-            continue;
-        }
         // The lock is released before the await point; holding a std Mutex across one would
         // be a deadlock waiting for a slow tick.
         let connected = {
@@ -1038,16 +1057,71 @@ async fn viewer_watchdog(
             pc.map(|pc| pc.connection_state() == RTCPeerConnectionState::Connected)
                 .unwrap_or(false)
         };
+        // Sampled here as well as on the state change, so a long-lived connection keeps the clock
+        // fresh without depending on an event that only fires on transitions.
         if connected {
+            last_connected.store(now_ms(), Ordering::Relaxed);
+        }
+        let now = now_ms();
+        let gone_ms = now.saturating_sub(last_connected.load(Ordering::Relaxed));
+        let silent_ms = now.saturating_sub(last_relay_msg.load(Ordering::Relaxed));
+        if !should_reap(gone_ms, silent_ms, connected) {
             continue;
         }
         warn!(
+            gone_ms,
             silent_ms,
-            "no sign of a viewer for {VIEWER_GRACE:?} and WebRTC is not connected — stopping \
-             the session so its applications do not outlive it"
+            "no viewer connected for {VIEWER_GRACE:?} and nothing on the relay link either — \
+             stopping the session so its applications do not outlive it"
         );
         session_started.store(false, Ordering::SeqCst);
         let _ = cmd_tx.send(CompositorCommand::Stop);
+    }
+}
+
+/// The watchdog's decision, split out so it can be tested without a session, a socket or a clock.
+fn should_reap(gone_ms: u64, silent_ms: u64, connected: bool) -> bool {
+    let grace = VIEWER_GRACE.as_millis() as u64;
+    !connected && gone_ms >= grace && silent_ms >= grace
+}
+
+#[cfg(test)]
+mod watchdog_tests {
+    use super::{VIEWER_GRACE, should_reap};
+
+    const GRACE: u64 = VIEWER_GRACE.as_millis() as u64;
+
+    #[test]
+    fn a_connected_viewer_is_never_reaped() {
+        // However long it has been quiet: the media path is where a viewer lives.
+        assert!(!should_reap(0, GRACE * 10, true));
+    }
+
+    #[test]
+    fn relay_silence_alone_does_not_reap_a_recent_connection() {
+        // The regression that shipped, measured 2026-09-12 22:34:06: ICE failed after 48 s of
+        // ordinary relay quiet, and the session died three seconds later because the old rule
+        // read that quiet as absence.
+        assert!(!should_reap(3_000, 47_699, false));
+    }
+
+    #[test]
+    fn a_viewer_re_offering_through_the_relay_keeps_its_session() {
+        // WebRTC long gone, but the relay link is busy — that is someone trying to come back,
+        // and it is the case the whole evening's reconnect work exists to serve.
+        assert!(!should_reap(GRACE * 3, 1_000, false));
+    }
+
+    #[test]
+    fn gone_by_every_route_is_reaped() {
+        assert!(should_reap(GRACE, GRACE, false));
+        assert!(should_reap(GRACE * 5, GRACE * 5, false));
+    }
+
+    #[test]
+    fn just_under_the_grace_on_either_clock_is_kept() {
+        assert!(!should_reap(GRACE - 1, GRACE * 2, false));
+        assert!(!should_reap(GRACE * 2, GRACE - 1, false));
     }
 }
 
