@@ -38,6 +38,8 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/input_core.js"),
     "\n",
+    include_str!("js/input_units.js"),
+    "\n",
     include_str!("js/input_accel.js"),
     "\n",
     include_str!("js/input_coalesce.js"),

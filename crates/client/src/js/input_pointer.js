@@ -58,7 +58,9 @@ W.mouse = {
     // velocity gain as a finger drag. Line and page modes are a real wheel's discrete
     // notches: accelerating those makes a mouse feel broken, so they stay linear.
     const accel = e.deltaMode === 0 ? W.scrollAccel.gain(Math.hypot(e.deltaX, e.deltaY)) : 1;
-    const speed = (W.scrollSpeed || 1) * accel;
+    // Same viewer-to-session conversion as the finger drag (input_units.js). A wheel notch is
+    // also measured in the viewer's pixels, so it under-scrolled by exactly the same factor.
+    const speed = (W.scrollSpeed || 1) * accel * W.cssToLogical(video);
     W.sendInput({
       t: "scroll",
       x: n.x,
