@@ -714,6 +714,17 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             }
 
             RelayMsg::SessionLaunch { command } => {
+                // Answered honestly. This used to send `SessionLaunched` unconditionally, so a
+                // launch into a session that does not exist was reported as a success — the
+                // compositor logged `launch ignored — no active session` and the viewer was told
+                // the application was starting. It then waited for a window that was never
+                // coming, with the only evidence in a log it cannot see.
+                if live_session(&ctx).await.is_none() {
+                    send_relay(&out_tx, &RelayMsg::SessionError {
+                        message: "there is no session to launch into — start one first".into(),
+                    }).await.ok();
+                    continue;
+                }
                 let _ = ctx.cmd_tx.send(CompositorCommand::Launch { command });
                 send_relay(&out_tx, &RelayMsg::SessionLaunched).await.ok();
             }

@@ -133,9 +133,22 @@ W.relayConnect = (relayUrl, remoteId, config) => {
 // running and `session_started` when it made a new one. A separate SessionQuery message would
 // add a protocol variant, a relay pass-through and a server arm to learn what this already says.
 function askForSession() {
-  if (!W._relayConfig) return;
+  // No config means this page never pressed Start — a cold load that resumed from the crumb.
+  // There is nothing to start *from*, and the old code returned here in silence, which on the
+  // drop-and-start path left the viewer with the old session stopped and no new one coming.
+  if (!W._relayConfig) {
+    rlog("cannot start a session: this page has no settings yet");
+    status("relay: press Start to open a session");
+    emit({ type: "startFailed" });
+    return false;
+  }
   armSessionWait();
-  W.relaySendMsg({ type: "session_start", config: W._relayConfig });
+  if (!W.relaySendMsg({ type: "session_start", config: W._relayConfig })) {
+    clearSessionWait();
+    status("relay: link is down — the request will go when it reconnects");
+    return false;
+  }
+  return true;
 }
 
 // ── Link events ───────────────────────────────────────────────────────────────
@@ -172,6 +185,13 @@ W.relayOn("__down", () => {
   W._relayDropPending = false;
   W._relayResuming = false;
   clearSessionWait();
+  // A prompt is a question about a socket. When the socket goes, the question goes with it —
+  // otherwise the viewer is left looking at two buttons that quietly do nothing, and the
+  // reconnect raises a fresh prompt behind the stale one.
+  if (W._relayChoice) {
+    W._relayChoice = null;
+    emit({ type: "sessionAliveCleared" });
+  }
   if (W.sessionOn) status("relay: link lost — holding the session, reconnecting…");
 });
 
@@ -473,11 +493,18 @@ W.relayStop = () => {
 /// forces a keyframe so the picture starts immediately rather than at the next periodic one.
 W.relayRejoin = () => {
   if (!W._relayChoice) return false;
+  // Dismiss the prompt only once the answer is actually on its way. A press that vanished into
+  // a closed socket used to clear the prompt anyway, leaving nothing on screen and nothing
+  // happening.
+  if (!relaySend({ type: "session_rejoin" })) {
+    status("relay: link is down — try again when it reconnects");
+    return false;
+  }
   W._relayChoice = null;
   emit({ type: "sessionAliveCleared" });
   status("relay: rejoining the running session…");
   armSessionWait();
-  return relaySend({ type: "session_rejoin" });
+  return true;
 };
 
 /// Stop the running session and start a fresh one with *this* viewer's settings.
@@ -487,9 +514,19 @@ W.relayRejoin = () => {
 /// `session_stopped` handler above is the other half.
 W.relayDropStart = () => {
   if (!W._relayChoice) return false;
+  // Refuse rather than half-do it: without settings this would stop the running session and
+  // then have nothing to start, which is the worst of both answers.
+  if (!W._relayConfig) {
+    status("relay: press Start first — this page has no settings to open a session with");
+    return false;
+  }
+  if (!relaySend({ type: "session_stop" })) {
+    status("relay: link is down — try again when it reconnects");
+    return false;
+  }
   W._relayChoice = null;
   W._relayDropPending = true;
   emit({ type: "sessionAliveCleared" });
   status("relay: stopping the previous session…");
-  return relaySend({ type: "session_stop" });
+  return true;
 };

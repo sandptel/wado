@@ -435,3 +435,50 @@ leak would have been hit in minutes instead of hours.
 reported as "STUN timed out", which accuses the network for a local resource leak. A count of
 bound ports in the range, logged when an answer carries fewer candidates than the last one, would
 have named this in one line.
+
+---
+
+## I16 — kitty exits when the session's output is replaced (Chrome does not)
+
+Found `2026-09-13` by `scripts/graceful-probe.mjs` while verifying live reconfigure.
+
+A resize replaces the session's `Output` — it has to, because Wayland cannot un-advertise a
+mode (invariant #8). Within ~260 ms of that, a `kitty` running in the session closes its display
+connection and exits, taking its child processes with it.
+
+**It is not the compositor killing it.** `ClientData::disconnected` now reports the reason
+(that function was previously empty, which is why this took a cycle to establish) and it says
+`ConnectionClosed`, not `ProtocolError`. kitty is choosing to exit. It writes nothing to stderr.
+
+**Scope, measured three ways on the same build:**
+
+| application | resize |
+|---|---|
+| `sleep` (no Wayland client at all) | survives |
+| `google-chrome-stable` — the real use case, 12 processes | **survives** |
+| `kitty` | **exits** |
+
+So the reconfigure path is not broken in general. Two things were fixed along the way and both
+are worth keeping regardless: a reconfigure that does not change the output's *shape* (a bitrate
+change) no longer rebuilds the output at all, and a replaced output global is now
+`disable_global`'d and destroyed five seconds later rather than immediately, so clients get the
+round trip `global_remove` is supposed to give them. Neither saved kitty — it was already gone
+before the retire timer fired.
+
+**Open.** Not chased further because the application wado actually runs survives, and the next
+step is reading kitty's source rather than wado's. Worth revisiting if a second client turns out
+to behave the same way.
+
+## I17 — two viewers of one session fight over the peer connection
+
+Reachable now that a page reload rejoins automatically (the `wado.watching` crumb): two tabs on
+the same device, or two devices, both take the session back. Each rejoin replaces the active
+peer connection and forces a keyframe, so they alternate indefinitely and neither gets a stable
+stream.
+
+The daemon already assumes a single viewer — `active_pc` is one slot, and `generation` exists to
+let a stale viewer's teardown be ignored. What is missing is any *arbitration*: the second
+viewer is not told it displaced anyone, and the first is not told it was displaced.
+
+**Open, unfixed, no workaround.** The honest minimum is telling the displaced viewer what
+happened instead of leaving it silently black.
