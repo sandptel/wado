@@ -145,6 +145,11 @@ saying "it feels a second behind" and a readout saying "84 ms ping" are both cor
 The buffer inflates on an rtt spike to absorb jitter and does not come back down. ⟳ Resync fixes
 it in one tap by rebuilding the peer connection, which is the only thing that resets it.
 
+> **Correction, `2026-09-12` 18:00.** That sentence was wrong for the mode this was measured in.
+> `W.resync()` called `connectWebRTC()`, which POSTs to `/offer` — an endpoint that exists only
+> in direct mode. In relay mode the tap threw and the buffer stayed inflated. Fixed alongside the
+> reconnect work below (I12); the issue itself is unchanged, and the one-tap fix is now real.
+
 **Why this is an issue and not just a feature request:** the condition is *specific*, *already
 measured every second on the client*, and *one-tap fixable* — `jbuf` far above `jtarget` while
 loss is low. The verdict strip already names faults and suggests settings; this is the one case
@@ -219,3 +224,32 @@ session after 45 s. The architecture's stated fallback — the rendezvous relay 
 when ICE fails — is not built.
 
 Not hit during the `2026-09-12` roaming run because the host has a routable public address.
+
+---
+
+## I12 · A viewer that gave up pins the session until the tab closes · **open, low, accepted**
+
+Fallout from making `viewer_watchdog` the only teardown (Decision Log, `2026-09-12`). The
+watchdog needs `VIEWER_GRACE` of **relay-link silence**, and the client answers the daemon's
+keepalive with `{"type":"pong"}` — a WS *text* frame, so it bumps `last_relay_msg`. A tab that
+is open, joined, and has exhausted `MAX_RECONNECTS` therefore holds the session open
+indefinitely: it is silent on WebRTC but not on the relay.
+
+Bounded in practice — `pagehide` sends `session_stop`, so closing the tab or the browser ends
+it. The unbounded case is a tab left open on a dead connection for hours.
+
+The clean fix is a viewer-liveness signal distinct from relay traffic (last `pong` *while*
+WebRTC was connected, say), not a shorter grace. Not worth building until it is observed.
+
+---
+
+## I13 · `VIEWER_GRACE` is now load-bearing at 45 s · **open, needs a real measurement**
+
+With the immediate teardown gone, 45 s is the entire budget a viewer has to come back before its
+windows and applications are destroyed. The roaming run of `2026-09-12` had dead zones longer
+than that, so the number is very likely too small for the case it now governs.
+
+Raising it trades preserved state against holding Chrome, the encoder and the GPU with nobody
+watching. **That is the user's call, not a code decision** — left at 45 s until asked, with the
+client's retry budget (~37 s, `scripts/reconnect-check.mjs` case 6) sized to fit inside it. Both
+numbers move together or the client abandons a session the server would still have honoured.
