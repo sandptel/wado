@@ -4,6 +4,59 @@
 
 ### Added
 
+**Windows are borderless** — `zxdg_decoration_v1`, answered server-side.
+
+Apps stop drawing their own titlebar, shadow and frame. On a phone that strip cost scarce
+vertical space and its buttons were too small to hit, while maximize, minimize, close and cycle
+already arrive from the control bar — and dragging a window never needed a titlebar, because
+long-press-drag moves it. GTK keeps its header bar, which is application content rather than
+decoration.
+
+**A keyboard button, for devices that have no keys.**
+
+Tapping ⌨ raises the phone's soft keyboard. The Wayland answer for this is inert in wado — every
+text-input request is dropped unless an input-method client is bound — so the button focuses a
+hidden field instead and translates what you type into key events. Android does not report key
+codes for its soft keyboard, so characters are read from the text itself; Enter, Backspace and
+the arrows still come through as keys. US layout for now.
+
+**The fps picker knows what your screen can do.**
+
+No browser API exposes a refresh rate, so the page times its own frames and reports the median.
+The rate now appears under the picker, with a warning when the rung you chose is above it —
+because those extra frames are never shown, and every frame that *is* shown gets fewer bits for
+them.
+
+**A resync button.**
+
+Rebuilds the video connection while leaving the session, its windows and the shell running. This
+is the only thing that clears the delay a network hitch permanently adds to playback: that buffer
+belongs to the browser's receiver, and a receiver is created fresh with each connection. Manual
+on purpose — doing it automatically would fire hardest on exactly the bad links where dropping a
+connection helps least.
+
+### Changed
+
+**Logs answer two questions they used to leave open.**
+
+Every session start now records **bits per pixel** — the single number that predicts whether a
+resolution, frame rate and bitrate can look good together. Frame rate and bitrate are separate
+settings, so moving 60 → 120 quietly halves what each frame gets; that is now visible before
+anyone squints at the picture.
+
+The video pump used to log only stalls past 100 ms, which hides the shape of everything else: a
+pipeline that is fast with rare spikes and one that is slow all the time produce identical
+warnings. It now reports the full distribution once per few seconds, and still calls out
+individual stalls.
+
+### Removed
+
+**The old one-shot command runner.** The real shell replaced it; nothing could reach it any
+more. 272 lines across four crates, and with them a way for a process to outlive the session
+that started it.
+
+### Added
+
 **Clients can hand over GPU buffers** — `zwp_linux_dmabuf_v1`.
 
 `wl_shm` was the only buffer path on offer, so a GPU application had to render on the GPU,
