@@ -1,4 +1,5 @@
 mod compositor;
+mod decoration;
 mod dmabuf;
 mod xdg_shell;
 
