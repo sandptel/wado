@@ -15,7 +15,7 @@ use smithay::{
     output::{Mode, Output, PhysicalProperties, Subpixel},
     reexports::calloop::timer::{TimeoutAction, Timer},
     reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback,
-    wayland::presentation::Refresh,
+    wayland::presentation::{PresentationFeedbackCachedState, Refresh},
     utils::{Buffer, Size, Transform},
 };
 
@@ -119,6 +119,7 @@ pub fn start_session(
     // invariant simple: at most one, always the current renderer's.
     state.dmabuf_logged = false;
     state.frame_seq = 0;
+    state.presentation_logged = false;
     state.content_type_log.clear();
     if let Some(old) = state.dmabuf_global.take() {
         state
@@ -401,6 +402,17 @@ pub fn stop_session(state: &mut Wado) {
     }
     state.dmabuf_logged = false;
 
+    // The other half of the presentation verdict. Reported with `windows` for the same reason as
+    // dmabuf: with no app in the session nothing could have asked, so the line is vacuous rather
+    // than a finding.
+    if !state.presentation_logged {
+        info!(
+            windows = mapped_at_stop,
+            "presentation feedback never collected this session — no client asked when its frames were shown"
+        );
+    }
+    state.presentation_logged = false;
+
     info!("compositor session stopped — resources released");
 }
 
@@ -625,11 +637,36 @@ fn render_tick(state: &mut Wado) -> crate::Result<()> {
     // `HwClock` and `HwCompletion` each assert a property of a real scanout, and `ZeroCopy`
     // would claim the frame went to a display instead of an encoder. Empty is the honest
     // encoding of "software composite, timestamped as accurately as this loop can".
+    //
+    // The count is taken in the flags closure because `OutputPresentationFeedback` does not
+    // expose how much it collected, and without it this protocol would be the one thing in the
+    // log that only ever speaks when the answer is yes — the hole the dmabuf verdict already had.
+    let fb_surfaces = std::cell::Cell::new(0usize);
     let mut feedback = OutputPresentationFeedback::new(&output);
     for window in state.space.elements() {
-        window.take_presentation_feedback(&mut feedback, |_, _| Some(output.clone()), |_, _| {
-            wp_presentation_feedback::Kind::empty()
-        });
+        window.take_presentation_feedback(
+            &mut feedback,
+            |_, _| Some(output.clone()),
+            |_, states| {
+                // Scoped so the cached-state guard is released before smithay takes it again
+                // to drain the same callbacks.
+                {
+                    let mut guard = states.cached_state.get::<PresentationFeedbackCachedState>();
+                    if !guard.current().callbacks.is_empty() {
+                        fb_surfaces.set(fb_surfaces.get() + 1);
+                    }
+                }
+                wp_presentation_feedback::Kind::empty()
+            },
+        );
+    }
+    if !state.presentation_logged && fb_surfaces.get() > 0 {
+        state.presentation_logged = true;
+        info!(
+            surfaces = fb_surfaces.get(),
+            seq = state.frame_seq,
+            "presentation feedback answered — a client is pacing on our timestamps"
+        );
     }
     if composited {
         let refresh = output

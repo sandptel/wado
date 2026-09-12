@@ -118,6 +118,13 @@ pub struct Wado {
     pub clock: Clock<Monotonic>,
     /// Per-output presentation sequence number: frames composited since the session started.
     pub frame_seq: u64,
+    /// Whether this session has logged that a client actually collected presentation feedback.
+    ///
+    /// Same job as [`Self::dmabuf_logged`], and for the same reason: smithay **silently
+    /// discards** a feedback callback whose clock id disagrees with the one the global
+    /// advertised, so "no client is pacing on us" and "every timestamp we sent was thrown away"
+    /// look identical without a line that fires on the positive branch.
+    pub presentation_logged: bool,
     pub popups: PopupManager,
     pub seat: Seat<Self>,
 
@@ -277,6 +284,7 @@ impl Wado {
             content_type_log: Default::default(),
             clock,
             frame_seq: 0,
+            presentation_logged: false,
             popups,
             seat,
             renderer: None,
