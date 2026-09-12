@@ -228,6 +228,16 @@ pub enum RelayMsg {
     Log {
         line: String,
     },
+    /// The focused application asked for, or gave up, text input — `zwp_text_input_v3`,
+    /// server → client.
+    ///
+    /// This is what lets a phone raise its soft keyboard when a text field is focused instead
+    /// of the viewer having to press ⌨ first. It is **state, not an event**: sent on change and
+    /// once when a viewer attaches, so a viewer that joins a session mid-edit is told the
+    /// keyboard should already be up.
+    TextInput {
+        active: bool,
+    },
     /// One diagnostic line from the browser, client → server. The phone's console is
     /// unreachable during a field test, so the client ships what it sees — ICE candidate
     /// types above all — to the server, which logs it.

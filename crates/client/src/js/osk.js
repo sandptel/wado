@@ -100,7 +100,30 @@ W.oskClose = () => {
   W.oskState(false);
 };
 
+// Whether the keyboard currently up was raised by the compositor rather than by a tap on ⌨.
+//
+// It decides the close half, and the asymmetry is deliberate: a keyboard wado raised because an
+// app focused a text field should go away when that app says it is done, but one the *viewer*
+// raised deliberately must not be closed out from under them by a toolkit emitting `disable`
+// during focus churn. So auto-close only ever undoes an auto-open.
+let autoOpened = false;
+
+// The compositor saw `zwp_text_input_v3` enable/disable on the focused surface. This is the
+// whole point of the protocol work: tapping a text field in an app now raises the phone's
+// keyboard, instead of that being a second thing the viewer has to remember to do.
+W.textInput = (active) => {
+  if (active) {
+    if (el && document.activeElement === el) return;   // already up; do not steal focus again
+    autoOpened = true;
+    W.oskOpen();
+  } else if (autoOpened) {
+    autoOpened = false;
+    W.oskClose();
+  }
+};
+
 W.oskToggle = () => {
+  autoOpened = false;
   if (el && document.activeElement === el) W.oskClose();
   else W.oskOpen();
 };
