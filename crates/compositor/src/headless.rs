@@ -169,6 +169,7 @@ pub fn start_session(
     let buf_size: Size<i32, Buffer> = (ec.width as i32, ec.height as i32).into();
     let (output, global, damage_tracker) = build_output(state, ec, scale);
     let scale = clamp_scale(scale);
+    state.output_scale = scale;
 
     // ── Pipeline tier (zero-copy DMA-BUF → CPU-upload VAAPI → x264) ───────────
     // Tried top-down; the first that opens wins. Building the tier *is* the probe
@@ -412,23 +413,38 @@ pub fn reconfigure_session(
     // Disjoint field borrows: `renderer` and `gbm` are different fields of `state`.
     let (encoder, capture, mut report, tier) = build_pipeline(renderer, &state.gbm, ec, buf_size)?;
 
-    // New output before the old one goes, so no surface is ever on zero outputs.
-    let (output, global, damage_tracker) = build_output(state, ec, scale);
-    if let Some(old) = state.output.take() {
-        state.space.unmap_output(&old);
+    // Only rebuild the output if its **shape** changed. A bitrate change does not touch the
+    // output at all, and rebuilding one costs a client its `wl_output` — see
+    // `retire_output_global` for what that costs.
+    let shape_changed = match &before {
+        Some(b) => {
+            b.width != ec.width
+                || b.height != ec.height
+                || b.fps != ec.fps
+                || (state.output_scale - clamp_scale(scale)).abs() > f32::EPSILON
+        }
+        None => true,
+    };
+    if shape_changed {
+        // New output before the old one goes, so no surface is ever on zero outputs.
+        let (output, global, damage_tracker) = build_output(state, ec, scale);
+        state.output_scale = clamp_scale(scale);
+        if let Some(old) = state.output.take() {
+            state.space.unmap_output(&old);
+        }
+        if let Some(old) = state.output_global.take() {
+            retire_output_global(state, old);
+        }
+        state.output = Some(output);
+        state.output_global = Some(global);
+        state.damage_tracker = Some(damage_tracker);
     }
-    if let Some(old) = state.output_global.take() {
-        state.display_handle.remove_global::<Wado>(old);
-    }
-    state.output = Some(output);
-    state.output_global = Some(global);
-    state.damage_tracker = Some(damage_tracker);
     state.capture = Some(capture);
     state.encoder = Some(encoder);
     state.current_tier = Some(tier);
     state.encoder_config = Some(ec.clone());
 
-    let moved = refit_windows(state);
+    let moved = if shape_changed { refit_windows(state) } else { 0 };
 
     install_render_timer(state, ec.fps)?;
 
@@ -450,6 +466,7 @@ pub fn reconfigure_session(
         from = before.as_ref().map(|b| format!("{}x{}@{} {}kbps", b.width, b.height, b.fps, b.bitrate_kbps)),
         to = %format!("{}x{}@{} {}kbps", ec.width, ec.height, ec.fps, ec.bitrate_kbps),
         scale,
+        shape_changed,
         windows = state.space.elements().count(),
         moved,
         took_ms = started.elapsed().as_millis() as u64,
@@ -457,6 +474,43 @@ pub fn reconfigure_session(
         "session reconfigured — applications kept"
     );
     Ok(report)
+}
+
+/// How long a replaced `wl_output` global stays alive after it stops being advertised.
+///
+/// Generous, because the cost of being wrong is a dead application and the cost of being
+/// patient is one unused global.
+const GLOBAL_RETIRE: Duration = Duration::from_secs(5);
+
+/// Stop advertising an output global now; destroy it later.
+///
+/// **The bug this closes, measured 2026-09-13 02:55:49.** A reconfigure removed the old output
+/// global immediately and the session's application — a kitty holding a dmabuf — was gone
+/// within 500 ms. `session reconfigured ... windows=1` and, on the very next line of the same
+/// session, `windows=0`.
+///
+/// Removing a global is not a polite request. A client that still holds a bound `wl_output`
+/// finds out by sending a request to an object that no longer exists, which is a protocol error,
+/// which disconnects it — and a Wayland client whose display dies exits. The `global_remove`
+/// event is how it is *supposed* to learn, and it needs a round trip to act on it.
+///
+/// So: `disable_global` stops new binds and sends `global_remove` immediately, and the object
+/// itself lives on until a timer fires. Clients get their round trip.
+fn retire_output_global(state: &mut Wado, id: smithay::reexports::wayland_server::backend::GlobalId) {
+    state.display_handle.disable_global::<Wado>(id.clone());
+    let res = state.loop_handle.insert_source(
+        Timer::from_duration(GLOBAL_RETIRE),
+        move |_, _, state: &mut Wado| {
+            state.display_handle.remove_global::<Wado>(id.clone());
+            tracing::debug!("retired a replaced wl_output global");
+            TimeoutAction::Drop
+        },
+    );
+    if let Err(e) = res {
+        // Not fatal: the global stays disabled, which is the half that matters. It leaks one
+        // object until the process exits, and that is strictly better than killing a client.
+        warn!("could not schedule the old output global for removal, leaving it disabled: {e}");
+    }
 }
 
 /// Put the windows back inside the output after its geometry changed.
@@ -839,7 +893,32 @@ fn render_tick(state: &mut Wado) -> crate::Result<()> {
     // consumer, and every frame made here would be encoded, handed to a pump with no peer
     // connection behind it, and dropped. Congestion is not consulted (and so does not advance
     // its window) because a detached stretch says nothing about how a link was coping.
-    let render_this_tick = state.viewer_attached
+    // Nothing is rendered if any part of the pipeline is missing.
+    //
+    // The three `unwrap()`s below used to be unconditional, so **any** path that left the
+    // session marked active with a half-built pipeline became a panic — caught, but caught by
+    // the guard whose recovery is `stop_session`, which kills every application the session
+    // launched. A failed `reconfigure_session` is exactly such a path: it releases the encoder
+    // and the capture target before building their replacements, so a `?` in between leaves
+    // this state behind. Turning a recoverable encoder error into a destroyed desktop is a much
+    // worse outcome than skipping frames until someone fixes the configuration.
+    let pipeline_ready = state.renderer.is_some()
+        && state.capture.is_some()
+        && state.damage_tracker.is_some()
+        && state.encoder.is_some();
+    if !pipeline_ready && !state.pipeline_gap_logged {
+        state.pipeline_gap_logged = true;
+        warn!(
+            "the render pipeline is incomplete — skipping frames but keeping the session and its \
+             applications. A reconfigure that could not build an encoder is the usual cause."
+        );
+    }
+    if pipeline_ready && state.pipeline_gap_logged {
+        state.pipeline_gap_logged = false;
+        info!("the render pipeline is whole again");
+    }
+    let render_this_tick = pipeline_ready
+        && state.viewer_attached
         && state.congestion.should_render(dropped_total, state.viewer_strained);
     // On change only — it is state the viewer latches, and the divisor changes at most once per
     // decision window anyway.

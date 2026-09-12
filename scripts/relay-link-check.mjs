@@ -291,5 +291,63 @@ const rejoins = (s) => s.sent.filter((m) => m.type === "session_rejoin").length;
   check("an explicit stop clears the crumb", w.store.has("wado.watching"), false);
 }
 
+// ── 10. A relay that accepts then immediately closes must not be hot-looped ──
+{
+  // A link that was accepted and then closed almost immediately — a daemon crash-looping, a
+  // tunnel half up. Its success must not be rewarded with a fast retry, or the client hammers
+  // something already in trouble every 500 ms forever.
+  const { W, sockets } = makeWorld();
+  W.relayDial("ws://r", "1");
+  sockets[0].accept();
+  W._relayTries = 6;                    // it took a while to get connected
+  W._relayUpAt = Date.now() - 100;      // and it lasted a tenth of a second
+  sockets[0].drop();
+  check("a link that did not hold keeps backing off", W._relayTries, 7);
+}
+{
+  // …but a link that actually held earns a fast retry next time.
+  const { W, sockets } = makeWorld();
+  W.relayDial("ws://r", "1");
+  sockets[0].accept();
+  W._relayTries = 6;                       // pretend it took a while to get here
+  W._relayUpAt = Date.now() - 30000;       // and then stayed up for half a minute
+  sockets[0].drop();
+  check("a link that held resets the backoff", W._relayTries, 1);
+}
+
+// ── 11. Running out of WebRTC retries must not destroy the session ───────────
+//
+// `giveup` calls stopSession, which sends session_stop — so this used to kill a session the
+// daemon was holding for another eight minutes, in exactly the case the grace exists for.
+{
+  const src = readFileSync(new URL("../crates/client/src/js/webrtc.js", import.meta.url), "utf8");
+  const W = { relayMode: true, sessionOn: true, relayUp: true, reconnectAttempts: 99, MAX_RECONNECTS: 30 };
+  const seen = [];
+  const status = (t) => seen.push("status:" + t);
+  const emit = (e) => seen.push("emit:" + e.type);
+  const stagebar = (t) => seen.push("stagebar:" + t);
+  W.stopStats = () => {}; W.startStats = () => {}; W.setupInputCapture = () => {};
+  W.attachLatencyEcho = () => {}; W.latency = { start() {}, stop() {} };
+  W.minimizePlayoutDelay = () => "";
+  new Function("W", "status", "emit", "stagebar", "INPUT_CHANNEL", "MOTION_CHANNEL", src)(
+    W, status, emit, stagebar, "input", "motion");
+  W.handleFailure();
+  check("an exhausted budget does not give up the session in relay mode",
+    seen.filter((e) => e === "emit:giveup"), []);
+  check("…and says the session is still held",
+    seen.some((e) => e.startsWith("stagebar:Session held")), true);
+
+  // Direct mode has no link and no server-side grace, so it still gives up.
+  const D = { relayMode: false, sessionOn: true, reconnectAttempts: 99, MAX_RECONNECTS: 30 };
+  const dseen = [];
+  D.stopStats = () => {}; D.startStats = () => {}; D.setupInputCapture = () => {};
+  D.attachLatencyEcho = () => {}; D.latency = { start() {}, stop() {} };
+  D.minimizePlayoutDelay = () => "";
+  new Function("W", "status", "emit", "stagebar", "INPUT_CHANNEL", "MOTION_CHANNEL", src)(
+    D, () => {}, (e) => dseen.push(e.type), () => {}, "input", "motion");
+  D.handleFailure();
+  check("direct mode still gives up", dseen, ["giveup"]);
+}
+
 console.log(failures ? `\n${failures} failing` : "\nall relay-link checks pass");
 process.exit(failures ? 1 : 0);

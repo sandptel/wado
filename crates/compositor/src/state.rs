@@ -182,6 +182,13 @@ pub struct Wado {
     /// deliberate: the direct HTTP path never sends the command at all, so it keeps exactly its
     /// old behaviour rather than going black on a flag it does not know about.
     pub viewer_attached: bool,
+    /// The scale the current `Output` was built with. Stored because `reconfigure_session` has to
+    /// answer "did the output's shape actually change?", and the scale is the one input to that
+    /// which `encoder_config` does not carry.
+    pub output_scale: f32,
+    /// Whether the "pipeline is incomplete" warning has already been said. The render tick runs
+    /// up to 240 times a second, so a warning that is not latched is a flood.
+    pub pipeline_gap_logged: bool,
     pub frame_sink: Option<Box<dyn FrameSink>>,
     pub output: Option<Output>,
     /// The output's wl_output global, removed on session stop so a fresh session
@@ -363,6 +370,8 @@ impl Wado {
             congestion: Default::default(),
             viewer_strained: false,
             viewer_attached: true,
+            output_scale: 1.0,
+            pipeline_gap_logged: false,
             frame_sink: None,
             output: None,
             output_global: None,
@@ -441,6 +450,32 @@ pub struct ClientState {
 }
 
 impl ClientData for ClientState {
-    fn initialized(&self, _client_id: ClientId) {}
-    fn disconnected(&self, _client_id: ClientId, _reason: DisconnectReason) {}
+    fn initialized(&self, client_id: ClientId) {
+        tracing::debug!(?client_id, "wayland client connected");
+    }
+
+    /// **Say why a client went away.** This was an empty function, and the silence cost a whole
+    /// debugging cycle on 2026-09-13: a session's application vanished within two seconds of a
+    /// reconfigure, and nothing anywhere said whether it had exited on its own, been killed, or
+    /// been disconnected by the compositor for a protocol error. Those are three different bugs
+    /// with three different fixes and the log could not tell them apart.
+    ///
+    /// `ProtocolError` is the one that matters most: it means *we* killed it. libwayland
+    /// disconnects a client that touches a dead object, and a client whose display dies exits —
+    /// so a protocol error here shows up as an application mysteriously quitting, several layers
+    /// away from whatever the compositor actually did wrong.
+    fn disconnected(&self, client_id: ClientId, reason: DisconnectReason) {
+        match reason {
+            DisconnectReason::ProtocolError(err) => tracing::error!(
+                ?client_id,
+                interface = %err.object_interface,
+                object = err.object_id,
+                code = err.code,
+                "disconnected a wayland client for a protocol error — this is the compositor's \
+                 fault, not the application's: {}",
+                err.message
+            ),
+            other => tracing::info!(?client_id, ?other, "wayland client disconnected"),
+        }
+    }
 }

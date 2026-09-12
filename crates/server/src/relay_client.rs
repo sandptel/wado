@@ -539,7 +539,17 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
 
         let msg = match serde_json::from_str::<RelayMsg>(&text) {
             Ok(m) => m,
-            Err(e) => { warn!("relay client: bad JSON from relay: {e}"); continue; }
+            Err(e) => {
+                // Answered, not just logged. A dropped message leaves the sender waiting out a
+                // timeout with no way to tell "the daemon rejected this" from "the daemon is
+                // wedged" — which cost a debugging cycle here on 2026-09-13, when a probe sent
+                // the wrong shape for `Quality` and simply hung.
+                warn!("relay client: bad JSON from relay: {e}");
+                send_relay(&out_tx, &RelayMsg::SessionError {
+                    message: format!("this daemon could not understand that message: {e}"),
+                }).await.ok();
+                continue;
+            }
         };
 
         match msg {
@@ -575,6 +585,13 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             }
 
             RelayMsg::SessionStart { config } => {
+                if let Err(why) = config.validate() {
+                    warn!("relay client: refusing an invalid session config: {why}");
+                    send_relay(&out_tx, &RelayMsg::SessionError {
+                        message: format!("that configuration cannot work: {why}"),
+                    }).await.ok();
+                    continue;
+                }
                 // A session already running is not an error, it is a choice. Telling the viewer
                 // "a session is already active" and closing the socket — which is what this did —
                 // left a reconnecting phone with a session it could see in the logs and no way to
@@ -640,6 +657,16 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             }
 
             RelayMsg::SessionReconfigure { config } => {
+                // Same guard as `SessionStart`, from the same `SessionConfig::validate` — the
+                // two verbs take the same struct from the same untrusted socket, and a check on
+                // one of them is a check the other silently does not have.
+                if let Err(why) = config.validate() {
+                    warn!("relay client: refusing an invalid reconfigure: {why}");
+                    send_relay(&out_tx, &RelayMsg::SessionError {
+                        message: format!("that configuration cannot work: {why}"),
+                    }).await.ok();
+                    continue;
+                }
                 // No `session_started` reply and no renegotiation — see
                 // `RelayMsg::SessionReconfigure`. The viewer keeps the peer connection it has;
                 // the picture changes shape at the forced IDR.

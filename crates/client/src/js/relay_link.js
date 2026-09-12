@@ -39,12 +39,19 @@ W.relayWs = null;
 W._relayTarget = null;      // {url, id, wsUrl}
 W._relayRetry = null;       // pending reconnect timer
 W._relayTries = 0;
+W._relayUpAt = 0;           // when the link last reached join_accepted
 W._relayHandlers = {};      // type -> fn, plus the synthetic "__up" / "__down"
 
 // Backoff: quick at first because most reconnects are a blip, capped low enough that a phone
 // coming back from a dead zone is reconnected in seconds rather than on some slow schedule it
 // happened to land in. Never gives up — see the header.
 const LINK_BACKOFF_MAX = 15000;
+// How long a link has to survive before its success counts. Resetting the backoff on
+// `join_accepted` alone means a relay that accepts and then immediately closes — a daemon
+// crash-looping, a tunnel half up — is retried every 500 ms forever, which is a hot loop
+// against something already in trouble. The retries themselves stay unlimited: never giving up
+// is the property that was asked for. Only the *speed* is earned.
+const LINK_STABLE_MS = 5000;
 const linkDelay = (n) => Math.min(500 * Math.pow(2, Math.max(0, n - 1)), LINK_BACKOFF_MAX);
 
 const toWsUrl = (relayUrl, id) => {
@@ -132,7 +139,7 @@ function openLink() {
 
     if (msg.type === "join_accepted") {
       W.relayUp = true;
-      W._relayTries = 0;
+      W._relayUpAt = Date.now();
       if (W._relayStage !== undefined) W._relayStage = 2;
       if (W.relayPhase) W.relayPhase(2, "");
       if (W.rlog) W.rlog("relay link up — a daemon is registered for this Remote ID");
@@ -156,6 +163,9 @@ function openLink() {
   ws.onerror = () => {};
 
   ws.onclose = (ev) => {
+    // The backoff resets only for a link that actually held. See LINK_STABLE_MS.
+    if (W._relayUpAt && Date.now() - W._relayUpAt >= LINK_STABLE_MS) W._relayTries = 0;
+    W._relayUpAt = 0;
     if (W.relayWs === ws) { W.relayWs = null; W.relayUp = false; }
     if (W.rlog) W.rlog("relay link closed — code " + (ev && ev.code));
     fire("__down");

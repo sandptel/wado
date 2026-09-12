@@ -13,7 +13,8 @@
 //   4. wait, then re-join           expect session_alive  ← the whole test
 //   5. session_rejoin               expect session_started, same session
 //   6. count the app pids again     expect the identical set
-//   7. session_stop                 leave nothing behind
+//   7. session_reconfigure          new shape, same pids
+//   8. session_stop                 leave nothing behind
 //
 // Usage: node scripts/graceful-probe.mjs [ws://127.0.0.1:4000] [872990894]
 //
@@ -25,6 +26,9 @@ import { readFileSync } from "node:fs";
 const RELAY = process.argv[2] || "ws://127.0.0.1:4000";
 const ID = (process.argv[3] || "872990894").replace(/[\s-]/g, "");
 const GAP_MS = Number(process.env.GAP_MS || 5000);
+// How long to wait for the launched application to actually be up. A terminal is ready in well
+// under a second; a browser is not.
+const SETTLE_MS = Number(process.env.WADO_PROBE_SETTLE || 1500);
 
 const CONFIG = {
   width: 1280, height: 720, fps: 60, scale: 1.0, quality: "balanced",
@@ -39,8 +43,12 @@ const MARKER = String(9000 + Math.floor(Math.random() * 900));
 // meaningless without a window: rendering an empty scene is nearly free whether it is paused or
 // not, so a bare `sleep` measures the saving as far smaller than it is. The marker still works —
 // `kitty -e sleep N` matches the same suffix, and the sleep is in the same process group.
-const TERM = process.env.WADO_PROBE_TERM ?? "kitty";
-const LAUNCH = TERM ? `${TERM} -e sleep ${MARKER}` : `sleep ${MARKER}`;
+// `WADO_PROBE_APP` picks the Wayland client. It must contain %M, which is replaced by the
+// marker — that is what makes the process findable without a loose pattern match. An empty
+// value launches a bare `sleep`, which tests process-group survival with no Wayland client at
+// all, and is the control case for anything that looks protocol-related.
+const APP = process.env.WADO_PROBE_APP ?? "kitty -e sleep %M";
+const LAUNCH = (APP || "sleep %M").replaceAll("%M", MARKER);
 
 let failed = null;
 const step = (n, msg) => console.log(`  ${n}. ${msg}`);
@@ -48,11 +56,21 @@ const fail = (msg) => { if (!failed) failed = msg; console.log(`  ✖ ${msg}`); 
 
 // pids of the marker process. Exact-args match, never a loose pattern — a loose one matches
 // this script's own command line, which has produced two false positives in this project.
+// Did the session's applications survive?
+//
+// **Not** "is the pid set identical". A browser is a process tree that spawns and reaps utility
+// processes constantly, so an exact-set comparison fails on ordinary Chrome churn and says the
+// session died when it did not — which it did, on the first run against Chrome. The question is
+// whether the process that was *launched* is still running; everything under it is its business.
+function survived(before, now) {
+  return before.length > 0 && now.includes(before[0]);
+}
+
 function markerPids() {
   try {
     const out = execFileSync("ps", ["-eo", "pid=,args="], { encoding: "utf8" });
     return out.split("\n")
-      .filter((l) => / sleep MARKER$/.test(l.replace(MARKER, "MARKER")))
+      .filter((l) => l.includes(MARKER) && !l.includes("graceful-probe"))
       .map((l) => l.trim().split(/\s+/)[0])
       .sort();
   } catch { return []; }
@@ -108,10 +126,14 @@ function dial() {
     const handle = {
       send: (o) => ws.send(JSON.stringify(o)),
       close: () => ws.close(),
+      mark: () => seen.length,
       // Terminate without a close frame, the way a phone going into a tunnel does.
       kill: () => { try { ws.close(3000, "yanked"); } catch {} },
-      expect: (types, ms = 8000) => new Promise((res, rej) => {
-        const hit = seen.find((m) => types.includes(m.type));
+      // `from` is the high-water mark: only messages that arrived *after* it count. Without it
+      // a second request of the same kind resolves instantly against the first one's reply —
+      // which made a resize report "0 ms" and the previous config's numbers.
+      expect: (types, ms = 8000, from = 0) => new Promise((res, rej) => {
+        const hit = seen.slice(from).find((m) => types.includes(m.type));
         if (hit) return res(hit);
         const w = { types, resolve: res };
         waiters.push(w);
@@ -147,10 +169,10 @@ async function main() {
   // ── 2. launch ─────────────────────────────────────────────────────────────
   a.send({ type: "session_launch", command: LAUNCH });
   await a.expect(["session_launched"]);
-  await sleep(1500);
+  await sleep(SETTLE_MS);
   const before = markerPids();
   if (!before.length) return fail("the launched marker process never appeared — cannot measure survival");
-  step(2, `launched sleep ${MARKER} — pids [${before.join(",")}]`);
+  step(2, `launched ${LAUNCH.slice(0, 60)} — leader ${before[0]}, ${before.length} processes`);
 
   const pid = daemonPid();
   const busy = pid ? await cpuPercent(pid, 4000) : null;
@@ -170,10 +192,10 @@ async function main() {
 
   // ── 4. the measurement ────────────────────────────────────────────────────
   const during = markerPids();
-  if (during.join() !== before.join()) {
+  if (!survived(before, during)) {
     fail(`the applications did not survive the disconnect: [${before.join(",")}] → [${during.join(",")}]`);
   } else {
-    step(4, `applications survived — still [${during.join(",")}]`);
+    step(4, `applications survived — pid ${before[0]} alive, ${during.length}/${before.length} processes`);
   }
 
   const b = await dial();
@@ -192,16 +214,112 @@ async function main() {
   else step(5, "rejoined the running session");
 
   const after = markerPids();
-  if (after.join() !== before.join()) fail(`pids changed across the rejoin: [${before.join(",")}] → [${after.join(",")}]`);
-  else step(6, `same applications after the rejoin — [${after.join(",")}]`);
+  if (!survived(before, after)) fail(`the applications did not survive the rejoin: [${before.join(",")}] → [${after.join(",")}]`);
+  else step(6, `same applications after the rejoin — pid ${before[0]} alive`);
 
-  // ── 7. clean up ───────────────────────────────────────────────────────────
+  // ── 7. change the session while it runs ───────────────────────────────────
+  //
+  // Two shapes of change, because they exercise different code and one of them has already
+  // killed an application here. A bitrate change touches the encoder only; a resize also
+  // replaces the `Output`, and replacing an output that a client has bound is how a session
+  // lost its kitty on 2026-09-13 02:55:49 (`windows=1` on the reconfigure line, `windows=0` on
+  // the next line of the same session).
+  //
+  // The measurement is never "was the message answered". It is "are the same pids still there".
+  async function reconfigure(label, cfg, budgetMs) {
+    const t0 = Date.now();
+    const mark = b.mark();
+    b.send({ type: "session_reconfigure", config: cfg });
+    const rc = await b.expect(["session_reconfigured", "session_error"], 15000, mark);
+    const took = Date.now() - t0;
+    if (rc.type !== "session_reconfigured") {
+      fail(`${label}: reconfigure said ${rc.type}: ${rc.message || ""}`);
+      return;
+    }
+    const e = rc.info?.encoder || {};
+    step(7, `${label} in ${took} ms — ${e.fps} fps, ${e.bitrate_kbps} kbps, ${e.mode}`);
+    if (cfg.fps !== e.fps) fail(`${label}: asked ${cfg.fps} fps, got ${e.fps}`);
+    const wantKbps = cfg.quality?.custom?.bitrate_kbps;
+    if (wantKbps && wantKbps !== e.bitrate_kbps) {
+      fail(`${label}: asked ${wantKbps} kbps, got ${e.bitrate_kbps}`);
+    }
+    if (took > budgetMs) fail(`${label}: took ${took} ms, over the ${budgetMs} ms budget`);
+    // The window the application had is the thing at risk, so give it time to die if it is
+    // going to. 500 ms was enough to catch the output-global bug.
+    await sleep(1500);
+    const now = markerPids();
+    if (!survived(before, now)) {
+      fail(`${label}: the applications did not survive — [${before.join(",")}] → [${now.join(",")}]`);
+    } else {
+      step(7, `${label}: applications survived — pid ${before[0]} alive, ${now.length} processes`);
+    }
+  }
+
+  // Same geometry, new bitrate and nothing else. The output must not be rebuilt at all.
+  await reconfigure(
+    "bitrate only",
+    { width: 1280, height: 720, fps: 60, scale: 1.0, quality: { custom: { bitrate_kbps: 2500 } } },
+    1000,
+  );
+  // A real resize: new resolution, new aspect ratio, new frame rate. This is the one that
+  // replaces the `Output`.
+  await reconfigure(
+    "resize 1280x720 -> 960x540@30",
+    { width: 960, height: 540, fps: 30, scale: 1.0, quality: { custom: { bitrate_kbps: 1800 } } },
+    1000,
+  );
+
+  // A configuration that cannot work. Two flavours, and the daemon must answer both rather
+  // than going quiet — and must still be running a session afterwards.
+  async function refused(label, cfg) {
+    const mark = b.mark();
+    b.send({ type: "session_reconfigure", config: cfg });
+    let rc;
+    try {
+      rc = await b.expect(["session_reconfigured", "session_error"], 8000, mark);
+    } catch (_) {
+      fail(`${label}: the daemon said nothing at all`);
+      return;
+    }
+    if (rc.type !== "session_error") { fail(`${label}: was accepted (${rc.type})`); return; }
+    step(7, `${label}: refused — "${(rc.message || "").slice(0, 70)}"`);
+    await sleep(800);
+    if (!survived(before, markerPids())) fail(`${label}: the applications died anyway`);
+  }
+
+  // Rejected before anything is built: odd width has no valid 4:2:0 chroma plane.
+  await refused("odd width 1281", { width: 1281, height: 720, fps: 60, scale: 1.0, quality: "balanced" });
+  await refused("zero fps", { width: 1280, height: 720, fps: 0, scale: 1.0, quality: "balanced" });
+  await refused("absurd scale", { width: 1280, height: 720, fps: 60, scale: 99, quality: "balanced" });
+
+  // An extreme but *valid* size. Whether the encoder opens at 8K is a property of the hardware,
+  // not of this code — on the machine this was written on, VAAPI opens it. So the assertion is
+  // not "it fails"; it is that **either answer leaves a working session**. That is the invariant
+  // the reconfigure path has to hold: it releases the old encoder before building the new one,
+  // so a failure in between leaves a live session with no pipeline.
+  {
+    const mark = b.mark();
+    b.send({ type: "session_reconfigure", config: { width: 7680, height: 4320, fps: 60, scale: 1.0, quality: "balanced" } });
+    const rc = await b.expect(["session_reconfigured", "session_error"], 20000, mark);
+    step(7, `8K: ${rc.type === "session_error" ? "refused — " + (rc.message || "") : "accepted by this hardware"}`);
+    await sleep(1000);
+    if (!survived(before, markerPids())) fail("8K: the applications died");
+  }
+
+  // And the session must still work after both refusals.
+  await reconfigure(
+    "recovery after the extremes",
+    { width: 1280, height: 720, fps: 60, scale: 1.0, quality: { custom: { bitrate_kbps: 4000 } } },
+    2000,
+  );
+
+  // ── 8. clean up ───────────────────────────────────────────────────────────
   b.send({ type: "session_stop" });
   await b.expect(["session_stopped"]);
   await sleep(1000);
   const gone = markerPids();
   if (gone.length) fail(`session_stop left ${gone.length} process(es) behind: [${gone.join(",")}]`);
-  else step(7, "an explicit stop still kills everything — no leak");
+  else step(8, "an explicit stop still kills everything — no leak");
   b.close();
 }
 

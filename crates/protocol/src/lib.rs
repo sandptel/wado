@@ -247,6 +247,110 @@ fn default_scale() -> f32 {
     1.0
 }
 
+impl SessionConfig {
+    /// Reject a configuration that cannot work, before anything is built from it.
+    ///
+    /// **This is a trust boundary.** A `SessionConfig` arrives over a WebSocket from whoever
+    /// knows the Remote ID; nothing between there and `Output::new` / the encoder's `open` had
+    /// looked at it. A zero width is a divide-by-zero in the logical geometry, an odd width is
+    /// invalid for 4:2:0 chroma and fails inside the encoder with a message about planes, and a
+    /// 16-bit frame rate becomes a nanosecond timer interval of zero — a render loop that never
+    /// yields to the input or Wayland sources.
+    ///
+    /// Lives here, on the type, rather than in either transport: the relay path and the HTTP
+    /// path take the same struct from the same kind of source, and a guard added to one of them
+    /// is a guard the other silently does not have.
+    pub fn validate(&self) -> Result<(), String> {
+        // H.264 4:2:0 subsamples chroma by two in both directions, so an odd dimension has no
+        // valid chroma plane. Encoders report this as an internal error several layers down.
+        if self.width < 160 || self.width > 7680 || self.width % 2 != 0 {
+            return Err(format!("width {} is out of range (160-7680, even)", self.width));
+        }
+        if self.height < 120 || self.height > 4320 || self.height % 2 != 0 {
+            return Err(format!("height {} is out of range (120-4320, even)", self.height));
+        }
+        if self.fps < 1 || self.fps > 240 {
+            return Err(format!("fps {} is out of range (1-240)", self.fps));
+        }
+        if !self.scale.is_finite() || self.scale < 0.5 || self.scale > 4.0 {
+            return Err(format!("scale {} is out of range (0.5-4.0)", self.scale));
+        }
+        if let Quality::Custom { bitrate_kbps } = self.quality {
+            if !(100..=200_000).contains(&bitrate_kbps) {
+                return Err(format!("bitrate {bitrate_kbps} kbps is out of range (100-200000)"));
+            }
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod config_validation_tests {
+    use super::{Quality, SessionConfig};
+
+    fn ok() -> SessionConfig {
+        SessionConfig {
+            width: 1280, height: 720, fps: 60, scale: 1.0,
+            quality: Quality::Balanced,
+            preset: None, keyframe_interval: None,
+            input: Default::default(), window: Default::default(), encoder: Default::default(),
+        }
+    }
+
+    #[test]
+    fn a_sane_config_passes() {
+        assert!(ok().validate().is_ok());
+    }
+
+    #[test]
+    fn odd_dimensions_are_rejected() {
+        // The one that does not look like a bug until an encoder fails deep inside: 4:2:0 has
+        // no valid chroma plane for an odd width.
+        let mut c = ok();
+        c.width = 1281;
+        assert!(c.validate().is_err());
+        let mut c = ok();
+        c.height = 721;
+        assert!(c.validate().is_err());
+    }
+
+    #[test]
+    fn zero_and_absurd_sizes_are_rejected() {
+        for (w, h) in [(0, 720), (1280, 0), (99999, 720), (1280, 99999)] {
+            let mut c = ok();
+            c.width = w;
+            c.height = h;
+            assert!(c.validate().is_err(), "{w}x{h} should not be allowed");
+        }
+    }
+
+    #[test]
+    fn a_zero_frame_rate_is_rejected() {
+        // 1_000_000_000 / 0 in the render timer, and before that a divide in the sink.
+        let mut c = ok();
+        c.fps = 0;
+        assert!(c.validate().is_err());
+    }
+
+    #[test]
+    fn a_nonsense_scale_is_rejected() {
+        for s in [0.0, -1.0, 9.0, f32::NAN, f32::INFINITY] {
+            let mut c = ok();
+            c.scale = s;
+            assert!(c.validate().is_err(), "scale {s} should not be allowed");
+        }
+    }
+
+    #[test]
+    fn an_absurd_custom_bitrate_is_rejected() {
+        let mut c = ok();
+        c.quality = Quality::Custom { bitrate_kbps: 0 };
+        assert!(c.validate().is_err());
+        c.quality = Quality::Custom { bitrate_kbps: 5_000_000 };
+        assert!(c.validate().is_err());
+    }
+}
+
 /// Encoder-backend selection for a session (the "Compositor settings → encoder" group).
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct EncoderPref {
