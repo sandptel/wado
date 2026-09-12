@@ -107,6 +107,12 @@ W.relayConnect = async (relayUrl, remoteId, config) => {
           ws.close();
           break;
 
+        // The focused application asked for (or gave up) text input. See osk.js — this is
+        // what raises the phone keyboard on a text field without anyone pressing ⌨.
+        case "text_input":
+          W.textInput(!!msg.active);
+          break;
+
         // ── Session control responses ────────────────────────────────────────
         case "session_started":
           // Surface encoder info (invariant #5 — software banner).

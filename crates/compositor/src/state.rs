@@ -108,6 +108,14 @@ pub struct Wado {
     /// wp-content-type-v1. Advertised so apps can declare `Video`/`Game`/`Photo`; nothing reads
     /// the hint yet — see `handlers/content_type.rs` for why logging it is the whole point.
     pub content_type_state: ContentTypeState,
+    /// zwp-text-input-v3, hand-rolled as an observer — see `handlers/text_input.rs` for why it
+    /// is not smithay's. This is what turns "an app focused a text field" into a soft keyboard
+    /// on the phone, instead of a tap on ⌨ every time.
+    pub text_inputs: crate::handlers::text_input::TextInputs,
+    /// Publishes [`Self::text_inputs`]'s one bit to the server. Latest-value-wins, the same
+    /// shape as the render timings — a viewer that missed an intermediate state does not care
+    /// what it was, only what is true now.
+    pub text_input_tx: tokio::sync::watch::Sender<bool>,
     /// Per-surface content-type change log. Cleared on session stop.
     pub content_type_log: crate::handlers::content_type::ContentTypeLog,
     /// `CLOCK_MONOTONIC`, read for presentation timestamps. `start_time.elapsed()` is *not*
@@ -218,6 +226,23 @@ impl Wado {
     ///
     /// Errors are intentionally swallowed: a dead or backed-up client socket is the
     /// Wayland layer's problem to reap, not a reason to disturb the render loop.
+    /// Tell the server whether the focused app currently wants text input.
+    ///
+    /// Sent only on a change: `send_if_modified` is what keeps a per-focus-change call from
+    /// waking the server on every window switch that changes nothing.
+    pub fn publish_text_input(&mut self) {
+        let active = self.text_inputs.active();
+        self.text_input_tx.send_if_modified(|cur| {
+            if *cur == active {
+                false
+            } else {
+                *cur = active;
+                tracing::debug!(active, "text input focus changed");
+                true
+            }
+        });
+    }
+
     pub fn flush_clients(&mut self) {
         let _ = self.display_handle.flush_clients();
     }
@@ -252,6 +277,9 @@ impl Wado {
         let presentation_state = PresentationState::new::<Self>(&dh, clock.id() as u32);
         let single_pixel_buffer_state = SinglePixelBufferState::new::<Self>(&dh);
         let content_type_state = ContentTypeState::new::<Self>(&dh);
+        // Our own manager, not smithay's: see `handlers/text_input.rs`. Registering both would
+        // advertise two globals of the same interface.
+        dh.create_global::<Self, smithay::reexports::wayland_protocols::wp::text_input::zv3::server::zwp_text_input_manager_v3::ZwpTextInputManagerV3, _>(1, ());
 
         let mut seat_state = SeatState::new();
         let mut seat: Seat<Self> = seat_state.new_wl_seat(&dh, "headless");
@@ -292,6 +320,8 @@ impl Wado {
             single_pixel_buffer_state,
             content_type_state,
             content_type_log: Default::default(),
+            text_inputs: Default::default(),
+            text_input_tx: tokio::sync::watch::channel(false).0,
             clock,
             frame_seq: 0,
             presentation_logged: false,

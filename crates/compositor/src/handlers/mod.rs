@@ -3,6 +3,7 @@ mod compositor;
 pub(crate) mod content_type;
 mod decoration;
 mod dmabuf;
+pub(crate) mod text_input;
 mod xdg_shell;
 
 use crate::Wado;
@@ -38,6 +39,10 @@ impl SeatHandler for Wado {
         let dh = &self.display_handle;
         let client = focused.and_then(|s| dh.get_client(s.id()).ok());
         set_data_device_focus(dh, seat, client);
+        // Text input follows keyboard focus — that is what the protocol specifies, and it is
+        // also the only moment a toolkit is told it may start asking for a keyboard.
+        self.text_inputs.focus_changed(focused);
+        self.publish_text_input();
     }
 }
 

@@ -70,6 +70,11 @@ struct RelayCtx {
     /// Latest per-stage render timings, answering `TimingRequest`. Latest-value-wins, so a
     /// slow or absent reader never backs the compositor up.
     timings: tokio::sync::watch::Receiver<wado_protocol::StageTimings>,
+    /// Whether the focused application wants text input (`zwp_text_input_v3`). Forwarded to the
+    /// viewer so a phone raises its soft keyboard by itself. Latest-value-wins for the same
+    /// reason as `timings`, and because it is state: a viewer attaching mid-edit must be told
+    /// the current answer, not left waiting for the next change.
+    text_input: tokio::sync::watch::Receiver<bool>,
     /// Unix-millis of the last message received from the relay. See [`viewer_watchdog`].
     last_relay_msg: Arc<AtomicU64>,
     /// Whether a session was started for a viewer and has not been stopped. See
@@ -90,6 +95,7 @@ pub fn start(
     cmd_tx: CommandSender,
     input_tx: InputSender,
     timings: tokio::sync::watch::Receiver<wado_protocol::StageTimings>,
+    text_input: tokio::sync::watch::Receiver<bool>,
     frame_rx: mpsc::Receiver<FrameMsg>,
     relay_url: String,
     remote_id: String,
@@ -104,7 +110,7 @@ pub fn start(
             };
             rt.block_on(async move {
                 if let Err(e) =
-                    run(cmd_tx, input_tx, timings, frame_rx, relay_url, remote_id, log_bus).await
+                    run(cmd_tx, input_tx, timings, text_input, frame_rx, relay_url, remote_id, log_bus).await
                 {
                     error!("relay client exited with error: {e}");
                 }
@@ -117,6 +123,7 @@ async fn run(
     cmd_tx: CommandSender,
     input_tx: InputSender,
     timings: tokio::sync::watch::Receiver<wado_protocol::StageTimings>,
+    text_input: tokio::sync::watch::Receiver<bool>,
     mut frame_rx: mpsc::Receiver<FrameMsg>,
     relay_url: String,
     remote_id: String,
@@ -287,6 +294,7 @@ async fn run(
         cmd_tx,
         input_tx,
         log_bus,
+        text_input,
         active_pc: Arc::new(Mutex::new(None)),
         generation: Arc::new(AtomicU64::new(0)),
         last_relay_msg: Arc::new(AtomicU64::new(now_ms())),
@@ -412,6 +420,24 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     Err(broadcast::error::RecvError::Lagged(_)) => continue,
                     Err(broadcast::error::RecvError::Closed) => break,
                 }
+            }
+        })
+    };
+
+    // ── 3b. Text-input forwarding task (per connection) ──────────────────────
+    //
+    // State, not an event: the current value is sent immediately on attach (watch channels
+    // deliver the held value to a fresh subscriber), so a viewer joining a session that is
+    // already sitting in a text field gets its keyboard up without waiting for the next change.
+    let text_input_task = {
+        let mut rx = ctx.text_input.clone();
+        let out_tx_ti = out_tx.clone();
+        tokio::spawn(async move {
+            // Mark the held value unseen so the first iteration sends it rather than waiting.
+            rx.mark_changed();
+            while rx.changed().await.is_ok() {
+                let active = *rx.borrow_and_update();
+                let _ = send_relay_nowait(&out_tx_ti, &RelayMsg::TextInput { active }).await;
             }
         })
     };
@@ -625,6 +651,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     }
 
     log_task.abort();
+    text_input_task.abort();
     write_task.abort();
     Ok(())
 }

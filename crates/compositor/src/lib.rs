@@ -74,6 +74,13 @@ pub struct CompositorHandles {
     pub input: InputSender,
     /// Latest per-stage render timings (latest-value-wins; see [`timing`]).
     pub timings: tokio::sync::watch::Receiver<StageTimings>,
+    /// Whether the focused application currently wants text input — `zwp_text_input_v3`,
+    /// observed in `handlers/text_input.rs`. The server forwards changes to the viewer, which
+    /// is what raises a phone's soft keyboard without anyone pressing a button.
+    ///
+    /// A `bool` over a watch channel, deliberately: it is state, not an event, so a viewer that
+    /// connects mid-session gets the current answer rather than having missed the transition.
+    pub text_input: tokio::sync::watch::Receiver<bool>,
 }
 
 /// Build the compositor: create the event loop, display, and [`Wado`] state, claim the
@@ -158,5 +165,10 @@ pub fn build(
         })
         .map_err(|e| CompositorError::Other(format!("insert signal source: {e}")))?;
 
-    Ok((event_loop, state, CompositorHandles { commands: cmd_tx, input: input_tx, timings }))
+    let text_input = state.text_input_tx.subscribe();
+    Ok((
+        event_loop,
+        state,
+        CompositorHandles { commands: cmd_tx, input: input_tx, timings, text_input },
+    ))
 }
