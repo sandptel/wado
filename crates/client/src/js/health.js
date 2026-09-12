@@ -23,11 +23,27 @@
 // What the session asked the encoder for, in kbps. Set when a session starts — without it the
 // bandwidth half can say what is arriving but not whether that is enough.
 let targetKbps = 0;
-W.setTargetKbps = (n) => { targetKbps = +n || 0; warm = 0; };
+W.setTargetKbps = (n) => {
+  targetKbps = +n || 0;
+  warm = 0;
+  shown = { state: "ok", side: "healthy", detail: "", fix: "" };
+  pending = null; pendingFor = 0; lastVerdict = "";
+};
 
 // Ticks to ignore after a session starts. See the note on `warm` at the first use.
 const WARMUP_TICKS = 5;
 let warm = 0;
+
+// Consecutive ticks a new verdict must survive before it is shown.
+//
+// Without this the strip flickered green/amber/red once a second, because a decode time sitting
+// on its budget (16.1, 17.4, 15.7, 24.7, 16.6 ms against 16.7) crosses the threshold every
+// tick. A readout that changes colour every second is not a diagnosis; it is a distraction, and
+// it relayed a log line each time too. Three ticks is enough to ride out single-sample noise
+// and still react inside five seconds.
+const SETTLE_TICKS = 3;
+let shown = { state: "ok", side: "healthy", detail: "", fix: "" };
+let pending = null, pendingFor = 0;
 
 // Loss this bad is a broken path, not a blip. Below it a stream recovers by itself.
 const LOSS_WARN = 0.5, LOSS_BAD = 3.0;       // percent of packets in the window
@@ -111,6 +127,21 @@ W.health = (s) => {
     if (side === "your device") fix = "try " + lower + " fps";
     else if (side === "network") fix = "try " + lower + " fps or a smaller resolution";
   }
+
+  // Hysteresis. A verdict has to hold for SETTLE_TICKS before it replaces the one on screen;
+  // the numbers behind the *current* verdict are refreshed every tick regardless, so the strip
+  // stays live without changing its mind.
+  if (state === shown.state && side === shown.side) {
+    shown = { state, side, detail, fix };
+    pending = null; pendingFor = 0;
+  } else if (pending && pending.state === state && pending.side === side) {
+    if (++pendingFor >= SETTLE_TICKS) { shown = { state, side, detail, fix }; pending = null; pendingFor = 0; }
+    else pending = { state, side, detail, fix };
+  } else {
+    pending = { state, side, detail, fix }; pendingFor = 1;
+  }
+
+  state = shown.state; side = shown.side; detail = shown.detail; fix = shown.fix;
 
   emit({ type: "health", state, side, detail, fix,
          needKbps: targetKbps || null, haveKbps, gotKbps });
