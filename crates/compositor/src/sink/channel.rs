@@ -67,6 +67,10 @@ impl ChannelSink {
 }
 
 impl FrameSink for ChannelSink {
+    fn dropped(&self) -> u64 {
+        self.dropped
+    }
+
     fn send(&mut self, nal_data: &[u8]) {
         let now = Instant::now();
         // Measure from the last frame we actually handed over, so time spent on frames the

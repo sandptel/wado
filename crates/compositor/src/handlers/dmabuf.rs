@@ -43,11 +43,15 @@ impl DmabufHandler for Wado {
             Ok(_) => {
                 if first {
                     let f = dmabuf.format();
-                    let windows = self.space.elements().count();
+                    // No `windows` here. It belongs on the *negative* verdict in `stop_session`,
+                    // where `windows=0` means "no app ran, so nothing could have asked" and the
+                    // line is vacuous. On this branch it is not only uninformative but actively
+                    // misleading: the import lands before the toplevel is mapped into `space`, so
+                    // a successful GPU hand-off routinely reports `windows=0` and reads as a
+                    // contradiction. Observed and chased on 2026-09-12.
                     tracing::info!(
                         format = %f.code,
                         modifier = ?f.modifier,
-                        windows,
                         "dmabuf path is live — a client is handing over GPU buffers"
                     );
                 }

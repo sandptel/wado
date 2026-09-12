@@ -21,6 +21,7 @@
 #![allow(irrefutable_let_patterns)]
 
 pub mod capture;
+pub mod congestion;
 pub mod conf;
 pub mod control;
 pub mod encode;
