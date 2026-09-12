@@ -51,6 +51,16 @@ pub enum CompositorCommand {
     ForceKeyframe,
     /// Act on the focused window. See [`crate::window`].
     Window(WindowAction),
+    /// The viewer's decoder is (or is no longer) saturated.
+    ///
+    /// A **level**, not an event: the client re-sends it only when its settled verdict changes,
+    /// so between messages the last value stands. The render loop reads it once per decision
+    /// window — see `crate::congestion`, which explains why it is counted rather than acted on.
+    ///
+    /// This is the only congestion signal wado cannot measure for itself. The server can see the
+    /// pump back up; it cannot see a phone decoding 15 of the 90 frames a second it is being
+    /// sent, which is a failure that has been measured here with every server-side metric clean.
+    ViewerStrain(bool),
 }
 
 /// Run one command on the calloop thread. `frame_tx` is the pump sender, cloned
@@ -77,6 +87,12 @@ pub fn handle_command(state: &mut Wado, cmd: CompositorCommand, frame_tx: &mpsc:
             }
         }
         CompositorCommand::ForceKeyframe => headless::force_keyframe(state),
+        CompositorCommand::ViewerStrain(strained) => {
+            if state.viewer_strained != strained {
+                tracing::info!(strained, "viewer reported a change in decoder strain");
+            }
+            state.viewer_strained = strained;
+        }
         CompositorCommand::Window(action) => {
             if state.session_active {
                 state.window_action(action);

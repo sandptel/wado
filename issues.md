@@ -10,30 +10,46 @@ Last updated: `2026-09-12`
 
 ---
 
-## I1 · No adaptive response to a receiver that cannot keep up · **open, highest value**
+## I1 · No adaptive response to a receiver that cannot keep up · **fixed, unverified live**
 
-**Observed** four times on `2026-09-12`, most starkly at 16:00: the server sent 90 fps into a
-decoder managing 15, for 86 seconds, and never noticed. Server metrics were perfect throughout —
-render 90.0/90, pump p99 0.4 ms, zero loss. The client measured `dec` at 34–113 ms against an
-11.1 ms budget and `framesDropped` climbing 60–90 per second, and only *displayed* them.
+**The failure.** A2 of the roaming run: the server pushed 90 fps into a phone managing 15, for 86
+seconds, and never noticed — every server-side metric was perfect throughout. The client measured
+`dec` and `framesDropped` and only *displayed* them, so the whole loop ran through the viewer
+reading a suggestion and changing a setting by hand.
 
-**Side:** nothing is broken; the feature does not exist. The stream is open-loop with respect to
-the receiver.
+**Fix.** The client's settled verdict now goes back to the daemon as `RelayMsg::ViewerStrain`, and
+`congestion.rs` treats it as a second stress input beside the pump drop counter. No new mechanism:
+shedding render ticks was already the only fps lever the render loop holds, because neither encoder
+backend exposes a runtime bitrate change.
 
-**Shape of the fix.** The client already computes the verdict (`js/health.js`) and the relay data
-channel already carries client → server messages, so this is one protocol message, one match arm
-in `relay_client`, and an encoder rebuild the compositor already knows how to do on a settings
-change.
+**The two signals move at different speeds, deliberately.**
 
-**The hysteresis question is answered.** It was the reason this was deferred — a backoff that
-oscillates is worse than none. `js/health.js` now ships a working precedent: a verdict must hold
-`SETTLE_TICKS = 3` consecutive one-second samples before it is acted on. Reuse it; a decode time
-sitting on its budget crosses the threshold every tick, which is exactly the oscillation a naive
-backoff would turn into a bitrate sawtooth.
+| | Signal | Response |
+|---|---|---|
+| Link | pump drop delta in a window | halve immediately — by the time drops are plural the viewer has seen it |
+| Phone | viewer strain, a latched level | step down after 3 consecutive strained windows |
 
-**Open sub-question:** does it back off *fps* or *bitrate*? The measurement below says fps.
+Strain is counted rather than acted on because it arrives at 1 Hz and latches, while a decision
+window is 60 *ticks* — at 90 fps and divisor 4 that closes in 0.67 s. Acting on the first strained
+window would walk to the floor before the phone could measure the previous step. Strain also
+blocks recovery outright, so a struggling viewer never climbs back underneath itself.
 
----
+**Hysteresis, end to end:** `SETTLE_TICKS = 3` on the client verdict, then `STRAIN_WINDOWS = 3` in
+the compositor. A one-second spike reaches nothing.
+
+**A second bug fell out of it.** The client's device rule had no arrival gate, so a *starved*
+decoder was being reported as an overloaded one — live at 20:36:56, `decode 48.7 ms` while
+69 kbps of 5.7 Mbps was arriving, which `scripts/watch.sh` correctly called UNCLEAR about the same
+sample. `TRUST_DECODER_FRAC = 0.6` now gates it, matching the monitor. Shedding on that signal
+would have cut the frame rate of a stream that was not arriving in the first place.
+
+**Attribution is preserved:** `Reason` is logged with every divisor change and the monitor prints
+`the PHONE asked for it` or `the LINK`. A shed that could have come from either would have undone
+the side attribution the rest of the run was spent building.
+
+**Tests:** 6 new cases in `congestion.rs` (12 total), 4 new in `scripts/health-check.mjs` (11
+total), 4 monitor rules replay-tested. **Not yet seen working on a real phone** — nobody has
+watched a `SHED ... the PHONE asked for it` line appear and the picture settle.
 
 ## I2 · A reconnect can establish WebRTC with no session behind it · **open**
 
@@ -263,7 +279,7 @@ numbers move together or the client abandons a session the server would still ha
 
 ---
 
-## I14 · The daemon ran out of ICE ports and stopped answering with candidates · **fixed, mechanism confirmed by construction**
+## I14 · The daemon ran out of ICE ports and stopped answering with candidates · **fixed, confirmed by measurement**
 
 **Observed** `2026-09-12`, after ~2.5 hours of reconnect churn. The daemon's ICE answers decayed:
 `8 candidates (host,srflx)` all afternoon, then at 18:19:25 `2 candidates (host)`, then from
@@ -288,7 +304,9 @@ not a STUN failure, despite the log line saying so.
 range is the whole constraint.
 
 **Fixed** by closing the previous peer connection when it is replaced, spawned rather than
-awaited so the new answer does not queue behind the old connection's shutdown. This became
+awaited so the new answer does not queue behind the old connection's shutdown. **Verified on the
+live daemon**: two negotiations, still 4 ports, and an `ICE closed` line for the old connection —
+before the fix the same two negotiations read 8. This became
 urgent rather than tidy with the same change: re-offers are now the normal recovery path, so the
 leak would have been hit in minutes instead of hours.
 

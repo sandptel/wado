@@ -515,6 +515,11 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 match live_session(&ctx).await {
                     Some(info) => {
                         ctx.session_started.store(true, Ordering::SeqCst);
+                        // Same reasoning as the keyframe below, for the other piece of
+                        // per-viewer state: the strain flag belongs to whoever was watching
+                        // before, and a rejoin does not restart the session that holds it. A new
+                        // decoder starts with no history and must not inherit a shed.
+                        let _ = ctx.cmd_tx.send(CompositorCommand::ViewerStrain(false));
                         // The new viewer's decoder has no reference frame, so without this it
                         // shows nothing until the next periodic keyframe — up to two seconds of
                         // black on a rejoin that otherwise worked.
@@ -537,6 +542,13 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 ctx.session_started.store(false, Ordering::SeqCst);
                 let _ = ctx.cmd_tx.send(CompositorCommand::Stop);
                 send_relay(&out_tx, &RelayMsg::SessionStopped).await.ok();
+            }
+
+            RelayMsg::ViewerStrain { strained } => {
+                // Straight through to the compositor. No rate limiting: the client sends this
+                // only when its settled verdict changes, and the render loop reads it once per
+                // decision window rather than per message.
+                let _ = ctx.cmd_tx.send(CompositorCommand::ViewerStrain(strained));
             }
 
             RelayMsg::SessionLaunch { command } => {

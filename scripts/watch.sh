@@ -191,9 +191,27 @@ function say(s) { print t() " " s; fflush() }
 
 /render loop is behind/ { srv_bad=1; srv_t=systime(); rfps=clean(kv("fps")); rtgt=kv("target_fps"); say("⚠ RENDER   " clean(kv("fps")) "/" kv("target_fps") " fps  mean=" clean(kv("mean_ms")) "ms budget=" clean(kv("budget_ms")) "ms   ← server GPU/CPU"); next }
 /render pacing healthy/ { rfps=clean(kv("fps")); rtgt=kv("target_fps"); srv_bad=0; srv_t=systime(); next }
+# Two signals now move this divisor and they name different machines, so the line has to say
+# which. Blaming the pump for a step the viewer asked for would undo the whole point of the
+# side attribution below.
 /shedding render ticks/ {
-  srv_t=systime(); srv_bad=1; srv_why="the compositor was shedding render ticks (the pump could not take them)"
-  say("⚠ SHED     render ticks dropped: 1 in " kv("to") " (was 1 in " kv("from") "), " kv("dropped_in_window") " dropped in the window")
+  srv_t=systime(); srv_bad=1
+  if (index($0, "decoder is saturated") > 0) {
+    srv_why="the compositor was shedding render ticks because the viewer said its decoder was saturated"
+    say("⚠ SHED     render ticks dropped: 1 in " kv("to") " (was 1 in " kv("from") ") — the PHONE asked for it (decoder saturated)")
+  } else if (index($0, "easing back") > 0) {
+    srv_bad=0
+    say("◆ SHED     easing back: 1 in " kv("to") " (was 1 in " kv("from") ") — recovering toward full rate")
+  } else {
+    srv_why="the compositor was shedding render ticks (the pump could not take them)"
+    say("⚠ SHED     render ticks dropped: 1 in " kv("to") " (was 1 in " kv("from") "), " kv("dropped_in_window") " dropped in the window — the LINK")
+  }
+  next }
+
+# The viewer changing its mind about its own decoder. Worth a line: it is the input to the rule
+# above, and a shed with no preceding line here came from the link instead.
+/viewer reported a change in decoder strain/ {
+  say("◇ STRAIN   viewer says decoder saturated=" kv("strained"))
   next }
 
 # Input arriving with nowhere to go. The viewer has a working data channel and is tapping, and

@@ -28,6 +28,8 @@ W.setTargetKbps = (n) => {
   warm = 0;
   shown = { state: "ok", side: "healthy", detail: "", fix: "" };
   pending = null; pendingFor = 0; lastVerdict = "";
+  // A new session is a new encoder and a new decoder, and the daemon has cleared its side.
+  sentStrain = false;
 };
 
 // Ticks to ignore after a session starts. See the note on `warm` at the first use.
@@ -56,6 +58,23 @@ const DECODE_BUDGET_FRAC = 0.9;
 // end never sent it. Generous, because a still screen legitimately encodes to almost nothing —
 // which is why `fps` has to be low as well before this fires.
 const STARVED_FRAC = 0.25;
+// Below this fraction of the CBR target actually arriving, `dec` says nothing about the phone.
+// A decoder waiting on packets that never came reads exactly like one that cannot keep up — same
+// long decode times, same dropped frames — and blaming the phone for a broken path sends the
+// viewer to change settings that were never the problem. `scripts/watch.sh` has enforced this on
+// the server side since the run of 2026-09-12; this is the same rule on the side that has the
+// numbers first.
+const TRUST_DECODER_FRAC = 0.6;
+
+// Last value sent to the daemon, so only changes go up the wire. Starts `false` to match the
+// compositor, which clears `viewer_strained` both when a session starts and when a viewer
+// rejoins a running one — so a healthy session sends nothing at all.
+let sentStrain = false;
+function reportStrain(strained) {
+  if (strained === sentStrain) return;
+  sentStrain = strained;
+  if (W.relayStrain) W.relayStrain(strained);
+}
 
 // `s` is the snapshot stats.js already computed; extras are the fields only this file reads.
 W.health = (s) => {
@@ -99,13 +118,20 @@ W.health = (s) => {
   // Nothing is lost by that: a link genuinely too small for the stream shows up as loss or as a
   // frame-rate shortfall, and both already have rules above.
 
-  // — device — it all arrived; this phone cannot keep up with it.
-  if (s.decodeDropPct !== null && s.decodeDropPct >= DEVICE_DROP_WARN) {
-    worse("warn", "your device", s.decodeDropPct.toFixed(1) + "% of frames dropped after arriving");
-  }
-  if (s.dec !== null && budget !== null && s.dec >= budget * DECODE_BUDGET_FRAC) {
-    worse(s.dec >= budget ? "bad" : "warn", "your device",
-          "decode " + s.dec.toFixed(1) + " ms against a " + budget.toFixed(1) + " ms budget");
+  // — device — it all arrived; this phone cannot keep up with it. "It all arrived" is the
+  // load-bearing half: without `arriving` every receiver number below is about a stream that was
+  // never delivered, and the verdict accuses the phone for a fault on the path.
+  const arriving = gotKbps !== null && targetKbps > 0 && gotKbps >= targetKbps * TRUST_DECODER_FRAC;
+  let saturated = false;
+  if (arriving) {
+    if (s.decodeDropPct !== null && s.decodeDropPct >= DEVICE_DROP_WARN) {
+      worse("warn", "your device", s.decodeDropPct.toFixed(1) + "% of frames dropped after arriving");
+    }
+    if (s.dec !== null && budget !== null && s.dec >= budget * DECODE_BUDGET_FRAC) {
+      saturated = true;
+      worse(s.dec >= budget ? "bad" : "warn", "your device",
+            "decode " + s.dec.toFixed(1) + " ms against a " + budget.toFixed(1) + " ms budget");
+    }
   }
 
   // — server — nothing is arriving and nothing was lost, so it was never sent. Checked last so
@@ -142,6 +168,14 @@ W.health = (s) => {
   }
 
   state = shown.state; side = shown.side; detail = shown.detail; fix = shown.fix;
+
+  // Tell the server, so it can do something about it rather than only advising the viewer to.
+  //
+  // Keyed on the *settled* verdict, not this tick's: SETTLE_TICKS of hysteresis is already
+  // applied above, and the compositor waits STRAIN_WINDOWS more before it moves, so a one-second
+  // spike reaches nothing. Sent on change only — it is a level the daemon latches, so resending
+  // it every second would be noise on a link that may be the thing under strain.
+  reportStrain(saturated && side === "your device");
 
   emit({ type: "health", state, side, detail, fix,
          needKbps: targetKbps || null, haveKbps, gotKbps });
