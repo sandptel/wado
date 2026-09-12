@@ -237,3 +237,15 @@
 /* A fault that is still there after a second should not blink; a new one should be noticed. */
 .health-bad .healthdot { animation: healthpulse 1.4s var(--ease) infinite; }
 @keyframes healthpulse { 50% { opacity: .35; } }
+
+/* The suggestion. Distinct from the reason beside it: that says what is wrong, this says what
+ * to do, and on a strip read in one glance those must not look like the same kind of text. */
+.healthfix {
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.health-warn .healthfix { color: var(--base0A); }
+.health-bad  .healthfix { color: var(--base08); }

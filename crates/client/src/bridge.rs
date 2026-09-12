@@ -174,6 +174,7 @@ pub fn run(ui: Ui) {
                         state: string("state"),
                         side: string("side"),
                         detail: string("detail"),
+                        fix: string("fix"),
                         need_kbps: num("needKbps"),
                         have_kbps: num("haveKbps"),
                         got_kbps: num("gotKbps"),

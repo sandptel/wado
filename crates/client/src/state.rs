@@ -225,6 +225,8 @@ pub struct Health {
     pub state: String,
     pub side: String,
     pub detail: String,
+    /// The one setting that would help, in the user's terms. Empty while healthy.
+    pub fix: String,
     /// The CBR target the server built the encoder with.
     pub need_kbps: Option<f64>,
     /// What the browser estimates the link can carry.

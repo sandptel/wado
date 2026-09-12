@@ -24,8 +24,15 @@ const check = (name, target, snapshot, wantSide, wantState) => {
               targetFps: target.fps, ...snapshot };
   for (let i = 0; i < 6; i++) W.health(s);   // burn the warm-up, then the real verdict
   const ok = out.side === wantSide && out.state === wantState;
+  // A healthy stream never carries a suggestion, and a fault the *viewer* can do something
+  // about always does. "the server" deliberately carries none: no setting on this phone fixes
+  // a compositor that stopped producing frames, and offering one would be a lie.
+  const wantFix = out.state !== "ok" && out.side !== "the server";
+  if (ok && wantFix !== (out.fix !== "")) {
+    failures++; console.log(`FAIL ${name}: fix=${JSON.stringify(out.fix)} for ${out.state}/${out.side}`); return;
+  }
   if (!ok) { failures++; console.log(`FAIL ${name}: got ${out.state}/${out.side} "${out.detail}", want ${wantState}/${wantSide}`); }
-  else console.log(`ok   ${name}  →  ${out.state}/${out.side}  ${out.detail}`);
+  else console.log(`ok   ${name}  →  ${out.state}/${out.side}  ${out.detail}${out.fix ? "  [" + out.fix + "]" : ""}`);
 };
 
 const T = { kbps: 8000, fps: 90 };          // a typical session: 8 Mbps at 90 fps

@@ -46,7 +46,7 @@ W.health = (s) => {
   // Warm-up: the first seconds of a connection are ramp, not steady state, and every rule here
   // reads a one-second rate. Report healthy rather than nothing, so the strip still appears.
   if (warm++ < WARMUP_TICKS) {
-    emit({ type: "health", state: "ok", side: "connecting", detail: "",
+    emit({ type: "health", state: "ok", side: "connecting", detail: "", fix: "",
            needKbps: targetKbps || null, haveKbps: s.availableKbps, gotKbps: s.kbps });
     return;
   }
@@ -98,7 +98,18 @@ W.health = (s) => {
           "only " + mbps(gotKbps) + " arriving of " + mbps(targetKbps) + " asked for, none lost");
   }
 
-  emit({ type: "health", state, side, detail,
+  // What to do about it. One suggestion per side, and none while healthy — advice offered
+  // when nothing is wrong is noise that teaches the reader to skip the line it sits on.
+  let fix = "";
+  if (state !== "ok" && s.targetFps > 0) {
+    const lower = s.targetFps > 60 ? 60 : 30;
+    // Nothing deliberately for "the server": no setting on this phone fixes a compositor that
+    // stopped producing, and offering one would send the viewer to change things at random.
+    if (side === "your device") fix = "try " + lower + " fps";
+    else if (side === "network") fix = "try " + lower + " fps or a smaller resolution";
+  }
+
+  emit({ type: "health", state, side, detail, fix,
          needKbps: targetKbps || null, haveKbps, gotKbps });
 
   // On change only, up the relay to the daemon log. Two reasons, and the second is the one
@@ -111,6 +122,7 @@ W.health = (s) => {
   if (now !== lastVerdict) {
     lastVerdict = now;
     if (W.rlog) W.rlog("verdict " + state + " " + side + (detail ? " — " + detail : "") +
+           (fix ? "  (" + fix + ")" : "") +
            (targetKbps ? "  [got " + mbps(gotKbps || 0) + " of " + mbps(targetKbps) +
             (haveKbps ? ", link " + mbps(haveKbps) : "") + "]" : ""));
   }
