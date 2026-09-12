@@ -72,17 +72,27 @@ function say(s) { print t() " " s; fflush() }
     # never arrived to be decoded. Calling that DEVICE sends the viewer to lower settings that
     # were never the constraint — which this rule did, on a session decoding in 6.8 ms against
     # a 16.7 ms budget. Decode distress has to be shown, not assumed.
-    dec = match(line, /dec=[0-9.]+/) ? substr(line, RSTART+4, RLENGTH-4) + 0 : 0
-    drp = match(line, /framesDropped=[0-9]+/) ? substr(line, RSTART+14, RLENGTH-14) + 0 : 0
-    ddrop = (last_drop > 0 && drp >= last_drop) ? drp - last_drop : 0
-    last_drop = drp
-    budget = (tgtfps > 0) ? 1000 / tgtfps : 0
-    if ((budget > 0 && dec >= budget * 0.9) || ddrop > 2)
-      say("  ↳ DEVICE   decode " dec "ms vs a " int(budget*10)/10 "ms budget, +" ddrop \
-          " frames dropped after arriving ⇒ the phone cannot keep up")
+    dec = match(line, /dec=[0-9.]+/) ? substr(line, RSTART+4, RLENGTH-4) + 0 : -1
+    drp = match(line, /framesDropped=[0-9]+/) ? substr(line, RSTART+14, RLENGTH-14) + 0 : -1
+    # First sample after a restart has no previous count, so the delta is *unknown* — not zero.
+    # Treating unknown as zero is how this rule once exonerated a phone dropping 643 frames.
+    ddrop = (seen_drop && drp >= last_drop) ? drp - last_drop : -1
+    if (drp >= 0) { last_drop = drp; seen_drop = 1 }
+    # A monitor restarted mid-session never saw the session line. 60 fps is the assumption that
+    # fails safe: it makes the budget generous, so the decoder is only accused when it is clearly
+    # over even the easier threshold.
+    budget = 1000 / (tgtfps > 0 ? tgtfps : 60)
+    if ((dec >= 0 && dec >= budget * 0.9) || ddrop > 2)
+      say("  ↳ DEVICE   decode " dec "ms vs a " int(budget*10)/10 "ms budget" \
+          (ddrop >= 0 ? ", +" ddrop " dropped after arriving" : "") \
+          " ⇒ the phone cannot keep up")
+    else if (dec >= 0 && ddrop == 0)
+      say("  ↳ SENDER   decode " dec "ms of a " int(budget*10)/10 "ms budget and nothing dropped" \
+          " — the phone is fine. Fewer frames arrived than were asked for: look for shedding" \
+          " or a starved encoder")
     else
-      say("  ↳ SENDER   decode only " dec "ms and +" ddrop " dropped — the phone is fine. " \
-          "Fewer frames arrived than were asked for: look for shedding or a starved encoder")
+      say("  ↳ UNCLEAR  frame rate down, decode " (dec >= 0 ? dec "ms" : "unknown") \
+          ", dropped delta unknown — next sample decides")
   }
   next }
 /browser: stats/ { cfps=kv("fps"); crtt=kv("rtt"); next }
