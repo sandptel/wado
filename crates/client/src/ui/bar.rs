@@ -92,12 +92,20 @@ pub fn render(ui: Ui) -> Element {
             // A phone has no keys. Focusing a hidden input is what raises the soft keyboard;
             // `zwp_text_input_v3` cannot do this job because smithay drops every text-input
             // request with no input-method client bound. See `js/osk.js`.
-            button {
-                class: if (live.osk_on)() { "barbtn active" } else { "barbtn" },
+            //
+            // A `label`, not a `button`, and that is the whole fix: Android raises the soft
+            // keyboard only for a focus that happens *inside* the user gesture, and
+            // `bridge::call` is `spawn(async { eval().await })` — by the time `focus()` ran the
+            // gesture was over, so the old button could never work on a phone however correct
+            // the rest of it was. Label activation focuses its `for` target natively, in the
+            // gesture, with no JS in the path at all.
+            label {
+                r#for: "wado-osk",
+                class: if !(live.session_on)() { "barbtn off" }
+                       else if (live.osk_on)() { "barbtn active" }
+                       else { "barbtn" },
                 title: "Keyboard",
                 "aria-label": "Keyboard",
-                disabled: !(live.session_on)(),
-                onclick: move |_| bridge::call("window.__wado.oskToggle();".to_string()),
                 "⌨"
             }
 

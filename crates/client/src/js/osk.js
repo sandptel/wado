@@ -104,3 +104,16 @@ W.oskToggle = () => {
   if (el && document.activeElement === el) W.oskClose();
   else W.oskOpen();
 };
+
+// The bar's ⌨ is a `<label for="wado-osk">`, so the browser focuses this input itself, inside
+// the tap. Two things still need JS:
+//
+//   * the input must already exist when the label is tapped — a `for=` pointing at nothing is
+//     inert, and it used to be created lazily by the first `oskOpen()` that never came;
+//   * a second tap should close. Label activation only ever focuses, so the close half is done
+//     here, on `pointerdown` (before focus moves) and only when the field already has focus.
+ensureInput();
+addEventListener("pointerdown", (e) => {
+  if (!e.target.closest || !e.target.closest('[for="wado-osk"]')) return;
+  if (el && document.activeElement === el) { e.preventDefault(); W.oskClose(); }
+}, true);
