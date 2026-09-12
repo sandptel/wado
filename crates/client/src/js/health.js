@@ -97,7 +97,7 @@ W.health = (s) => {
   const now = state + "/" + side + "/" + detail;
   if (now !== lastVerdict) {
     lastVerdict = now;
-    W.rlog("verdict " + state + " " + side + (detail ? " — " + detail : "") +
+    if (W.rlog) W.rlog("verdict " + state + " " + side + (detail ? " — " + detail : "") +
            (targetKbps ? "  [got " + mbps(gotKbps || 0) + " of " + mbps(targetKbps) +
             (haveKbps ? ", link " + mbps(haveKbps) : "") + "]" : ""));
   }
