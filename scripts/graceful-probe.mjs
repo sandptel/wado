@@ -317,6 +317,18 @@ async function main() {
   b.send({ type: "session_stop" });
   await b.expect(["session_stopped"]);
   await sleep(1000);
+
+  // A launch with nothing to launch into must say so. This used to answer `session_launched`
+  // unconditionally, so the viewer was told an application was starting while the compositor
+  // logged `launch ignored — no active session` somewhere it could not see.
+  {
+    const mark = b.mark();
+    b.send({ type: "session_launch", command: "true" });
+    const r = await b.expect(["session_launched", "session_error"], 8000, mark);
+    if (r.type !== "session_error") fail("a launch with no session was reported as launched");
+    else step(8, `a launch with no session is refused — "${(r.message || "").slice(0, 50)}"`);
+  }
+
   const gone = markerPids();
   if (gone.length) fail(`session_stop left ${gone.length} process(es) behind: [${gone.join(",")}]`);
   else step(8, "an explicit stop still kills everything — no leak");
