@@ -238,6 +238,28 @@ pub enum RelayMsg {
     TextInput {
         active: bool,
     },
+    /// Bitrate the server actually wrote to the video track over the last stretch, kbps —
+    /// server → client.
+    ///
+    /// **The discriminator the viewer cannot compute.** It sees what arrived; it does not see what
+    /// was sent, so "little is arriving and nothing was lost" is ambiguous between a sender that
+    /// stopped and a path that is discarding silently. Measured twice, and the verdict blamed the
+    /// wrong party both times:
+    ///
+    /// | when | sent | arrived | `packetsLost` | strip said |
+    /// |---|---|---|---|---|
+    /// | 2026-09-12 22:33 | 5.35 Mbps | 2.44 Mbps | 0 | `bad the server` |
+    /// | 2026-09-13 01:19 | 5.13 Mbps | 524 kbps | 0 | `bad the server` |
+    ///
+    /// Render pacing held 90/90 and the pump was clean through both. The lesson is narrower than
+    /// "trust the server": **`packetsLost = 0` does not mean no loss**, it means that counter has
+    /// nothing to say, and a rule that reads it as good news accuses whoever is left.
+    ///
+    /// Measured at the track rather than taken from the encoder config, because the question is
+    /// what left the process, not what was asked for.
+    SentKbps {
+        kbps: u32,
+    },
     /// How many render ticks in every N the compositor is actually sending — server → client.
     ///
     /// 1 means nothing is being shed. Anything higher is a mitigation the *viewer* asked for (or
