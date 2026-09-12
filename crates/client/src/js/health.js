@@ -122,13 +122,11 @@ W.health = (s) => {
   // load-bearing half: without `arriving` every receiver number below is about a stream that was
   // never delivered, and the verdict accuses the phone for a fault on the path.
   const arriving = gotKbps !== null && targetKbps > 0 && gotKbps >= targetKbps * TRUST_DECODER_FRAC;
-  let saturated = false;
   if (arriving) {
     if (s.decodeDropPct !== null && s.decodeDropPct >= DEVICE_DROP_WARN) {
       worse("warn", "your device", s.decodeDropPct.toFixed(1) + "% of frames dropped after arriving");
     }
     if (s.dec !== null && budget !== null && s.dec >= budget * DECODE_BUDGET_FRAC) {
-      saturated = true;
       worse(s.dec >= budget ? "bad" : "warn", "your device",
             "decode " + s.dec.toFixed(1) + " ms against a " + budget.toFixed(1) + " ms budget");
     }
@@ -171,11 +169,17 @@ W.health = (s) => {
 
   // Tell the server, so it can do something about it rather than only advising the viewer to.
   //
-  // Keyed on the *settled* verdict, not this tick's: SETTLE_TICKS of hysteresis is already
-  // applied above, and the compositor waits STRAIN_WINDOWS more before it moves, so a one-second
-  // spike reaches nothing. Sent on change only — it is a level the daemon latches, so resending
-  // it every second would be noise on a link that may be the thing under strain.
-  reportStrain(saturated && side === "your device");
+  // Keyed on the **settled** verdict and nothing else. It used to be `saturated && side === ...`,
+  // mixing this tick's decode reading with the settled side, and that oscillated in the field on
+  // 2026-09-12 at 21:43: a decode time sitting near its budget crosses it every second or two, so
+  // the flag flipped about every 1.5 s and the compositor walked 1 -> 2 -> 1 -> 2 for a minute.
+  // Shedding that oscillates is the failure `crates/compositor/src/congestion.rs` was written to
+  // avoid, and `SETTLE_TICKS` existed to prevent it two lines above — the bug was reaching past it.
+  //
+  // `side === "your device"` is sufficient on its own: both device rules live inside the
+  // `arriving` branch, so the settled side cannot be "your device" unless the stream was also
+  // genuinely turning up. Sent on change only — it is a level the daemon latches.
+  reportStrain(side === "your device");
 
   emit({ type: "health", state, side, detail, fix,
          needKbps: targetKbps || null, haveKbps, gotKbps });

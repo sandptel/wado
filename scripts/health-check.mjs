@@ -38,6 +38,7 @@ const check = (name, target, snapshot, wantSide, wantState) => {
 };
 
 const T = { kbps: 8000, fps: 90 };          // a typical session: 8 Mbps at 90 fps
+const WARMUP = 5;                           // must match WARMUP_TICKS in health.js
 
 check("clean stream", T,
   { fps: 90, ping: 27, dec: 4.0, jitter: 3, kbps: 7800, lossPct: 0.0, decodeDropPct: 0.0, availableKbps: 20000 },
@@ -115,6 +116,29 @@ check("a starved decoder is not the phone's fault", T,
   run(T, { fps: 12, ping: 30, dec: 48.7, jitter: 6, kbps: 400, lossPct: 0.0, decodeDropPct: 30.0,
            availableKbps: 20000 });
   want("a starved decoder reports no strain", strains, []);
+
+  // The regression that a constant-fed test cannot catch, and the one that actually shipped.
+  //
+  // Observed 2026-09-12 21:43: a decode time hovering around its budget flipped the flag about
+  // every 1.5 s, and the compositor walked 1 -> 2 -> 1 -> 2 for a minute. The cause was reaching
+  // past the settled verdict to this tick's reading. A stream whose samples straddle the budget
+  // must produce ONE report, not one per crossing — the settle window is what decides, and it is
+  // already applied by the time strain is read.
+  strains = [];
+  W.setTargetKbps(T.kbps);
+  const near = (dec) => ({ fps: 88, ping: 30, dec, jitter: 4, kbps: 7800, lossPct: 0.0,
+                           decodeDropPct: 0.0, availableKbps: 20000, targetFps: T.fps });
+  // Budget at 90 fps is 11.1 ms, so the device rule fires at 10.0 ms. The run below settles the
+  // verdict to "your device" and then dips under that line every few ticks — which is what a
+  // decoder working near its limit actually looks like, and is not the same as a verdict that
+  // changes. A perfectly alternating signal never settles at all and correctly reports nothing;
+  // this is the case that *does* settle and used to flap underneath the settled answer.
+  for (let i = 0; i < WARMUP + 3; i++) W.health(near(12.4));   // settle to bad/your device
+  for (const dec of [9.6, 12.8, 13.1, 9.8, 12.0, 12.4, 9.5, 12.9, 11.2, 9.9, 12.2, 12.6,
+                     9.7, 13.0, 12.5, 10.6, 9.4, 12.9, 11.5, 12.1]) {
+    W.health(near(dec));
+  }
+  want("a decode time dipping under its budget does not flap the flag", strains, [true]);
 
   // And it clears: otherwise the daemon sheds for the rest of the session on one bad minute.
   strains = [];
