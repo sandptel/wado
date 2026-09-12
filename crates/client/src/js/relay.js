@@ -17,6 +17,59 @@
 
 W._relayAnswer = null;
 W._relayConfig = null;
+
+// ── Surviving a page reload ───────────────────────────────────────────────────
+//
+// `sessionOn` lives in a JS variable, so it does not survive the page being torn down — and on
+// a phone the page is torn down constantly: an app switch, a screen lock, the browser evicting
+// a background tab. Measured live 2026-09-13 02:14:35, a `pagehide persisted=false` followed by
+// a fresh load:
+//
+//     20:44:35.688  browser: pagehide persisted=false relayMode=true
+//     20:44:36.128  browser: relay link up
+//     20:44:39.233  a session is already running — offering rejoin or drop
+//     20:44:43.558  viewer rejoined the running session      <- 4.2 s waiting for a finger
+//
+// The session survived perfectly. The *client* forgot it was watching one, so it fell through
+// to the prompt and a human had to press a button to get back something they never left.
+//
+// A crumb in localStorage is what closes it: this device was watching a session moments ago, so
+// on the next load it takes it straight back. Deliberately time-limited to the server's grace —
+// past that there is nothing to rejoin, and a stale crumb would make every later page load ask
+// about a session that has been gone for hours.
+const RESUME_KEY = "wado.watching";
+const RESUME_TTL_MS = 600000;          // matches VIEWER_GRACE in relay_client.rs
+
+function markWatching(on) {
+  try {
+    if (on) localStorage.setItem(RESUME_KEY, JSON.stringify({ t: Date.now(), scale: W.outputScale || 1 }));
+    else localStorage.removeItem(RESUME_KEY);
+  } catch (_) {}
+}
+function recentlyWatching() {
+  try {
+    const v = JSON.parse(localStorage.getItem(RESUME_KEY) || "null");
+    if (!v || !v.t || Date.now() - v.t > RESUME_TTL_MS) return null;
+    return v;
+  } catch (_) { return null; }
+}
+
+// Called by the link when it comes up on a page that has no session state of its own.
+//
+// It sends `session_rejoin`, not `session_start`, and that choice is the whole safety argument:
+// rejoin can only ever attach to something that already exists. A `session_start` used as the
+// query would *create* a session on a daemon that had none — a compositor and an encoder spun
+// up because a page loaded, which nobody asked for.
+W.relayResumeIfWatching = () => {
+  const mark = recentlyWatching();
+  if (!mark || W.sessionOn || W._relayWanted) return false;
+  // The scroll conversion needs the session's scale and the config is not here on a cold load.
+  W.outputScale = mark.scale > 0 ? mark.scale : 1;
+  W._relayResuming = true;
+  rlog("this device was watching a session — trying to take it back");
+  status("relay: reconnecting to your session…");
+  return W.relaySendMsg({ type: "session_rejoin" });
+};
 W._relayWanted = false;     // the viewer has asked for a session and not asked to stop
 W._relayChoice = null;      // {config} — no promise; see relayRejoin
 W._relayDropPending = false;
@@ -91,7 +144,12 @@ function askForSession() {
 // is deliberate: "ask the daemon for a session" already means "…or tell me about the one that
 // is running", so there is no branch to get wrong.
 function onLinkUp() {
-  if (!W._relayWanted || !W._relayConfig) return;
+  if (!W._relayWanted || !W._relayConfig) {
+    // No session asked for on this page — but this device may have been watching one before the
+    // page was torn down under it. See `relayResumeIfWatching`.
+    W.relayResumeIfWatching();
+    return;
+  }
   W.requestApps();
   if (W.sessionOn) {
     // We were streaming when the link went away. Do not prompt — the viewer never chose to
@@ -131,6 +189,7 @@ W.relayOn("session_started", async (msg) => {
     W.setTargetFps(msg.info.encoder.fps || 0);
   }
   W.sessionOn = true;
+  markWatching(true);
   W._relayStage = 3; phase(3, "");
   rlog("session ready — encoder " + ((msg.info && msg.info.encoder && msg.info.encoder.mode) || "?"));
   stagebar("Session running — negotiating WebRTC…");
@@ -172,6 +231,14 @@ W.relayOn("session_error", (msg) => {
   if (W._relayResuming) {
     W._relayResuming = false;
     W.sessionOn = false;
+    markWatching(false);
+    if (!W._relayWanted || !W._relayConfig) {
+      // A cold page load whose crumb turned out to be stale. There is no config here to start
+      // from and nobody has pressed anything, so the honest thing is to go quiet and wait.
+      rlog("nothing left to rejoin: " + why);
+      status("relay: ready — press Start");
+      return;
+    }
     rlog("the session did not survive: " + why + " — starting a fresh one");
     status("relay: previous session gone — starting fresh");
     askForSession();
@@ -194,6 +261,7 @@ W.relayOn("session_stopped", () => {
   }
   if (W.sessionOn) {
     W.sessionOn = false;
+    markWatching(false);
     stagebar("Session stopped.");
   }
 });
@@ -360,6 +428,7 @@ W.ptyClose = () => relaySend({ type: "pty_close" });
 // should be one message rather than a fresh dial — which is the whole point of the split.
 W.relayStop = () => {
   clearSessionWait();
+  markWatching(false);
   W._relayWanted = false;
   W._relayResuming = false;
   W._relayDropPending = false;

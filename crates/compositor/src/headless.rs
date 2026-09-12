@@ -13,6 +13,8 @@ use smithay::{
     },
     desktop::utils::OutputPresentationFeedback,
     output::{Mode, Output, PhysicalProperties, Subpixel},
+    reexports::wayland_protocols::xdg::shell::server::xdg_toplevel,
+    reexports::wayland_server::backend::GlobalId,
     reexports::calloop::timer::{TimeoutAction, Timer},
     reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback,
     wayland::presentation::{PresentationFeedbackCachedState, Refresh},
@@ -165,7 +167,80 @@ pub fn start_session(
     }
 
     let buf_size: Size<i32, Buffer> = (ec.width as i32, ec.height as i32).into();
+    let (output, global, damage_tracker) = build_output(state, ec, scale);
+    let scale = clamp_scale(scale);
 
+    // ── Pipeline tier (zero-copy DMA-BUF → CPU-upload VAAPI → x264) ───────────
+    // Tried top-down; the first that opens wins. Building the tier *is* the probe
+    // (invariant #6 — we actually open the encoder + capture target).
+    let (encoder, capture, mut encoder_report, tier) =
+        build_pipeline(&mut renderer, &gpu.gbm, ec, buf_size)?;
+    info!(
+        ?tier,
+        pipeline = %encoder_report.pipeline,
+        "pipeline selected"
+    );
+
+    state.renderer = Some(renderer);
+    state.gbm = gpu.gbm;
+    state.capture = Some(capture);
+    state.damage_tracker = Some(damage_tracker);
+    state.encoder = Some(encoder);
+    state.current_tier = Some(tier);
+    state.encoder_config = Some(ec.clone());
+    state.frame_sink = Some(sink);
+    state.output = Some(output);
+    state.output_global = Some(global);
+    state.session_active = true;
+
+    install_render_timer(state, ec.fps)?;
+
+    // Every knob, not just the three that were here. A drop or latency warning is only
+    // actionable next to the settings that produced it, and `Quality::Balanced` in the
+    // request says nothing — the derived CBR target is the number that matters.
+    info!(
+        width = ec.width,
+        height = ec.height,
+        fps = ec.fps,
+        bitrate_kbps = ec.bitrate_kbps,
+        keyframe_interval = ec.keyframe_interval,
+        preset = ?ec.preset,
+        backend = ?ec.backend,
+        scale,
+        // The one number that predicts whether a config will look starved, and nothing logged
+        // it. Bitrate and fps are exposed as independent settings, so moving 60 -> 120 silently
+        // halves the per-frame bit budget; `memory/latency/bandwidth.md` records 0.016 as
+        // starvation. Logged here so every trace carries it and no comparison has to reconstruct
+        // it from three other fields.
+        bits_per_px = format!("{:.4}", bits_per_pixel(ec)),
+        "compositor session active"
+    );
+    // What the encoder was actually built with, so the client can compare what arrives against
+    // what was asked for. Set here rather than in `Tier::report()` because the tier does not
+    // hold the resolved config.
+    encoder_report.bitrate_kbps = ec.bitrate_kbps;
+    encoder_report.fps = ec.fps;
+    Ok(encoder_report)
+}
+
+
+/// A scale that cannot divide by zero. A zero or negative value is a bug, not a preference.
+fn clamp_scale(scale: f32) -> f32 {
+    if scale.is_finite() { scale.clamp(1.0, 4.0) } else { 1.0 }
+}
+
+/// Build the session's `Output`, map it into the space, and return it with its global and a
+/// fresh damage tracker.
+///
+/// Shared by `start_session` and `reconfigure_session`, and that sharing is the point:
+/// **invariant #8 says a resolution comes from a *fresh* `Output`, never a mutated one** —
+/// Wayland cannot un-advertise a mode — so changing the shape of a running session means
+/// running exactly this code again.
+fn build_output(
+    state: &mut Wado,
+    ec: &EncoderConfig,
+    scale: f32,
+) -> (Output, GlobalId, OutputDamageTracker) {
     // ── Logical Output (no physical display), sized to the client ─────────────
     let mode = Mode {
         size: (ec.width as i32, ec.height as i32).into(),
@@ -225,34 +300,18 @@ pub fn start_session(
     }
 
     let damage_tracker = OutputDamageTracker::from_output(&output);
+    (output, global, damage_tracker)
+}
 
-    // ── Pipeline tier (zero-copy DMA-BUF → CPU-upload VAAPI → x264) ───────────
-    // Tried top-down; the first that opens wins. Building the tier *is* the probe
-    // (invariant #6 — we actually open the encoder + capture target).
-    let (encoder, capture, mut encoder_report, tier) =
-        build_pipeline(&mut renderer, &gpu.gbm, ec, buf_size)?;
-    info!(
-        ?tier,
-        pipeline = %encoder_report.pipeline,
-        "pipeline selected"
-    );
-
-    state.renderer = Some(renderer);
-    state.gbm = gpu.gbm;
-    state.capture = Some(capture);
-    state.damage_tracker = Some(damage_tracker);
-    state.encoder = Some(encoder);
-    state.current_tier = Some(tier);
-    state.encoder_config = Some(ec.clone());
-    state.frame_sink = Some(sink);
-    state.output = Some(output);
-    state.output_global = Some(global);
-    state.session_active = true;
-
+/// Insert the render timer for `fps` and remember its token.
+///
+/// Shared with `reconfigure_session`, which has to replace it: the tick interval is baked into
+/// the closure, so a frame-rate change is a new timer rather than a new number.
+fn install_render_timer(state: &mut Wado, fps: u32) -> crate::Result<()> {
     // ── Render timer ──────────────────────────────────────────────────────────
-    let frame_nanos = 1_000_000_000 / ec.fps.max(1) as u64;
+    let frame_nanos = 1_000_000_000 / fps.max(1) as u64;
     let frame_period = Duration::from_nanos(frame_nanos);
-    let mut pacing = TickStats::new(ec.fps);
+    let mut pacing = TickStats::new(fps);
     let token = state
         .loop_handle
         .insert_source(
@@ -298,33 +357,161 @@ pub fn start_session(
         )
         .map_err(|e| CompositorError::Other(format!("insert render timer: {e}")))?;
     state.render_timer_token = Some(token);
+    Ok(())
+}
 
-    // Every knob, not just the three that were here. A drop or latency warning is only
-    // actionable next to the settings that produced it, and `Quality::Balanced` in the
-    // request says nothing — the derived CBR target is the number that matters.
+
+/// Change the shape of a **running** session — resolution, aspect ratio, frame rate, bitrate —
+/// without stopping it.
+///
+/// **Why this exists as its own verb.** Until now the only way to change any of these was
+/// `stop_session` + `start_session`, and `stop_session` kills every application the session has
+/// launched. So "change the bitrate" meant "lose your browser", which is why nobody could do it
+/// on the fly. The three things that actually have to change are the encoder, the capture
+/// target and the `Output`; the desktop — the display, the space, the seat, the windows, the
+/// processes — has nothing to do with any of them and is left alone.
+///
+/// What is rebuilt, and why each one:
+///
+/// | | |
+/// |---|---|
+/// | encoder + capture | both are allocated at a fixed resolution; a new size needs new ones |
+/// | `Output` | **invariant #8** — Wayland cannot un-advertise a mode, so a resize is a fresh output, never a mutated one |
+/// | damage tracker | it is built *from* an output and tracks that output's geometry |
+/// | render timer | the tick interval is baked into the timer's closure, so a new fps is a new timer |
+///
+/// What is deliberately **not** rebuilt: the `GlesRenderer` and the dmabuf global. The global's
+/// format list comes from the renderer, and the renderer does not care what size we draw — so
+/// tearing them down would hand `failed()` to every client holding a dmabuf, for nothing.
+pub fn reconfigure_session(
+    state: &mut Wado,
+    ec: &EncoderConfig,
+    scale: f32,
+) -> crate::Result<EncoderReport> {
+    if !state.session_active {
+        return Err(CompositorError::Other("no active session to reconfigure".into()));
+    }
+    let before = state.encoder_config.clone();
+    let started = Instant::now();
+
+    // Stop the clock first. A tick landing halfway through this would render against a damage
+    // tracker belonging to an output that no longer exists.
+    if let Some(token) = state.render_timer_token.take() {
+        state.loop_handle.remove(token);
+    }
+    // Released before the replacements are built rather than after: both hold GPU memory sized
+    // for the old resolution, and holding two sets alive at once buys nothing.
+    state.encoder = None;
+    state.capture = None;
+
+    let buf_size: Size<i32, Buffer> = (ec.width as i32, ec.height as i32).into();
+    let renderer = state
+        .renderer
+        .as_mut()
+        .ok_or_else(|| CompositorError::Other("no renderer — session is not really up".into()))?;
+    // Disjoint field borrows: `renderer` and `gbm` are different fields of `state`.
+    let (encoder, capture, mut report, tier) = build_pipeline(renderer, &state.gbm, ec, buf_size)?;
+
+    // New output before the old one goes, so no surface is ever on zero outputs.
+    let (output, global, damage_tracker) = build_output(state, ec, scale);
+    if let Some(old) = state.output.take() {
+        state.space.unmap_output(&old);
+    }
+    if let Some(old) = state.output_global.take() {
+        state.display_handle.remove_global::<Wado>(old);
+    }
+    state.output = Some(output);
+    state.output_global = Some(global);
+    state.damage_tracker = Some(damage_tracker);
+    state.capture = Some(capture);
+    state.encoder = Some(encoder);
+    state.current_tier = Some(tier);
+    state.encoder_config = Some(ec.clone());
+
+    let moved = refit_windows(state);
+
+    install_render_timer(state, ec.fps)?;
+
+    // The stream's SPS changes here, so a decoder that is mid-GOP has nothing it can use until
+    // the next IDR. Without this the viewer sees the old size frozen, or garbage, for up to a
+    // keyframe interval.
+    force_keyframe(state);
+    // The previous shape's congestion history is not about this one — a divisor earned at 1080p
+    // must not throttle a session that was just asked to run at 720p.
+    state.congestion.reset();
+    state.viewer_strained = false;
+    let _ = state.shedding_tx.send(1);
+
+    report.bitrate_kbps = ec.bitrate_kbps;
+    report.fps = ec.fps;
+    state.encoder_report = Some(report.clone());
+
     info!(
-        width = ec.width,
-        height = ec.height,
-        fps = ec.fps,
-        bitrate_kbps = ec.bitrate_kbps,
-        keyframe_interval = ec.keyframe_interval,
-        preset = ?ec.preset,
-        backend = ?ec.backend,
+        from = before.as_ref().map(|b| format!("{}x{}@{} {}kbps", b.width, b.height, b.fps, b.bitrate_kbps)),
+        to = %format!("{}x{}@{} {}kbps", ec.width, ec.height, ec.fps, ec.bitrate_kbps),
         scale,
-        // The one number that predicts whether a config will look starved, and nothing logged
-        // it. Bitrate and fps are exposed as independent settings, so moving 60 -> 120 silently
-        // halves the per-frame bit budget; `memory/latency/bandwidth.md` records 0.016 as
-        // starvation. Logged here so every trace carries it and no comparison has to reconstruct
-        // it from three other fields.
-        bits_per_px = format!("{:.4}", bits_per_pixel(ec)),
-        "compositor session active"
+        windows = state.space.elements().count(),
+        moved,
+        took_ms = started.elapsed().as_millis() as u64,
+        pipeline = %report.pipeline,
+        "session reconfigured — applications kept"
     );
-    // What the encoder was actually built with, so the client can compare what arrives against
-    // what was asked for. Set here rather than in `Tier::report()` because the tier does not
-    // hold the resolved config.
-    encoder_report.bitrate_kbps = ec.bitrate_kbps;
-    encoder_report.fps = ec.fps;
-    Ok(encoder_report)
+    Ok(report)
+}
+
+/// Put the windows back inside the output after its geometry changed.
+///
+/// Two cases, and only two on purpose:
+///
+/// * **Maximized** windows are sized *to* the output, so they are told the new size. An app that
+///   is not reconfigured keeps drawing at the old one and is either clipped or letterboxed.
+/// * **Everything else** is clamped so its top-left stays on the output. A window whose corner
+///   is off the new screen cannot be dragged back — there is nothing left to grab.
+///
+/// ponytail: does not rescale or re-tile ordinary windows. Rotating a phone from landscape to
+/// portrait will leave a wide window wide. Re-tiling is a policy decision and there is no tiling
+/// policy here yet; clamping is the part that is unambiguously a bug if it is missing.
+fn refit_windows(state: &mut Wado) -> usize {
+    let Some(output) = state.output.clone() else {
+        return 0;
+    };
+    let Some(geo) = state.space.output_geometry(&output) else {
+        return 0;
+    };
+
+    let maximized: Vec<_> = state
+        .space
+        .elements()
+        .filter(|w| {
+            w.toplevel().is_some_and(|t| {
+                t.with_pending_state(|s| s.states.contains(xdg_toplevel::State::Maximized))
+            })
+        })
+        .cloned()
+        .collect();
+    for window in maximized {
+        if let Some(t) = window.toplevel() {
+            t.with_pending_state(|s| s.size = Some(geo.size));
+            t.send_pending_configure();
+        }
+        state.space.map_element(window, (0, 0), false);
+    }
+
+    let strays: Vec<(smithay::desktop::Window, smithay::utils::Point<i32, smithay::utils::Logical>)> = state
+        .space
+        .elements()
+        .filter_map(|w| {
+            let loc = state.space.element_location(w)?;
+            let x = loc.x.clamp(0, (geo.size.w - 1).max(0));
+            let y = loc.y.clamp(0, (geo.size.h - 1).max(0));
+            (x != loc.x || y != loc.y).then(|| (w.clone(), (x, y).into()))
+        })
+        .collect();
+    let moved = strays.len();
+    for (window, loc) in strays {
+        state.space.map_element(window, loc, false);
+    }
+    moved
 }
 
 /// Launch a command (free-form, space-split into program + args) into the session and
