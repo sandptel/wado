@@ -5,6 +5,11 @@
 #
 # ponytail: one awk, no state file. If a second consumer ever needs these events, make it
 # emit JSON and tee it — not a daemon.
+#
+# ⚠️ The awk program below is a single-quoted shell string, so **no apostrophes anywhere in it**,
+# comments included — one in a comment closes the quote and the whole script dies at parse time
+# with an error naming a word, not a line. Test any edit by appending sample lines to a scratch
+# file and running this against it before arming a monitor on it.
 LOG=${1:-/tmp/wado-rig/daemon.log}
 exec tail -n0 -F "$LOG" 2>/dev/null | sed -u 's/\x1b\[[0-9;]*m//g' | gawk '
 function kv(k,   m) { return match($0, k"=\"?([^ \"]+)") ? substr($0, RSTART+length(k)+1, RLENGTH-length(k)-1) : "?" }
@@ -65,6 +70,12 @@ function say(s) { print t() " " s; fflush() }
         "keep up (decode/drop)")
   next }
 /browser: stats/ { cfps=kv("fps"); crtt=kv("rtt"); next }
+# The conclusion computed on the phone, emitted only when it changes. Worth relaying every
+# time: it is the receiver view of the same second the lines above describe from the sender end.
+/browser: verdict/ {
+  sub(/.*browser: verdict /,"")
+  say(($0 ~ /^ok/ ? "◆" : $0 ~ /^bad/ ? "✖" : "⚠") " VERDICT  " $0 "   ← computed on the phone")
+  next }
 
 # Pump = server → network. Only when it missed.
 /write_sample distribution/ {
