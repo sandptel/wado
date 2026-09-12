@@ -139,3 +139,28 @@ W.handleFailure = () => {
     W.connectWebRTC().catch(() => W.handleFailure());
   }, delay);
 };
+
+// Tear down the peer connection and build a fresh one, leaving the compositor session running.
+//
+// This is the only lever left against the jitter buffer's permanent inflation. A network hitch
+// raises the browser's playout target by roughly 5 ms and it never comes back down: the buffer
+// is the receiver's, `jitterBufferTarget` is a floor the browser's own timing model outranks
+// (see the ⚠️ note above), and nothing in the API resets it. A receiver, however, is created per
+// peer connection — so a re-offer resets it by construction.
+//
+// Deliberately manual. An automatic re-offer keyed on a jbuf threshold would fire hardest on a
+// bad link, where dropping the connection is the worst available move; that is the same mistake
+// `reassertPlayout` made, one layer up. The compositor session is not tied to the peer
+// connection, so windows, applications and the shell all survive this.
+W.resync = async () => {
+  if (!W.sessionOn) { status("resync: no session"); return; }
+  stagebar("Resyncing…");
+  W.reconnectAttempts = 0;
+  try {
+    await W.connectWebRTC();
+    status("resync: new peer connection");
+  } catch (e) {
+    status("resync failed: " + e);
+    W.handleFailure();
+  }
+};

@@ -50,6 +50,10 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/input_keyboard.js"),
     "\n",
+    include_str!("js/osk.js"),
+    "\n",
+    include_str!("js/refresh.js"),
+    "\n",
     include_str!("js/overlay.js"),
     "\n",
     include_str!("js/viewport.js"),
@@ -146,6 +150,11 @@ pub fn run(ui: Ui) {
                     live.screen_w.set(num("w").unwrap_or(0.0) as u32);
                     live.screen_h.set(num("h").unwrap_or(0.0) as u32);
                     live.screen_dpr.set(num("dpr").unwrap_or(0.0));
+                }
+                "refresh" => live.refresh_hz.set(num("hz").map(|v| v as u32)),
+                "osk" => {
+                    let on = msg.get("on").and_then(|v| v.as_bool()).unwrap_or(false);
+                    live.osk_on.set(on);
                 }
                 "phase" => {
                     // Monotonic: a late stray message must not walk the indicator backwards.

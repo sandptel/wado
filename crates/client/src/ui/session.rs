@@ -75,6 +75,18 @@ pub fn render(ui: Ui) -> Element {
             option { value: "90", "90" }
             option { value: "120", "120" }
         }
+        // Measured, not guessed — there is no API for the refresh rate, so `js/refresh.js`
+        // times requestAnimationFrame gaps. Worth showing because a rung above the panel's
+        // rate is not a free upgrade: it splits the same bitrate across more frames the
+        // display never shows, which is a quality loss for nothing.
+        if let Some(hz) = (ui.live.refresh_hz)() {
+            p { class: "hint",
+                "This screen refreshes at {hz} Hz."
+                if (s.fps)() > hz {
+                    " Above that, extra frames are never shown — and every frame gets fewer bits."
+                }
+            }
+        }
 
         label { "Quality" }
         select {
