@@ -1,5 +1,6 @@
 mod activation;
 mod compositor;
+pub(crate) mod content_type;
 mod decoration;
 mod dmabuf;
 mod xdg_shell;
