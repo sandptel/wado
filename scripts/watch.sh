@@ -65,9 +65,20 @@ function say(s) { print t() " " s; fflush() }
     # that never arrive, so `dec` inflates (156 ms observed at 16% loss) and frames are discarded
     # incomplete. Attributing that to the phone is wrong twice over. The loss rate computed on the phone
     # decides first, because the per-window delta reads (+0) once the losses are seconds old.
+  # A visibly broken path disqualifies every receiver number, and it stays broken for longer
+  # than the loss counter shows: frames left incomplete by a burst are discarded for seconds
+  # afterwards, so framesDropped keeps climbing while the loss delta reads (+0). A multi-second
+  # round trip is the surviving evidence that the path, not the phone, is still the problem.
+  crtt_n = match(line, /rtt=[0-9]+/) ? substr(line, RSTART+4, RLENGTH-4) + 0 : 0
   if (vloss >= 1.0 && vloss_t > 0 && systime() - vloss_t <= 20) {
     say("  ↳ NETWORK  " vloss "% packet loss on the path ⇒ every receiver number here is " \
         "unreliable: the decoder stalls on packets that never arrive and discards part frames")
+    next
+  }
+  if (crtt_n >= 500) {
+    say("  ↳ NETWORK  round trip " crtt_n "ms — the path is broken; frames dropped now are " \
+        "the aftermath of that, not the decoder (decode " (dec0 = match(line, /dec=[0-9.]+/) \
+        ? substr(line, RSTART+4, RLENGTH-4) : "?") "ms)")
     next
   }
   if (fresh && srv_bad)
