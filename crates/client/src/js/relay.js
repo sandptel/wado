@@ -222,6 +222,23 @@ W.relayOn("session_alive", (msg) => {
   });
 });
 
+// The running session changed shape. No renegotiation: the track is the same one and the
+// decoder picks the new size up from the forced IDR, so the only thing to do here is re-aim the
+// health verdict — its decode budget is 1000/fps and its arrival comparison is against the CBR
+// target, and both just moved.
+W.relayOn("session_reconfigured", (msg) => {
+  clearSessionWait();
+  if (msg.info && msg.info.encoder) {
+    emit({ type: "encoder", mode: msg.info.encoder.mode, pipeline: msg.info.encoder.pipeline || "" });
+    W.setTargetKbps(msg.info.encoder.bitrate_kbps || 0);
+    W.setTargetFps(msg.info.encoder.fps || 0);
+  }
+  W.setShedding(1);
+  rlog("session reconfigured — " + ((msg.info && msg.info.encoder && msg.info.encoder.bitrate_kbps) || "?") + " kbps");
+  status("applied");
+  stagebar("Streaming (relay).");
+});
+
 W.relayOn("session_error", (msg) => {
   clearSessionWait();
   const why = msg.message || "unknown";
@@ -418,6 +435,17 @@ const relaySend = (obj) => W.relaySendMsg(obj);
 // rather than the viewer having to read a suggestion and change a setting. See js/health.js for
 // the hysteresis and the arrival gate; `crates/compositor/src/congestion.rs` for what it does.
 W.relayStrain = (strained) => relaySend({ type: "viewer_strain", strained });
+
+// Apply settings to the session that is already running. The applications, the windows and the
+// peer connection all survive; see `RelayMsg::SessionReconfigure`.
+W.relayReconfigure = (config) => {
+  if (!W.sessionOn) return false;
+  W._relayConfig = config;
+  // The scroll conversion is in logical pixels and the scale may have just changed under it.
+  W.outputScale = config && config.scale > 0 ? config.scale : 1;
+  armSessionWait();
+  return relaySend({ type: "session_reconfigure", config });
+};
 
 W.ptyOpen = (cols, rows) => relaySend({ type: "pty_open", cols, rows });
 W.ptyInput = (data) => relaySend({ type: "pty_input", data });

@@ -34,6 +34,12 @@ pub enum CompositorCommand {
     },
     /// Tear down the active session (idempotent).
     Stop,
+    /// Change the shape of the running session in place — see
+    /// [`crate::headless::reconfigure_session`]. The applications survive.
+    Reconfigure {
+        config: SessionConfig,
+        reply: oneshot::Sender<Result<SessionInfo, String>>,
+    },
     /// What is running right now, if anything.
     ///
     /// Exists so a client that did not start the session can still be told what it is. Answered
@@ -82,6 +88,9 @@ pub fn handle_command(state: &mut Wado, cmd: CompositorCommand, frame_tx: &mpsc:
             let _ = reply.send(start(state, &config, frame_tx));
         }
         CompositorCommand::Stop => headless::stop_session(state),
+        CompositorCommand::Reconfigure { config, reply } => {
+            let _ = reply.send(reconfigure(state, &config));
+        }
         CompositorCommand::Status { reply } => {
             let info = state
                 .session_active
@@ -115,6 +124,25 @@ pub fn handle_command(state: &mut Wado, cmd: CompositorCommand, frame_tx: &mpsc:
             }
         }
     }
+}
+
+/// Resolve a [`SessionConfig`] the same way `start` does and apply it to the running session.
+///
+/// Sharing `to_encoder_config` is the point: a bitrate the user asked for and a bitrate a
+/// reconfigure applies have to come out of the same function, or `Quality::Balanced` means one
+/// thing at start and another on a change.
+fn reconfigure(state: &mut Wado, config: &SessionConfig) -> Result<SessionInfo, String> {
+    let encoder = crate::conf::to_encoder_config(config);
+    let report = headless::reconfigure_session(state, &encoder, config.scale)
+        .map_err(|e| e.to_string())?;
+    // The behaviour settings are re-applied too: they are part of "the session as configured",
+    // and a reconfigure that silently kept the old keyboard repeat rate would be a surprise.
+    if let Some(keyboard) = state.seat.get_keyboard() {
+        keyboard.change_repeat_info(config.input.repeat_rate, config.input.repeat_delay);
+    }
+    state.placement = config.window.placement;
+    state.focus_follows_pointer = config.input.focus_follows_pointer;
+    Ok(SessionInfo { encoder: report })
 }
 
 fn start(

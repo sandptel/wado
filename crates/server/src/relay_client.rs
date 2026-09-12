@@ -639,6 +639,40 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 }
             }
 
+            RelayMsg::SessionReconfigure { config } => {
+                // No `session_started` reply and no renegotiation — see
+                // `RelayMsg::SessionReconfigure`. The viewer keeps the peer connection it has;
+                // the picture changes shape at the forced IDR.
+                let (reply_tx, reply_rx) = oneshot::channel();
+                if ctx.cmd_tx.send(CompositorCommand::Reconfigure { config, reply: reply_tx }).is_err() {
+                    send_relay(&out_tx, &RelayMsg::SessionError {
+                        message: "compositor unavailable".into(),
+                    }).await.ok();
+                    continue;
+                }
+                // The same bound every other compositor round-trip here uses: rebuilding an
+                // encoder can fail slowly, and a wedged render loop must not hold the relay
+                // socket waiting for an answer that is not coming.
+                match tokio::time::timeout(Duration::from_secs(5), reply_rx).await {
+                    Ok(Ok(Ok(info))) => {
+                        send_relay(&out_tx, &RelayMsg::SessionReconfigured { info }).await.ok();
+                    }
+                    Ok(Ok(Err(msg))) => {
+                        send_relay(&out_tx, &RelayMsg::SessionError { message: msg }).await.ok();
+                    }
+                    Ok(Err(_)) => {
+                        send_relay(&out_tx, &RelayMsg::SessionError {
+                            message: "compositor dropped reply".into(),
+                        }).await.ok();
+                    }
+                    Err(_) => {
+                        send_relay(&out_tx, &RelayMsg::SessionError {
+                            message: "reconfigure timed out".into(),
+                        }).await.ok();
+                    }
+                }
+            }
+
             RelayMsg::SessionStop => {
                 ctx.session_started.store(false, Ordering::SeqCst);
                 let _ = ctx.cmd_tx.send(CompositorCommand::Stop);
