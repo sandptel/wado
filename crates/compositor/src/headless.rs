@@ -225,7 +225,7 @@ pub fn start_session(
     // ── Pipeline tier (zero-copy DMA-BUF → CPU-upload VAAPI → x264) ───────────
     // Tried top-down; the first that opens wins. Building the tier *is* the probe
     // (invariant #6 — we actually open the encoder + capture target).
-    let (encoder, capture, encoder_report, tier) =
+    let (encoder, capture, mut encoder_report, tier) =
         build_pipeline(&mut renderer, &gpu.gbm, ec, buf_size)?;
     info!(
         ?tier,
@@ -315,6 +315,11 @@ pub fn start_session(
         bits_per_px = format!("{:.4}", bits_per_pixel(ec)),
         "compositor session active"
     );
+    // What the encoder was actually built with, so the client can compare what arrives against
+    // what was asked for. Set here rather than in `Tier::report()` because the tier does not
+    // hold the resolved config.
+    encoder_report.bitrate_kbps = ec.bitrate_kbps;
+    encoder_report.fps = ec.fps;
     Ok(encoder_report)
 }
 

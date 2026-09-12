@@ -164,3 +164,52 @@
 .l-WARN  { color: var(--base0A); }
 .l-INFO  { color: var(--base0B); }
 .l-DEBUG, .l-TRACE { color: var(--base0D); }
+
+/* ── the health verdict ───────────────────────────────────────────────────────────────── */
+
+/* One line, over the picture, top-left under the status bar. Absolutely positioned so it never
+ * reflows the stage — the device-drop readout used to appear and vanish as a banner and moved
+ * the video every time it crossed its threshold, which is worse than the fault it reported. */
+.health {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 16px);
+  padding: 4px 10px 4px 8px;
+  border-radius: var(--r);
+  font-size: 12px;
+  line-height: 1.5;
+  background: color-mix(in srgb, var(--base00) 82%, transparent);
+  border: 1px solid var(--base02);
+  color: var(--base04);
+  pointer-events: none;   /* never steal a tap from the application underneath */
+}
+.healthdot {
+  width: 8px; height: 8px; border-radius: 50%;
+  flex: none;
+  background: var(--base0B);
+}
+.healthside { color: var(--base05); font-weight: 600; }
+.healthdetail { color: var(--base06); }
+.healthbw { color: var(--base04); margin-left: auto; padding-left: 8px; white-space: nowrap; }
+
+/* The three states. Colour carries the severity and the word carries the meaning — neither
+ * alone, because a colour is unreadable to some viewers and a word is slow to read for all. */
+.health-ok   { border-color: color-mix(in srgb, var(--base0B) 40%, var(--base02)); }
+.health-ok .healthdot { background: var(--base0B); }
+
+.health-warn { border-color: var(--base0A); background: color-mix(in srgb, var(--base0A) 14%, var(--base00)); }
+.health-warn .healthdot { background: var(--base0A); }
+.health-warn .healthside { color: var(--base0A); }
+
+.health-bad  { border-color: var(--base08); background: color-mix(in srgb, var(--base08) 18%, var(--base00)); }
+.health-bad .healthdot { background: var(--base08); }
+.health-bad .healthside { color: var(--base08); }
+
+/* A fault that is still there after a second should not blink; a new one should be noticed. */
+.health-bad .healthdot { animation: healthpulse 1.4s var(--ease) infinite; }
+@keyframes healthpulse { 50% { opacity: .35; } }

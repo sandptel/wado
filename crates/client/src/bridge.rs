@@ -10,7 +10,7 @@ use wado_protocol::logfmt;
 
 use crate::{
     persist,
-    state::{Ui, MAX_LOG_LINES},
+    state::{Health, Ui, MAX_LOG_LINES},
 };
 
 /// The bridge script, assembled from the single-job `js/` files in load order.
@@ -29,6 +29,8 @@ pub const JS: &str = concat!(
     include_str!("js/logs.js"),
     "\n",
     include_str!("js/stats.js"),
+    "\n",
+    include_str!("js/health.js"),
     "\n",
     include_str!("js/latency.js"),
     "\n",
@@ -167,6 +169,16 @@ pub fn run(ui: Ui) {
                     live.conn_error.set(string("error"));
                 }
                 "stagebar" => live.stagebar.set(text()),
+                "health" => {
+                    live.health.set(Health {
+                        state: string("state"),
+                        side: string("side"),
+                        detail: string("detail"),
+                        need_kbps: num("needKbps"),
+                        have_kbps: num("haveKbps"),
+                        got_kbps: num("gotKbps"),
+                    });
+                }
                 "stats" => {
                     live.fps.set(num("fps"));
                     live.ping.set(num("ping"));

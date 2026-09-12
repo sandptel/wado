@@ -3,10 +3,13 @@
 // (`framesPerSecond`, or a `framesDecoded` delta fallback); ping is the selected ICE
 // candidate-pair's `currentRoundTripTime` (remote inbound-rtp `roundTripTime` is a fallback).
 
+let targetFps = 0;
+W.setTargetFps = (n) => { targetFps = +n || 0; };
+
 W.startStats = (pc) => {
   W.stopStats();
   let lastFrames = null, lastTs = null, lastBytes = null, lastByteTs = null;
-  let lastLost = null, tick = 0, lastDropped = null, lastRecv = null;
+  let lastLost = null, tick = 0, lastDropped = null, lastRecv = null, lastPrecv = null;
   let lastDecTime = null, lastDecFrames = null;
   let lastJDelay = null, lastJTarget = null, lastJCount = null;
   W.statsTimer = setInterval(async () => {
@@ -22,6 +25,11 @@ W.startStats = (pc) => {
     // binding constraint". dec is mean decode time per frame — at 120 fps anything at or
     // past 8.3 ms means the decoder has no headroom, so a backlog can never drain.
     let jtarget = null, dec = null;
+    // Read for the verdict in health.js, not for display: jitter separates a delayed path
+    // from a lossy one, packetsReceived turns packetsLost into a *rate* (a cumulative count
+    // says nothing about now), and availableIncomingBitrate is the only number the browser
+    // has about how much link there actually is.
+    let jitter = null, precv = null, avail = null;
     stats.forEach((r) => {
       if (r.type === "inbound-rtp" && (r.kind === "video" || r.mediaType === "video")) {
         if (typeof r.framesPerSecond === "number") {
@@ -37,6 +45,8 @@ W.startStats = (pc) => {
         // This is latency RTT cannot see, so it is the number that tells us whether the
         // browser is sitting on frames (see W.minimizePlayoutDelay in webrtc.js).
         if (typeof r.packetsLost === "number") lost = r.packetsLost;
+        if (typeof r.packetsReceived === "number") precv = r.packetsReceived;
+        if (typeof r.jitter === "number") jitter = r.jitter * 1000;
         if (typeof r.framesReceived === "number") recv = r.framesReceived;
         if (typeof r.framesDropped === "number") dropped = r.framesDropped;
         if (typeof r.bytesReceived === "number" && typeof r.timestamp === "number") {
@@ -81,6 +91,7 @@ W.startStats = (pc) => {
         }
       } else if (r.type === "candidate-pair" && (r.nominated || r.state === "succeeded")) {
         if (typeof r.currentRoundTripTime === "number") ping = r.currentRoundTripTime * 1000;
+        if (typeof r.availableIncomingBitrate === "number") avail = r.availableIncomingBitrate / 1000;
       }
     });
     if (ping === null) {
@@ -100,16 +111,26 @@ W.startStats = (pc) => {
     if (dropped !== null) lastDropped = dropped;
     if (recv !== null) lastRecv = recv;
 
-    // Reclaim a jitter buffer that the network inflated and no longer needs. Cheap, and a
-    // no-op unless the buffer has drifted well past the target while the link is healthy.
+    // Loss as a rate over this window, not the session total: a stream that lost 400 packets
+    // in its first minute and none since reads identically to one losing them continuously,
+    // and only one of those is a fault you can still do something about.
+    let lossPct = null;
+    if (lost !== null && precv !== null && lastLost !== null && lastPrecv !== null) {
+      const dl = lost - lastLost, dp = precv - lastPrecv;
+      if (dl + dp > 0) lossPct = (dl / (dl + dp)) * 100;
+    }
+    if (precv !== null) lastPrecv = precv;
 
     emit({ type: "stats", fps, ping, jbuf, decodeDropPct });
+
+    // The verdict runs off the same snapshot rather than polling getStats a second time.
+    W.health({ fps, ping, jbuf, dec, jitter, kbps, lossPct, decodeDropPct,
+               availableKbps: avail, targetFps });
 
     // The UI wants 1 Hz; the relay does not — a log line a second per viewer buries the
     // events worth reading. Ship every fifth tick, and immediately on anything anomalous so
     // a fault is never waiting on the next window.
     const lossDelta = (lost !== null && lastLost !== null) ? lost - lastLost : 0;
-    if (lost !== null) lastLost = lost;
     const bad = (fps !== null && fps < 45) || lossDelta > 5 ||
                 (ping !== null && ping > 250) || (jbuf !== null && jbuf > 250);
     if (++tick % 5 === 0 || bad) {
@@ -121,6 +142,7 @@ W.startStats = (pc) => {
         " framesReceived=" + (recv === null ? "?" : recv) +
         " jtarget=" + n(jtarget, 0) + "ms dec=" + n(dec, 2) + "ms");
     }
+    if (lost !== null) lastLost = lost;
   }, 1000);
 };
 
