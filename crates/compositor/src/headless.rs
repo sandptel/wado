@@ -300,6 +300,12 @@ pub fn start_session(
         preset = ?ec.preset,
         backend = ?ec.backend,
         scale,
+        // The one number that predicts whether a config will look starved, and nothing logged
+        // it. Bitrate and fps are exposed as independent settings, so moving 60 -> 120 silently
+        // halves the per-frame bit budget; `memory/latency/bandwidth.md` records 0.016 as
+        // starvation. Logged here so every trace carries it and no comparison has to reconstruct
+        // it from three other fields.
+        bits_per_px = format!("{:.4}", bits_per_pixel(ec)),
         "compositor session active"
     );
     Ok(encoder_report)
@@ -610,4 +616,42 @@ fn render_tick(state: &mut Wado) -> crate::Result<()> {
     let _ = state.display_handle.flush_clients();
 
     Ok(())
+}
+
+/// Bits of encoded video per pixel per frame: `kbps * 1000 / (width * height * fps)`.
+///
+/// Not a quality metric in itself — it is the budget. H.264 at a given preset needs roughly a
+/// fixed number of bits per pixel to look clean on moving content, so this says whether a
+/// resolution/frame-rate/bitrate combination has asked for the impossible before anyone watches
+/// it. Zero if any term is zero rather than a division by zero.
+fn bits_per_pixel(ec: &EncoderConfig) -> f64 {
+    let pixels = ec.width as u64 * ec.height as u64 * ec.fps as u64;
+    if pixels == 0 {
+        return 0.0;
+    }
+    (ec.bitrate_kbps as f64 * 1000.0) / pixels as f64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::bits_per_pixel;
+    use crate::conf::EncoderConfig;
+
+    #[test]
+    fn bits_per_pixel_halves_when_fps_doubles() {
+        let cfg = |fps| EncoderConfig {
+            width: 1080,
+            height: 2422,
+            fps,
+            bitrate_kbps: 5676,
+            ..crate::conf::WadoConfig::default().encoder
+        };
+        let at60 = bits_per_pixel(&cfg(60));
+        let at120 = bits_per_pixel(&cfg(120));
+        assert!((at60 / at120 - 2.0).abs() < 1e-9, "{at60} vs {at120}");
+        // The value that matters: this config at 120 is near the 0.016 starvation figure.
+        assert!(at120 < 0.05 && at120 > 0.01, "unexpected magnitude: {at120}");
+        // No panic and no NaN on a degenerate config.
+        assert_eq!(bits_per_pixel(&cfg(0)), 0.0);
+    }
 }
