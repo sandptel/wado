@@ -34,6 +34,15 @@ pub enum CompositorCommand {
     },
     /// Tear down the active session (idempotent).
     Stop,
+    /// What is running right now, if anything.
+    ///
+    /// Exists so a client that did not start the session can still be told what it is. Answered
+    /// from the compositor thread rather than a flag on the network side, because that flag is
+    /// per-connection and a reconnecting viewer gets a fresh one — only the compositor knows
+    /// whether a session survived.
+    Status {
+        reply: oneshot::Sender<Option<SessionInfo>>,
+    },
     /// Launch a command into the *running* session (in realtime, any number of times).
     /// Ignored with a warning when no session is active.
     Launch { command: String },
@@ -52,6 +61,14 @@ pub fn handle_command(state: &mut Wado, cmd: CompositorCommand, frame_tx: &mpsc:
             let _ = reply.send(start(state, &config, frame_tx));
         }
         CompositorCommand::Stop => headless::stop_session(state),
+        CompositorCommand::Status { reply } => {
+            let info = state
+                .session_active
+                .then(|| state.encoder_report.clone())
+                .flatten()
+                .map(|encoder| SessionInfo { encoder });
+            let _ = reply.send(info);
+        }
         CompositorCommand::Launch { command } => {
             if state.session_active {
                 headless::launch_command(state, &command);
@@ -93,5 +110,6 @@ fn start(
     }
     state.placement = config.window.placement;
     state.focus_follows_pointer = config.input.focus_follows_pointer;
+    state.encoder_report = Some(encoder_report.clone());
     Ok(SessionInfo { encoder: encoder_report })
 }

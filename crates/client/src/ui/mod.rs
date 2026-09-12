@@ -15,7 +15,8 @@ pub mod launcher;
 pub mod live;
 pub mod session;
 pub mod stage;
-pub mod status;
+pub mod rejoin;
+mod status;
 
 use dioxus::prelude::*;
 

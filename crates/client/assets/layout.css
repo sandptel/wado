@@ -284,3 +284,28 @@
   color: var(--base05); font-size: 12px; line-height: 1.45;
 }
 .connok { margin: 8px 0 0; color: var(--base0B); font-size: 12px; }
+
+/* The already-running-session choice. Centred over the stage because it blocks: until it is
+   answered the socket is parked and there is no picture behind it to obscure. */
+.rejoinprompt {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 6;
+  max-width: min(30rem, calc(100% - 2rem));
+  padding: 1.1rem 1.25rem;
+  border: 1px solid var(--base02);
+  border-radius: 10px;
+  background: var(--base00);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 45%);
+  text-align: left;
+}
+.rejoinprompt h3 { margin: 0 0 0.35rem; font-size: 1rem; }
+.rejoinprompt .rejoindesc { margin: 0 0 0.5rem; color: var(--base0D); font-weight: 600; }
+.rejoinprompt .hint { margin: 0 0 0.9rem; }
+/* Column on a narrow screen: side by side these two become thumb-sized targets a few
+   millimetres apart, and one of them kills a running session. */
+.rejoinbtns { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.rejoinbtns button { flex: 1 1 10rem; padding: 0.6rem 0.9rem; }
+.rejoinbtns .danger { border-color: var(--base08); color: var(--base08); }

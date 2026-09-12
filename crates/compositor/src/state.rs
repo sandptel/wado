@@ -140,6 +140,13 @@ pub struct Wado {
     /// The active pipeline tier (for runtime downgrade-once) and the config used to build it.
     pub current_tier: Option<Tier>,
     pub encoder_config: Option<EncoderConfig>,
+    /// What the running session's encoder actually opened, kept so a *later* caller can be told
+    /// about a session it did not start.
+    ///
+    /// `start` returns this once and the reply goes to whoever asked. A viewer that reconnects —
+    /// or a second device — has no way back to that answer, and "a session is already active" is
+    /// not enough to decide whether to join it. See `CompositorCommand::Status`.
+    pub encoder_report: Option<wado_protocol::EncoderReport>,
     pub frame_sink: Option<Box<dyn FrameSink>>,
     pub output: Option<Output>,
     /// The output's wl_output global, removed on session stop so a fresh session
@@ -294,6 +301,7 @@ impl Wado {
             encoder: None,
             current_tier: None,
             encoder_config: None,
+            encoder_report: None,
             frame_sink: None,
             output: None,
             output_global: None,

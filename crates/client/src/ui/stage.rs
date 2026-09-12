@@ -76,6 +76,9 @@ pub fn render(ui: Ui) -> Element {
         if sw_encoding {
             div { class: "swbanner", "⚠ Software encoding — higher CPU use and latency" }
         }
+        // Over the picture, because it is blocking: the connection is parked until it is
+        // answered, and there is nothing behind it to look at yet.
+        {super::rejoin::render(ui)}
         if show_statusbar {
             div { id: "stagebar",
                 // No input hint here any more. It is a first-run explanation rather than a
