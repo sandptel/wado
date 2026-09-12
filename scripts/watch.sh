@@ -108,6 +108,17 @@ function say(s) { print t() " " s; fflush() }
   say("⚠ SHED     render ticks dropped: 1 in " kv("to") " (was 1 in " kv("from") "), " kv("dropped_in_window") " dropped in the window")
   next }
 
+# Input arriving with nowhere to go. The viewer has a working data channel and is tapping, and
+# every event is being discarded — from the sofa that is "the screen is frozen and taps do
+# nothing", which looks like a hang and is not one. Rate-limited: it repeats twice a second.
+/input dropped — no active session/ {
+  if (systime() - last_orphan < 20) { orphan_n++; next }
+  say("✖ ORPHAN   input arriving with NO SESSION behind the connection" \
+      (orphan_n ? " (+" orphan_n " more since " strftime("%H:%M:%S", last_orphan) ")" : "") \
+      " — WebRTC is up but the compositor session is gone; the viewer must press Start, not Resync")
+  last_orphan=systime(); orphan_n=0
+  next }
+
 /relay client: connection to relay lost/ { say("✖ RELAY    connection lost — reconnecting"); next }
 /cannot reach relay|relay still unreachable/ { say("✖ RELAY    unreachable — daemon is orphaned from the tunnel"); next }
 /registered — Remote ID/ { sub(/.*registered — /,""); say("◆ RELAY    registered, " $0); next }
