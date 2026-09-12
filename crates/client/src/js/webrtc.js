@@ -153,6 +153,22 @@ W.reconnectWebRTC = () => {
 W.handleFailure = () => {
   if (!W.sessionOn) return;
   if (W.reconnectAttempts >= W.MAX_RECONNECTS) {
+    // **Relay mode never gives up on the session, only on retrying.**
+    //
+    // `giveup` calls `stopSession`, which sends `session_stop` — so running out of WebRTC
+    // retries used to *destroy* a session the daemon was holding for another eight minutes.
+    // That is the exact inverse of what this branch is for, and it fired in precisely the case
+    // that motivated the work: a dead zone longer than the retry budget.
+    //
+    // What replaces it: stop retrying and say so. The relay link is still up and reconnecting
+    // on its own, and its `__up` handler asks for the session back — so recovery is the link's
+    // job, not this loop's. Direct mode has no such link and no server-side grace, so it keeps
+    // the old behaviour.
+    if (W.relayMode) {
+      status("no media path to the daemon — your session is still running; ⟳ Resync to retry");
+      stagebar("Session held — waiting for a network path.");
+      return;
+    }
     status("connection lost — giving up");
     emit({ type: "giveup" });
     return;
