@@ -64,28 +64,35 @@ compositor side, and nothing will until a session runs two windows with a text f
 
 ---
 
-## I4 · ~~Chromium may never bind the protocol without a launch flag~~ · **WITHDRAWN**
+## I4 · Chromium binds the text-input protocol but never enables it without `--enable-wayland-ime` · **fix landed, unverified by a human**
 
-**Refuted by measurement, `2026-09-12` 17:18:19**, twelve minutes after it was written:
+**History of this entry, kept because the mistake is the useful part.** It was first filed as
+"Chromium may never bind the protocol without a launch flag", then marked WITHDRAWN twelve
+minutes later on this evidence:
 
 ```
 11:48:19.472  launched session application command=".../google-chrome-stable"
 11:48:19.693  a client bound zwp_text_input_manager_v3
 ```
 
-Chrome bound the global **220 ms after launch, with no `--enable-wayland-ime` flag**. The
-hypothesis was stated as a hypothesis and the discriminator was built rather than the fix — which
-is the only reason this cost twelve minutes instead of a wasted launch-flag change.
+Chrome bound the global 220 ms after launch with no flag — so the *bind* claim was genuinely
+refuted. **The withdrawal went too far.** Binding is not using. Chromium registers the global as
+part of enumerating Wayland globals; the flag is what makes it construct a Wayland input-method
+context and call `enable` on a focused text field. Every session since has logged the bind and
+**never once** logged `text input focus changed`, which is exactly the signature of bound-but-
+never-enabled.
 
-**The question it raised is therefore closed too:** wado does *not* need to inject
-`--enable-wayland-ime` when launching a Chromium binary. Do not add it.
+**Reported by the user** `2026-09-12` 20:30: *"the input keyboard auto detect does not work"* —
+the ⌨ button raises the keyboard, tapping a text field does not.
 
-**What is still open** is the next link in the chain: binding the manager is not the same as
-*using* it. Chrome must send `enable` + `commit` when a text field takes focus for the keyboard to
-rise, and no `text input focus changed` line has been seen yet. That is the remaining unknown, and
-the same log answers it.
+**Fix.** `headless::with_ime_flag` appends `--enable-wayland-ime` to a Chromium-family command
+that lacks it, at the single launch choke point. A `.desktop` file written for a laptop has no
+reason to carry the flag and the user never types the command, so nowhere else could add it.
+Covered by three tests in `headless.rs`.
 
----
+**Not yet confirmed working** — nobody has watched a `text input focus changed` line appear. Until
+one does, the flag is a well-supported hypothesis, not a verified fix, and I3's untested
+focus-loss path stays untested.
 
 ## I9 · `Reactivity` emits a keyframe every second at **7× the per-frame budget** · **open, measured**
 
