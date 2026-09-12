@@ -116,6 +116,14 @@ pub struct Wado {
     /// shape as the render timings — a viewer that missed an intermediate state does not care
     /// what it was, only what is true now.
     pub text_input_tx: tokio::sync::watch::Sender<bool>,
+    /// How many render ticks out of every N are actually being rendered — `crate::congestion`'s
+    /// divisor, 1 when nothing is being shed.
+    ///
+    /// Published for the *viewer*, which otherwise measures the effect of a mitigation it does
+    /// not know about and concludes the server stopped producing. Measured 2026-09-12 16:17:33:
+    /// the strip read `bad the server — only 816 kbps arriving of 5.7 Mbps` about a frame rate
+    /// the phone itself had asked for three seconds earlier.
+    pub shedding_tx: tokio::sync::watch::Sender<u32>,
     /// Per-surface content-type change log. Cleared on session stop.
     pub content_type_log: crate::handlers::content_type::ContentTypeLog,
     /// `CLOCK_MONOTONIC`, read for presentation timestamps. `start_time.elapsed()` is *not*
@@ -326,6 +334,7 @@ impl Wado {
             content_type_log: Default::default(),
             text_inputs: Default::default(),
             text_input_tx: tokio::sync::watch::channel(false).0,
+            shedding_tx: tokio::sync::watch::channel(1).0,
             clock,
             frame_seq: 0,
             presentation_logged: false,

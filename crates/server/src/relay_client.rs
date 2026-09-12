@@ -75,6 +75,10 @@ struct RelayCtx {
     /// reason as `timings`, and because it is state: a viewer attaching mid-edit must be told
     /// the current answer, not left waiting for the next change.
     text_input: tokio::sync::watch::Receiver<bool>,
+    /// The render-tick divisor in force (`compositor::congestion`). Forwarded so the viewer can
+    /// tell a frame rate *it asked us to reduce* from a compositor that has stopped producing.
+    /// Latest-value-wins and marked changed on attach, for the same reasons as `text_input`.
+    shedding: tokio::sync::watch::Receiver<u32>,
     /// Unix-millis of the last message received from the relay. See [`viewer_watchdog`].
     last_relay_msg: Arc<AtomicU64>,
     /// Whether a session was started for a viewer and has not been stopped. See
@@ -96,6 +100,7 @@ pub fn start(
     input_tx: InputSender,
     timings: tokio::sync::watch::Receiver<wado_protocol::StageTimings>,
     text_input: tokio::sync::watch::Receiver<bool>,
+    shedding: tokio::sync::watch::Receiver<u32>,
     frame_rx: mpsc::Receiver<FrameMsg>,
     relay_url: String,
     remote_id: String,
@@ -110,7 +115,9 @@ pub fn start(
             };
             rt.block_on(async move {
                 if let Err(e) =
-                    run(cmd_tx, input_tx, timings, text_input, frame_rx, relay_url, remote_id, log_bus).await
+                    run(cmd_tx, input_tx, timings, text_input, shedding, frame_rx, relay_url, remote_id,
+                        log_bus)
+                    .await
                 {
                     error!("relay client exited with error: {e}");
                 }
@@ -124,6 +131,7 @@ async fn run(
     input_tx: InputSender,
     timings: tokio::sync::watch::Receiver<wado_protocol::StageTimings>,
     text_input: tokio::sync::watch::Receiver<bool>,
+    shedding: tokio::sync::watch::Receiver<u32>,
     mut frame_rx: mpsc::Receiver<FrameMsg>,
     relay_url: String,
     remote_id: String,
@@ -295,6 +303,7 @@ async fn run(
         input_tx,
         log_bus,
         text_input,
+        shedding,
         active_pc: Arc::new(Mutex::new(None)),
         generation: Arc::new(AtomicU64::new(0)),
         last_relay_msg: Arc::new(AtomicU64::new(now_ms())),
@@ -438,6 +447,21 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             while rx.changed().await.is_ok() {
                 let active = *rx.borrow_and_update();
                 let _ = send_relay_nowait(&out_tx_ti, &RelayMsg::TextInput { active }).await;
+            }
+        })
+    };
+
+    // Same shape and same reason as `text_input_task` above: latest-value-wins state, marked
+    // changed so a viewer attaching to an already-shedding session is told the divisor rather
+    // than left to assume 1 and blame the sender for the frame rate.
+    let shedding_task = {
+        let mut rx = ctx.shedding.clone();
+        let out_tx_sh = out_tx.clone();
+        tokio::spawn(async move {
+            rx.mark_changed();
+            while rx.changed().await.is_ok() {
+                let divisor = *rx.borrow_and_update();
+                let _ = send_relay_nowait(&out_tx_sh, &RelayMsg::Shedding { divisor }).await;
             }
         })
     };
@@ -664,6 +688,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
 
     log_task.abort();
     text_input_task.abort();
+    shedding_task.abort();
     write_task.abort();
     Ok(())
 }

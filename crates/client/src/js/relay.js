@@ -113,6 +113,12 @@ W.relayConnect = async (relayUrl, remoteId, config) => {
           W.textInput(!!msg.active);
           break;
 
+        // The compositor is sending 1 render tick in N. The verdict has to know, or it measures
+        // the effect of a mitigation this phone asked for and reports it as the server failing.
+        case "shedding":
+          W.setShedding(msg.divisor);
+          break;
+
         // ── Session control responses ────────────────────────────────────────
         case "session_started":
           // Surface encoder info (invariant #5 — software banner).

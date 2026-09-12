@@ -23,6 +23,16 @@
 // What the session asked the encoder for, in kbps. Set when a session starts — without it the
 // bandwidth half can say what is arriving but not whether that is enough.
 let targetKbps = 0;
+
+// How many render ticks in every N the compositor is sending. 1 = nothing shed.
+//
+// Without this the strip measures the effect of a mitigation it asked for and blames the sender:
+// measured 2026-09-12 16:17:33, `bad the server — only 816 kbps arriving of 5.7 Mbps` about a
+// frame rate this phone had requested three seconds earlier. Both the expected throughput and
+// the per-frame decode budget scale with it.
+let divisor = 1;
+W.setShedding = (n) => { divisor = Math.max(1, +n || 1); };
+
 W.setTargetKbps = (n) => {
   targetKbps = +n || 0;
   warm = 0;
@@ -30,6 +40,7 @@ W.setTargetKbps = (n) => {
   pending = null; pendingFor = 0; lastVerdict = "";
   // A new session is a new encoder and a new decoder, and the daemon has cleared its side.
   sentStrain = false;
+  divisor = 1;
 };
 
 // Ticks to ignore after a session starts. See the note on `warm` at the first use.
@@ -85,7 +96,12 @@ W.health = (s) => {
            needKbps: targetKbps || null, haveKbps: s.availableKbps, gotKbps: s.kbps });
     return;
   }
-  const fps = s.fps, budget = s.targetFps > 0 ? 1000 / s.targetFps : null;
+  const fps = s.fps;
+  // The *effective* rate, not the requested one. At divisor 2 the phone is being sent 45 fps of
+  // a 90 fps session and has 22 ms per frame, not 11 — judging it against the unshed budget would
+  // keep it "saturated" forever and ratchet the shedding to the floor.
+  const effFps = s.targetFps > 0 ? s.targetFps / divisor : 0;
+  const budget = effFps > 0 ? 1000 / effFps : null;
   const haveKbps = s.availableKbps;          // link capacity the browser estimates
   const gotKbps = s.kbps;                    // what the video track is actually receiving
   let state = "ok", side = "healthy", detail = "";
@@ -121,7 +137,10 @@ W.health = (s) => {
   // — device — it all arrived; this phone cannot keep up with it. "It all arrived" is the
   // load-bearing half: without `arriving` every receiver number below is about a stream that was
   // never delivered, and the verdict accuses the phone for a fault on the path.
-  const arriving = gotKbps !== null && targetKbps > 0 && gotKbps >= targetKbps * TRUST_DECODER_FRAC;
+  // Scaled by `divisor` for the same reason as the starvation rule below: under a shed, "enough
+  // is arriving" means enough for the rate actually being sent.
+  const arriving = gotKbps !== null && targetKbps > 0 &&
+                   gotKbps >= (targetKbps / divisor) * TRUST_DECODER_FRAC;
   if (arriving) {
     if (s.decodeDropPct !== null && s.decodeDropPct >= DEVICE_DROP_WARN) {
       worse("warn", "your device", s.decodeDropPct.toFixed(1) + "% of frames dropped after arriving");
@@ -134,18 +153,26 @@ W.health = (s) => {
 
   // — server — nothing is arriving and nothing was lost, so it was never sent. Checked last so
   // it cannot mask a network fault that explains the same symptom.
+  //
+  // `divisor` is what keeps this honest. A shed session legitimately delivers a fraction of both
+  // the bitrate and the frame rate, and every term here would otherwise read as the compositor
+  // having stopped — which is the accusation that fired at 16:17:33 about a shed the phone had
+  // asked for. Both thresholds scale, so this can still catch a genuinely dead sender underneath
+  // an active shed.
+  const expectKbps = targetKbps / divisor;
   if (state === "ok" && s.lossPct !== null && s.lossPct < LOSS_WARN &&
-      gotKbps !== null && targetKbps > 0 && gotKbps < targetKbps * STARVED_FRAC &&
-      fps !== null && s.targetFps > 0 && fps < s.targetFps * 0.8) {
+      gotKbps !== null && expectKbps > 0 && gotKbps < expectKbps * STARVED_FRAC &&
+      fps !== null && effFps > 0 && fps < effFps * 0.8) {
     worse("bad", "the server",
-          "only " + mbps(gotKbps) + " arriving of " + mbps(targetKbps) + " asked for, none lost");
+          "only " + mbps(gotKbps) + " arriving of " + mbps(expectKbps) + " asked for, none lost"
+          + (divisor > 1 ? " (sending 1 tick in " + divisor + ")" : ""));
   }
 
   // What to do about it. One suggestion per side, and none while healthy — advice offered
   // when nothing is wrong is noise that teaches the reader to skip the line it sits on.
   let fix = "";
   if (state !== "ok" && s.targetFps > 0) {
-    const lower = s.targetFps > 60 ? 60 : 30;
+    const lower = effFps > 60 ? 60 : 30;
     // Nothing deliberately for "the server": no setting on this phone fixes a compositor that
     // stopped producing, and offering one would send the viewer to change things at random.
     if (side === "your device") fix = "try " + lower + " fps";

@@ -78,14 +78,33 @@ W.stopSession = async () => {
   }
 };
 
-// Free server resources promptly if the tab is closed mid-session.
-window.addEventListener("pagehide", () => {
+// Free server resources promptly when the page is really going away.
+//
+// **Relay mode sends nothing here.** `pagehide` does not mean "closing" on a phone: it fires on
+// an app switch, a pulled-down shade, a screen lock — and it fired on a page that then kept its
+// WebRTC connection and its data channel alive. Observed 2026-09-12 21:46:53: the session was
+// destroyed, Chrome and every window with it, while the viewer went on swiping into a live input
+// channel with nothing behind it (`input dropped — no active session`, for ten seconds).
+//
+// `event.persisted` is *supposed* to distinguish the two — true means the back/forward cache, so
+// the page is expected to return — but bfcache eligibility is revoked by an open WebSocket or
+// WebRTC connection in several Chromium versions, and this page has both. So the flag may well
+// read `false` on the very app switch it is meant to identify. It is logged rather than trusted;
+// the next app switch will say what this phone actually reports.
+//
+// What replaces it is `viewer_watchdog` in `crates/server/src/relay_client.rs`, which stops a
+// session after VIEWER_GRACE of relay silence with no WebRTC. That is browser-independent and
+// covers a page that dies without ever reaching this handler — which is the case this beacon was
+// written for, back when no watchdog existed. Cost: a deliberately-closed tab holds its session
+// for up to the grace period. Same trade-off already recorded in `issues.md` I13.
+//
+// **Direct mode still sends the beacon.** The watchdog lives in the relay client, so the direct
+// path has no equivalent net and this is its only cleanup.
+window.addEventListener("pagehide", (ev) => {
   if (!W.sessionOn) return;
-  if (W.relayMode && W.relayWs && W.relayWs.readyState === WebSocket.OPEN) {
-    W.relayWs.send(JSON.stringify({ type: "session_stop" }));
-  } else if (W.server) {
-    navigator.sendBeacon(W.server + "/session/stop");
-  }
+  if (W.rlog) W.rlog("pagehide persisted=" + ev.persisted + " relayMode=" + !!W.relayMode);
+  if (W.relayMode) return;
+  if (W.server) navigator.sendBeacon(W.server + "/session/stop");
 });
 
 // Keep this eval (and its `dioxus` send channel) alive for the app's lifetime.
