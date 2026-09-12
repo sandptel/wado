@@ -20,7 +20,7 @@ W.logES = null;
 W.server = "";
 W.sessionOn = false;
 W.reconnectAttempts = 0;
-W.MAX_RECONNECTS = 3;
+W.MAX_RECONNECTS = 10;
 W.statsTimer = null;
 
 // Input state.
