@@ -61,6 +61,15 @@ function say(s) { print t() " " s; fflush() }
   lostd = match(line, /\(\+[0-9]+\)/) ? substr(line, RSTART+2, RLENGTH-3) + 0 : 0
   fresh = (srv_t > 0 && systime() - srv_t <= 5)
   netfresh = (net_t > 0 && systime() - net_t <= 5)
+  # A lossy path corrupts every receiver-side number: the decoder stalls waiting for packets
+    # that never arrive, so `dec` inflates (156 ms observed at 16% loss) and frames are discarded
+    # incomplete. Attributing that to the phone is wrong twice over. The loss rate computed on the phone
+    # decides first, because the per-window delta reads (+0) once the losses are seconds old.
+  if (vloss >= 1.0 && vloss_t > 0 && systime() - vloss_t <= 20) {
+    say("  ↳ NETWORK  " vloss "% packet loss on the path ⇒ every receiver number here is " \
+        "unreliable: the decoder stalls on packets that never arrive and discards part frames")
+    next
+  }
   if (fresh && srv_bad)
     say("  ↳ SERVER   " srv_why " at the same moment ⇒ this is OURS, not the link")
   else if (netfresh)
@@ -93,7 +102,7 @@ function say(s) { print t() " " s; fflush() }
     if ((duty >= 0.9) || ddrop > 2)
       say("  ↳ DEVICE   decode load " int(duty*100) "% (" dec "ms x " afps "fps, budget " \
           int(budget*10)/10 "ms)" (ddrop >= 0 ? ", +" ddrop " dropped after arriving" : "") \
-          (duty > 1.05 ? " ⇒ past capacity, or decoding on several threads" : " ⇒ saturated"))
+          (duty >= 0.9 ? (duty > 1.05 ? " ⇒ past capacity, or decoding on several threads" : " ⇒ saturated") : " ⇒ dropping frames though decode has headroom"))
     else if (dec >= 0 && ddrop == 0)
       say("  ↳ SENDER   decode " dec "ms of a " int(budget*10)/10 "ms budget and nothing dropped" \
           " — the phone is fine. Fewer frames arrived than were asked for: look for shedding" \
@@ -124,6 +133,8 @@ function say(s) { print t() " " s; fflush() }
   key=$0; sub(/ *\[.*/,"",key); sub(/ —.*/,"",key)
   if (key == last_verdict && systime() - last_verdict_t < 60) next
   last_verdict=key; last_verdict_t=systime()
+  if (match($0, /[0-9.]+% packet loss/)) { vloss=substr($0, RSTART, RLENGTH-13)+0; vloss_t=systime() }
+  else if ($0 ~ /^ok/) vloss=0
   say(($0 ~ /^ok/ ? "◆" : $0 ~ /^bad/ ? "✖" : "⚠") " VERDICT  " $0 "   ← computed on the phone")
   next }
 
