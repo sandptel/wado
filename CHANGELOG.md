@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Fixed
+
+**Scrolling asked for about 1.6x too much finger.**
+
+Touch and wheel deltas were measured in the *viewer's* pixels and spent in the *session's*, with
+nothing converting between them — so dragging a page moved it roughly two-thirds as far as your
+finger went. The speed slider could not fix this, because the right number depends on your screen
+size, the session resolution and its scale, and changes whenever any of them does.
+
+Both scroll paths now convert properly, which gives the thing a touchscreen is supposed to do:
+content moves exactly as far as your finger does, measured on the glass. The same bug was making a
+real mouse wheel under-scroll on desktop viewers, and that is fixed with it.
+
 ### Added
 
 **Four Wayland protocols apps expect a compositor to speak.**
