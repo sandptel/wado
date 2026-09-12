@@ -82,10 +82,17 @@ function say(s) { print t() " " s; fflush() }
     # fails safe: it makes the budget generous, so the decoder is only accused when it is clearly
     # over even the easier threshold.
     budget = 1000 / (tgtfps > 0 ? tgtfps : 60)
-    if ((dec >= 0 && dec >= budget * 0.9) || ddrop > 2)
-      say("  ↳ DEVICE   decode " dec "ms vs a " int(budget*10)/10 "ms budget" \
-          (ddrop >= 0 ? ", +" ddrop " dropped after arriving" : "") \
-          " ⇒ the phone cannot keep up")
+    # Duty cycle, not decode time. `dec` is per *decoded* frame, so fps x dec is the fraction of
+    # the second the decoder is busy — and that is the only form of this number that means
+    # anything once the decoder is behind. `dec > budget` fires at duty 0.55 when the real fault
+    # is a 3-second round trip, which it did. Above 0.9 the decoder is saturated and `dec` is
+    # merely the reciprocal of the rate it managed.
+    afps = match(line, /fps=[0-9.]+/) ? substr(line, RSTART+4, RLENGTH-4) + 0 : 0
+    duty = (dec >= 0 && afps > 0) ? afps * dec / 1000 : -1
+    if ((duty >= 0.9) || ddrop > 2)
+      say("  ↳ DEVICE   decoder " int(duty*100) "% busy (" dec "ms x " afps "fps, budget " \
+          int(budget*10)/10 "ms)" (ddrop >= 0 ? ", +" ddrop " dropped after arriving" : "") \
+          " ⇒ saturated")
     else if (dec >= 0 && ddrop == 0)
       say("  ↳ SENDER   decode " dec "ms of a " int(budget*10)/10 "ms budget and nothing dropped" \
           " — the phone is fine. Fewer frames arrived than were asked for: look for shedding" \
