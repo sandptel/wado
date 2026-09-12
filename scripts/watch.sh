@@ -74,6 +74,14 @@ function say(s) { print t() " " s; fflush() }
 /browser: stats/ { cfps=kv("fps"); crtt=kv("rtt"); next }
 # The conclusion computed on the phone, emitted only when it changes. Worth relaying every
 # time: it is the receiver view of the same second the lines above describe from the sender end.
+# The one line that says the text-input protocol is working end to end. An app focusing a text
+# field should produce active=true here and a keyboard on the phone; active=true with no keyboard
+# narrows the fault to the client half, and no line at all means the app never bound the protocol.
+/text input focus changed/ {
+  say((kv("active") == "true" ? "⌨ TEXTIN   an app took text focus — the phone keyboard should rise" \
+                              : "⌨ TEXTIN   text focus released"))
+  next }
+
 /browser: verdict/ {
   sub(/.*browser: verdict /,"")
   # Key on the verdict, not the figures behind it: those move every tick and are not the change.
