@@ -193,6 +193,14 @@ pub struct Live {
     /// Why the connection stopped where it did. Empty while nothing has failed.
     pub conn_error: Signal<String>,
 
+    /// Set when the daemon reports a session was already running, holding what it is — the
+    /// encoder mode, and its pipeline tier when there is one.
+    ///
+    /// `Some` means the connection is **parked on a question**, not failed and not connected: the
+    /// socket is open, the handshake timeout is cancelled, and nothing moves until the viewer
+    /// picks rejoin or drop. Cleared by either choice.
+    pub session_alive: Signal<Option<(String, String)>>,
+
     /// Launchable applications, from the server. Empty until requested — and it stays empty
     /// on a server that could not be reached, which the free-text command box covers.
     pub apps: Signal<Vec<AppEntry>>,
@@ -227,6 +235,7 @@ impl Live {
             screen_h: use_signal(|| 0),
             conn_stage: use_signal(|| 0),
             conn_error: use_signal(String::new),
+            session_alive: use_signal(|| None),
             apps: use_signal(Vec::new),
             fps: use_signal(|| None),
             ping: use_signal(|| None),

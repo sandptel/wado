@@ -108,6 +108,14 @@ pub enum RelayMsg {
     SessionStart {
         config: SessionConfig,
     },
+    /// Attach to the session that is *already* running, instead of starting a new one.
+    ///
+    /// The answer to [`RelayMsg::SessionAlive`]. Nothing is torn down: the compositor keeps its
+    /// windows, its applications and their state, and the only thing that happens is a forced
+    /// keyframe so the new viewer's decoder has something to start from. The reply is an
+    /// ordinary [`RelayMsg::SessionStarted`], so the client's negotiation path is the same one
+    /// a fresh session takes.
+    SessionRejoin,
     /// Ask the server to stop the running session.
     SessionStop,
     /// Spawn a command into the running session.
@@ -132,6 +140,20 @@ pub enum RelayMsg {
     // ── Session control: server → client (forwarded by relay) ───────────────
     /// Session started OK; carries encoder/pipeline info.
     SessionStarted {
+        info: SessionInfo,
+    },
+    /// A session was already running when the client asked to start one.
+    ///
+    /// Sent **instead of** [`RelayMsg::SessionStarted`], and instead of the
+    /// [`RelayMsg::SessionError`] this used to be. A reconnecting viewer — or a second
+    /// device — would otherwise be told "a session is already active" and left with nothing to
+    /// do about it, while the session it could have joined kept running behind the error.
+    ///
+    /// The client answers with [`RelayMsg::SessionRejoin`] to attach to it, or
+    /// [`RelayMsg::SessionStop`] followed by a fresh [`RelayMsg::SessionStart`] to replace it.
+    /// It carries the running session's [`SessionInfo`] so the choice can be an informed one
+    /// rather than a blind guess about what is on the other end.
+    SessionAlive {
         info: SessionInfo,
     },
     /// Session stopped cleanly.

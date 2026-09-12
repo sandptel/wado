@@ -381,6 +381,7 @@ pub fn stop_session(state: &mut Wado) {
     state.encoder = None;
     state.current_tier = None;
     state.encoder_config = None;
+    state.encoder_report = None;
     state.frame_sink = None;
     state.session_active = false;
     state.window_move = None;

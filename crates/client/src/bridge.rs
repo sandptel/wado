@@ -198,6 +198,14 @@ pub fn run(ui: Ui) {
                             .unwrap_or_default(),
                     );
                 }
+                // A question, not a failure — so unlike "startFailed" this does not clear
+                // session_on or throw the log console open. The socket is parked and waiting.
+                "sessionAlive" => {
+                    live.session_alive.set(Some((string("mode"), string("pipeline"))));
+                }
+                "sessionAliveCleared" => {
+                    live.session_alive.set(None);
+                }
                 "encoder" => {
                     live.encoder_mode.set(string("mode"));
                     live.encoder_pipeline.set(string("pipeline"));

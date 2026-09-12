@@ -137,7 +137,33 @@ W.relayConnect = async (relayUrl, remoteId, config) => {
           ws.close();
           break;
 
+        // A session was already running. This is a question, not a failure — so the socket
+        // stays open and the 15 s handshake timeout is cancelled: it exists to catch a stalled
+        // handshake, and a human reading a prompt is not one. `W._relayChoice` is what the two
+        // buttons resolve against; until one is pressed nothing else happens on this socket.
+        case "session_alive":
+          W._relayStage = 2; phase(2, "");
+          clearTimeout(timeout);
+          W._relayChoice = { ws, config, resolve, reject };
+          rlog("a session is already running — waiting for rejoin or drop");
+          status("relay: a session is already running");
+          emit({
+            type: "sessionAlive",
+            mode: (msg.info && msg.info.encoder && msg.info.encoder.mode) || "",
+            pipeline: (msg.info && msg.info.encoder && msg.info.encoder.pipeline) || "",
+          });
+          break;
+
         case "session_stopped":
+          // Half of a drop-and-restart: the new session cannot be asked for until the old one is
+          // actually gone, so the request waits here rather than racing the stop.
+          if (W._relayDropPending) {
+            W._relayDropPending = false;
+            rlog("previous session dropped — starting a new one");
+            status("relay: starting session…");
+            ws.send(JSON.stringify({ type: "session_start", config }));
+            break;
+          }
           if (W.sessionOn) {
             W.sessionOn = false;
             stagebar("Session stopped.");
@@ -335,3 +361,36 @@ W.relayStop = () => {
   W.relayMode = false;
 };
 
+
+// ── The answer to `session_alive` ────────────────────────────────────────────
+//
+// Two exits from one prompt, both driving the socket that is already open and parked. Neither
+// re-dials: the join succeeded, and it is only the session question that is outstanding.
+
+/// Attach to the running session. Windows, applications and their state all survive; the daemon
+/// forces a keyframe so the picture starts immediately rather than at the next periodic one.
+W.relayRejoin = () => {
+  const c = W._relayChoice;
+  if (!c) return false;
+  W._relayChoice = null;
+  emit({ type: "sessionAliveCleared" });
+  status("relay: rejoining the running session…");
+  c.ws.send(JSON.stringify({ type: "session_rejoin" }));
+  return true;
+};
+
+/// Stop the running session and start a fresh one with *this* viewer's settings.
+///
+/// Two steps, not one: `session_start` on a live session is what produced the prompt in the first
+/// place, so the stop has to be acknowledged before the start is sent. The `session_stopped`
+/// handler above is the other half.
+W.relayDropStart = () => {
+  const c = W._relayChoice;
+  if (!c) return false;
+  W._relayChoice = null;
+  W._relayDropPending = true;
+  emit({ type: "sessionAliveCleared" });
+  status("relay: stopping the previous session…");
+  c.ws.send(JSON.stringify({ type: "session_stop" }));
+  return true;
+};

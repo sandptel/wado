@@ -448,6 +448,15 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             }
 
             RelayMsg::SessionStart { config } => {
+                // A session already running is not an error, it is a choice. Telling the viewer
+                // "a session is already active" and closing the socket — which is what this did —
+                // left a reconnecting phone with a session it could see in the logs and no way to
+                // reach. See `RelayMsg::SessionAlive`.
+                if let Some(info) = live_session(&ctx).await {
+                    info!("relay client: a session is already running — offering rejoin or drop");
+                    send_relay(&out_tx, &RelayMsg::SessionAlive { info }).await.ok();
+                    continue;
+                }
                 ctx.session_started.store(true, Ordering::SeqCst);
                 let (reply_tx, reply_rx) = oneshot::channel();
                 if ctx.cmd_tx.send(CompositorCommand::Start { config, reply: reply_tx }).is_err() {
@@ -471,6 +480,28 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     Err(_) => {
                         send_relay(&out_tx, &RelayMsg::SessionError {
                             message: "session start timed out".into(),
+                        }).await.ok();
+                    }
+                }
+            }
+
+            RelayMsg::SessionRejoin => {
+                match live_session(&ctx).await {
+                    Some(info) => {
+                        ctx.session_started.store(true, Ordering::SeqCst);
+                        // The new viewer's decoder has no reference frame, so without this it
+                        // shows nothing until the next periodic keyframe — up to two seconds of
+                        // black on a rejoin that otherwise worked.
+                        let _ = ctx.cmd_tx.send(CompositorCommand::ForceKeyframe);
+                        info!("relay client: viewer rejoined the running session");
+                        send_relay(&out_tx, &RelayMsg::SessionStarted { info }).await.ok();
+                    }
+                    None => {
+                        // The window between being offered the choice and taking it is real: the
+                        // viewer watchdog stops idle sessions, so the thing being joined can be
+                        // gone by the time the button is pressed.
+                        send_relay(&out_tx, &RelayMsg::SessionError {
+                            message: "the session ended before you could rejoin it".into(),
                         }).await.ok();
                     }
                 }
@@ -798,6 +829,19 @@ async fn handle_sdp_offer(
 
     send_relay(&out_tx, &RelayMsg::SdpAnswer { sdp: answer_json }).await?;
     Ok(())
+}
+
+/// The session the compositor is actually running, if any.
+///
+/// Asked of the compositor rather than read off `ctx.session_started`: that flag belongs to one
+/// relay connection and a reconnecting viewer gets a fresh one set to `false`, so it cannot answer
+/// "did a session survive my disconnect?" — which is the entire question here.
+async fn live_session(ctx: &RelayCtx) -> Option<wado_protocol::SessionInfo> {
+    let (tx, rx) = oneshot::channel();
+    ctx.cmd_tx.send(CompositorCommand::Status { reply: tx }).ok()?;
+    // Bounded like every other compositor round-trip here: a wedged render loop must not hold the
+    // relay socket open waiting for an answer that is not coming.
+    tokio::time::timeout(Duration::from_secs(2), rx).await.ok()?.ok().flatten()
 }
 
 fn build_webrtc_api() -> crate::Result<API> {
