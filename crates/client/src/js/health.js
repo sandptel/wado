@@ -118,12 +118,47 @@ function reportStrain(strained) {
   if (W.relayStrain) W.relayStrain(strained);
 }
 
+// Is anyone actually looking at this page?
+//
+// **A hidden tab's numbers are not about the stream.** The browser stops pulling frames, so the
+// jitter buffer balloons, the decoded rate wanders and the received bitrate collapses — and every
+// rule here reads that as a fault. Measured live 2026-09-13 12:34:57, with the page hidden:
+//
+//     bad network — only 65 kbps arriving of 11.9 Mbps the server actually sent
+//
+// which is true as stated and completely the wrong conclusion: the bytes did arrive at the
+// browser and the browser threw them away, because nobody was watching. Blaming the path for
+// that sends the viewer to fix a network that was never broken, and — worse — a strain report
+// from a hidden page sheds the compositor, so they come back to a reduced frame rate they never
+// asked for.
+//
+// So the verdict is suspended while hidden rather than made cleverer. There is nothing useful to
+// say about a stream nobody is receiving.
+function pageHidden() {
+  try {
+    return typeof document !== "undefined" && document.visibilityState === "hidden";
+  } catch (_) {
+    return false;
+  }
+}
+
 // `s` is the snapshot stats.js already computed; extras are the fields only this file reads.
 W.health = (s) => {
   // Warm-up: the first seconds of a connection are ramp, not steady state, and every rule here
   // reads a one-second rate. Report healthy rather than nothing, so the strip still appears.
   if (warm++ < WARMUP_TICKS) {
     emit({ type: "health", state: "ok", side: "connecting", detail: "", fix: "",
+           needKbps: targetKbps || null, haveKbps: s.availableKbps, gotKbps: s.kbps });
+    return;
+  }
+  // Nobody is looking — see `pageHidden`. Say so plainly and, crucially, **withdraw the strain
+  // report**: a hidden page that leaves the flag set would have the compositor shedding for a
+  // viewer that is not watching, and the viewer would return to a frame rate they never asked to
+  // reduce. `warm` is rewound so the first seconds back are treated as ramp, which they are.
+  if (pageHidden()) {
+    reportStrain(false);
+    warm = WARMUP_TICKS;
+    emit({ type: "health", state: "ok", side: "not watching", detail: "", fix: "",
            needKbps: targetKbps || null, haveKbps: s.availableKbps, gotKbps: s.kbps });
     return;
   }

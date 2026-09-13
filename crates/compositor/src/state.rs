@@ -185,6 +185,9 @@ pub struct Wado {
     /// The scale the current `Output` was built with. Stored because `reconfigure_session` has to
     /// answer "did the output's shape actually change?", and the scale is the one input to that
     /// which `encoder_config` does not carry.
+    /// Whether the viewer's page is on screen. `true` unless a viewer says otherwise, so the
+    /// direct transport — which never sends it — behaves exactly as before.
+    pub viewer_visible: bool,
     pub output_scale: f32,
     /// Whether the "pipeline is incomplete" warning has already been said. The render tick runs
     /// up to 240 times a second, so a warning that is not latched is a flood.
@@ -370,6 +373,7 @@ impl Wado {
             congestion: Default::default(),
             viewer_strained: false,
             viewer_attached: true,
+            viewer_visible: true,
             output_scale: 1.0,
             pipeline_gap_logged: false,
             frame_sink: None,

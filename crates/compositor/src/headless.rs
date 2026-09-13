@@ -846,6 +846,9 @@ pub fn set_viewer_attached(state: &mut Wado, attached: bool) {
         // branch exists for that is once every couple of minutes.
         state.congestion.reattach();
         state.viewer_strained = false;
+        // Assume on screen until told otherwise — the client re-asserts visibility on attach,
+        // and defaulting the other way would black out every viewer that never sends it.
+        state.viewer_visible = true;
         let _ = state.shedding_tx.send(state.congestion.divisor());
         // It also has no reference frame, so without this it shows black until the next
         // periodic keyframe — up to two seconds on a reattach that otherwise worked.
@@ -855,6 +858,30 @@ pub fn set_viewer_attached(state: &mut Wado, attached: bool) {
         info!(
             windows = state.space.elements().count(),
             "viewer detached — rendering paused; the session and its applications are kept"
+        );
+    }
+}
+
+/// The viewer's page went off screen, or came back. **Never** a session teardown.
+///
+/// A hidden page still holds a live peer connection and still receives RTP — the browser just
+/// stops pulling frames and throws them away. Measured 2026-09-13 12:34:57: 11.9 Mbps leaving
+/// this process, 65 kbps reaching the decoder. Rendering for that spends the viewer's mobile
+/// data and this machine's encoder on something nobody can see.
+pub fn set_viewer_visible(state: &mut Wado, visible: bool) {
+    if state.viewer_visible == visible {
+        return;
+    }
+    state.viewer_visible = visible;
+    if visible {
+        // The decoder has been discarding frames the whole time it was hidden, so it holds no
+        // reference it can build on.
+        force_keyframe(state);
+        info!("viewer's page is back on screen — rendering resumed");
+    } else {
+        info!(
+            windows = state.space.elements().count(),
+            "viewer's page went off screen — rendering paused; the session is kept"
         );
     }
 }
@@ -921,6 +948,7 @@ fn render_tick(state: &mut Wado) -> crate::Result<()> {
     }
     let render_this_tick = pipeline_ready
         && state.viewer_attached
+        && state.viewer_visible
         && state.congestion.should_render(dropped_total, state.viewer_strained);
     // On change only — it is state the viewer latches, and the divisor changes at most once per
     // decision window anyway.

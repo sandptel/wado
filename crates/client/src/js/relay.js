@@ -402,6 +402,10 @@ W._relayNegotiate = async () => {
       ev.receiver || pc.getReceivers().find((r) => r.track && r.track.kind === "video")
     ));
     stagebar("Streaming (relay).");
+    // The daemon assumes a new viewer is on screen; say so explicitly (or say the opposite) so a
+    // page that attached while hidden is not rendered for.
+    sentVisible = null;
+    W.relayVisible(!document.hidden);
     W.reconnectAttempts = 0;
     W.startStats(pc);
     // Relay mode used to stop here, so it reported no latency breakdown at all — an absent
@@ -489,6 +493,19 @@ const relaySend = (obj) => W.relaySendMsg(obj);
 // rather than the viewer having to read a suggestion and change a setting. See js/health.js for
 // the hysteresis and the arrival gate; `crates/compositor/src/congestion.rs` for what it does.
 W.relayStrain = (strained) => relaySend({ type: "viewer_strain", strained });
+
+// Whether anyone is looking. See `RelayMsg::ViewerVisible` — a hidden page still receives RTP
+// and throws it away, so without this the daemon encodes and sends the full stream to a tab
+// nobody can see. Measured 2026-09-13: 11.9 Mbps out, 65 kbps to the decoder.
+//
+// State, like the strain flag: sent on change, and once on attach so a viewer that connects
+// while hidden is not rendered for either.
+let sentVisible = null;
+W.relayVisible = (visible) => {
+  if (visible === sentVisible) return false;
+  sentVisible = visible;
+  return relaySend({ type: "viewer_visible", visible });
+};
 
 // Apply settings to the session that is already running. The applications, the windows and the
 // peer connection all survive; see `RelayMsg::SessionReconfigure`.

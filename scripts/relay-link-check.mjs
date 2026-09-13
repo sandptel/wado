@@ -481,5 +481,29 @@ const rejoins = (s) => s.sent.filter((m) => m.type === "session_rejoin").length;
   check("a stale resume clears the UI", events.includes("emit:sessionOff"), true);
 }
 
+// ── 16. A hidden page tells the daemon to stop rendering for it ─────────────
+//
+// Measured 2026-09-13 12:34:57 with the page hidden: 11.9 Mbps leaving the daemon, 65 kbps
+// reaching the decoder. The server cannot see this — at the transport layer a hidden page is a
+// watched one — so it has to be told, and told only on change.
+{
+  const { W, sockets } = makeWorld();
+  W.relayConnect("ws://r", "1", { width: 1280, height: 720, fps: 60, scale: 1 });
+  sockets[0].accept();
+  sockets[0].deliver({ type: "session_started", info: { encoder: { mode: "hardware" } } });
+  await tick();
+  const vis = () => sockets[0].sent.filter((m) => m.type === "viewer_visible");
+
+  check("nothing is sent before anything changes", vis().length, 0);
+  W.relayVisible(false);
+  check("going hidden is reported", vis().map((m) => m.visible), [false]);
+  W.relayVisible(false);
+  check("…once, not once per tick", vis().map((m) => m.visible), [false]);
+  W.relayVisible(true);
+  check("coming back is reported", vis().map((m) => m.visible), [false, true]);
+  W.relayVisible(true);
+  check("…also only on change", vis().map((m) => m.visible), [false, true]);
+}
+
 console.log(failures ? `\n${failures} failing` : "\nall relay-link checks pass");
 process.exit(failures ? 1 : 0);
