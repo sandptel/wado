@@ -40,6 +40,7 @@ W._relayTarget = null;      // {url, id, wsUrl}
 W._relayRetry = null;       // pending reconnect timer
 W._relayTries = 0;
 W._relayUpAt = 0;           // when the link last reached join_accepted
+W._relayDeniedOccupied = false;   // the last denial was "another viewer holds this session"
 W._relayHandlers = {};      // type -> fn, plus the synthetic "__up" / "__down"
 
 // Backoff: quick at first because most reconnects are a blip, capped low enough that a phone
@@ -52,6 +53,15 @@ const LINK_BACKOFF_MAX = 15000;
 // against something already in trouble. The retries themselves stay unlimited: never giving up
 // is the property that was asked for. Only the *speed* is earned.
 const LINK_STABLE_MS = 5000;
+// A denial because **another viewer holds the room** is not a network fault and must not be
+// retried at network speed. Jumping the attempt counter straight to the cap turns a 500 ms knock
+// into a 15 s one. See the `join_denied` handler for why hammering here is actively harmful.
+const LINK_OCCUPIED_TRIES = 6;
+// The relay's wording for that case, produced in `crates/relay/src/signaling.rs` next to
+// `rooms.create`. Matched as a string because it is the only thing that distinguishes the two
+// denials on the wire; `scripts/relay-link-check.mjs` reads the relay source and fails if it
+// moves, so this cannot rot silently.
+const OCCUPIED_RE = /already has an active connection/i;
 const linkDelay = (n) => Math.min(500 * Math.pow(2, Math.max(0, n - 1)), LINK_BACKOFF_MAX);
 
 const toWsUrl = (relayUrl, id) => {
@@ -143,13 +153,32 @@ function openLink() {
       if (W._relayStage !== undefined) W._relayStage = 2;
       if (W.relayPhase) W.relayPhase(2, "");
       if (W.rlog) W.rlog("relay link up — a daemon is registered for this Remote ID");
+      // `__up` reads `_relayDeniedOccupied` to decide whether getting in was our reconnect or
+      // us displacing somebody, so it is cleared *after* the handler, not before.
       fire("__up");
+      W._relayDeniedOccupied = false;
       return;
     }
     if (msg.type === "join_denied") {
-      // Retryable, not fatal. "No daemon for this Remote ID" is usually a daemon that is
-      // restarting, and the old code turned it into a dead end the user had to press Start to
-      // leave. The socket closes on its own; `onclose` schedules the next try.
+      // Retryable, not fatal — but *how* retryable depends on which denial this is, and
+      // conflating them produced a live regression on 2026-09-13.
+      //
+      //   "no server online"      the daemon is restarting. Retry at network speed, forever.
+      //                           This is the property that was asked for.
+      //   "already has an active  **another viewer holds this session.** Nothing about the
+      //    connection"            network will change that, and retrying every 500 ms means
+      //                           that the instant the incumbent's socket blips, we take the
+      //                           room — then they knock, take it back, and the two devices
+      //                           trade the session every ~18 s forever. Measured: 18 knocks
+      //                           in 94 seconds, then four steal-cycles. See I17.
+      const occupied = OCCUPIED_RE.test(msg.reason || "");
+      if (occupied) {
+        W._relayDeniedOccupied = true;
+        W._relayTries = Math.max(W._relayTries, LINK_OCCUPIED_TRIES);
+        if (W.relayPhase) W.relayPhase(1, "another device is connected to this session");
+        if (W.rlog) W.rlog("join denied: another device holds this session — backing right off");
+        return;
+      }
       if (W.relayPhase) W.relayPhase(1, msg.reason || "no daemon answered for this Remote ID");
       if (W.rlog) W.rlog("join denied: " + (msg.reason || "?") + " — will keep trying");
       return;
