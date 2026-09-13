@@ -29,6 +29,7 @@ pub struct Saved {
     pub custom_h: Option<u32>,
     pub scale: Option<String>,
     pub fps: Option<u32>,
+    pub fps_lock: Option<bool>,
     pub quality: Option<String>,
     pub bitrate: Option<u32>,
     pub encoder_backend: Option<String>,
@@ -70,6 +71,7 @@ pub fn snapshot(ui: Ui) -> Saved {
         custom_h: Some((s.custom_h)()),
         scale: Some((s.scale)()),
         fps: Some((s.fps)()),
+        fps_lock: Some((s.fps_lock)()),
         quality: Some((s.quality)()),
         bitrate: Some((s.bitrate)()),
         encoder_backend: Some((s.encoder_backend)()),
@@ -123,6 +125,7 @@ pub fn restore(ui: Ui, saved: Saved) {
     put!(custom_h);
     put!(scale);
     put!(fps);
+    put!(fps_lock);
     put!(quality);
     put!(bitrate);
     put!(encoder_backend);

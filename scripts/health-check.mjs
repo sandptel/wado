@@ -127,6 +127,33 @@ check("a starved decoder is not the phone's fault", T,
            availableKbps: 20000 });
   want("a starved decoder reports no strain", strains, []);
 
+  // ── The frame-rate lock (plan/sync.md §1) ──────────────────────────────────────────────────
+  //
+  // What it must do: stop the compositor's rate from moving. What it must NOT do: stop the
+  // viewer forming and showing a verdict — the strip still says the phone is struggling, it
+  // just stops asking anyone to act on it.
+  strains = [];
+  W.fpsLock = true;
+  run(T, { fps: 88, ping: 30, dec: 12.0, jitter: 4, kbps: 7800, lossPct: 0.0, decodeDropPct: 6.0,
+           availableKbps: 20000 });
+  want("locked: a strained viewer asks for no shed", strains, []);
+  want("locked: the verdict is still formed and shown", [out.state, out.side], ["bad", "your device"]);
+  W.fpsLock = false;
+
+  // The case the one-line guard exists for, and the reason it lives inside `reportStrain`
+  // rather than at the call site: ticking the box *while already shedding* must release the
+  // latch. The daemon holds `viewer_strained` until told otherwise, so a lock that only
+  // suppressed future `true`s would leave the session stuck at the divisor it had.
+  strains = [];
+  run(T, { fps: 88, ping: 30, dec: 12.0, jitter: 4, kbps: 7800, lossPct: 0.0, decodeDropPct: 6.0,
+           availableKbps: 20000 });
+  want("unlocked first: the shed is asked for", strains, [true]);
+  W.fpsLock = true;
+  W.health({ fps: 88, ping: 30, jbuf: null, dec: 12.0, jitter: 4, kbps: 7800, lossPct: 0.0,
+             decodeDropPct: 6.0, availableKbps: 20000, targetFps: T.fps });
+  want("locking mid-shed releases the latch", strains, [true, false]);
+  W.fpsLock = false;
+
   // The regression that a constant-fed test cannot catch, and the one that actually shipped.
   //
   // Observed 2026-09-12 21:43: a decode time hovering around its budget flipped the flag about
