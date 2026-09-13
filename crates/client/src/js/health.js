@@ -296,11 +296,16 @@ W.health = (s) => {
   // does the right thing on its own: a real fault is `bad` and outranks this.
   // — the buffer between the two ends, which is latency nothing else here can see.
   //
-  // Measured 2026-09-13 across the two minutes after a reconnect: `jbuf` 47 -> 28 ms while
-  // `fps` held 116-121, `rtt` sat at 24-37, `lost` was 0 and `framesDropped` never moved. Every
-  // rule above and below said healthy, and the picture was six frame periods behind the finger
-  // at 120 fps. That is what the user reported as "input does not feel synced with fps", and it
-  // was invisible because every other metric is about *rate* and this one is about *delay*.
+  // Measured 2026-09-13: on a mobile link at 120 fps, `jbuf` sits at **31-54 ms as its normal
+  // state** — before a reconnect and after one, unchanged by either — while `fps` held 116-124,
+  // `rtt` sat at 24-45, `lost` was 0 and `framesDropped` never moved. Every rule above and below
+  // said healthy, and the picture was four to six frame periods behind the finger. That is what
+  // the user reported as "input does not feel synced with fps", and it was invisible because
+  // every other metric here is about *rate* and this one is about *delay*.
+  //
+  // (An earlier draft of this comment blamed a reconnect for inflating the buffer. It does not:
+  // the before-picture shows the same 41-54 ms, and the next reconnect produced 24-33 with no
+  // decay at all. See plan/sync.md §1c — the rule is unchanged, the explanation was wrong.)
   //
   // Reported, not fixed — and deliberately so. `js/webrtc.js` already sets the playout hint to
   // 20 ms and already carries the note explaining why re-asserting it does nothing: the hint is
