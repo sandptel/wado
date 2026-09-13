@@ -304,6 +304,31 @@ const dup = logged.findIndex((l, i) => i > 0 && l === logged[i - 1] && l !== SES
 if (dup > 0) { failures++; console.log(`FAIL rlog: line ${dup} repeats the one before it`); }
 else console.log(`ok   relayed ${logged.length} verdict lines, no consecutive repeats`);
 
+// ── A connection that is not up has no verdict to give ───────────────────────
+//
+// Found live 2026-09-13 14:41:28 during a 5-second roaming reconnect: `fps=0 kbps=0 rtt=164`
+// produced "warn network — round trip 164 ms (try 30 fps or a smaller resolution)". Nothing was
+// arriving because the peer connection was closing, and no setting on the phone changes that.
+{
+  const DEAD = { fps: 0, ping: 164, jbuf: null, dec: null, jitter: null, kbps: 0,
+                 lossPct: 0, decodeDropPct: null, availableKbps: null, targetFps: 60 };
+  W.setTargetKbps(5676);
+  W.pc = { connectionState: "closed" };
+  for (let i = 0; i < 9; i++) W.health(DEAD);
+  const ok = out.state === "ok" && out.side === "connecting" && out.fix === "";
+  if (!ok) { failures++; console.log(`FAIL a closing connection gives no verdict: got ${out.state}/${out.side} "${out.fix}"`); }
+  else console.log("ok   a closing connection gives no verdict, and no advice");
+
+  // …and it must not suppress a real fault once the connection is actually up.
+  W.pc = { connectionState: "connected" };
+  W.setTargetKbps(5676);
+  for (let i = 0; i < 9; i++) W.health(DEAD);
+  const ok2 = out.state !== "ok";
+  if (!ok2) { failures++; console.log(`FAIL a connected but dead stream is still a fault: got ${out.state}/${out.side}`); }
+  else console.log(`ok   …but a connected dead stream is still a fault  →  ${out.state}/${out.side}`);
+  W.pc = null;
+}
+
 // ── Latency that no rate metric can see ──────────────────────────────────────
 //
 // The field trace of 2026-09-13, reduced to one case: full frame rate, healthy ping, no loss,
