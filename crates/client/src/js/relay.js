@@ -169,6 +169,17 @@ function askForSession() {
 // is deliberate: "ask the daemon for a session" already means "…or tell me about the one that
 // is running", so there is no branch to get wrong.
 function onLinkUp() {
+  // We are only here because the other viewer's socket went away — we did not reconnect, we
+  // displaced somebody. Taking the session back automatically is precisely how two devices
+  // trade it every eighteen seconds and neither gets a stable stream (I17), so this is the one
+  // case where a human has to say yes.
+  if (W._relayDeniedOccupied) {
+    W._relayResuming = false;
+    rlog("another device was using this session — not taking it automatically");
+    status("relay: another device is using this session — press Start to take it over");
+    if (W._relayWanted) emit({ type: "startFailed" });
+    return;
+  }
   if (!W._relayWanted || !W._relayConfig) {
     // No session asked for on this page — but this device may have been watching one before the
     // page was torn down under it. See `relayResumeIfWatching`.

@@ -386,5 +386,62 @@ const rejoins = (s) => s.sent.filter((m) => m.type === "session_rejoin").length;
   check("…and the session is still on", W.sessionOn, true);
 }
 
+// ── 14. Two devices must not trade the session forever ──────────────────────
+//
+// The live regression of 2026-09-13: making `join_denied` retryable (right) and making a
+// reconnect auto-rejoin (right) compose into a livelock. The loser knocks every 500 ms, takes
+// the room the instant the incumbent's socket blips, auto-rejoins, and kicks them — then they
+// do the same back. Measured: 18 knocks in 94 s, then four steal-cycles ~18 s apart.
+{
+  const { W, sockets, events } = makeWorld();
+  // This device was streaming, so it has both `sessionOn` and the crumb — the exact state that
+  // makes it take the session back without asking.
+  W.relayConnect("ws://r", "1", { width: 1280, height: 720, fps: 60, scale: 1 });
+  sockets[0].accept();
+  sockets[0].deliver({ type: "session_started", info: { encoder: { mode: "hardware" } } });
+  await tick();
+  sockets[0].drop();
+
+  // It comes back and finds the room taken by the other device.
+  W._relayRetry = null;
+  W.relayDial("ws://r", "1");
+  let ws = sockets[sockets.length - 1];
+  ws.open();
+  W._relayTries = 1;
+  ws.deliver({ type: "join_denied", reason: "server already has an active connection" });
+  check("an occupied room is recognised", W._relayDeniedOccupied, true);
+  check("…and backs off to the cap instead of knocking", W._relayTries >= 6, true);
+
+  // Now the incumbent blips and this device gets in. It must NOT grab the session.
+  ws.drop();
+  W._relayRetry = null;
+  W.relayDial("ws://r", "1");
+  ws = sockets[sockets.length - 1];
+  ws.accept();
+  check("displacing someone does not steal the session", rejoins(ws), 0);
+  check("…nor starts one", started(ws), 0);
+  check("…and says so", events.some((e) => e.includes("another device is using")), true);
+  check("…and the flag is cleared for the next join", W._relayDeniedOccupied, false);
+}
+{
+  // The other denial is unchanged: a daemon that is restarting is retried at network speed.
+  const { W, sockets } = makeWorld();
+  W.relayDial("ws://r", "1");
+  sockets[0].open();
+  W._relayTries = 1;
+  sockets[0].deliver({ type: "join_denied", reason: "no server online with this Remote ID" });
+  check("an absent daemon is not treated as an occupied room", W._relayDeniedOccupied, false);
+  check("…and keeps retrying fast", W._relayTries, 1);
+}
+{
+  // The string this depends on is produced by the relay. Read it from there, so a rename fails
+  // here rather than silently turning the guard off.
+  const relaySrc = readFileSync(new URL("../crates/relay/src/signaling.rs", import.meta.url), "utf8");
+  const linkSrc = readFileSync(new URL("../crates/client/src/js/relay_link.js", import.meta.url), "utf8");
+  const re = /OCCUPIED_RE\s*=\s*\/([^/]+)\//.exec(linkSrc)[1];
+  check("the relay still sends the wording the client matches",
+    new RegExp(re, "i").test(relaySrc), true);
+}
+
 console.log(failures ? `\n${failures} failing` : "\nall relay-link checks pass");
 process.exit(failures ? 1 : 0);
