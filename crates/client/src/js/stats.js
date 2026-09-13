@@ -140,7 +140,15 @@ W.startStats = (pc) => {
         " kbps=" + n(kbps, 0) + " lost=" + (lost === null ? "?" : lost) +
         " (+" + lossDelta + ") framesDropped=" + (dropped === null ? "?" : dropped) +
         " framesReceived=" + (recv === null ? "?" : recv) +
-        " jtarget=" + n(jtarget, 0) + "ms dec=" + n(dec, 2) + "ms");
+        " jtarget=" + n(jtarget, 0) + "ms dec=" + n(dec, 2) + "ms" +
+        // **Whether anyone is looking at this page.** A backgrounded tab or a locked screen
+        // still receives RTP and still counts `framesReceived`, but the browser decodes it
+        // lazily — which reads in every other field as a decoder that has collapsed. Measured
+        // 2026-09-13 12:02: decode went 11 ms -> 109 ms with the link flat, zero loss and 3 Mbps
+        // arriving, and there was no way to tell a throttled tab from a hot phone. One field
+        // settles it; see I18.
+        " vis=" + (typeof document !== "undefined" ? document.visibilityState : "?") +
+        (typeof document !== "undefined" && document.hasFocus && !document.hasFocus() ? " unfocused" : ""));
     }
     if (lost !== null) lastLost = lost;
   }, 1000);

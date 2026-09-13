@@ -480,5 +480,57 @@ The daemon already assumes a single viewer — `active_pc` is one slot, and `gen
 let a stale viewer's teardown be ignored. What is missing is any *arbitration*: the second
 viewer is not told it displaced anyone, and the first is not told it was displaced.
 
-**Open, unfixed, no workaround.** The honest minimum is telling the displaced viewer what
-happened instead of leaving it silently black.
+**Half fixed `2026-09-13`, after it was observed live on the user's own connection.**
+
+The relay log made the mechanism plain. Between 11:56:43 and 11:58:17 there were **18
+`join: room create failed — already has an active room`** entries from different source ports,
+spacing out as the backoff grew; then the incumbent left, the knocker got in, and the room
+changed hands **four times at ~18-second intervals**.
+
+Two changes that are individually right compose into a livelock:
+
+* `join_denied` became retryable — correct, because it usually means a daemon that is restarting.
+* a reconnect auto-rejoins — correct, because the viewer never chose to leave.
+
+Together: the loser knocks every 500 ms, takes the room the instant the incumbent's socket
+blips, auto-rejoins, and kicks them. They then do the same back, forever.
+
+**Fixed** by separating the two denials. `"no server online with this Remote ID"` is still
+retried at network speed, forever. `"server already has an active connection"` backs off to the
+15 s cap, and when the room does come free the session is **not** taken automatically — getting
+in because somebody else left is not the same event as our own reconnect, so a human presses
+Start. `scripts/relay-link-check.mjs` pins both branches and reads the relay source so the
+wording it matches cannot be renamed out from under it.
+
+**Still open:** the *displaced* viewer is told nothing — it just goes black and starts knocking.
+Telling it what happened is the remaining honest minimum, and it needs a wire message the relay
+does not have.
+
+## I18 — decode time collapses after a long reconnect gap (unattributed)
+
+Observed `2026-09-13 12:02` on the user's live session, with the server clean throughout
+(render pacing 90.0/90, pump `avg_queue_ms=0`, `write_sample` p99 0.1 ms, `lost=0`).
+
+| time | fps | kbps | rtt | dec | framesDropped |
+|---|---|---|---|---|---|
+| 12:00:13 | 37 | 2753 | 27 ms | **10.95 ms** | 4 |
+| 12:01:02 | 43 | 2468 | 32 ms | 11.30 ms | 4 |
+| *(ICE closed 12:01:55, re-offer 12:02:46 — a 51 s gap)* | | | | | |
+| 12:02:54 | 35 | 3047 | 34 ms | **108.98 ms** | 229 |
+| 12:03:09 | 42 | 2891 | 38 ms | **106.01 ms** | 947 |
+
+The link is not the problem: rtt is flat, loss is zero, and ~3 Mbps is arriving. The phone is
+receiving about 90 frames a second and dropping half of them, with each decode taking four times
+the frame interval.
+
+**Two candidates, not yet separated:**
+
+1. **The page was backgrounded or the screen went off** — a throttled tab still receives RTP but
+   decodes lazily, which produces exactly this shape. The 51 s connection gap immediately before
+   is consistent with a phone that was locked.
+2. **Thermal throttling** on the phone's decoder.
+
+What would separate them: the client already knows `document.visibilityState`, and it is not in
+the stats line. Adding it costs one field and turns this from a guess into a reading — the same
+argument that made `ClientData::disconnected` worth filling in. **Do that before theorising
+further.**
