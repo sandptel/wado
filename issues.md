@@ -733,3 +733,33 @@ passed either version.
 **Third instance this run of the same pattern** — two individually-correct behaviours composing
 into a defect that is invisible in either file alone (after I17 and I19). Dedupe-on-change is
 correct. Send-may-fail is correct. Together they are a permanent mute.
+
+---
+
+## I23 — the health strip diagnosed a network fault during a peer-connection teardown
+
+**Observed live `2026-09-13 14:41:28`**, in the middle of a five-second roaming reconnect:
+
+```
+⚠ VERDICT  warn network — round trip 164 ms  (try 30 fps or a smaller resolution)  [got 0 kbps of 5.7 Mbps]
+⚠ CLIENT   fps=0.0 rtt=164ms kbps=0 lost=0 framesReceived=1080 vis=visible
+```
+
+Nothing was arriving because the connection was **closing**, not because the path was slow. The
+verdict was wrong about the cause and its advice — *try 30 fps or a smaller resolution* — was
+useless for a blip that resolved itself in four seconds. The session survived correctly
+(detached 09:11:27.357, resumed 09:11:32.657, 5.3 s, applications intact); only the diagnosis
+was wrong.
+
+Same class as I20 from the other direction: the strip speaks when it has nothing to say. A
+hidden page's numbers are not about the stream; neither are a closing connection's.
+
+**Fixed** with a `pcDown()` guard mirroring `pageHidden()` — when `W.pc.connectionState` is
+anything but `connected`, the strip reports `ok`/`connecting`, withdraws the strain flag and
+rewinds the warm-up. It reuses the warm-up's existing vocabulary rather than inventing a side,
+because to the strip both are the same state: a stream that is not flowing and is nobody's
+fault. The stagebar already owns connection state and was saying "reconnecting" correctly
+throughout.
+
+Two regression cases in `scripts/health-check.mjs`, the second being the one that matters: a
+*connected* connection delivering nothing is still a fault, and the guard must not mask it.

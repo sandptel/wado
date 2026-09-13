@@ -163,6 +163,30 @@ function pageHidden() {
   }
 }
 
+// Is the media path actually up?
+//
+// Same class of mistake as a hidden page, from the other direction: while a peer connection is
+// closing or re-negotiating, nothing arrives, `fps` reads 0, `kbps` reads 0 and `rtt` reads
+// whatever the dying ICE agent last measured. Every rule here then describes a network fault.
+// Caught live 2026-09-13 14:41:28, during a 5-second roaming reconnect:
+//
+//     warn network — round trip 164 ms (try 30 fps or a smaller resolution) [got 0 kbps of 5.7 Mbps]
+//
+// Nothing arrived because the connection was closing, and "try 30 fps" fixes none of that — it
+// sends the viewer to change settings during a blip that resolves itself in seconds. The
+// stagebar already owns connection state and says "reconnecting"; the strip's job is stream
+// quality, and while there is no stream it has nothing to say.
+//
+// `W.pc` absent means no session at all, which the ordinary rules already handle.
+function pcDown() {
+  try {
+    const st = W.pc && W.pc.connectionState;
+    return !!st && st !== "connected";
+  } catch (_) {
+    return false;
+  }
+}
+
 // `s` is the snapshot stats.js already computed; extras are the fields only this file reads.
 W.health = (s) => {
   // Warm-up: the first seconds of a connection are ramp, not steady state, and every rule here
@@ -180,6 +204,16 @@ W.health = (s) => {
     reportStrain(false);
     warm = WARMUP_TICKS;
     emit({ type: "health", state: "ok", side: "not watching", detail: "", fix: "",
+           needKbps: targetKbps || null, haveKbps: s.availableKbps, gotKbps: s.kbps });
+    return;
+  }
+  // Reuses the warm-up's "connecting" vocabulary rather than inventing a side: to the strip both
+  // are the same state — a stream that is not flowing yet and is nobody's fault. `warm` is
+  // rewound so the first seconds after the media returns are treated as ramp, which they are.
+  if (pcDown()) {
+    reportStrain(false);
+    warm = WARMUP_TICKS;
+    emit({ type: "health", state: "ok", side: "connecting", detail: "", fix: "",
            needKbps: targetKbps || null, haveKbps: s.availableKbps, gotKbps: s.kbps });
     return;
   }
