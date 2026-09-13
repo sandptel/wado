@@ -621,3 +621,46 @@ window opens.
 
 ⚠️ **Committed, not deployed.** Shipping it needs a daemon restart, which kills the running
 session — the ceiling this branch cannot lift. Held until the user is idle.
+
+
+## I20 — a hidden page was served the full stream (fixed and confirmed in the field)
+
+Found `2026-09-13 12:34:57` by the `vis=` field shipped an hour earlier for a different question
+(I18), which is the second time that field answered something it was not added for.
+
+A backgrounded tab or a locked screen holds a live peer connection and still receives RTP; the
+browser simply stops pulling frames and discards them. The daemon cannot see this — at the
+transport layer a hidden page is a watched one — so it kept rendering, encoding and transmitting
+the whole stream:
+
+```
+12:34:57  bad network — only 65 kbps arriving of 11.9 Mbps the server actually sent
+```
+
+**11.9 Mbps out, 65 kbps reaching the decoder.** On a phone, on mobile data.
+
+Two things were wrong at once, and the verdict line above contains both: the waste, and the fact
+that the strip blamed *the network* for it. It was right that the bytes went in and did not come
+out; it had no way to know why.
+
+**Fixed** with `RelayMsg::ViewerVisible` — the client reports `visibilitychange`, and the render
+tick requires `viewer_attached && viewer_visible`. Two flags rather than one, because the media
+path being up and a human looking at it are different facts and folding them would let either
+clobber the other. The health verdict is also suspended while hidden, and **withdraws the strain
+flag** — a hidden page that left it set would have the compositor shedding for a viewer that is
+not watching, and the viewer would return to a reduced frame rate they never asked for.
+
+**Confirmed in the field `2026-09-13 13:00:12`:**
+
+```
+07:30:12.061  browser: page is now hidden
+07:30:12.061  viewer's page went off screen — rendering paused; the session is kept  windows=1
+```
+
+Same millisecond. Bitrate arriving went **11 432 → 0 kbps** within one sample window, the window
+was kept, and no verdict line has been produced since. `framesReceived` froze and `framesDropped`
+moved 64 → 112 at the transition — what was already in flight — and then stopped.
+
+**Still unexercised:** the return path. `set_viewer_visible(true)` forces a keyframe so the
+picture should resume within a frame rather than waiting up to two seconds for the next periodic
+IDR; that has not been observed yet.
