@@ -701,6 +701,12 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             }
 
             RelayMsg::SessionStop => {
+                // Logged on receipt, not just on the watchdog's own reap: this is the only other
+                // path to `CompositorCommand::Stop` in relay mode, and until now neither side
+                // logged anything for it — a stop here and a stop from the 600s grace expiring
+                // were indistinguishable in the log, which cost real time chasing an unexplained
+                // teardown on 2026-09-13 that turned out to be unprovable either way.
+                info!("relay client: session_stop received from the viewer — tearing down");
                 ctx.session_started.store(false, Ordering::SeqCst);
                 let _ = ctx.cmd_tx.send(CompositorCommand::Stop);
                 send_relay(&out_tx, &RelayMsg::SessionStopped).await.ok();

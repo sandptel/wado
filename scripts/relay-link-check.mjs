@@ -188,11 +188,16 @@ const rejoins = (s) => s.sent.filter((m) => m.type === "session_rejoin").length;
   const back = sockets[sockets.length - 1];
   check("a reconnect uses a new socket", back !== sockets[0], true);
   back.accept();
-  check("the reconnect asks about the session", started(back), 1);
+  // **Rejoin, not start.** `session_start` at a live daemon is what used to make a reconnect
+  // indistinguishable from a fresh session in the traffic itself — the daemon's own guard
+  // happened to save it, but nothing forced the request to say what it actually meant. Now the
+  // reconnect asks the honest question directly.
+  check("the reconnect rejoins rather than restarting", rejoins(back), 1);
+  check("…and does not ask to start a fresh session", started(back), 0);
   check("…and asks nothing of the dead socket", started(sockets[0]), 1);
 
-  back.deliver({ type: "session_alive", info: { encoder: { mode: "hardware" } } });
-  check("a surviving session is rejoined without prompting", rejoins(back), 1);
+  back.deliver({ type: "session_started", info: { encoder: { mode: "hardware" } } });
+  check("a surviving session comes back without prompting", W.sessionOn, true);
   check("…and the prompt is never raised", events.filter((e) => e === "emit:sessionAlive").length, 0);
 
   // The thing a captured `ws` gets wrong: a handler that runs after the reconnect must write to
@@ -217,7 +222,7 @@ const rejoins = (s) => s.sent.filter((m) => m.type === "session_rejoin").length;
   back.accept();
   back.deliver({ type: "session_error", message: "the session ended before you could rejoin it" });
   check("an expired session clears sessionOn", W.sessionOn, false);
-  check("…and asks for a fresh one rather than renegotiating forever", started(back), 2);
+  check("…and asks for a fresh one rather than renegotiating forever", started(back), 1);
 }
 
 // ── 6. A request that outlives its socket rejects instead of hanging ─────────
