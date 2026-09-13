@@ -69,6 +69,22 @@ W.reconfigure = (config) => {
   return false;
 };
 
+// Tell the daemon when the page goes off screen and when it comes back.
+//
+// This is the cheapest large win in the whole stack: a hidden tab still holds a live peer
+// connection and still receives RTP, and the browser discards all of it. Without this the daemon
+// renders, encodes and transmits the full stream to something nobody can see — measured
+// 2026-09-13 at 11.9 Mbps out and 65 kbps reaching the decoder, on mobile data.
+//
+// `visibilitychange` and not `pagehide`: pagehide means the page may be going away, which is a
+// different question and one this project has already got wrong once (see the note above).
+document.addEventListener("visibilitychange", () => {
+  if (!W.sessionOn || !W.relayMode) return;
+  const visible = !document.hidden;
+  if (W.rlog) W.rlog("page is now " + (visible ? "visible" : "hidden"));
+  if (W.relayVisible) W.relayVisible(visible);
+});
+
 W.stopSession = async () => {
   W.sessionOn = false;
   W.wake.release();

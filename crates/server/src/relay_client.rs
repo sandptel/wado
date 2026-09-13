@@ -706,6 +706,10 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 send_relay(&out_tx, &RelayMsg::SessionStopped).await.ok();
             }
 
+            RelayMsg::ViewerVisible { visible } => {
+                let _ = ctx.cmd_tx.send(CompositorCommand::ViewerVisible(visible));
+            }
+
             RelayMsg::ViewerStrain { strained } => {
                 // Straight through to the compositor. No rate limiting: the client sends this
                 // only when its settled verdict changes, and the render loop reads it once per

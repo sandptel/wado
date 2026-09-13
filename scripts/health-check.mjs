@@ -311,5 +311,43 @@ W.setShedding(4);
 }
 W.setShedding(1);
 
+// ── A hidden page has nothing useful to say ─────────────────────────────────
+//
+// Measured live 2026-09-13 12:34:57 with the page hidden: `bad network — only 65 kbps arriving
+// of 11.9 Mbps the server actually sent`. True as stated, and completely the wrong conclusion —
+// the bytes reached the browser and the browser discarded them, because nobody was watching.
+{
+  globalThis.document = { visibilityState: "visible", hasFocus: () => true };
+
+  // First make it strain while visible, so there is a flag to withdraw.
+  strains = [];
+  const behind = { fps: 15, ping: 27, dec: 40.0, jitter: 3, kbps: 7800, lossPct: 0.0,
+                   decodeDropPct: 0.0, availableKbps: 20000 };
+  check("a strained visible page reports it", T, behind, "your device", "bad");
+  if (strains[strains.length - 1] !== true) {
+    failures++; console.log(`FAIL expected a strain report while visible, got ${JSON.stringify(strains)}`);
+  }
+
+  // Now hide it. The throttled numbers must not produce a verdict at all.
+  globalThis.document.visibilityState = "hidden";
+  strains = [];
+  const hidden = { fps: 73, ping: 35, dec: 12.3, jitter: 4, kbps: 65, lossPct: 0.0,
+                   decodeDropPct: 0.0, availableKbps: 55, targetFps: T.fps };
+  for (let i = 0; i < 9; i++) W.health(hidden);
+  if (!(out.state === "ok" && out.side === "not watching")) {
+    failures++;
+    console.log(`FAIL a hidden page must not produce a verdict: got ${out.state}/${out.side} "${out.detail}"`);
+  } else {
+    console.log("ok   a hidden page reports 'not watching', not a fault");
+  }
+  if (strains[strains.length - 1] !== false) {
+    failures++;
+    console.log(`FAIL a hidden page must withdraw the strain flag, got ${JSON.stringify(strains)}`);
+  } else {
+    console.log("ok   …and withdraws the strain flag so the compositor stops shedding");
+  }
+  delete globalThis.document;
+}
+
 console.log(failures ? `\n${failures} FAILED` : "\nall passed");
 process.exit(failures ? 1 : 0);

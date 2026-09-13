@@ -322,6 +322,22 @@ pub enum RelayMsg {
     ViewerStrain {
         strained: bool,
     },
+    /// Whether anyone is actually looking at the page — client → server.
+    ///
+    /// A backgrounded tab or a locked screen still holds a live peer connection and still
+    /// receives RTP; the browser simply stops pulling frames and discards them. Measured
+    /// 2026-09-13 12:34:57: **11.9 Mbps leaving the daemon, 65 kbps reaching the decoder**, with
+    /// the page hidden. That is the user's mobile data and this machine's encoder spent on
+    /// something nobody can see.
+    ///
+    /// The server cannot observe it — a hidden page is indistinguishable from a watched one at
+    /// the transport layer — so, like [`RelayMsg::ViewerStrain`], it has to be told.
+    ///
+    /// **State, not an event.** Sent on change and once on attach, so a viewer that connects
+    /// while hidden is not rendered for either.
+    ViewerVisible {
+        visible: bool,
+    },
     /// One diagnostic line from the browser, client → server. The phone's console is
     /// unreachable during a field test, so the client ships what it sees — ICE candidate
     /// types above all — to the server, which logs it.

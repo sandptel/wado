@@ -78,6 +78,13 @@ pub enum CompositorCommand {
     /// The direct HTTP transport never sends it, and so keeps its old always-rendering
     /// behaviour rather than depending on a message it does not know to send.
     ViewerAttached(bool),
+    /// Whether the viewer's page is actually on screen — see [`wado_protocol::RelayMsg::ViewerVisible`].
+    ///
+    /// Separate from [`CompositorCommand::ViewerAttached`] rather than folded into it, because
+    /// they are two different facts: the media path being up, and a human looking at it. One
+    /// flag would mean a visibility change could clobber a peer-connection state, and vice
+    /// versa. The render tick requires both.
+    ViewerVisible(bool),
 }
 
 /// Run one command on the calloop thread. `frame_tx` is the pump sender, cloned
@@ -109,6 +116,9 @@ pub fn handle_command(state: &mut Wado, cmd: CompositorCommand, frame_tx: &mpsc:
         CompositorCommand::ForceKeyframe => headless::force_keyframe(state),
         CompositorCommand::ViewerAttached(attached) => {
             headless::set_viewer_attached(state, attached)
+        }
+        CompositorCommand::ViewerVisible(visible) => {
+            headless::set_viewer_visible(state, visible)
         }
         CompositorCommand::ViewerStrain(strained) => {
             if state.viewer_strained != strained {
