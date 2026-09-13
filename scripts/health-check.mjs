@@ -39,7 +39,10 @@ const check = (name, target, snapshot, wantSide, wantState, sent) => {
   // A healthy stream never carries a suggestion, and a fault the *viewer* can do something
   // about always does. "the server" deliberately carries none: no setting on this phone fixes
   // a compositor that stopped producing frames, and offering one would be a lie.
-  const wantFix = out.state !== "ok" && out.side !== "the server";
+  // "settling" joins "the server" in carrying no suggestion, and for the same reason: the
+  // jitter buffer drains on its own and no setting on this phone drains it faster. See
+  // plan/sync.md §1b.
+  const wantFix = out.state !== "ok" && out.side !== "the server" && out.side !== "settling";
   if (ok && wantFix !== (out.fix !== "")) {
     failures++; console.log(`FAIL ${name}: fix=${JSON.stringify(out.fix)} for ${out.state}/${out.side}`); return;
   }
@@ -280,6 +283,38 @@ check("a starved decoder is not the phone's fault", T,
 const dup = logged.findIndex((l, i) => i > 0 && l === logged[i - 1] && l !== SESSION_MARK);
 if (dup > 0) { failures++; console.log(`FAIL rlog: line ${dup} repeats the one before it`); }
 else console.log(`ok   relayed ${logged.length} verdict lines, no consecutive repeats`);
+
+// ── Latency that no rate metric can see ──────────────────────────────────────
+//
+// The field trace of 2026-09-13, reduced to one case: full frame rate, healthy ping, no loss,
+// nothing dropped — and 50 ms of playout buffer. Before this rule the strip said "healthy" and
+// the viewer was six frame periods behind their own finger at 120 fps.
+const SETTLING = { fps: 119, ping: 31, jbuf: 50, jtarget: 54, dec: 5.5, jitter: 4, kbps: 3000,
+                   lossPct: 0.0, decodeDropPct: 0.0, availableKbps: 20000 };
+check("a full-rate stream can still be 50 ms behind", { kbps: 3000, fps: 120 }, SETTLING,
+      "settling", "warn", 3000);
+
+// It must not survive the buffer draining — this is the thing that clears on its own, and a
+// verdict that latched would be worse than the one it replaced.
+check("…and clears when the buffer drains", { kbps: 3000, fps: 120 },
+      { ...SETTLING, jbuf: 22, jtarget: 25 }, "healthy", "ok", 3000);
+
+// A real fault outranks it. `worse()` is ranked, but the ordering only holds if the buffer rule
+// stays at `warn` — promoting it to `bad` would let a settling connection mask a dead encoder.
+check("a real fault outranks the settling notice", { kbps: 8000, fps: 90 },
+      { fps: 20, ping: 30, jbuf: 50, jtarget: 54, dec: 4.0, jitter: 3, kbps: 500,
+        lossPct: 0.0, decodeDropPct: 0, availableKbps: 20000 }, "the server", "bad", null);
+
+// Nothing about a held buffer is the phone's fault, so it must never ask for a shed. Shedding
+// would not drain a queue held for jitter — it would just lower the frame rate as well.
+{
+  strains = [];
+  W.setTargetKbps(3000); W.setSentKbps(3000);
+  for (let i = 0; i < 9; i++) W.health({ ...SETTLING, targetFps: 120 });
+  const ok = strains.length === 0;
+  if (!ok) { failures++; console.log(`FAIL a settling buffer asks for no shed: ${JSON.stringify(strains)}`); }
+  else console.log("ok   a settling buffer asks for no shed");
+}
 
 // ── The discriminator: what was sent, versus what arrived ────────────────────
 //
