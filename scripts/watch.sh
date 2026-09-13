@@ -48,6 +48,11 @@ function say(s) { print t() " " s; fflush() }
 /browser: ANOMALY/ {
   line=$0
   sub(/.*browser: ANOMALY /,"")
+  # A hidden page reports fps=0 and kbps=0 by design, since the visibility pause landed: the
+  # daemon stops rendering entirely for a viewer that is not looking. That is the fix working,
+  # not a fault. Relaying it every fifteen seconds buries whatever happens next, which is the
+  # one thing worth seeing.
+  if ($0 ~ /vis=hidden/) next
   # A sustained fault reports once per 15 s, not once per second. The client emits a line every
   # tick while anything is anomalous, and relaying all of them buries the *next* distinct event
   # — which is the one that says whether it recovered or changed side.
