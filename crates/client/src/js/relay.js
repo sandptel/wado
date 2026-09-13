@@ -286,9 +286,26 @@ W.relayOn("session_reconfigured", (msg) => {
   stagebar("Streaming (relay).");
 });
 
+// The daemon's wording for "I do not know that message", produced in `relay_client.rs` where the
+// JSON fails to parse. `scripts/relay-link-check.mjs` reads the server source so a rename fails
+// there rather than silently turning this guard off.
+const UNKNOWN_MSG_RE = /could not understand that message/i;
+
 W.relayOn("session_error", (msg) => {
   clearSessionWait();
   const why = msg.message || "unknown";
+  // **A daemon that is older than this client is not a session failure.**
+  //
+  // Every message this client sends optimistically — `viewer_visible` is the first, and there
+  // will be more — is an unknown variant to a daemon that predates it, and the hardening added
+  // hours earlier makes the daemon answer rather than stay silent. That answer arriving as a
+  // `session_error` used to clear `session_on` and throw the log console open, so a viewer on a
+  // new client and an old daemon would have their UI torn down the first time they switched
+  // apps. The session is fine; one optional message was not understood.
+  if (UNKNOWN_MSG_RE.test(why)) {
+    rlog("the daemon did not understand one of our messages (it is older than this client): " + why);
+    return;
+  }
   // The resume case needs its own branch: `sessionOn` deliberately stays true across an outage
   // now, so a client whose session *did* expire would otherwise renegotiate forever against
   // something that is gone. Clear the flag and ask for a fresh one.
