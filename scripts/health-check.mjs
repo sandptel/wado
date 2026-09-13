@@ -18,6 +18,11 @@ W.relayStrain = (b) => strains.push(b);   // what would go up the wire to the da
 const emit = (m) => { out = m; };
 new Function("W", "emit", src)(W, emit);
 
+// See the note on `dup` at the bottom: a session boundary must break the repeat comparison.
+const SESSION_MARK = "--- new session ---";
+const rawSetTargetKbps = W.setTargetKbps;
+W.setTargetKbps = (n) => { logged.push(SESSION_MARK); rawSetTargetKbps(n); };
+
 let failures = 0;
 // `sent` is what the daemon reports it actually put on the wire, kbps — `undefined` means it has
 // not said. It is applied *after* `setTargetKbps`, because starting a session clears the last
@@ -131,7 +136,12 @@ check("a starved decoder is not the phone's fault", T,
   // already applied by the time strain is read.
   strains = [];
   W.setTargetKbps(T.kbps);
-  const near = (dec) => ({ fps: 88, ping: 30, dec, jitter: 4, kbps: 7800, lossPct: 0.0,
+  // `fps: 60` against a target of 90 is what makes this decoder genuinely behind. It used to be
+  // 88, which is a decoder keeping up — and since `keepingUp` landed, keeping up is no longer
+  // saturation however long each frame takes, so the old snapshot correctly reports nothing and
+  // could not exercise the flap at all. The property under test is unchanged: a settled verdict
+  // must not flip because this tick's reading crossed a line.
+  const near = (dec) => ({ fps: 60, ping: 30, dec, jitter: 4, kbps: 7800, lossPct: 0.0,
                            decodeDropPct: 0.0, availableKbps: 20000, targetFps: T.fps });
   // Budget at 90 fps is 11.1 ms, so the device rule fires at 10.0 ms. The run below settles the
   // verdict to "your device" and then dips under that line every few ticks — which is what a
@@ -144,6 +154,42 @@ check("a starved decoder is not the phone's fault", T,
     W.health(near(dec));
   }
   want("a decode time dipping under its budget does not flap the flag", strains, [true]);
+
+  // ── Latency is not saturation ────────────────────────────────────────────
+  //
+  // The live false positive of 2026-09-13 12:23:03: `bad your device, decode 16.4 ms against a
+  // 11.1 ms budget` reported strain and shed the compositor to 1-in-2, while the same snapshot
+  // said `fps=90` of 90 with `framesDropped` flat. A pipelined hardware decoder holds per-frame
+  // latency above the frame interval and still sustains full throughput; reading that as
+  // saturation halves the frame rate of a phone that is not behind by a single frame.
+  //
+  // Ordering note: the healthy-ending case goes **last**. Every scenario logs an `ok healthy`
+  // line when `setTargetKbps` resets the verdict, so two scenarios in a row that end healthy
+  // leave two identical adjacent lines and trip the repeat check below for no real reason.
+
+  // The case the whole mechanism exists for still fires: a phone decoding a fraction of what it
+  // is sent fails `keepingUp` on throughput, whatever its per-frame time says.
+  strains = [];
+  W.setTargetKbps(T.kbps);
+  run(T, { fps: 15, ping: 27, dec: 16.4, jitter: 3, kbps: 7800, lossPct: 0.0,
+           decodeDropPct: 0.0, availableKbps: 20000 });
+  want("a decoder that is actually behind still reports strain", strains, [true]);
+
+  // Frames dropped after arriving are the other half of the evidence — a decoder can hold the
+  // frame rate by discarding, and that is still saturation. A different decode figure from the
+  // case above so the two verdict lines are distinguishable in the log.
+  strains = [];
+  W.setTargetKbps(T.kbps);
+  run(T, { fps: 90, ping: 27, dec: 22.0, jitter: 3, kbps: 7800, lossPct: 0.0,
+           decodeDropPct: 12.0, availableKbps: 20000 });
+  want("a decoder holding its rate by dropping still reports strain", strains, [true]);
+
+  // And the false positive itself: keeping up, so not saturated, so no strain and no shed.
+  strains = [];
+  W.setTargetKbps(T.kbps);
+  run(T, { fps: 90, ping: 27, dec: 16.4, jitter: 3, kbps: 7800, lossPct: 0.0,
+           decodeDropPct: 0.0, availableKbps: 20000 });
+  want("a pipelined decoder keeping up reports no strain", strains, []);
 
   // And it clears: otherwise the daemon sheds for the rest of the session on one bad minute.
   strains = [];
@@ -199,7 +245,12 @@ check("a starved decoder is not the phone's fault", T,
 // The relay is "on change only", and the invariant that actually matters is that no two
 // consecutive lines are the same — a count is brittle, because a session legitimately logs a
 // settled verdict after the reset each case performs.
-const dup = logged.findIndex((l, i) => i > 0 && l === logged[i - 1]);
+//
+// **Within a session.** `setTargetKbps` clears `lastVerdict`, so two *different* sessions that
+// both settle on the same wording are not a repetition bug — and two that both end healthy are
+// the common case. The wrapper below drops a marker into the log at every reset so a comparison
+// can never straddle one; without it, adding any scenario that ends healthy trips this check.
+const dup = logged.findIndex((l, i) => i > 0 && l === logged[i - 1] && l !== SESSION_MARK);
 if (dup > 0) { failures++; console.log(`FAIL rlog: line ${dup} repeats the one before it`); }
 else console.log(`ok   relayed ${logged.length} verdict lines, no consecutive repeats`);
 

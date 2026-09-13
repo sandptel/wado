@@ -90,6 +90,12 @@ const JITTER_WARN = 30;                       // ms
 const DEVICE_DROP_WARN = 2.0;                 // percent of frames dropped after arrival
 // Decode has no headroom left at the frame budget; past this a backlog can never drain.
 const DECODE_BUDGET_FRAC = 0.9;
+
+// How close to the offered frame rate counts as "keeping up". A decoder delivering this much of
+// what it is sent is not saturated whatever its per-frame latency says — see the note on
+// `keepingUp`. Ten percent of slack, because the two rates are sampled over different windows
+// and an exact match is not something either counter promises.
+const KEEPING_UP_FRAC = 0.9;
 // Arriving at less than this fraction of what was asked for, with nothing lost, means the far
 // end never sent it. Generous, because a still screen legitimately encodes to almost nothing —
 // which is why `fps` has to be low as well before this fires.
@@ -170,7 +176,27 @@ W.health = (s) => {
     if (s.decodeDropPct !== null && s.decodeDropPct >= DEVICE_DROP_WARN) {
       worse("warn", "your device", s.decodeDropPct.toFixed(1) + "% of frames dropped after arriving");
     }
-    if (s.dec !== null && budget !== null && s.dec >= budget * DECODE_BUDGET_FRAC) {
+    // **Decode time is latency, not capacity.** A serial decoder that takes longer than a frame
+    // interval per frame cannot keep up, and that is the assumption this rule was written on. A
+    // *pipelined* hardware decoder breaks it: it can hold 50 ms of per-frame latency while
+    // sustaining 90 frames a second across several threads, and reading that as saturation makes
+    // the strip accuse a phone that is keeping up perfectly.
+    //
+    // Measured live 2026-09-13 12:23:03 — `bad your device, decode 16.4 ms against 11.1 ms`,
+    // which reported strain and shed the compositor to 1-in-2, while the same snapshot said
+    // `fps=90` against a target of 90 with `framesDropped` flat at 134. We halved the frame rate
+    // of a decoder that was not behind by a single frame. `watch.sh` had already spotted the
+    // ambiguity and said so in as many words — *"past capacity, or decoding on several
+    // threads"* — but the strip never learned to tell them apart.
+    //
+    // So saturation now needs evidence of actually falling behind, and the snapshot already
+    // carries both kinds: the decoded frame rate, and frames dropped after arriving. The case
+    // this whole mechanism was built for — a phone decoding 15 of the 90 frames a second it is
+    // sent — fails `keepingUp` on the first term and still fires.
+    const keepingUp =
+      fps !== null && effFps > 0 && fps >= effFps * KEEPING_UP_FRAC &&
+      (s.decodeDropPct === null || s.decodeDropPct < DEVICE_DROP_WARN);
+    if (!keepingUp && s.dec !== null && budget !== null && s.dec >= budget * DECODE_BUDGET_FRAC) {
       worse(s.dec >= budget ? "bad" : "warn", "your device",
             "decode " + s.dec.toFixed(1) + " ms against a " + budget.toFixed(1) + " ms budget");
     }

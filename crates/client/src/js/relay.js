@@ -233,6 +233,10 @@ W.relayOn("session_started", async (msg) => {
   }
   W.sessionOn = true;
   markWatching(true);
+  // Tell the Rust UI, which otherwise only learns about a session from its own Start button —
+  // and a reload-resume or a reconnect-rejoin never presses it. See the `sessionOn` arm in
+  // `bridge.rs` for what that looked like from the viewer's side.
+  emit({ type: "sessionOn" });
   W._relayStage = 3; phase(3, "");
   rlog("session ready — encoder " + ((msg.info && msg.info.encoder && msg.info.encoder.mode) || "?"));
   stagebar("Session running — negotiating WebRTC…");
@@ -292,6 +296,7 @@ W.relayOn("session_error", (msg) => {
     W._relayResuming = false;
     W.sessionOn = false;
     markWatching(false);
+    emit({ type: "sessionOff" });
     if (!W._relayWanted || !W._relayConfig) {
       // A cold page load whose crumb turned out to be stale. There is no config here to start
       // from and nobody has pressed anything, so the honest thing is to go quiet and wait.
@@ -322,6 +327,7 @@ W.relayOn("session_stopped", () => {
   if (W.sessionOn) {
     W.sessionOn = false;
     markWatching(false);
+    emit({ type: "sessionOff" });
     stagebar("Session stopped.");
   }
 });

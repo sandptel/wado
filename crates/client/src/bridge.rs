@@ -224,6 +224,29 @@ pub fn run(ui: Ui) {
                 "sessionAliveCleared" => {
                     live.session_alive.set(None);
                 }
+                // **The session came up without the Start button being pressed.**
+                //
+                // `session_on` used to be set in exactly one place — `actions::start` — which was
+                // fine while pressing Start was the only way a session began. It is not any more:
+                // a page reload now takes back a session that survived (the `wado.watching`
+                // crumb), and a reconnect rejoins one on its own. Neither goes through that
+                // button, so the UI sat there with Start enabled and Stop greyed out over a live,
+                // streaming session, and the viewer had to press Start to make the buttons agree
+                // with the picture they were already looking at.
+                //
+                // Reported by the user 2026-09-13: *"start and stop button status is not updated
+                // when page refresh occurs and I have to click start again to connect to already
+                // connected session"*.
+                "sessionOn" => {
+                    live.session_on.set(true);
+                }
+                // The other direction, which had the same hole: a session stopped by the daemon —
+                // the watchdog reaping it, or another viewer dropping it — left Stop enabled over
+                // nothing.
+                "sessionOff" => {
+                    live.session_on.set(false);
+                    live.clear_telemetry();
+                }
                 "encoder" => {
                     live.encoder_mode.set(string("mode"));
                     live.encoder_pipeline.set(string("pipeline"));
