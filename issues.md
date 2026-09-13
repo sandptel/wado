@@ -601,5 +601,23 @@ has genuinely improved, or for a different and faster device. Keeping the rate a
 recovery a fresh start is wrong in neither direction. `reset()` keeps its old meaning for a
 genuinely new session; three tests pin the difference.
 
+### The client half is covered by construction — checked, not assumed
+
+The client keeps its own copy of the divisor, and `setTargetKbps` resets it to 1. That runs on
+every `session_started`, **including a rejoin**, so for a moment after a reconnect the viewer
+believes it is being sent the full rate while the daemon is at 1-in-4 — which is precisely the
+mis-attribution the `Shedding` message was added to prevent.
+
+It does not bite, for two independent reasons, and both were verified rather than assumed:
+
+- the server sends the **current** divisor on attach (`shedding_tx.send(congestion.divisor())`)
+  and the forwarding task calls `rx.mark_changed()`, so an attaching viewer is told the live
+  value rather than waiting for the next change;
+- `setTargetKbps` also resets `warm`, and `WARMUP_TICKS` suppresses the verdict for five ticks
+  — far longer than the message takes to arrive.
+
+Worth knowing because the first of those is load-bearing: drop the `mark_changed()` and the
+window opens.
+
 ⚠️ **Committed, not deployed.** Shipping it needs a daemon restart, which kills the running
 session — the ceiling this branch cannot lift. Held until the user is idle.
