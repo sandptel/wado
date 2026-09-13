@@ -108,11 +108,20 @@ const STARVED_FRAC = 0.25;
 // numbers first.
 const TRUST_DECODER_FRAC = 0.6;
 
-// Playout buffer above which the delay is worth naming. `js/webrtc.js` asks for 20 ms, and a
-// settled link on this hardware sits near it; 40 is comfortably clear of normal variation while
-// still catching the 47-54 ms a fresh connection starts at. A threshold rather than a trend
-// because the user feels the level, not the slope.
-const JBUF_WARN = 40;
+// Playout buffer above which the delay is worth naming.
+//
+// **Scaled in frame periods, not milliseconds, and that is not decoration.** What the viewer
+// feels is how many frames behind their finger the picture is, and the same 50 ms is six frames
+// at 120 fps and one and a half at 30. A flat threshold gets this backwards at both ends: it
+// nags a 30 fps session about a buffer it cannot avoid, and — measured here — a *settled* 90 fps
+// session sits at `jbuf` 30-37, which a flat 40 would leave permanently one tick from warning.
+// A strip that always warns is the noise this file already refuses to produce elsewhere.
+//
+// So: four frame periods, with a floor so high frame rates do not make it hair-trigger. At
+// 120 fps that is the floor, 40 ms — the traced case started at 47-54 and fires. At 90 fps it is
+// 44 ms, so the settled 30-37 stays quiet and a genuine inflation still does not.
+const JBUF_WARN_MS = 40;
+const JBUF_WARN_FRAMES = 4;
 
 // Last value sent to the daemon, so only changes go up the wire. Starts `false` to match the
 // compositor, which clears `viewer_strained` both when a session starts and when a viewer
@@ -303,7 +312,10 @@ W.health = (s) => {
   // `warn`, never `bad`, and never a strain report: nothing is wrong with the phone, nothing is
   // wrong with the link, and shedding the frame rate would not shorten a queue that is being
   // held for jitter rather than filled by congestion. See plan/sync.md §1b.
-  if (s.jbuf !== null && s.jbuf >= JBUF_WARN) {
+  const jbufWarn = budget !== null
+    ? Math.max(JBUF_WARN_MS, budget * JBUF_WARN_FRAMES)
+    : JBUF_WARN_MS;
+  if (s.jbuf !== null && s.jbuf >= jbufWarn) {
     worse("warn", "settling", "the picture is about " + s.jbuf.toFixed(0) +
           " ms behind while the connection settles — this clears on its own");
   }

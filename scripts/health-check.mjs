@@ -299,6 +299,18 @@ check("a full-rate stream can still be 50 ms behind", { kbps: 3000, fps: 120 }, 
 check("…and clears when the buffer drains", { kbps: 3000, fps: 120 },
       { ...SETTLING, jbuf: 22, jtarget: 25 }, "healthy", "ok", 3000);
 
+// The scaling, against the two measurements that motivated it. A settled 90 fps session sits at
+// jbuf 30-37 on this hardware; a flat 40 ms threshold would have left it one tick from warning
+// forever, which is how a health strip teaches people to ignore it.
+check("a settled 90 fps buffer is not a warning", { kbps: 8000, fps: 90 },
+      { fps: 89, ping: 37, jbuf: 37, jtarget: 33, dec: 6.4, jitter: 3, kbps: 8000,
+        lossPct: 0.0, decodeDropPct: 0, availableKbps: 20000 }, "healthy", "ok", 8000);
+
+// …and the same absolute buffer at 120 fps is six frame periods, which is felt.
+check("the same 37 ms at 120 fps is not yet six frames either", { kbps: 8000, fps: 120 },
+      { fps: 119, ping: 31, jbuf: 37, jtarget: 33, dec: 5.5, jitter: 4, kbps: 8000,
+        lossPct: 0.0, decodeDropPct: 0, availableKbps: 20000 }, "healthy", "ok", 8000);
+
 // A real fault outranks it. `worse()` is ranked, but the ordering only holds if the buffer rule
 // stays at `warn` — promoting it to `bad` would let a settling connection mask a dead encoder.
 check("a real fault outranks the settling notice", { kbps: 8000, fps: 90 },
