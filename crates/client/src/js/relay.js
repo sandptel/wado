@@ -448,8 +448,7 @@ W._relayNegotiate = async () => {
   pc.ontrack = (ev) => {
     phase(4, "");
     rlog("track received — media is flowing");
-    const v = document.getElementById("wado-video");
-    if (v) v.srcObject = ev.streams[0];
+    W.attachStream(ev.streams[0]);
     // Without this the browser picks its own adaptive jitter buffer, which relay mode was
     // silently living with: measured 23-25 ms of pure queueing on the receiver, on a link
     // with 7-13 ms RTT and no packet loss. Direct mode has always set it here; this is the
