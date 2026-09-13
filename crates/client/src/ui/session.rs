@@ -65,25 +65,35 @@ pub fn render(ui: Ui) -> Element {
         select {
             value: "{(s.fps)()}", disabled: on,
             onchange: move |e| if let Ok(v) = e.value().parse() { s.fps.set(v) },
-            option { value: "30", "30" }
-            option { value: "60", "60" }
             // 90 is the useful middle rung, not a compromise: it cuts the pixel rate a
             // fifth below 120 — so every frame gets ~33% more bits at the same bitrate —
             // while keeping the 11.1 ms frame period well under the ~16.7 ms that 60 makes
             // visible as motion judder. Nothing in the pipeline needs a divisor of 60: the
             // render timer derives its period from fps directly.
-            option { value: "90", "90" }
-            option { value: "120", "120" }
+            //
+            // Each rung carries what it costs *on this screen*, because the warning under the
+            // picker was not enough. Measured 2026-09-13: a session ran at 120 fps on a 60 Hz
+            // phone for hours — `hz=60 ratio=2.00` — with half of every frame rendered,
+            // encoded, sent and decoded to be displayed nowhere. The hint saying so was on
+            // screen the entire time. Advice below a control is not a control; the consequence
+            // belongs in the option the user is actually reading.
+            for rung in [30u32, 60, 90, 120] {
+                option { key: "{rung}", value: "{rung}", "{fps_label(rung, (ui.live.refresh_hz)())}" }
+            }
         }
         // Measured, not guessed — there is no API for the refresh rate, so `js/refresh.js`
         // times requestAnimationFrame gaps. Worth showing because a rung above the panel's
         // rate is not a free upgrade: it splits the same bitrate across more frames the
         // display never shows, which is a quality loss for nothing.
-        if let Some(hz) = (ui.live.refresh_hz)() {
-            p { class: "hint",
-                "This screen refreshes at {hz} Hz."
-                if (s.fps)() > hz {
-                    " Above that, extra frames are never shown — and every frame gets fewer bits."
+        // The rung labels now carry the per-option consequence, so this says the thing they
+        // cannot: *why* an unshown frame is worse than merely wasted. The bitrate is fixed, so
+        // frames the screen cannot show still take their share of it.
+        if let Some(hz) = (ui.live.refresh_hz)().filter(|h| *h > 0) {
+            if (s.fps)() > hz {
+                p { class: "hint",
+                    "The bitrate is shared across every frame, including the ones this screen \
+                     has no refresh to show. Dropping to {hz} does not cost you anything you \
+                     can see — it gives the frames you *can* see the bits the others were taking."
                 }
             }
         }
@@ -189,5 +199,72 @@ pub fn render(ui: Ui) -> Element {
                 oninput: move |e| s.keyframe.set(e.value()),
             }
         }
+    }
+}
+
+/// What a frame-rate rung costs on the screen it will be shown on.
+///
+/// Three cases, and the middle one is the one nobody expects:
+///
+/// * **above the panel's rate** — the excess frames are not "extra smoothness", they are never
+///   displayed at all, and they take their share of a fixed bitrate with them. 120 on a 60 Hz
+///   panel throws away half of everything the pipeline does.
+/// * **at or below, dividing evenly** — every frame is held for a whole number of refreshes, so
+///   motion is even. This is what to pick.
+/// * **at or below, not dividing** — 60 on a 90 Hz panel alternates 2-refresh and 1-refresh
+///   frames. That is 3:2 pulldown, and it is visible as stutter to people who could not tell you
+///   why. Every number in the log looks perfect while it happens.
+///
+/// With no measurement yet (`None`) the rung is named and nothing is claimed.
+fn fps_label(rung: u32, hz: Option<u32>) -> String {
+    let Some(hz) = hz.filter(|h| *h > 0) else {
+        return rung.to_string();
+    };
+    if rung > hz {
+        // Integer percent of frames the panel has no refresh to show.
+        let wasted = (rung - hz) * 100 / rung;
+        format!("{rung} — {wasted}% never shown on this {hz} Hz screen")
+    } else if hz % rung == 0 {
+        format!("{rung} — even on this {hz} Hz screen")
+    } else {
+        format!("{rung} — uneven on this {hz} Hz screen")
+    }
+}
+
+#[cfg(test)]
+mod fps_label_tests {
+    use super::fps_label;
+
+    #[test]
+    fn unknown_panel_rate_claims_nothing() {
+        assert_eq!(fps_label(120, None), "120");
+        // A zero reading is a failed measurement, not a 0 Hz screen.
+        assert_eq!(fps_label(120, Some(0)), "120");
+    }
+
+    #[test]
+    fn above_the_panel_says_what_is_lost() {
+        // The case measured in the field: half of every frame discarded unseen.
+        assert_eq!(
+            fps_label(120, Some(60)),
+            "120 — 50% never shown on this 60 Hz screen"
+        );
+        assert_eq!(
+            fps_label(90, Some(60)),
+            "90 — 33% never shown on this 60 Hz screen"
+        );
+    }
+
+    #[test]
+    fn dividing_evenly_is_the_one_to_pick() {
+        assert_eq!(fps_label(60, Some(60)), "60 — even on this 60 Hz screen");
+        assert_eq!(fps_label(30, Some(60)), "30 — even on this 60 Hz screen");
+        assert_eq!(fps_label(90, Some(90)), "90 — even on this 90 Hz screen");
+    }
+
+    #[test]
+    fn below_but_not_dividing_is_the_trap() {
+        // 3:2 pulldown — alternating 2-refresh and 1-refresh frames.
+        assert_eq!(fps_label(60, Some(90)), "60 — uneven on this 90 Hz screen");
     }
 }
