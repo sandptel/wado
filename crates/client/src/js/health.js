@@ -227,9 +227,13 @@ W.health = (s) => {
   const gotKbps = s.kbps;                    // what the video track is actually receiving
   let state = "ok", side = "healthy", detail = "";
 
-  const worse = (st, sd, d) => {
+  // `cause` rides along so the suggestion can tell *which* network fault won. Lowering the
+  // frame rate is the right advice for a path that cannot carry the bitrate and useless advice
+  // for one that is simply far away — and the strip used to give it for both.
+  let cause = null;
+  const worse = (st, sd, d, c) => {
     const rank = { ok: 0, warn: 1, bad: 2 };
-    if (rank[st] > rank[state]) { state = st; side = sd; detail = d; }
+    if (rank[st] > rank[state]) { state = st; side = sd; detail = d; cause = c || null; }
   };
 
   // — network — loss and delay between the two ends.
@@ -238,7 +242,8 @@ W.health = (s) => {
           s.lossPct.toFixed(1) + "% packet loss");
   }
   if (s.ping !== null && s.ping >= RTT_WARN) {
-    worse(s.ping >= RTT_BAD ? "bad" : "warn", "network", "round trip " + s.ping.toFixed(0) + " ms");
+    worse(s.ping >= RTT_BAD ? "bad" : "warn", "network",
+          "round trip " + s.ping.toFixed(0) + " ms", "rtt");
   }
   if (s.jitter !== null && s.jitter >= JITTER_WARN) {
     worse("warn", "network", "jitter " + s.jitter.toFixed(0) + " ms");
@@ -369,7 +374,15 @@ W.health = (s) => {
     // Nothing deliberately for "the server": no setting on this phone fixes a compositor that
     // stopped producing, and offering one would send the viewer to change things at random.
     if (side === "your device") fix = "try " + lower + " fps";
-    else if (side === "network") fix = "try " + lower + " fps or a smaller resolution";
+    // Distance is not a setting. Measured live 2026-09-13 15:02:09 on a stalling mobile link:
+    // `bad network — round trip 811 ms (try 30 fps or a smaller resolution)` while 4.2 Mbps of
+    // 5.7 was arriving with no loss. Nothing about a lower frame rate shortens a round trip, and
+    // sending someone to degrade a picture that was fine is worse than saying nothing. Every
+    // other network fault here — loss, and a link that cannot carry the stream — *is* helped by
+    // a smaller stream, so the advice stays for those.
+    else if (side === "network" && cause !== "rtt") {
+      fix = "try " + lower + " fps or a smaller resolution";
+    }
   }
 
   // Hysteresis. A verdict has to hold for SETTLE_TICKS before it replaces the one on screen;

@@ -803,3 +803,34 @@ superseded, a first connect is unchanged.
 **Fourth instance this run** of two individually-correct behaviours composing into a defect
 (after I17, I19 and I22). It was visible only as a pair of log lines three seconds apart, and
 only on a link bad enough to make it matter.
+
+---
+
+## I25 — the strip told a viewer to lower their frame rate to fix a round trip
+
+**Observed live `2026-09-13 15:02:09`:**
+
+```
+✖ VERDICT  bad network — round trip 811 ms  (try 30 fps or a smaller resolution)
+           [got 4.2 Mbps of 5.7 Mbps, link 3.3 Mbps]
+```
+
+The verdict was correct: 811 ms round trip is bad, and it was genuinely the path. **The advice
+was useless.** 4.2 Mbps of 5.7 was arriving with zero loss and a 22 ms playout buffer — the
+picture was fine. Nothing about a lower frame rate or a smaller resolution shortens a round trip,
+so the suggestion sends the viewer to degrade something that was working, for no gain.
+
+**Cause.** The suggestion was keyed on the *side* only. Every network fault got the same line,
+whether it came from packet loss, a link that cannot carry the stream (both genuinely helped by a
+smaller stream) or plain distance (helped by nothing local).
+
+**Fixed** by carrying a `cause` alongside the verdict and withholding the suggestion when the
+network verdict was driven by RTT. The other network faults keep it.
+
+Two cases in `scripts/health-check.mjs`: a far-away path is named with nothing to change, and a
+lossy path still gets the advice that helps.
+
+**Context worth keeping:** the RTT spikes that produced this were the *precursor to a
+disconnect*, not a standing condition — p50 33 ms, p90 47, p99 70, max 238 across the session,
+with the 811 and 1156 ms readings landing seconds before the link dropped at 15:02:18. A stalling
+mobile link shows up as a latency excursion before it shows up as a disconnect.

@@ -46,7 +46,12 @@ const check = (name, target, snapshot, wantSide, wantState, sent) => {
   // "settling" joins "the server" in carrying no suggestion, and for the same reason: the
   // jitter buffer drains on its own and no setting on this phone drains it faster. See
   // plan/sync.md §1b.
-  const wantFix = out.state !== "ok" && out.side !== "the server" && out.side !== "settling";
+  // A latency-driven network fault carries no suggestion either: no setting on this phone
+  // shortens a round trip. Detected the same way the rule is written — by the detail it
+  // produced — so this stays honest if the wording moves.
+  const rttDriven = out.side === "network" && out.detail.startsWith("round trip");
+  const wantFix = out.state !== "ok" && out.side !== "the server" &&
+                  out.side !== "settling" && !rttDriven;
   if (ok && wantFix !== (out.fix !== "")) {
     failures++; console.log(`FAIL ${name}: fix=${JSON.stringify(out.fix)} for ${out.state}/${out.side}`); return;
   }
@@ -303,6 +308,20 @@ check("a starved decoder is not the phone's fault", T,
 const dup = logged.findIndex((l, i) => i > 0 && l === logged[i - 1] && l !== SESSION_MARK);
 if (dup > 0) { failures++; console.log(`FAIL rlog: line ${dup} repeats the one before it`); }
 else console.log(`ok   relayed ${logged.length} verdict lines, no consecutive repeats`);
+
+// ── Distance is not a setting ────────────────────────────────────────────────
+//
+// Measured live 2026-09-13 15:02:09 on a stalling mobile link: "bad network — round trip 811 ms
+// (try 30 fps or a smaller resolution)" while 4.2 Mbps of 5.7 was arriving with zero loss. The
+// verdict was right and the advice was useless — degrading a picture that was fine.
+check("a far-away path is named, with nothing to change", { kbps: 5676, fps: 60 },
+      { fps: 60, ping: 811, jbuf: 22, dec: 10.5, jitter: 4, kbps: 4200, lossPct: 0.0,
+        decodeDropPct: 0, availableKbps: 20000 }, "network", "bad", 4200);
+
+// …but a network fault that a smaller stream *does* help still says so.
+check("a lossy path still gets the advice that helps", { kbps: 8000, fps: 90 },
+      { fps: 90, ping: 30, dec: 6.0, jitter: 4, kbps: 7000, lossPct: 6.0,
+        decodeDropPct: 0, availableKbps: 20000 }, "network", "bad", 7800);
 
 // ── A connection that is not up has no verdict to give ───────────────────────
 //
