@@ -133,8 +133,10 @@ function reportStrain(strained) {
   // site so *every* path into strain obeys it, including the `pageHidden` clear below.
   if (W.fpsLock) strained = false;
   if (strained === sentStrain) return;
-  sentStrain = strained;
-  if (W.relayStrain) W.relayStrain(strained);
+  // Latched on the send, not the attempt — same reason as `sentVisible` in js/relay.js, and the
+  // same bug was here: a report that never left the browser used to block every later one, so a
+  // strain that arose while the link was blipping was never heard and never retried.
+  if (W.relayStrain && W.relayStrain(strained)) sentStrain = strained;
 }
 
 // Is anyone actually looking at this page?
