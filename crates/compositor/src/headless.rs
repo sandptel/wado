@@ -841,10 +841,12 @@ pub fn set_viewer_attached(state: &mut Wado, attached: bool) {
     }
     state.viewer_attached = attached;
     if attached {
-        // A fresh decoder has no history, and none of the old one's is about it.
-        state.congestion.reset();
+        // **Not** a full reset — see `Congestion::reattach`. Resetting here meant every
+        // reconnect re-flooded the viewer at the full frame rate, and on the mobile links this
+        // branch exists for that is once every couple of minutes.
+        state.congestion.reattach();
         state.viewer_strained = false;
-        let _ = state.shedding_tx.send(1);
+        let _ = state.shedding_tx.send(state.congestion.divisor());
         // It also has no reference frame, so without this it shows black until the next
         // periodic keyframe — up to two seconds on a reattach that otherwise worked.
         force_keyframe(state);
