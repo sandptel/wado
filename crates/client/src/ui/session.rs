@@ -88,6 +88,29 @@ pub fn render(ui: Ui) -> Element {
             }
         }
 
+        // Not disabled while a session runs, and that is the point: this is what you reach for
+        // *when* the rate starts walking. The flag is browser-side, so it takes effect on the
+        // next health tick with no reconfigure and no restart. See plan/sync.md §1.
+        label {
+            class: "check",
+            input {
+                r#type: "checkbox", checked: (s.fps_lock)(),
+                onchange: move |e| {
+                    let on = e.checked();
+                    s.fps_lock.set(on);
+                    crate::bridge::call(format!("window.__wado.setFpsLock({on});"));
+                }
+            }
+            "Lock frame rate (like vsync)"
+        }
+        p { class: "hint",
+            "Normally wado lowers the frame rate when your connection cannot keep up, so what \
+             arrives stays smooth at a slower rate. Locked, it never does: you keep the rate \
+             above and congestion shows up as stutter instead. Worth it when the rate walking \
+             up and down is more distracting than the odd dropped frame — which is the usual \
+             case on mobile data at 90 or 120."
+        }
+
         label { "Quality" }
         select {
             value: "{(s.quality)()}", disabled: on,

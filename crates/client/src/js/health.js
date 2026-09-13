@@ -113,6 +113,10 @@ const TRUST_DECODER_FRAC = 0.6;
 // rejoins a running one — so a healthy session sends nothing at all.
 let sentStrain = false;
 function reportStrain(strained) {
+  // The frame-rate lock, in one line: the viewer keeps forming its verdict and keeps showing
+  // it, but stops asking the compositor to act on it. Written here rather than at the call
+  // site so *every* path into strain obeys it, including the `pageHidden` clear below.
+  if (W.fpsLock) strained = false;
   if (strained === sentStrain) return;
   sentStrain = strained;
   if (W.relayStrain) W.relayStrain(strained);

@@ -37,6 +37,9 @@ W.mouseDragging = false;      // a move-mode mouse drag is in progress
 
 // Settings state (mirrored from the Rust UI via the setters in settings.js / overlay.js).
 W.moveMode = false;
+// Frame-rate lock ("like vsync"): when on, this viewer never reports strain, so the
+// compositor's shed never moves the output rate. See plan/sync.md §1.
+W.fpsLock = false;
 W.showTouches = false;
 W.scrollSpeed = 1.0;
 W.naturalScroll = false;

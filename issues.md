@@ -664,3 +664,29 @@ moved 64 → 112 at the transition — what was already in flight — and then s
 **Still unexercised:** the return path. `set_viewer_visible(true)` forces a keyframe so the
 picture should resume within a frame rather than waiting up to two seconds for the next periodic
 IDR; that has not been observed yet.
+
+---
+
+## I21 — `surface missing from known popups`, logged as ERROR, ~15× a minute
+
+**Observed `2026-09-13 13:27:34` onwards**, repeating in bursts while a Chromium session was
+running:
+
+```
+✖ ERROR  smithay::wayland::shell::xdg: surface missing from known popups
+```
+
+Not ours — the message comes from Smithay's `xdg_shell` handler, at the point where a popup is
+destroyed and the surface is no longer in its tracked set. The likely cause is ordinary and
+benign: Chromium tears down a popup (a menu, an autofill dropdown, a tooltip) and the destroy
+arrives after the surface has already gone, which is a race Smithay logs rather than handles.
+
+**Why it is here rather than ignored:** it is logged at **ERROR**, and an ERROR that fires
+fifteen times a minute in normal operation is a monitor that has stopped being able to warn
+anyone. `scripts/watch.sh` surfaces it as an anomaly, so every menu click in Chrome now reads as
+a fault. Whatever the verdict on the underlying race, the log level is wrong for us.
+
+**Unfixed. Not investigated.** No visible symptom: menus open and close correctly, no client was
+disconnected (`ClientData::disconnected` is now instrumented and stayed quiet through the burst),
+no crash. Next step is to confirm it is popup teardown rather than a popup we failed to register
+— if it is the latter, popup *positioning* is probably also wrong and nobody has noticed.

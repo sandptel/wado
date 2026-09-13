@@ -47,6 +47,7 @@ pub struct Settings {
     pub custom_h: Signal<u32>,
     pub scale: Signal<String>,
     pub fps: Signal<u32>,
+    pub fps_lock: Signal<bool>,
     pub quality: Signal<String>,
     pub bitrate: Signal<u32>,
     pub encoder_backend: Signal<String>,
@@ -106,6 +107,7 @@ impl Settings {
             // which the bridge has not reported yet. Replaced in `main`'s effect.
             scale: use_signal(|| SCALE_UNSET.to_string()),
             fps: use_signal(|| 60),
+            fps_lock: use_signal(|| false),
             quality: use_signal(|| "balanced".to_string()),
             bitrate: use_signal(|| 4000),
             encoder_backend: use_signal(|| "auto".to_string()),

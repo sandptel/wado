@@ -21,6 +21,9 @@ use crate::{bridge, state::Ui};
 pub fn apply(ui: Ui) {
     let s = ui.set;
     bridge::call(format!("window.__wado.setMoveMode({});", (s.move_mode)()));
+    // Lives in the Session panel because it belongs beside FPS, but it is a browser-side
+    // flag like the two below — so it is restored from here, not at Start.
+    bridge::call(format!("window.__wado.setFpsLock({});", (s.fps_lock)()));
     bridge::call(format!(
         "window.__wado.setScroll({}, {});",
         (s.scroll_speed)(),
