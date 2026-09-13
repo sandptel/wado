@@ -141,6 +141,16 @@ W.startStats = (pc) => {
         " (+" + lossDelta + ") framesDropped=" + (dropped === null ? "?" : dropped) +
         " framesReceived=" + (recv === null ? "?" : recv) +
         " jtarget=" + n(jtarget, 0) + "ms dec=" + n(dec, 2) + "ms" +
+        // The panel's own refresh rate, and the session's frame rate as a multiple of it.
+        // `js/refresh.js` has measured this since long before it mattered and it has never left
+        // the browser — it feeds the fps picker as a hint and nothing else.
+        //
+        // Why it belongs here: a session rate that does not divide the panel rate evenly judders
+        // while every other number on this line looks healthy, and a session rate *above* the
+        // panel rate is frames that cannot physically be shown — bitrate, encode and decode spent
+        // on nothing. Neither is visible in fps, decode time or loss. See the fps/refresh entry in
+        // plan/TODO.md; this is its step 1, deliberately measurement-only.
+        (W.refreshHz ? " hz=" + W.refreshHz + " ratio=" + (targetFps / W.refreshHz).toFixed(2) : "") +
         // **Whether anyone is looking at this page.** A backgrounded tab or a locked screen
         // still receives RTP and still counts `framesReceived`, but the browser decodes it
         // lazily — which reads in every other field as a decoder that has collapsed. Measured
