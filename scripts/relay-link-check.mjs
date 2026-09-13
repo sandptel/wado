@@ -128,6 +128,47 @@ const rejoins = (s) => s.sent.filter((m) => m.type === "session_rejoin").length;
   check("…and still schedules a retry", W._relayRetry !== null, true);
 }
 
+// ── 3b. A session that comes up over a live peer connection is not rebuilt ───
+//
+// Two paths negotiate and neither can see the other: `reconnectWebRTC`'s retry loop and the
+// `session_started` handler after a rejoin. Measured live 2026-09-13 14:59:55 on a degraded
+// link — the retry connected in the same second, then this handler closed the working peer
+// connection three seconds later and built an identical one. A decoder reset, a fresh IDR and
+// a stats reset, for nothing, on the link least able to afford it.
+{
+  const { W, sockets, events } = makeWorld();
+  W.relayConnect("ws://r", "1", { width: 1 });
+  sockets[0].accept();
+  // A retry loop already got us connected before the session verdict arrived.
+  W.pc = { connectionState: "connected" };
+  sockets[0].deliver({ type: "session_started", info: { encoder: { mode: "hardware" } } });
+  await tick();
+  check("a live peer connection is kept, not rebuilt", events.includes("negotiate"), false);
+  check("…and the session still comes up", W.sessionOn, true);
+}
+
+// A *stalling* attempt is the opposite case and must still be superseded: ICE takes up to 45 s
+// to declare failure, and waiting that out is worse than re-offering over it.
+{
+  const { W, sockets, events } = makeWorld();
+  W.relayConnect("ws://r", "1", { width: 1 });
+  sockets[0].accept();
+  W.pc = { connectionState: "connecting" };
+  sockets[0].deliver({ type: "session_started", info: { encoder: { mode: "hardware" } } });
+  await tick();
+  check("a stalling attempt is superseded", events.includes("negotiate"), true);
+}
+
+// And with no peer connection at all — the ordinary first connect — nothing changes.
+{
+  const { W, sockets, events } = makeWorld();
+  W.relayConnect("ws://r", "1", { width: 1 });
+  sockets[0].accept();
+  sockets[0].deliver({ type: "session_started", info: { encoder: { mode: "hardware" } } });
+  await tick();
+  check("a first connect still negotiates", events.includes("negotiate"), true);
+}
+
 // ── 4. A reconnect mid-session rejoins exactly once ──────────────────────────
 {
   const { W, sockets, events } = makeWorld();

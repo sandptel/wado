@@ -241,7 +241,29 @@ W.relayOn("session_started", async (msg) => {
   rlog("session ready — encoder " + ((msg.info && msg.info.encoder && msg.info.encoder.mode) || "?"));
   stagebar("Session running — negotiating WebRTC…");
   try {
-    await W._relayNegotiate();
+    // **Do not tear down a connection that is already working.**
+    //
+    // Two paths negotiate and neither can see the other: `reconnectWebRTC`'s retry loop, and
+    // this handler after a rejoin. Measured live 2026-09-13 14:59:55 on a degraded link — the
+    // retry's offer connected in the same second, and three seconds later this one arrived and
+    // closed it to build an identical connection:
+    //
+    //     09:29:55  offer received … ICE connected … peer connection connected
+    //     09:29:58  offer received … peer connection closed … connected
+    //
+    // On a good link that is invisible. On the link that just spent 45 s failing to establish
+    // ICE, discarding a working peer connection to rebuild it is a real risk of having none,
+    // and it costs a decoder reset, a fresh IDR and a stats reset every time.
+    //
+    // `connecting` is deliberately NOT skipped: an attempt that is stalling should be
+    // superseded, because ICE takes up to 45 s to declare failure and waiting that out is worse
+    // than re-offering. Only a connection that has actually succeeded is protected.
+    if (W.pc && W.pc.connectionState === "connected") {
+      rlog("already connected — keeping the live peer connection rather than rebuilding it");
+      stagebar("Streaming (relay).");
+    } else {
+      await W._relayNegotiate();
+    }
   } catch (e) {
     rlog("negotiation failed: " + (e && e.message ? e.message : e));
     status("relay: " + (e && e.message ? e.message : e));

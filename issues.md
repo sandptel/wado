@@ -763,3 +763,43 @@ throughout.
 
 Two regression cases in `scripts/health-check.mjs`, the second being the one that matters: a
 *connected* connection delivering nothing is still a fault, and the guard must not mask it.
+
+---
+
+## I24 — a rejoin tore down a peer connection that had just connected
+
+**Observed live `2026-09-13 14:59:55`**, on a link that had just spent 45 seconds failing to
+establish ICE at all (see the ICE-failed sequence at 14:57:32):
+
+```
+09:29:55  offer received — 8 candidates … ICE connected … peer connection connected
+09:29:58  offer received — 8 candidates … peer connection closed … ICE checking … connected
+```
+
+The first offer **succeeded in the same second**. Three seconds later a second offer arrived,
+closed the working connection, and built an identical one.
+
+**Cause.** Two paths negotiate and neither can observe the other:
+
+* `reconnectWebRTC`'s retry loop, re-offering after the earlier ICE failure;
+* the `session_started` handler in `relay.js`, which calls `_relayNegotiate()` after a rejoin.
+
+Both are individually correct. On a warm link the overlap is invisible because both connect
+instantly. On a degraded one, discarding a working peer connection to rebuild it is a real risk
+of ending up with none — and it costs a decoder reset, a forced IDR and a stats reset each time.
+
+**Fixed** by protecting only a connection that has actually succeeded:
+
+```js
+if (W.pc && W.pc.connectionState === "connected") { /* keep it */ } else { await W._relayNegotiate(); }
+```
+
+`connecting` is deliberately **not** protected. An attempt that is stalling should be superseded,
+because ICE takes up to 45 s to declare failure and waiting that out is worse than re-offering.
+
+Three cases in `scripts/relay-link-check.mjs`: a live connection is kept, a stalling one is
+superseded, a first connect is unchanged.
+
+**Fourth instance this run** of two individually-correct behaviours composing into a defect
+(after I17, I19 and I22). It was visible only as a pair of log lines three seconds apart, and
+only on a link bad enough to make it matter.
