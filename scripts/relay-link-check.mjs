@@ -443,5 +443,43 @@ const rejoins = (s) => s.sent.filter((m) => m.type === "session_rejoin").length;
     new RegExp(re, "i").test(relaySrc), true);
 }
 
+// ── 15. A session the UI did not start must still update the buttons ────────
+//
+// Reported 2026-09-13: a page reload took the session back and started streaming, but Start
+// stayed enabled and Stop greyed out, so the viewer had to press Start to make the buttons
+// agree with the picture. `session_on` lived in one place — the Start button — and neither the
+// crumb resume nor a reconnect-rejoin goes through it.
+{
+  const { W, sockets, events, store } = makeWorld();
+  store.set("wado.watching", JSON.stringify({ t: Date.now(), scale: 1 }));
+  W.relayDial("ws://r", "1");
+  sockets[0].accept();
+  check("a cold load rejoins", rejoins(sockets[0]), 1);
+  sockets[0].deliver({ type: "session_started", info: { encoder: { mode: "hardware" } } });
+  await tick();
+  check("…and tells the UI the session is on", events.includes("emit:sessionOn"), true);
+}
+{
+  // The other direction: a session stopped by the daemon must not leave Stop enabled over
+  // nothing.
+  const { W, sockets, events } = makeWorld();
+  W.relayConnect("ws://r", "1", { width: 1280, height: 720, fps: 60, scale: 1 });
+  sockets[0].accept();
+  sockets[0].deliver({ type: "session_started", info: { encoder: { mode: "hardware" } } });
+  await tick();
+  sockets[0].deliver({ type: "session_stopped" });
+  check("a daemon-side stop tells the UI too", events.includes("emit:sessionOff"), true);
+}
+{
+  // And a resume whose session had actually expired must correct the UI rather than leaving it
+  // showing a session that is gone.
+  const { W, sockets, events, store } = makeWorld();
+  store.set("wado.watching", JSON.stringify({ t: Date.now(), scale: 1 }));
+  W.relayDial("ws://r", "1");
+  sockets[0].accept();
+  sockets[0].deliver({ type: "session_error", message: "the session ended before you could rejoin it" });
+  check("a stale resume clears the UI", events.includes("emit:sessionOff"), true);
+}
+
 console.log(failures ? `\n${failures} failing` : "\nall relay-link checks pass");
 process.exit(failures ? 1 : 0);
