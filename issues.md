@@ -690,3 +690,46 @@ a fault. Whatever the verdict on the underlying race, the log level is wrong for
 disconnected (`ClientData::disconnected` is now instrumented and stayed quiet through the burst),
 no crash. Next step is to confirm it is popup teardown rather than a popup we failed to register
 — if it is the latter, popup *positioning* is probably also wrong and nobody has noticed.
+
+---
+
+## I22 — a visibility report the socket refused was never retried, so a hidden page was rendered for
+
+**Caught live `2026-09-13 13:56`**, while watching an unrelated reconnect. The server and the
+client disagreed completely, and both logs looked healthy:
+
+```
+08:26:57  render pacing healthy fps=120.0 target_fps=120 mean_ms=8.3
+08:27:17  browser: ANOMALY fps=0.0 kbps=0 framesReceived=371 … vis=hidden unfocused
+```
+
+`framesReceived` frozen at 371 for over twenty seconds with `vis=hidden`, while the compositor
+rendered, captured and encoded a full 120 fps the entire time — the exact waste I20 was written
+to eliminate, reappearing through a different door.
+
+**Cause.** `W.relayVisible` deduped on a flag it set *before* checking whether the send worked:
+
+```js
+if (visible === sentVisible) return false;
+sentVisible = visible;                       // latched on the attempt…
+return relaySend({ type: "viewer_visible", visible });   // …which could return false
+```
+
+`relaySendMsg` returns false when the socket is not OPEN. So a `viewer_visible:false` sent during
+a link blip — precisely when a page is being backgrounded on a mobile link, which is when the
+socket is least likely to be up — marked itself as sent, never arrived, and the dedupe then
+blocked every later attempt **for the life of the page**. There is no timer and no re-assert; the
+only recovery was a reload.
+
+**Fixed** by latching on the send: `const ok = relaySend(...); if (ok) sentVisible = visible;`.
+
+**The same bug was in `health.js`'s `sentStrain`** and is fixed the same way — a strain report
+that arose while the link blipped was silently dropped and never retried.
+
+Both now have regression cases in `scripts/health-check.mjs`. The harness stub had to be
+corrected too: it returned `Array.prototype.push`'s length, which is truthy, so it would have
+passed either version.
+
+**Third instance this run of the same pattern** — two individually-correct behaviours composing
+into a defect that is invisible in either file alone (after I17 and I19). Dedupe-on-change is
+correct. Send-may-fail is correct. Together they are a permanent mute.

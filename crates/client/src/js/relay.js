@@ -517,11 +517,20 @@ W.relayStrain = (strained) => relaySend({ type: "viewer_strain", strained });
 //
 // State, like the strain flag: sent on change, and once on attach so a viewer that connects
 // while hidden is not rendered for either.
+//
+// ⚠️ **Latched on the send succeeding, not on the attempt.** `relaySendMsg` returns false when
+// the socket is not open, and the first version of this recorded `sentVisible` before looking at
+// that — so a `false` that never left the browser still blocked every later attempt, permanently.
+// Caught live 2026-09-13 13:56: the page was hidden, the daemon never heard, and the compositor
+// rendered and encoded 120 fps into a tab nobody was looking at with `render pacing healthy`
+// the whole time. Exactly the `+null === 0` mistake in a different file: state updated as though
+// an action happened when it did not.
 let sentVisible = null;
 W.relayVisible = (visible) => {
   if (visible === sentVisible) return false;
-  sentVisible = visible;
-  return relaySend({ type: "viewer_visible", visible });
+  const ok = relaySend({ type: "viewer_visible", visible });
+  if (ok) sentVisible = visible;
+  return ok;
 };
 
 // Apply settings to the session that is already running. The applications, the windows and the

@@ -14,7 +14,11 @@ const W = {};
 let logged = [];
 let strains = [];
 W.rlog = (l) => logged.push(l);   // the bridge supplies this; here it is captured
-W.relayStrain = (b) => strains.push(b);   // what would go up the wire to the daemon
+// What would go up the wire to the daemon. Returns a boolean *deliberately*: the real
+// `W.relayStrain` returns whether the socket took the message, and `reportStrain` now latches on
+// that rather than on having tried. A stub returning `push`'s length would pass by accident.
+let linkOpen = true;
+W.relayStrain = (b) => { if (!linkOpen) return false; strains.push(b); return true; };
 const emit = (m) => { out = m; };
 new Function("W", "emit", src)(W, emit);
 
@@ -129,6 +133,22 @@ check("a starved decoder is not the phone's fault", T,
   run(T, { fps: 12, ping: 30, dec: 48.7, jitter: 6, kbps: 400, lossPct: 0.0, decodeDropPct: 30.0,
            availableKbps: 20000 });
   want("a starved decoder reports no strain", strains, []);
+
+  // ── A report the socket refused must be retried, not forgotten ─────────────────────────────
+  //
+  // Found live 2026-09-13 13:56 in the sibling path (`sentVisible` in js/relay.js): the flag was
+  // latched before checking whether the send succeeded, so a message that never left the browser
+  // blocked every later attempt for the life of the page. The daemon never heard, and kept
+  // encoding 120 fps into a hidden tab. Same shape here, same fix, and this is the guard.
+  strains = [];
+  linkOpen = false;
+  run(T, { fps: 88, ping: 30, dec: 12.0, jitter: 4, kbps: 7800, lossPct: 0.0, decodeDropPct: 6.0,
+           availableKbps: 20000 });
+  want("a refused report sends nothing", strains, []);
+  linkOpen = true;
+  W.health({ fps: 88, ping: 30, jbuf: null, dec: 12.0, jitter: 4, kbps: 7800, lossPct: 0.0,
+             decodeDropPct: 6.0, availableKbps: 20000, targetFps: T.fps });
+  want("…and is retried once the link is back", strains, [true]);
 
   // ── The frame-rate lock (plan/sync.md §1) ──────────────────────────────────────────────────
   //
