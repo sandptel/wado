@@ -154,8 +154,22 @@ function askForSession() {
     emit({ type: "startFailed" });
     return false;
   }
+  // **Rejoin before start.** `session_start` at a daemon that already has a session stops it and
+  // opens a new one — every application in it dies. Measured live 2026-09-13 15:08, while the
+  // user moved from mobile data to a distant wifi: each link flap sent `session_start`, so the
+  // desktop was destroyed and rebuilt five times in ninety seconds, launching a fresh browser
+  // every time. The user saw "connected via relay" and no session, which is exactly what a
+  // session that keeps being replaced looks like.
+  //
+  // `_relayResuming` was already being set for this and nothing ever read it. If the rejoin
+  // finds nothing, the `session_error` arm below clears the flag and calls back here, which then
+  // sends the `session_start` this used to send unconditionally — so the cold path is unchanged
+  // and only the destructive one is fixed.
   armSessionWait();
-  if (!W.relaySendMsg({ type: "session_start", config: W._relayConfig })) {
+  const verb = W._relayResuming
+    ? { type: "session_rejoin" }
+    : { type: "session_start", config: W._relayConfig };
+  if (!W.relaySendMsg(verb)) {
     clearSessionWait();
     status("relay: link is down — the request will go when it reconnects");
     return false;
@@ -187,7 +201,11 @@ function onLinkUp() {
     return;
   }
   W.requestApps();
-  if (W.sessionOn) {
+  // `sessionOn` alone is not enough to know a session may be running: it is cleared when the
+  // peer connection dies, and a dead peer connection is precisely what this branch exists to
+  // survive. `recentlyWatching()` is the durable crumb — it outlives the page, let alone a
+  // socket — so it is what decides whether to try taking a session back.
+  if (W.sessionOn || recentlyWatching()) {
     // We were streaming when the link went away. Do not prompt — the viewer never chose to
     // leave, and a dialog after a tunnel is a dialog nobody wanted. `session_alive` will be
     // taken straight back; `session_error` means the grace ran out and we start fresh.
@@ -579,6 +597,10 @@ W.relayStop = () => {
   W._relayWanted = false;
   W._relayResuming = false;
   W._relayDropPending = false;
+  // Logged for the same reason the daemon now logs receiving it: this is a destructive message
+  // and until 2026-09-13 neither end said a word about it, which cost real time chasing a
+  // session teardown that could not be attributed to anything in either log.
+  if (W.rlog) W.rlog("sending session_stop (Stop pressed)");
   relaySend({ type: "session_stop" });
 };
 
@@ -619,6 +641,7 @@ W.relayDropStart = () => {
     status("relay: press Start first — this page has no settings to open a session with");
     return false;
   }
+  if (W.rlog) W.rlog("sending session_stop (drop-and-restart chosen)");
   if (!relaySend({ type: "session_stop" })) {
     status("relay: link is down — try again when it reconnects");
     return false;
