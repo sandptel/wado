@@ -33,6 +33,30 @@ let targetKbps = 0;
 let divisor = 1;
 W.setShedding = (n) => { divisor = Math.max(1, +n || 1); };
 
+// What the daemon says actually left its socket over the last stretch, kbps.
+//
+// **The discriminator this side cannot compute.** The viewer sees what arrived; it does not see
+// what was sent, so "little is arriving and nothing was lost" is ambiguous between a sender that
+// stopped and a path that is discarding silently — and the rule below guessed "the server" both
+// times it was measured:
+//
+//   2026-09-12 22:33   5.35 Mbps sent   2.44 Mbps arrived   packetsLost 0   said "bad the server"
+//   2026-09-13 01:19   5.13 Mbps sent   524 kbps arrived    packetsLost 0   said "bad the server"
+//   2026-09-13 12:04     — sent —       91 kbps arrived     packetsLost 0   said "bad the server"
+//
+// Render pacing held 90/90 and the pump was clean through all three. `packetsLost = 0` does not
+// mean no loss; it means that counter has nothing to say, and a rule that reads it as good news
+// accuses whoever is left. `null` until the daemon reports — an absent reading must not be
+// treated as zero, which would accuse the server even harder.
+let sentKbps = null;
+W.setSentKbps = (n) => {
+  // `typeof`, not `+n`. **`+null` is 0**, and a zero here is not "no reading" — it is the
+  // strongest possible accusation against the server, quoted as measured fact. Coercing an
+  // absent value into one would make a missing report read as "the daemon sent nothing at all".
+  // The wire value is a JSON number or it is not a reading.
+  sentKbps = typeof n === "number" && Number.isFinite(n) && n >= 0 ? n : null;
+};
+
 W.setTargetKbps = (n) => {
   targetKbps = +n || 0;
   warm = 0;
@@ -41,6 +65,7 @@ W.setTargetKbps = (n) => {
   // A new session is a new encoder and a new decoder, and the daemon has cleared its side.
   sentStrain = false;
   divisor = 1;
+  sentKbps = null;
 };
 
 // Ticks to ignore after a session starts. See the note on `warm` at the first use.
@@ -163,9 +188,25 @@ W.health = (s) => {
   if (state === "ok" && s.lossPct !== null && s.lossPct < LOSS_WARN &&
       gotKbps !== null && expectKbps > 0 && gotKbps < expectKbps * STARVED_FRAC &&
       fps !== null && effFps > 0 && fps < effFps * 0.8) {
-    worse("bad", "the server",
-          "only " + mbps(gotKbps) + " arriving of " + mbps(expectKbps) + " asked for, none lost"
-          + (divisor > 1 ? " (sending 1 tick in " + divisor + ")" : ""));
+    const shed = divisor > 1 ? " (sending 1 tick in " + divisor + ")" : "";
+    // Three answers where there used to be one, and `sentKbps` is what separates them.
+    if (sentKbps !== null && sentKbps > expectKbps * STARVED_FRAC) {
+      // The daemon sent it and it did not arrive. Nothing on this phone caused that and nothing
+      // on this phone fixes it — the bytes went into the path and did not come out.
+      worse("bad", "network",
+            "only " + mbps(gotKbps) + " arriving of " + mbps(sentKbps) +
+            " the server actually sent — the path is discarding it silently" + shed);
+    } else if (sentKbps !== null) {
+      // The daemon says so itself: it is not sending. Now the accusation is evidence.
+      worse("bad", "the server",
+            "the server sent only " + mbps(sentKbps) + " of " + mbps(expectKbps) + " asked for" + shed);
+    } else {
+      // No report yet — an older daemon, or the first stretch of a new session. Say that the
+      // number is missing rather than pretending the verdict is as firm as the two above.
+      worse("bad", "the server",
+            "only " + mbps(gotKbps) + " arriving of " + mbps(expectKbps) +
+            " asked for, none lost (the server has not reported what it sent)" + shed);
+    }
   }
 
   // What to do about it. One suggestion per side, and none while healthy — advice offered
