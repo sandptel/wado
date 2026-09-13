@@ -94,8 +94,7 @@ W.stopSession = async () => {
   W.inputDC = null;
   W.motionDC = null;
   if (W.pc) { try { W.pc.close(); } catch (_) {} W.pc = null; }
-  const v = document.getElementById("wado-video");
-  if (v) v.srcObject = null;
+  W.detachStream();
   stagebar("No session.");
 
   if (W.relayMode) {

@@ -25,8 +25,7 @@ W.connectWebRTC = async () => {
   W.inputDC = pc.createDataChannel(INPUT_CHANNEL, { ordered: true });
   W.motionDC = pc.createDataChannel(MOTION_CHANNEL, { ordered: true, maxRetransmits: 0 });
   pc.ontrack = (ev) => {
-    const v = document.getElementById("wado-video");
-    if (v) v.srcObject = ev.streams[0];
+    W.attachStream(ev.streams[0]);
     W.minimizePlayoutDelay(ev.receiver || pc.getReceivers().find((r) => r.track && r.track.kind === "video"));
     stagebar("Streaming.");
     W.reconnectAttempts = 0;

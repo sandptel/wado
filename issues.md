@@ -887,3 +887,55 @@ Three cases in `scripts/relay-link-check.mjs` updated to assert the new (correct
 relay and does not connect to the session"* — consistent with a `session_alive` prompt appearing
 with `_relayResuming` false (the fallback path re-asking cold), which shows a rejoin/drop choice
 and waits for a press that a locked phone mid-transit will not supply.
+
+---
+
+## I27 — the stream was attached to the stage exactly once, and silently dropped if it could not be
+
+**Reported from the field `2026-09-13`:** *"after refresh the stream says it continues and maybe
+it does but does not show up on the website"* — and it was continuing. The daemon logged
+`track received — media is flowing`, the stage bar said `Streaming (relay)`, and the client's own
+stats showed the network side working perfectly while nothing decoded:
+
+```
+fps=0.0 ... framesReceived=889
+fps=0.0 ... framesReceived=1223
+fps=0.0 ... framesReceived=2245
+fps=0.0 ... framesReceived=2545
+```
+
+**`framesReceived` climbing while `fps` stays exactly 0** is the signature: frames arriving over
+the network, none decoded, because nothing was consuming the track. A `RTCPeerConnection` reports
+those counters whether or not a sink is attached, so every metric agreed the session was healthy.
+It was. Only the picture was missing.
+
+**Cause.** All three places that touched `srcObject` did it once, defensively, and silently:
+
+```js
+const v = document.getElementById("wado-video");
+if (v) v.srcObject = ev.streams[0];
+```
+
+`if (v)` has two ways to be false, and nothing ever retried either:
+
+* **The element is not painted yet.** On a reload that resumes a running session the relay link
+  dials at load, the daemon answers `session_started` in tens of milliseconds, and `ontrack` can
+  land before Dioxus has rendered the stage. The stream is dropped on the floor forever.
+* **The element was replaced.** The stage is declarative: `session_on` flipping true adds the
+  encoder badge and the software-encode banner *above* the video, and a re-render that rebuilds
+  that node takes `srcObject` with it while the stream keeps arriving.
+
+**Fixed** with `js/video.js`, which owns the attachment: the stream is kept, `attachStream()` is
+idempotent and callable from anywhere, and `stats.js` re-asserts it on its existing 1 Hz tick.
+Re-asserting costs an identity check when it is already right, and it is the only thing that
+recovers either case without a human pressing anything. `detachStream()` clears the kept stream
+on stop, so a tick that outlives the stop cannot resurrect a dead one.
+
+Both `ontrack` handlers (relay and direct) now go through it — `relay.js` carries a note that the
+two are meant to stay diffable, and this keeps them in step.
+
+13 cases in `scripts/video-attach-check.mjs`, against a minimal swappable fake DOM so that "the
+element was replaced" is actually expressible rather than assumed.
+
+**The same shape as I22 and the `+null === 0` bug:** an absent thing treated as a success, with
+no path back. Three for three this run, in three different files.

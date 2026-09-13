@@ -28,6 +28,8 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/logs.js"),
     "\n",
+    include_str!("js/video.js"),
+    "\n",
     include_str!("js/stats.js"),
     "\n",
     include_str!("js/health.js"),

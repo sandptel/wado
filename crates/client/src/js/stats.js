@@ -14,6 +14,10 @@ W.startStats = (pc) => {
   let lastJDelay = null, lastJTarget = null, lastJCount = null;
   W.statsTimer = setInterval(async () => {
     if (!W.pc || W.pc !== pc) { W.stopStats(); return; } // pc replaced (reconnect)
+    // Re-assert the stream against the stage. Free when it is already right, and the only
+    // thing that recovers a stream attached before Dioxus painted the element, or attached to
+    // an element a re-render has since replaced. See js/video.js.
+    W.attachStream();
     let stats;
     try { stats = await pc.getStats(); } catch (_) { return; }
     let fps = null, ping = null, jbuf = null;
