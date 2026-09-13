@@ -108,6 +108,12 @@ const STARVED_FRAC = 0.25;
 // numbers first.
 const TRUST_DECODER_FRAC = 0.6;
 
+// Playout buffer above which the delay is worth naming. `js/webrtc.js` asks for 20 ms, and a
+// settled link on this hardware sits near it; 40 is comfortably clear of normal variation while
+// still catching the 47-54 ms a fresh connection starts at. A threshold rather than a trend
+// because the user feels the level, not the slope.
+const JBUF_WARN = 40;
+
 // Last value sent to the daemon, so only changes go up the wire. Starts `false` to match the
 // compositor, which clears `viewer_strained` both when a session starts and when a viewer
 // rejoins a running one — so a healthy session sends nothing at all.
@@ -272,6 +278,34 @@ W.health = (s) => {
             "only " + mbps(gotKbps) + " arriving of " + mbps(expectKbps) +
             " asked for, none lost (the server has not reported what it sent)" + shed);
     }
+  }
+
+  // ⚠️ **Checked after the server rule, not before it, and the harness is why.** The server
+  // rule is guarded by `state === "ok"` so it cannot mask a network fault; written above it,
+  // this rule set `warn` first and silently suppressed a dead-sender verdict entirely.
+  // `scripts/health-check.mjs` caught it on the first run. Placed here, `worse()`'s ranking
+  // does the right thing on its own: a real fault is `bad` and outranks this.
+  // — the buffer between the two ends, which is latency nothing else here can see.
+  //
+  // Measured 2026-09-13 across the two minutes after a reconnect: `jbuf` 47 -> 28 ms while
+  // `fps` held 116-121, `rtt` sat at 24-37, `lost` was 0 and `framesDropped` never moved. Every
+  // rule above and below said healthy, and the picture was six frame periods behind the finger
+  // at 120 fps. That is what the user reported as "input does not feel synced with fps", and it
+  // was invisible because every other metric is about *rate* and this one is about *delay*.
+  //
+  // Reported, not fixed — and deliberately so. `js/webrtc.js` already sets the playout hint to
+  // 20 ms and already carries the note explaining why re-asserting it does nothing: the hint is
+  // a floor, the browser's own timing model outranks it, and here `jtarget` reads 49-54 against
+  // our 20, which is that being outranked in plain sight. The buffer drains on its own as the
+  // model learns the path is steady. So: say what is happening and that it clears, rather than
+  // claim health or offer a fix that does not exist.
+  //
+  // `warn`, never `bad`, and never a strain report: nothing is wrong with the phone, nothing is
+  // wrong with the link, and shedding the frame rate would not shorten a queue that is being
+  // held for jitter rather than filled by congestion. See plan/sync.md §1b.
+  if (s.jbuf !== null && s.jbuf >= JBUF_WARN) {
+    worse("warn", "settling", "the picture is about " + s.jbuf.toFixed(0) +
+          " ms behind while the connection settles — this clears on its own");
   }
 
   // What to do about it. One suggestion per side, and none while healthy — advice offered
