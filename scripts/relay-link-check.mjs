@@ -505,5 +505,37 @@ const rejoins = (s) => s.sent.filter((m) => m.type === "session_rejoin").length;
   check("…also only on change", vis().map((m) => m.visible), [false, true]);
 }
 
+// ── 17. An older daemon must not look like a session failure ────────────────
+//
+// Every message this client sends optimistically is an unknown variant to a daemon that predates
+// it, and the daemon now *answers* unknown messages instead of dropping them. That answer must
+// not tear the UI down: the session is fine, one optional message was not understood.
+{
+  const { W, sockets, events } = makeWorld();
+  W.relayConnect("ws://r", "1", { width: 1280, height: 720, fps: 60, scale: 1 });
+  sockets[0].accept();
+  sockets[0].deliver({ type: "session_started", info: { encoder: { mode: "hardware" } } });
+  await tick();
+  const before = events.length;
+  sockets[0].deliver({ type: "session_error",
+    message: "this daemon could not understand that message: unknown variant `viewer_visible`" });
+  check("an unknown-message error does not fail the session",
+    events.slice(before).filter((e) => e === "emit:startFailed"), []);
+  check("…and does not turn the session off", events.slice(before).includes("emit:sessionOff"), false);
+  check("…and the session is still on", W.sessionOn, true);
+
+  // A real session error still does what it always did.
+  sockets[0].deliver({ type: "session_error", message: "the encoder could not be opened" });
+  check("a genuine session error still fails", events.includes("emit:startFailed"), true);
+}
+{
+  // The wording is produced by the server. Read it from there.
+  const srv = readFileSync(new URL("../crates/server/src/relay_client.rs", import.meta.url), "utf8");
+  const cli = readFileSync(new URL("../crates/client/src/js/relay.js", import.meta.url), "utf8");
+  const re = /UNKNOWN_MSG_RE\s*=\s*\/([^/]+)\//.exec(cli)[1];
+  check("the daemon still sends the wording the client matches",
+    new RegExp(re, "i").test(srv), true);
+}
+
 console.log(failures ? `\n${failures} failing` : "\nall relay-link checks pass");
 process.exit(failures ? 1 : 0);
