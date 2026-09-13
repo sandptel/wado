@@ -532,5 +532,33 @@ the frame interval.
 
 What would separate them: the client already knows `document.visibilityState`, and it is not in
 the stats line. Adding it costs one field and turns this from a guess into a reading — the same
-argument that made `ClientData::disconnected` worth filling in. **Do that before theorising
-further.**
+argument that made `ClientData::disconnected` worth filling in. **Shipped** as `vis=` on the
+stats line; the next session's log answers it.
+
+### ⚑ Narrowed the same hour, without the new field
+
+The episode recovered **on its own**, and how it recovered is evidence:
+
+| time | shed | fps | dec | framesDropped |
+|---|---|---|---|---|
+| 12:04:23 | 1 in 1 | 43 | 92.6 ms | 1335 *(climbing fast)* |
+| 12:04:26 | 1 in 2 | — | — | — |
+| 12:04:28 | 1 in 4 | — | — | — |
+| 12:04:38 | 1 in 4 | 30 | 39.0 ms | 1623 |
+| 12:04:53 | 1 in 4 | 29 | **11.5 ms** | 1623 *(stopped)* |
+
+Decode fell 92.6 → 11.5 ms and the drops stopped, **purely because the offered frame rate was
+reduced** — no reconnect, no reload, nothing the viewer did.
+
+That argues against candidate 1. A backgrounded tab does not start decoding promptly again
+because fewer frames are offered; it is throttled regardless of rate. A decoder that is simply
+**past capacity at 90 fps and comfortable at ~30** behaves exactly like this.
+
+So the leading explanation is now the plain one — this phone cannot decode 1280x720 at 90 fps —
+and the congestion loop is doing its job. What is still unexplained is the *step*: 11 ms at
+12:01 and 92 ms at 12:04 on the same stream and the same phone. A decoder at its limit should
+degrade, not sit fine for a minute and then quadruple. The 51 s connection gap between them is
+still the only other thing that changed, so `vis=` is still worth reading before this is closed.
+
+**Open**, but no longer a mystery about *which side* — it is the phone, and the fix already
+fires.

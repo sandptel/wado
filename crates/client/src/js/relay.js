@@ -336,6 +336,11 @@ W.relayOn("text_input", (msg) => W.textInput(!!msg.active));
 // effect of a mitigation this phone asked for and reports it as the server failing.
 W.relayOn("shedding", (msg) => W.setShedding(msg.divisor));
 
+// What actually left the daemon's socket. See `setSentKbps` in health.js — it is the one number
+// that separates "the server stopped sending" from "the path ate it", and the verdict guessed
+// wrong three times without it.
+W.relayOn("sent_kbps", (msg) => W.setSentKbps(msg.kbps));
+
 W.relayOn("sdp_answer", (msg) => {
   if (W._relayAnswer) { W._relayAnswer(msg.sdp); W._relayAnswer = null; }
 });

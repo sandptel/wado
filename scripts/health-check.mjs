@@ -19,8 +19,13 @@ const emit = (m) => { out = m; };
 new Function("W", "emit", src)(W, emit);
 
 let failures = 0;
-const check = (name, target, snapshot, wantSide, wantState) => {
-  W.setTargetKbps(target.kbps);        // also resets the warm-up
+// `sent` is what the daemon reports it actually put on the wire, kbps — `undefined` means it has
+// not said. It is applied *after* `setTargetKbps`, because starting a session clears the last
+// session's figure (correctly: it belongs to an encoder that no longer exists), and setting it
+// before would be silently wiped. That ordering ate two cases the first time these were written.
+const check = (name, target, snapshot, wantSide, wantState, sent) => {
+  W.setTargetKbps(target.kbps);        // also resets the warm-up, the shed divisor and `sentKbps`
+  if (sent !== undefined) W.setSentKbps(sent);
   const s = { fps: null, ping: null, jbuf: null, dec: null, jitter: null, kbps: null,
               lossPct: null, decodeDropPct: null, availableKbps: null,
               targetFps: target.fps, ...snapshot };
@@ -197,6 +202,63 @@ check("a starved decoder is not the phone's fault", T,
 const dup = logged.findIndex((l, i) => i > 0 && l === logged[i - 1]);
 if (dup > 0) { failures++; console.log(`FAIL rlog: line ${dup} repeats the one before it`); }
 else console.log(`ok   relayed ${logged.length} verdict lines, no consecutive repeats`);
+
+// ── The discriminator: what was sent, versus what arrived ────────────────────
+//
+// Three faults with identical symptoms on this side — little arriving, `packetsLost = 0`, frame
+// rate down. Before `sent_kbps` the rule called all three "the server", and it was wrong about
+// it live three times (22:33, 01:19, 12:04). These cases are the ones that collapse if the
+// three-way split is ever flattened back into one.
+const STARVED = { fps: 20, ping: 30, dec: 4.0, jitter: 3, kbps: 500,
+                  lossPct: 0.0, decodeDropPct: 0, availableKbps: 20000 };
+
+// 1. The daemon sent nearly everything it was asked for, and a twentieth of it arrived, with the
+//    loss counter silent. The bytes went into the path and did not come out.
+check("sent but not arrived → the path, not the sender", T, STARVED, "network", "bad", 7600);
+
+// 2. The daemon says itself that it is barely sending. Now the accusation has evidence.
+check("not sent at all → the server, with its own number", T, STARVED, "the server", "bad", 300);
+if (!/sent only/.test(out.detail)) {
+  failures++; console.log(`FAIL the server's own number should be quoted, got "${out.detail}"`);
+} else { console.log("ok   …quoting the daemon's own figure, not an inference"); }
+
+// 3. No report — an older daemon, or the first stretch of a session. The verdict still lands on
+//    the server, but it must say the number is missing rather than sound as certain as (2).
+check("no report → the server, hedged", T, STARVED, "the server", "bad", null);
+if (!/has not reported/.test(out.detail)) {
+  failures++;
+  console.log(`FAIL an absent sent-bitrate must be admitted, got "${out.detail}"`);
+} else {
+  console.log("ok   …and says the number is missing rather than sounding certain");
+}
+
+// 4. An absent report must not read as zero. Zero would make (3) accuse the server *harder*
+//    than (2) does, on no evidence at all.
+check("an absent report is not zero", T, STARVED, "the server", "bad", NaN);
+if (/sent only/.test(out.detail)) {
+  failures++;
+  console.log(`FAIL an absent report was treated as zero: "${out.detail}"`);
+} else {
+  console.log("ok   …and is not treated as a measured zero");
+}
+
+// 5. Under a shed, the comparison scales — a shed session legitimately sends a fraction, and the
+//    sent figure has to be judged against the *reduced* expectation, not the original.
+// A shed session legitimately sends a fraction of the original target, so the sent figure has to
+// be judged against the *reduced* expectation. `setShedding` comes after `check`'s reset, so it
+// is applied through the snapshot loop instead — see the divisor note in health.js.
+W.setTargetKbps(T.kbps);
+W.setSentKbps(1900);       // ~= 8000/4: exactly what a 1-in-4 shed should be putting out
+W.setShedding(4);
+{
+  const s2 = { fps: null, ping: null, jbuf: null, dec: null, jitter: null,
+               targetFps: T.fps, ...STARVED, fps: 5, kbps: 120 };
+  for (let i = 0; i < 9; i++) W.health(s2);
+  const ok = out.side === "network" && out.state === "bad";
+  if (!ok) { failures++; console.log(`FAIL under a shed, a correct sender is accused: got ${out.state}/${out.side} "${out.detail}"`); }
+  else console.log(`ok   under a shed, a correct sender is not accused  →  ${out.state}/${out.side}  ${out.detail}`);
+}
+W.setShedding(1);
 
 console.log(failures ? `\n${failures} FAILED` : "\nall passed");
 process.exit(failures ? 1 : 0);
