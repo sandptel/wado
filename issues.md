@@ -562,3 +562,44 @@ still the only other thing that changed, so `vis=` is still worth reading before
 
 **Open**, but no longer a mystery about *which side* — it is the phone, and the fix already
 fires.
+
+
+## I19 — every reconnect re-flooded the viewer at full frame rate (fixed, not yet deployed)
+
+Found `2026-09-13 12:18` by reading the daemon log during the user's live session. A regression
+introduced by this branch's own consolidation of the per-viewer reset into `ViewerAttached`.
+
+`set_viewer_attached(true)` called `Congestion::reset()`, which restores `divisor = 1`. On a
+mobile link that reconnects every one to four minutes — **exactly the link this branch exists
+for** — the phone was handed the full 90 fps again on every return, saturated again, and had to
+walk the divisor back down from scratch. The log shows it without ambiguity: every
+`viewer attached` is followed by a fresh `shedding … from=1`.
+
+```
+06:32:47  viewer attached
+06:34:26  shedding — the viewer says its decoder is saturated  from=1
+06:34:28  shedding — the viewer says its decoder is saturated  from=2
+...
+06:47:23  viewer attached
+06:48:16  shedding — the viewer says its decoder is saturated  from=1
+```
+
+**This also explains I18.** The decode spikes were not a mysterious decoder collapse — 109 ms
+eight seconds after one reconnect, 55 ms thirty seconds after another. The server had just gone
+back to sending four times as many frames. On a link reconnecting every couple of minutes the
+phone spent much of its life in that re-saturation transient.
+
+The original reasoning — *"a new decoder starts with no history and must not inherit a shed"* —
+is right for a **new viewer** and wrong for the same viewer reconnecting forty seconds later,
+whose decoder is the same silicon that could not keep up before. And a reconnect is now the
+common case, which it was not when that line was written.
+
+**Fixed** with `Congestion::reattach()`: the divisor survives, the patience does not. Patience
+grows with every strain to stop the loop feeding on its own output, but carrying a long
+session's accumulated patience across a reconnect would make recovery glacial for a viewer that
+has genuinely improved, or for a different and faster device. Keeping the rate and giving
+recovery a fresh start is wrong in neither direction. `reset()` keeps its old meaning for a
+genuinely new session; three tests pin the difference.
+
+⚠️ **Committed, not deployed.** Shipping it needs a daemon restart, which kills the running
+session — the ceiling this branch cannot lift. Held until the user is idle.

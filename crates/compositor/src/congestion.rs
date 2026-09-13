@@ -132,6 +132,34 @@ impl Congestion {
         *self = Self::default();
     }
 
+    /// The **same** viewer's media path came back. Keep what was learned about its decoder;
+    /// forget only the grudge.
+    ///
+    /// **The bug this closes, measured live 2026-09-13.** `ViewerAttached(true)` called
+    /// [`Congestion::reset`], so every reconnect restored the full frame rate. On a mobile link
+    /// that reconnects every one to four minutes — which is exactly the link this branch was
+    /// built for — the phone was re-flooded at 90 fps on every return, saturated again, and had
+    /// to walk the divisor back down from scratch. The daemon log shows it plainly: every
+    /// `viewer attached` is followed by a fresh `shedding … from=1`.
+    ///
+    /// It also explains the decode spikes recorded as I18 — 109 ms eight seconds after one
+    /// reconnect, 55 ms thirty seconds after another. Not a mysterious decoder collapse: the
+    /// server had just gone back to sending four times as many frames.
+    ///
+    /// The reasoning for the reset was "a new decoder starts with no history and must not inherit
+    /// a shed", and that is right for a *new viewer*. A viewer that reconnects forty seconds later
+    /// is not a new viewer, and its decoder is the same silicon that could not keep up before.
+    ///
+    /// So the divisor survives and the **patience** does not. Patience grows with every strain
+    /// (see `PATIENCE_FACTOR`) to stop the loop feeding on its own output, but holding a long
+    /// session's accumulated patience across a reconnect would make recovery glacial for a viewer
+    /// that has genuinely improved — or for a different, faster device. Keeping the rate and
+    /// giving recovery a fresh start is the combination that is wrong in neither direction.
+    pub fn reattach(&mut self) {
+        let divisor = self.divisor;
+        *self = Self { divisor, ..Self::default() };
+    }
+
     pub fn divisor(&self) -> u32 {
         self.divisor
     }
@@ -233,6 +261,54 @@ fn decide(
 
 #[cfg(test)]
 mod tests {
+    // ── reattach: the same viewer coming back ────────────────────────────────
+
+    #[test]
+    fn a_reconnect_does_not_restore_the_full_frame_rate() {
+        // The live regression of 2026-09-13: every `viewer attached` was followed by a fresh
+        // `shedding ... from=1`, so a link that reconnects every two minutes re-floods the phone
+        // every two minutes and it never stops walking the divisor back down.
+        let mut c = Congestion::default();
+        for _ in 0..(WINDOW_TICKS * STRAIN_WINDOWS * 2) {
+            c.should_render(0, true);
+        }
+        let shed = c.divisor();
+        assert!(shed > 1, "the setup must actually have shed something, got {shed}");
+        c.reattach();
+        assert_eq!(c.divisor(), shed, "a reconnect must keep the rate the decoder earned");
+    }
+
+    #[test]
+    fn a_reconnect_forgets_the_grudge_but_not_the_rate() {
+        // Patience grows with every strain so the loop cannot feed on its own output. Carrying a
+        // long session's accumulated patience across a reconnect would make recovery glacial for
+        // a viewer that has genuinely improved — or for a different, faster device.
+        let mut c = Congestion::default();
+        for _ in 0..(WINDOW_TICKS * STRAIN_WINDOWS * 4) {
+            c.should_render(0, true);
+        }
+        let shed = c.divisor();
+        c.reattach();
+        assert_eq!(c.divisor(), shed);
+        // With patience back at its floor, a clean run recovers rather than crawling.
+        for _ in 0..(WINDOW_TICKS * (RECOVER_WINDOWS + 1)) {
+            c.should_render(0, false);
+        }
+        assert!(c.divisor() < shed, "recovery should be possible again after a reattach");
+    }
+
+    #[test]
+    fn a_brand_new_session_still_starts_at_full_rate() {
+        // `reset` keeps its old meaning; only `reattach` is the softer one.
+        let mut c = Congestion::default();
+        for _ in 0..(WINDOW_TICKS * STRAIN_WINDOWS * 2) {
+            c.should_render(0, true);
+        }
+        assert!(c.divisor() > 1);
+        c.reset();
+        assert_eq!(c.divisor(), 1);
+    }
+
     use super::*;
 
     /// `decide` with no strain — the shape every pre-existing test was written against.
