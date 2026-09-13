@@ -834,3 +834,56 @@ lossy path still gets the advice that helps.
 disconnect*, not a standing condition — p50 33 ms, p90 47, p99 70, max 238 across the session,
 with the 811 and 1156 ms readings landing seconds before the link dropped at 15:02:18. A stalling
 mobile link shows up as a latency excursion before it shows up as a disconnect.
+
+---
+
+## I26 — a reconnect asked to start a session rather than rejoin one, and both ends of the destructive path were silent
+
+**Observed live `2026-09-13 15:08–15:40`**, while the user moved from mobile data to a distant
+wifi network. The desktop and its applications were destroyed and rebuilt at least three times in
+under two minutes:
+
+```
+09:38:17  compositor session active   (fresh session, new Chrome pid)
+09:38:30  compositor session stopped — resources released
+09:38:32  compositor session active   (fresh session, new Chrome pid)
+09:38:50  compositor session stopped — resources released
+09:38:55  compositor session active   (fresh session, new Chrome pid)
+09:39:19  compositor session stopped — resources released
+```
+
+**Root cause, and the limit of what could be proven.** `askForSession()` sent `session_start`
+unconditionally on every reconnect — including one to a session that was still running — relying
+entirely on the daemon's `live_session()` guard (added `f599da4`, "rejoin or drop a session that
+is already running") to turn a restart request into a harmless `session_alive` reply instead of
+an actual restart. That guard is correct and was present in the running binary. But it depends on
+`session_active` being read at the right instant relative to a client that never said what it
+actually wanted, on a link flapping fast enough (a live network interface change) to plausibly
+race it.
+
+**The exact trigger for each stop in this incident could not be proven from the log**, and that
+is itself the finding: `RelayMsg::SessionStop` — the only remaining path to
+`CompositorCommand::Stop` in relay mode, after the watchdog (600 s, too slow) and direct mode
+(not running) were ruled out — was silent on **both ends**. The client logged nothing when
+sending it (`W.relayStop` / `W.relayDropStart`), and the daemon logged nothing on receiving it.
+A stop from an explicit Stop press and a stop from a genuine `session_stop` message were
+indistinguishable after the fact.
+
+**Fixed, two ways:**
+
+1. `askForSession()` now sends `session_rejoin` whenever a reconnect is in flight
+   (`_relayResuming`), falling back to `session_start` only when the daemon confirms nothing
+   survived — the existing `session_error` handler, unchanged. The request now says what it
+   means instead of relying on the daemon to infer it. The decision to attempt a reconnect at
+   all now also checks the durable `recentlyWatching()` crumb rather than `sessionOn` alone,
+   since `sessionOn` is cleared the moment the peer connection dies — precisely the condition
+   this branch exists to survive.
+2. Both ends of `session_stop` now log: the client says why it is sending it, the daemon says it
+   received it. The next occurrence of this class of event will be provable in one grep.
+
+Three cases in `scripts/relay-link-check.mjs` updated to assert the new (correct) protocol shape.
+
+**Symptom the user described independently, before this was diagnosed:** *"it says connected via
+relay and does not connect to the session"* — consistent with a `session_alive` prompt appearing
+with `_relayResuming` false (the fallback path re-asking cold), which shows a rejoin/drop choice
+and waits for a press that a locked phone mid-transit will not supply.

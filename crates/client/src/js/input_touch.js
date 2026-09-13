@@ -24,12 +24,15 @@ const dragAt = (phase, clientX, clientY, video) => {
   if (phase === "motion") W.coalesce.queue("window_drag", ev);
   else W.coalesce.now(ev);
 };
-// Primary-contact hold fired: retract the tap and arm hold (→ move or right-click).
+// Primary-contact hold fired: retract the tap and arm hold (→ move or right-click). The one
+// gesture transition with no motion and nothing sent that a viewer could otherwise see, so it
+// gets its own overlay mark — see `overlay.holdRing`.
 const onHoldFired = () => {
   const g = W.gesture;
   if (!g || g.state !== "tap") return;
   g.state = "held";
   g.holdTimer = null;
+  if (W.showTouches) W.overlay.holdRing(g.startClientX, g.startClientY);
   W.sendInput({ t: "cancel_touch", id: g.id >>> 0 });
 };
 
@@ -70,20 +73,27 @@ W.touchg = {
           if (g.holdTimer) { clearTimeout(g.holdTimer); g.holdTimer = null; }
           g.state = "touch";
           touchAt(g.id, "motion", e.clientX, e.clientY, video);
+          if (W.showTouches) W.overlay.trail(g.id, e.clientX, e.clientY);
         }
       } else if (g.state === "touch") {
         touchAt(g.id, "motion", e.clientX, e.clientY, video);
+        if (W.showTouches) W.overlay.trail(g.id, e.clientX, e.clientY);
       } else if (g.state === "held") {
         if (dist > MOVE_THRESHOLD) {
           g.state = "move";
           dragAt("down", g.startClientX, g.startClientY, video); // grab the original window
           dragAt("motion", e.clientX, e.clientY, video);
+          if (W.showTouches) W.overlay.trail(g.id, g.startClientX, g.startClientY);
         }
       } else if (g.state === "move") {
         dragAt("motion", e.clientX, e.clientY, video);
+        if (W.showTouches) W.overlay.trail(g.id, e.clientX, e.clientY);
       }
     } else {
+      // Secondary contact — usually a scroll gesture (see W.scrollg above), which returns
+      // early; reaching here means genuine multi-touch passthrough, and it swipes too.
       touchAt(e.pointerId, "motion", e.clientX, e.clientY, video);
+      if (W.showTouches) W.overlay.trail(e.pointerId, e.clientX, e.clientY);
     }
   },
 
@@ -103,9 +113,11 @@ W.touchg = {
           W.sendInput({ t: "button", x: n.x, y: n.y, button: "right", pressed: false });
         }
       }
+      if (W.showTouches) W.overlay.trailEnd(g.id);
       W.gesture = null;
     } else {
       touchAt(e.pointerId, "up", e.clientX, e.clientY, video);
+      if (W.showTouches) W.overlay.trailEnd(e.pointerId);
     }
   },
 };

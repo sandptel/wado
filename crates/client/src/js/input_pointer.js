@@ -22,7 +22,11 @@ W.mouse = {
   move(e, video) {
     const n = W.normPoint(e.clientX, e.clientY, video);
     if (!n) return;
-    if (W.showTouches && e.buttons) W.overlay.mark(e.clientX, e.clientY);
+    // A button-held drag is a swipe, not a series of clicks — same trail the touch path
+    // draws, keyed "mouse" since there is only ever one. Plain hover (no button) leaves no
+    // mark: it sends nothing to the compositor either, so drawing it would show motion the
+    // remote session never saw.
+    if (W.showTouches && e.buttons) W.overlay.trail("mouse", e.clientX, e.clientY);
     // Both branches coalesce. Drag motion used to send on every `pointermove`, which at
     // 1000 Hz saturated the input channel and made dragging lag further behind the longer
     // it went on — the one path that most needed rate-limiting was the one that lacked it.
@@ -36,6 +40,7 @@ W.mouse = {
   up(e, video) {
     const n = W.normPoint(e.clientX, e.clientY, video);
     if (!n) return;
+    if (W.showTouches) W.overlay.trailEnd("mouse");
     if (W.mouseDragging) {
       W.mouseDragging = false;
       // `now` flushes the queued motion first, so the release can't overtake it and snap
