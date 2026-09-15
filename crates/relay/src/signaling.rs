@@ -7,6 +7,26 @@
 //! a live registered server — no password message. The future hardening step is
 //! a confirmation gate: hold the join at `PeerConnected` until the server
 //! approves it (new Approve/Deny variants), then send `JoinAccepted`.
+//!
+//! ## One Remote ID, several daemons
+//!
+//! A Remote ID names a **pool**: any number of `wado` daemons may register under it, and each
+//! joining client is given one of its own. That is how two devices run two independent
+//! sessions — separate compositors, separate applications, separate encoders — from one ID a
+//! human can remember. A session is a process, so the OS keeps them apart and a segfault in
+//! one device's graphics stack cannot reach another's.
+//!
+//! Assignment is: the instance the client names in `?instance=` **if that one is free** (the
+//! device coming back to its own desktop), else the first free one, else **refused with a
+//! reason that says the pool is full**. Refusal is a normal outcome once every daemon has a
+//! client, and it is reported as loudly as success — a client told nothing cannot tell "no
+//! room left" from "the connection is broken".
+//!
+//! Nothing here ever takes a room from a live client, not even for the same device coming
+//! back. That was tried on `2026-09-14`: two devices, each reconnecting when its socket
+//! closed, evicted each other 132 times in two minutes — the same failure `issues.md` I17
+//! recorded at a slower 18 s period. Contention is answered with a different daemon or a
+//! plain refusal, never by stealing.
 
 use std::net::SocketAddr;
 
@@ -20,6 +40,12 @@ use uuid::Uuid;
 use wado_protocol::relay::{RelayMsg, display_remote_id, normalize_remote_id};
 
 use crate::AppState;
+
+/// How often the relay pings an idle client.
+///
+/// Comfortably under the ~100 s after which a cloudflared quick tunnel drops an idle
+/// connection, and far under any load — one small frame per client per interval.
+const KEEPALIVE: std::time::Duration = std::time::Duration::from_secs(30);
 
 // ── Server registration ──────────────────────────────────────────────────────
 
@@ -66,19 +92,20 @@ async fn register_loop(socket: WebSocket, addr: SocketAddr, state: AppState) {
     }
 
     // ── 2. Register in the registry ─────────────────────────────────────────
+    // Infallible now: a second daemon on this Remote ID joins the pool rather than colliding
+    // with the first. The instance id minted here is this registration's identity for as long
+    // as its socket lives, and is what rooms are keyed by.
     let (inbox_tx, mut inbox_rx) = mpsc::channel::<String>(128);
-    if let Err(e) = state.registry.insert(remote_id.clone(), display_name.clone(), addr, inbox_tx)
-    {
-        warn!(%addr, remote_id = %display_remote_id(&remote_id), %e, "register: rejected");
-        send_error(&mut ws_tx, &e).await;
-        return;
-    }
+    let instance_id = state.registry.insert(remote_id.clone(), display_name.clone(), addr, inbox_tx);
+    let pool_size = state.registry.instances_for(&remote_id).len();
 
     info!(
         remote_id = %display_remote_id(&remote_id),
         display_name = ?display_name,
         %addr,
-        "server registered"
+        instance = %instance_id,
+        pool_size,
+        "server registered — pool now holds {pool_size} daemon(s) for this Remote ID"
     );
 
     // ── 3. Send Registered ack ───────────────────────────────────────────────
@@ -87,17 +114,17 @@ async fn register_loop(socket: WebSocket, addr: SocketAddr, state: AppState) {
         Err(_) => return,
     };
     if ws_tx.send(Message::Text(ack)).await.is_err() {
-        state.registry.remove(&remote_id);
+        state.registry.remove(&instance_id);
         return;
     }
 
     // ── 4. Bidirectional message pump ────────────────────────────────────────
     // Spawn a task that drains inbox_rx → ws_tx (messages from relay/client to server).
-    let remote_id_fwd = remote_id.clone();
+    let instance_fwd = instance_id.clone();
     let _fwd_task = AbortOnDrop(tokio::spawn(async move {
         while let Some(text) = inbox_rx.recv().await {
             if ws_tx.send(Message::Text(text)).await.is_err() {
-                debug!(remote_id = %remote_id_fwd, "forward task: ws write failed");
+                debug!(instance = %instance_fwd, "forward task: ws write failed");
                 break;
             }
         }
@@ -112,8 +139,9 @@ async fn register_loop(socket: WebSocket, addr: SocketAddr, state: AppState) {
                     "server msg: {}",
                     head(&text)
                 );
-                // Forward verbatim to the paired client (if a room exists).
-                if !state.rooms.forward_to_client(&remote_id, text.to_string()).await {
+                // Forward verbatim to *this daemon's* client. Keyed by instance: with a pool,
+                // a Remote ID no longer identifies one conversation.
+                if !state.rooms.forward_to_client(&instance_id, text.to_string()).await {
                     // No client in the room yet — message is dropped (e.g. server
                     // sent a session event before a client connected).
                     debug!(remote_id = %display_remote_id(&remote_id), "no client in room, dropping message");
@@ -128,60 +156,128 @@ async fn register_loop(socket: WebSocket, addr: SocketAddr, state: AppState) {
     // ── 5. Cleanup ───────────────────────────────────────────────────────────
     // `_fwd_task` aborts itself on drop — including when this function unwinds. See
     // `AbortOnDrop`.
-    state.registry.remove(&remote_id);
-    state.rooms.remove(&remote_id);
+    state.registry.remove(&instance_id);
+    state.rooms.remove(&instance_id);
     info!(
         remote_id = %display_remote_id(&remote_id),
         %addr,
+        instance = %instance_id,
         "server disconnected — registry + room cleaned up"
     );
 }
 
 // ── Client join ──────────────────────────────────────────────────────────────
 
+/// Query string on `/join/:remote_id`.
+#[derive(serde::Deserialize, Default)]
+pub struct JoinQuery {
+    /// The daemon instance this client used last, if any. A client stores the `instance_id`
+    /// from its `JoinAccepted` and hands it back here, which is what returns it to its own
+    /// running desktop rather than to whichever daemon happens to be free.
+    instance: Option<String>,
+}
+
 pub async fn handle_join(
     ws: WebSocketUpgrade,
     Path(remote_id): Path<String>,
+    query: Option<axum::extract::Query<JoinQuery>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<AppState>,
 ) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| join_loop(socket, remote_id, addr, state))
+    // `Option<Query<_>>` so a malformed query string is an empty preference rather than a
+    // rejected upgrade: the instance hint is an optimisation, and losing it must cost the
+    // client its stickiness, not its connection.
+    let wanted = query.and_then(|axum::extract::Query(q)| q.instance);
+    ws.on_upgrade(move |socket| join_loop(socket, remote_id, wanted, addr, state))
 }
 
-async fn join_loop(socket: WebSocket, remote_id: String, addr: SocketAddr, state: AppState) {
+async fn join_loop(
+    socket: WebSocket,
+    remote_id: String,
+    wanted_instance: Option<String>,
+    addr: SocketAddr,
+    state: AppState,
+) {
     let remote_id = normalize_remote_id(&remote_id);
     let (mut ws_tx, mut ws_rx) = socket.split();
 
     // ── 1. Authenticate purely from the URL path (the Remote ID IS the join) ─
-    let (server_inbox_tx, display_name) = match state.registry.lookup(&remote_id) {
-        Some(pair) => pair,
-        None => {
-            warn!(
-                %addr,
-                remote_id = %display_remote_id(&remote_id),
-                "join: no server online with this Remote ID"
-            );
-            send_deny(&mut ws_tx, "no server online with this Remote ID").await;
-            return;
-        }
-    };
+    let pool = state.registry.instances_for(&remote_id);
+    if pool.is_empty() {
+        warn!(
+            %addr,
+            remote_id = %display_remote_id(&remote_id),
+            "join: no server online with this Remote ID"
+        );
+        send_deny(&mut ws_tx, "no server online with this Remote ID").await;
+        return;
+    }
+    let pool_size = pool.len();
 
-    // ── 2. Create room ───────────────────────────────────────────────────────
+    // ── 2. Pick a daemon from the pool and claim it ──────────────────────────
     let room_id = Uuid::new_v4().to_string();
     let (client_inbox_tx, mut client_inbox_rx) = mpsc::channel::<String>(128);
 
-    if let Err(e) = state.rooms.create(remote_id.clone(), room_id.clone(), addr, client_inbox_tx) {
-        warn!(%addr, remote_id = %display_remote_id(&remote_id), %e, "join: room create failed");
-        send_deny(&mut ws_tx, "server already has an active connection").await;
-        return;
-    }
+    // Preference first, then anything free. The preferred instance is the one this device used
+    // last, so a reload or a cell handoff comes back to its own windows and its own running
+    // programs. When that daemon is busy the device gets a *different* one rather than taking
+    // it — which is what stops two devices evicting each other forever.
+    let claim = |i: &crate::registry::Instance| {
+        state.rooms.claim(&i.instance_id, &remote_id, room_id.clone(), addr, client_inbox_tx.clone())
+    };
+    let chosen = wanted_instance
+        .as_deref()
+        .and_then(|w| pool.iter().find(|i| i.instance_id == w))
+        .filter(|i| claim(i))
+        .map(|i| (i.clone(), "reclaimed"))
+        .or_else(|| pool.iter().find(|i| claim(i)).map(|i| (i.clone(), "assigned")));
+
+    let (instance, assignment) = match chosen {
+        Some(pair) => pair,
+        None => {
+            // Refusal is a normal outcome here, not a fault: every daemon in the pool has a
+            // client. It carries the numbers that make it actionable, because a bare denial is
+            // indistinguishable from a broken connection.
+            warn!(
+                %addr,
+                remote_id = %display_remote_id(&remote_id),
+                pool_size,
+                "join: every daemon in the pool already has a client"
+            );
+            // The phrase "already has an active connection" is load-bearing, not prose: the
+            // client matches it (`OCCUPIED_RE` in `js/relay_link.js`) to tell "the pool is
+            // full" from "no daemon is online", and backs off hard instead of knocking every
+            // 500 ms. Without it two devices trade the session forever — `issues.md` I17,
+            // measured as 18 knocks in 94 s. `scripts/relay-link-check.mjs` reads this file
+            // and fails if the wording moves.
+            send_deny(
+                &mut ws_tx,
+                &format!(
+                    "every one of the {pool_size} wado session(s) on this Remote ID already \
+                     has an active connection. Close one, or start another daemon \
+                     (WADO_INSTANCES) to raise the limit."
+                ),
+            )
+            .await;
+            return;
+        }
+    };
+    let instance_id = instance.instance_id.clone();
+    let server_inbox_tx = instance.inbox_tx.clone();
+    let display_name = instance.display_name.clone();
+    let pool_busy =
+        state.rooms.busy_among(&pool.iter().map(|i| i.instance_id.clone()).collect::<Vec<_>>());
 
     info!(
         remote_id = %display_remote_id(&remote_id),
         display_name = ?display_name,
         room_id = %room_id,
+        instance = %instance_id,
+        assignment,
+        pool_busy,
+        pool_size,
         client = %addr,
-        "client joined — room created"
+        "client joined — {assignment} daemon, {pool_busy} of {pool_size} session(s) in use"
     );
 
     // ── 3. Notify server of incoming peer ────────────────────────────────────
@@ -193,13 +289,13 @@ async fn join_loop(socket: WebSocket, remote_id: String, addr: SocketAddr, state
     }) {
         Ok(s) => s,
         Err(_) => {
-            state.rooms.remove(&remote_id);
+            state.rooms.remove_if(&instance_id, &room_id);
             return;
         }
     };
     if server_inbox_tx.send(peer_msg).await.is_err() {
         warn!(remote_id = %display_remote_id(&remote_id), "join: server inbox closed right after lookup");
-        state.rooms.remove(&remote_id);
+        state.rooms.remove_if(&instance_id, &room_id);
         send_deny(&mut ws_tx, "server disconnected during handshake").await;
         return;
     }
@@ -208,17 +304,50 @@ async fn join_loop(socket: WebSocket, remote_id: String, addr: SocketAddr, state
     let accepted = match serde_json::to_string(&RelayMsg::JoinAccepted {
         remote_id: remote_id.clone(),
         room_id: room_id.clone(),
+        instance_id: instance_id.clone(),
+        pool_size,
+        pool_busy,
+        assignment: assignment.to_string(),
     }) {
         Ok(s) => s,
         Err(_) => {
-            state.rooms.remove(&remote_id);
+            state.rooms.remove_if(&instance_id, &room_id);
             return;
         }
     };
     if ws_tx.send(Message::Text(accepted)).await.is_err() {
-        state.rooms.remove(&remote_id);
+        state.rooms.remove_if(&instance_id, &room_id);
         return;
     }
+
+    // ── 4b. Keepalive ────────────────────────────────────────────────────────
+    //
+    // Once media is flowing this WebSocket carries nothing: video and input are on WebRTC, so
+    // the signalling socket sits idle for minutes. The **cloudflared quick tunnel closes an
+    // idle connection**, the client reconnects, and the reconnect costs a fresh room, a fresh
+    // offer/answer and a black frame — plus four ICE ports on the daemon (I14). Measured
+    // `2026-09-14`: one device re-joined every 1-2.5 minutes all evening and renegotiated
+    // twice each time, and it read as flaky Wi-Fi rather than an idle socket.
+    //
+    // The client half of this already shipped — `js/relay_link.js` answers `ping` with `pong`
+    // and has since the protocol gained the variants. Only the sender was missing, so nothing
+    // needs to be deployed to the client for this to take effect.
+    //
+    // Sent into the room's own inbox rather than written to the socket here, so it goes
+    // through the single forward task that owns `ws_tx` — two writers on one sink is how
+    // interleaved frames happen. When the room is dropped the sender closes and this ends.
+    let ping_tx = client_inbox_tx.clone();
+    let _keepalive = AbortOnDrop(tokio::spawn(async move {
+        let mut tick = tokio::time::interval(KEEPALIVE);
+        tick.tick().await; // the first tick is immediate; the socket is fresh
+        loop {
+            tick.tick().await;
+            let Ok(text) = serde_json::to_string(&RelayMsg::Ping) else { break };
+            if ping_tx.send(text).await.is_err() {
+                break; // room gone — nothing to keep alive
+            }
+        }
+    }));
 
     // ── 5. Bidirectional message pump ────────────────────────────────────────
     // Spawn a task that drains client_inbox_rx → ws_tx (server → relay → client).
@@ -236,6 +365,12 @@ async fn join_loop(socket: WebSocket, remote_id: String, addr: SocketAddr, state
     while let Some(frame) = ws_rx.next().await {
         match frame {
             Ok(Message::Text(text)) => {
+                // Swallowed here: a `pong` is this socket's own liveness answer and means
+                // nothing to the daemon, which would otherwise reject it as an unknown message
+                // and send back a `SessionError`.
+                if text.contains("\"pong\"") {
+                    continue;
+                }
                 debug!(
                     remote_id = %display_remote_id(&remote_id),
                     client = %addr,
@@ -256,7 +391,7 @@ async fn join_loop(socket: WebSocket, remote_id: String, addr: SocketAddr, state
     // ── 6. Cleanup ───────────────────────────────────────────────────────────
     // `_fwd_task` aborts itself on drop — including when this function unwinds. See
     // `AbortOnDrop`.
-    state.rooms.remove(&remote_id);
+    state.rooms.remove_if(&instance_id, &room_id);
     // Tell the server the viewer is gone — and nothing more than that.
     //
     // This used to synthesize `{"type":"session_stop"}`. The reason was real at the time: the
@@ -276,6 +411,7 @@ async fn join_loop(socket: WebSocket, remote_id: String, addr: SocketAddr, state
     info!(
         remote_id = %display_remote_id(&remote_id),
         room_id = %room_id,
+        instance = %instance_id,
         client = %addr,
         "client disconnected — room removed"
     );
