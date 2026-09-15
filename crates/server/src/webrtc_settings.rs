@@ -9,7 +9,9 @@
 //! - **Pinned ephemeral UDP port range** — WebRTC media/ICE otherwise binds
 //!   *random* high UDP ports, which a host firewall cannot sanely open. Pinning
 //!   the range to [`WEBRTC_UDP_PORT_MIN`]..=[`WEBRTC_UDP_PORT_MAX`] lets the
-//!   firewall open exactly those ports: `udp 50000:50100`.
+//!   firewall open exactly those ports: `udp 50000:50400`.
+//!
+//!   **Every daemon in a pool must get its own slice** — see [`udp_port_range`].
 //! - **IPv6 gathering, switched off when the host has no IPv6 route** — see
 //!   [`has_global_ipv6`]. This is the difference between a connection and a hang.
 
@@ -22,11 +24,50 @@ use webrtc::ice::udp_network::{EphemeralUDP, UDPNetwork};
 /// Lowest UDP port WebRTC will bind for ICE/media.
 ///
 /// Open this range in the host firewall, e.g. on NixOS:
-/// `networking.firewall.allowedUDPPortRanges = [ { from = 50000; to = 50100; } ];`
+/// `networking.firewall.allowedUDPPortRanges = [ { from = 50000; to = 50400; } ];`
 pub const WEBRTC_UDP_PORT_MIN: u16 = 50000;
 
 /// Highest UDP port WebRTC will bind for ICE/media. See [`WEBRTC_UDP_PORT_MIN`].
-pub const WEBRTC_UDP_PORT_MAX: u16 = 50100;
+///
+/// Widened from 50100 on `2026-09-14` so a pool of daemons can be given a slice each.
+pub const WEBRTC_UDP_PORT_MAX: u16 = 50400;
+
+/// How many ports one daemon gets. 100 is what a single daemon had before pools existed, and
+/// it was enough; I14 (ports leaked per negotiation) is a separate bug and widening the slice
+/// would only hide it for longer.
+const PORTS_PER_INSTANCE: u16 = 100;
+
+/// The UDP port slice this process should bind, from `WADO_UDP_SLICE`.
+///
+/// **Daemons in a pool must not share a port range.** Every `wado` process pinned
+/// 50000–50100, so with four daemons the ICE sockets of four independent sessions collided in
+/// one 101-port window: candidates were advertised on ports another process held, and every
+/// session went `Checking → Failed` while each daemon's own logs looked perfectly healthy.
+/// Measured on `2026-09-14`, immediately after the pool landed — all four daemons failing,
+/// where a single daemon had been connecting in under a second an hour earlier.
+///
+/// `WADO_UDP_SLICE=n` (0-based) shifts this process to `MIN + n*100 ..= MIN + n*100 + 99`.
+/// Unset means slice 0, so a lone daemon keeps exactly its old range and its old firewall rule.
+/// A slice that would run past [`WEBRTC_UDP_PORT_MAX`] is refused loudly rather than silently
+/// wrapping onto a sibling's ports — that is the failure this whole function exists to prevent.
+fn udp_port_range() -> (u16, u16) {
+    let slice: u16 = std::env::var("WADO_UDP_SLICE")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    let min = WEBRTC_UDP_PORT_MIN.saturating_add(slice.saturating_mul(PORTS_PER_INSTANCE));
+    let max = min.saturating_add(PORTS_PER_INSTANCE - 1);
+    if max > WEBRTC_UDP_PORT_MAX {
+        tracing::error!(
+            slice,
+            "WADO_UDP_SLICE={slice} would need ports {min}-{max}, past the pinned ceiling \
+             {WEBRTC_UDP_PORT_MAX}. Falling back to slice 0 — if another daemon is using it, \
+             both will fail ICE. Raise WEBRTC_UDP_PORT_MAX and the firewall rule instead."
+        );
+        return (WEBRTC_UDP_PORT_MIN, WEBRTC_UDP_PORT_MIN + PORTS_PER_INSTANCE - 1);
+    }
+    (min, max)
+}
 
 /// Build the `SettingEngine` shared by both WebRTC transports (direct + relay).
 pub fn build_setting_engine() -> SettingEngine {
@@ -43,7 +84,11 @@ pub fn build_setting_engine() -> SettingEngine {
     // these ports. The constants are a valid range (min <= max) so this never
     // errors; if it somehow did we log and fall back to the random default
     // rather than panic the server.
-    match EphemeralUDP::new(WEBRTC_UDP_PORT_MIN, WEBRTC_UDP_PORT_MAX) {
+    let (udp_min, udp_max) = udp_port_range();
+    // Logged unconditionally, because two daemons silently sharing a range is invisible in
+    // either one's log and shows up only as ICE that never completes.
+    tracing::info!(udp_min, udp_max, "WebRTC ICE/media UDP ports {udp_min}-{udp_max}");
+    match EphemeralUDP::new(udp_min, udp_max) {
         Ok(udp) => engine.set_udp_network(UDPNetwork::Ephemeral(udp)),
         Err(e) => {
             tracing::warn!("WebRTC UDP port range pin failed ({e}); using ephemeral default");
