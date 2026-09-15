@@ -10,7 +10,19 @@
 # comments included — one in a comment closes the quote and the whole script dies at parse time
 # with an error naming a word, not a line. Test any edit by appending sample lines to a scratch
 # file and running this against it before arming a monitor on it.
-LOG=${1:-/tmp/wado-rig/daemon.log}
+# One log per daemon instance, because the pool runs several and this awk keeps per-session
+# state (target fps, last dropped-frame count). Two sessions interleaved into one file make it
+# attribute one device's numbers to the other — confidently and wrongly.
+#
+# Takes an instance number or a path:  scripts/watch.sh 2   or   scripts/watch.sh /path/to.log
+# The default is instance 1. It used to be `daemon.log`, which `rig.sh` no longer writes — and
+# a monitor tailing a file nothing writes looks exactly like a quiet system.
+ARG=${1:-1}
+case "$ARG" in
+  ''|*[!0-9]*) LOG="$ARG" ;;
+  *)           LOG="/tmp/wado-rig/daemon-$ARG.log" ;;
+esac
+[ -e "$LOG" ] || { echo "no such log: $LOG (is the rig up? see scripts/rig.sh)" >&2; exit 1; }
 exec tail -n0 -F "$LOG" 2>/dev/null | sed -u 's/\x1b\[[0-9;]*m//g' | gawk '
 function kv(k,   m) { return match($0, k"=\"?([^ \"]+)") ? substr($0, RSTART+length(k)+1, RLENGTH-length(k)-1) : "?" }
 function clean(s) { gsub(/^"|"$/, "", s); return s }
@@ -31,7 +43,15 @@ function say(s) { print t() " " s; fflush() }
 /peer connected/                { say("● PEER     browser reached the relay"); next }
 /a session is already running/  { say("● PEER     session busy — offered rejoin/drop"); next }
 
-/offer received/  { sub(/.*offer received — /,""); say("◇ ICE      offer  " $0); next }
+# The offer candidate count is kept, not just printed, because it is the cheapest device
+# fingerprint in the whole log — and without it an ICE failure reads as a property of the
+# DAEMON rather than of the device that produced it. On 2026-09-14 that cost three wrong
+# hypotheses: two daemons showed 27 and 29 failures and looked poisoned, when it was one
+# device with a dead media path retrying across whatever daemon was free. One of those
+# "broken" daemons connected first try for a different device minutes later.
+/offer received/  { sub(/.*offer received — /,"")
+                    cands = match($0, /^[0-9]+/) ? substr($0, RSTART, RLENGTH) : "?"
+                    say("◇ ICE      offer  " $0); next }
 /answer sent/     { sub(/.*answer sent — /,"");    say("◇ ICE      answer " $0); next }
 /no server-reflexive candidate/ { say("✖ ICE      NO srflx — STUN timed out; only LAN clients can connect"); next }
 /ICE connection state/ {
@@ -41,7 +61,10 @@ function say(s) { print t() " " s; fflush() }
   if (s ~ /failed|disconnected/ && stopped_t > 0 && systime() - stopped_t <= 90) next
   if (s == last_ice) next
   last_ice=s
-  say((s ~ /^connected$|completed/ ? "◆" : s ~ /failed|disconnected/ ? "✖" : "◇") " ICE      " s)
+  # Tagged with the offering device, so a run of failures can be read as "this device" rather
+  # than "this daemon" at a glance.
+  say((s ~ /^connected$|completed/ ? "◆" : s ~ /failed|disconnected/ ? "✖" : "◇") " ICE      " s \
+      (cands != "" ? "   [device: " cands "-candidate]" : ""))
   next }
 
 # Browser-side stats relayed up. Only the ANOMALY ones; the 5-tick heartbeats stay in the log.
