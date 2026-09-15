@@ -939,3 +939,44 @@ element was replaced" is actually expressible rather than assumed.
 
 **The same shape as I22 and the `+null === 0` bug:** an absent thing treated as a success, with
 no path back. Three for three this run, in three different files.
+
+---
+
+## I25a — "distance is not a setting" is right for propagation delay and wrong for queuing delay
+
+**Refinement of I25, from a field sample on `2026-09-13 21:17:42`:**
+
+```
+fps=60.0  dec=9.78ms  framesDropped=0  lost=0  kbps=6105   ← full rate, full bitrate, no loss
+rtt=1102ms                                                  ← and a 1.1 s round trip
+```
+
+Full throughput *and* a one-second RTT, with nothing dropped. That is **bufferbloat**: the stream
+saturates the path, a queue builds somewhere along it, and latency grows while bandwidth looks
+perfect. Note `kbps=6105` against a 5676 target — the link is carrying everything asked of it.
+
+I25 suppressed the fix suggestion for *every* RTT-driven network verdict, on the reasoning that
+"nothing about a lower frame rate shortens a round trip". That holds for propagation delay — a
+far-away path stays far away. **It is false for queuing delay**, which is the case above: backing
+the sender off drains the queue and cuts RTT directly, often dramatically. So the one case where
+the advice would have helped most is the case I removed it from.
+
+**The two are distinguishable from data already in the snapshot**, which is what makes this
+fixable rather than merely regrettable:
+
+| | throughput | loss | fix that helps |
+|---|---|---|---|
+| propagation delay | anything | anything | none — it is distance |
+| **queuing delay (bufferbloat)** | **at or near target** | **~zero** | **a smaller stream** |
+
+High RTT *with* the stream arriving in full and no loss is bufferbloat; high RTT with throughput
+well under target is a path that is simply slow or far. `health.js` has `gotKbps`, `targetKbps`
+and `lossPct` at the point where it decides, so the discrimination costs one condition.
+
+**Unfixed** — recorded rather than patched immediately because it changes advice the viewer acts
+on, and the branch has taken three corrections today already from shipping on one observation.
+Wants a second bufferbloat sample to confirm the throughput/loss signature before the rule moves.
+
+**On the pattern:** this is the second time today a guard written to stop a wrong accusation went
+one step too far (the first being the strain-gate interaction in P4). Removing bad advice is not
+the same as knowing when the advice was good.
