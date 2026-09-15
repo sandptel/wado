@@ -111,6 +111,28 @@ pub enum RelayMsg {
     JoinAccepted {
         remote_id: String,
         room_id: String,
+        /// Which daemon of the Remote ID's pool this client was given.
+        ///
+        /// A Remote ID names a **pool** of `wado` daemons, each a whole process with its own
+        /// compositor, encoder and applications, so that several devices can use one Remote ID
+        /// at the same time. This says which one answered. A client that stores it and passes
+        /// it back as `?instance=` on a later join returns to *its own* desktop instead of
+        /// being handed a fresh one.
+        #[serde(default)]
+        instance_id: String,
+        /// How many daemons are registered under this Remote ID.
+        #[serde(default)]
+        pool_size: usize,
+        /// How many of them already have a client — this one included.
+        #[serde(default)]
+        pool_busy: usize,
+        /// How this client came to be on this instance: `"reclaimed"` (it asked for this one
+        /// by id), `"assigned"` (first free daemon in the pool).
+        ///
+        /// Both branches speak, deliberately — see the refusal reason in [`RelayMsg::JoinDenied`].
+        /// A marker that only reports the good case reads the same as nobody looking.
+        #[serde(default)]
+        assignment: String,
     },
     /// Join denied (no server online with this Remote ID, room full, …).
     JoinDenied {
