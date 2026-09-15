@@ -64,10 +64,41 @@ const LINK_OCCUPIED_TRIES = 6;
 const OCCUPIED_RE = /already has an active connection/i;
 const linkDelay = (n) => Math.min(500 * Math.pow(2, Math.max(0, n - 1)), LINK_BACKOFF_MAX);
 
+// Which daemon of the Remote ID's pool this browser last used, keyed by Remote ID.
+//
+// A Remote ID names a **pool** of daemons, each with its own compositor and applications, so
+// that several devices can use one ID at once. Handing the stored instance back on the next
+// join is what returns this device to *its own* desktop — its windows, its running programs —
+// instead of whichever daemon happened to be free. Without it, a reload or a cell handoff is
+// indistinguishable from a brand-new device.
+//
+// Its own key, not part of `wado.settings`: this is per-browser routing state, not a setting a
+// human chose, and it must not travel if settings are ever exported.
+const INSTANCE_KEY = "wado.instance";
+
+const instanceFor = (id) => {
+  try { return (JSON.parse(localStorage.getItem(INSTANCE_KEY)) || {})[id] || ""; }
+  catch (_) { return ""; }
+};
+W.rememberInstance = (id, instance) => {
+  try {
+    const all = JSON.parse(localStorage.getItem(INSTANCE_KEY)) || {};
+    all[id] = instance;
+    localStorage.setItem(INSTANCE_KEY, JSON.stringify(all));
+  } catch (_) {} // private mode: stickiness is an optimisation, never a requirement
+};
+
 const toWsUrl = (relayUrl, id) => {
   const base = String(relayUrl).replace(/^https:\/\//, "wss://").replace(/^http:\/\//, "ws://");
-  return base.replace(/\/+$/, "") + "/join/" + encodeURIComponent(String(id).replace(/[\s-]/g, ""));
+  const norm = String(id).replace(/[\s-]/g, "");
+  const want = instanceFor(norm);
+  return base.replace(/\/+$/, "") + "/join/" + encodeURIComponent(norm) +
+    (want ? "?instance=" + encodeURIComponent(want) : "");
 };
+
+// A uuid is unreadable in a log line and useless on a phone screen; its first block is enough
+// to tell two daemons apart, which is all this is for.
+W.poolTag = () => (W.pool && W.pool.instance ? W.pool.instance.slice(0, 8) : "?");
 
 W.relayOn = (type, fn) => { W._relayHandlers[type] = fn; };
 
@@ -152,7 +183,26 @@ function openLink() {
       W._relayUpAt = Date.now();
       if (W._relayStage !== undefined) W._relayStage = 2;
       if (W.relayPhase) W.relayPhase(2, "");
-      if (W.rlog) W.rlog("relay link up — a daemon is registered for this Remote ID");
+      // Which daemon of the pool answered, and how full the pool is. Kept on `W` so the
+      // status overlay can show it without asking the relay again, and logged on *every*
+      // join — a marker that only appears when something is wrong reads the same as no
+      // marker at all, and "assigned a fresh daemon" vs "came back to my own" is exactly
+      // the distinction that explains a desktop full of windows or an empty one.
+      W.pool = {
+        instance: msg.instance_id || "",
+        size: msg.pool_size || 0,
+        busy: msg.pool_busy || 0,
+        assignment: msg.assignment || "",
+      };
+      if (msg.instance_id) W.rememberInstance(String(msg.remote_id || ""), msg.instance_id);
+      if (W.rlog) {
+        const p = W.pool;
+        W.rlog(p.size
+          ? "relay link up — " +
+            (p.assignment === "reclaimed" ? "back on my own daemon " : "assigned daemon ") +
+            W.poolTag() + ", " + p.busy + " of " + p.size + " session(s) in use"
+          : "relay link up — a daemon is registered for this Remote ID");
+      }
       // `__up` reads `_relayDeniedOccupied` to decide whether getting in was our reconnect or
       // us displacing somebody, so it is cleared *after* the handler, not before.
       fire("__up");
@@ -175,8 +225,13 @@ function openLink() {
       if (occupied) {
         W._relayDeniedOccupied = true;
         W._relayTries = Math.max(W._relayTries, LINK_OCCUPIED_TRIES);
-        if (W.relayPhase) W.relayPhase(1, "another device is connected to this session");
-        if (W.rlog) W.rlog("join denied: another device holds this session — backing right off");
+        // Refusal speaks as loudly as success, and carries the relay's own numbers. "The pool
+        // is full" is a normal outcome once every daemon has a device, and a viewer shown a
+        // bare failure cannot tell it from a broken connection — which is the whole reason
+        // this branch says how many sessions exist and that another daemon raises the limit.
+        W.pool = { instance: "", size: 0, busy: 0, assignment: "refused: pool full" };
+        if (W.relayPhase) W.relayPhase(1, "every wado session on this Remote ID is in use");
+        if (W.rlog) W.rlog("join refused — " + (msg.reason || "the pool is full"));
         return;
       }
       if (W.relayPhase) W.relayPhase(1, msg.reason || "no daemon answered for this Remote ID");
