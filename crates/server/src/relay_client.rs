@@ -38,6 +38,7 @@ use webrtc::interceptor::registry::Registry;
 use webrtc::media::Sample;
 use webrtc::peer_connection::RTCPeerConnection;
 use webrtc::peer_connection::configuration::RTCConfiguration;
+use webrtc::ice_transport::ice_connection_state::RTCIceConnectionState;
 use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 use webrtc::rtcp::payload_feedbacks::full_intra_request::FullIntraRequest;
@@ -90,6 +91,14 @@ struct RelayCtx {
     /// Whether a session was started for a viewer and has not been stopped. See
     /// [`viewer_watchdog`].
     session_started: Arc<AtomicBool>,
+    /// Who the relay says is on the other end — `<addr> room=<first 8 of room_id>`.
+    ///
+    /// Only the relay knows this; the WebRTC half of the daemon otherwise logs offers, answers
+    /// and ICE states with nothing identifying the device that caused them. With a pool of
+    /// daemons and several phones that is unreadable: `scripts/watch.sh` resorts to using the
+    /// offer's *candidate count* as a device fingerprint, and on 2026-09-14 the absence of this
+    /// cost three wrong hypotheses about which daemon was poisoned. It is one string.
+    peer: Arc<Mutex<String>>,
 }
 
 /// Now, in unix milliseconds.
@@ -341,10 +350,15 @@ async fn run(
         last_connected: Arc::new(AtomicU64::new(now_ms())),
         last_relay_msg: Arc::new(AtomicU64::new(now_ms())),
         session_started: Arc::new(AtomicBool::new(false)),
+        peer: Arc::new(Mutex::new("<none>".to_string())),
         relay_url,
         remote_id,
         timings,
     };
+
+    // Asked once, at startup, for the same reason the IPv6 probe is: it describes the host, not
+    // the connection. A verdict here explains every later ICE failure at once.
+    tokio::spawn(crate::nat::report());
 
     tokio::spawn(viewer_watchdog(
         ctx.cmd_tx.clone(),
@@ -535,6 +549,12 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
 
         // Liveness for `viewer_watchdog`. Bumped on every frame, including ones we do not
         // understand — the point is that the relay link is carrying traffic, not what it says.
+        //
+        // The relay keepalive does NOT reach here and must not be assumed to: `KEEPALIVE` is
+        // spawned inside `join_loop` and sends into the *client* inbox, so a daemon sees no
+        // pings and `silent_ms` grows honestly. Verified live 2026-09-19 — an abandoned session
+        // was reaped at exactly `VIEWER_GRACE`. If a daemon-side keepalive is ever added, this
+        // line must start excluding it or the watchdog dies silently.
         ctx.last_relay_msg.store(now_ms(), Ordering::Relaxed);
 
         let msg = match serde_json::from_str::<RelayMsg>(&text) {
@@ -554,6 +574,10 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
 
         match msg {
             RelayMsg::PeerConnected { room_id, client_addr } => {
+                // Remembered, not just logged: every WebRTC line below is tagged with it.
+                let short: String = room_id.chars().take(8).collect();
+                *ctx.peer.lock().unwrap_or_else(|e| e.into_inner()) =
+                    format!("{client_addr} room={short}");
                 info!(room_id = %room_id, client = %client_addr, "relay client: peer connected");
             }
 
@@ -912,13 +936,20 @@ async fn handle_sdp_offer(
     let offer: RTCSessionDescription = serde_json::from_str(&offer_json)
         .map_err(|e| crate::WadoError::Other(format!("bad SDP: {e}")))?;
 
+    // Which device this whole negotiation belongs to. Read once and carried into every closure
+    // below, so a log with two phones in it can be read per device instead of per daemon.
+    let peer = ctx.peer.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let offered_at = std::time::Instant::now();
+    let remote_types = candidate_types(&offer.sdp);
+
     // The offer carries every candidate the browser gathered (non-trickle). Their types are
     // the whole diagnosis when media never flows: host-only means STUN was blocked and no
     // route past NAT was ever found, srflx present means the path failed somewhere later.
     info!(
+        peer = %peer,
         "relay client: offer received — {} candidates ({})",
         offer.sdp.matches("a=candidate:").count(),
-        candidate_types(&offer.sdp)
+        remote_types
     );
 
     let pc = Arc::new(
@@ -1010,10 +1041,12 @@ async fn handle_sdp_offer(
         let cmd_tx = ctx.cmd_tx.clone();
         let generation = Arc::clone(&ctx.generation);
         let last_connected = Arc::clone(&ctx.last_connected);
+        let pc_peer = peer.clone();
         pc.on_peer_connection_state_change(Box::new(move |state| {
             match state {
                 RTCPeerConnectionState::Connected => {
-                    info!("relay client: viewer connected via WebRTC");
+                    info!(peer = %pc_peer, took_ms = offered_at.elapsed().as_millis() as u64,
+                          "relay client: viewer connected via WebRTC");
                     last_connected.store(now_ms(), Ordering::Relaxed);
                     // Resume rendering and reset the per-viewer state. The keyframe is sent
                     // here as well as inside `set_viewer_attached` because that call is a
@@ -1041,6 +1074,7 @@ async fn handle_sdp_offer(
                         // Resuming costs one keyframe.
                         let _ = cmd_tx.send(CompositorCommand::ViewerAttached(false));
                         info!(
+                            peer = %pc_peer,
                             "relay client: peer connection {state:?} — session kept, waiting for \
                              a re-offer (the watchdog stops it if no viewer comes back)"
                         );
@@ -1055,8 +1089,32 @@ async fn handle_sdp_offer(
     // ICE-level transitions. The peer-connection state hides where a failure happened;
     // this is the one that distinguishes "never got a reply" (stuck Checking) from
     // "candidates exhausted" (Failed).
-    pc.on_ice_connection_state_change(Box::new(|state| {
-        info!(?state, "relay client: ICE connection state");
+    //
+    // A terminal ICE state is the one moment where the whole diagnosis is still in scope —
+    // which candidate types each side offered, and how long it spent trying. Logged as a
+    // single line there, because reconstructing it afterwards means correlating four lines
+    // across two logs, and on a pool that is per device as well as per daemon.
+    let ice_peer = peer.clone();
+    let ice_remote = remote_types.clone();
+    let local_types = Arc::new(Mutex::new("<not answered yet>".to_string()));
+    let ice_local = Arc::clone(&local_types);
+    pc.on_ice_connection_state_change(Box::new(move |state| {
+        let (peer, remote) = (ice_peer.clone(), ice_remote.clone());
+        let local = ice_local.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let ms = offered_at.elapsed().as_millis() as u64;
+        match state {
+            RTCIceConnectionState::Failed | RTCIceConnectionState::Disconnected => warn!(
+                peer = %peer, ms, local = %local, remote = %remote,
+                "relay client: ICE {state:?} after {ms}ms — we offered ({local}), the device \
+                 offered ({remote}), and neither has a `relay` candidate because wado runs STUN \
+                 only. ⇒ ASK ABOUT A VPN FIRST, on either end: it adds its tunnel interface to \
+                 the gather and makes the NAT symmetric, which fails exactly like this. \
+                 Confirmed 2026-09-19 — Zscaler on the client, 15 candidates and never \
+                 connected; switched off, 9 candidates and connected in under a second. A \
+                 symmetric carrier NAT does the same thing. Check the startup NAT verdict above."
+            ),
+            _ => info!(peer = %peer, ms, ?state, "relay client: ICE connection state"),
+        }
         Box::pin(async {})
     }));
 
@@ -1083,10 +1141,14 @@ async fn handle_sdp_offer(
         .ok_or_else(|| crate::WadoError::Other("no local description after ICE gather".into()))?;
     let answer_json = serde_json::to_string(&local)?;
 
+    let local_kinds = candidate_types(&local.sdp);
+    *local_types.lock().unwrap_or_else(|e| e.into_inner()) = local_kinds.clone();
     info!(
+        peer = %peer,
+        gather_ms = offered_at.elapsed().as_millis() as u64,
         "relay client: answer sent — {} candidates ({})",
         local.sdp.matches("a=candidate:").count(),
-        candidate_types(&local.sdp)
+        local_kinds
     );
     // Said loudly because the alternative is watching ICE fail and guessing. Host-only is not
     // a weaker connection, it is one that cannot be made from outside this LAN.
