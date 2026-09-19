@@ -764,7 +764,8 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             }
 
             RelayMsg::AppsRequest => {
-                let apps = crate::apps::discover();
+                let mut apps = crate::apps::discover();
+                crate::apps::running::mark(&mut apps, &ctx.cmd_tx).await;
                 send_relay(&out_tx, &RelayMsg::AppsList { apps }).await.ok();
             }
 
