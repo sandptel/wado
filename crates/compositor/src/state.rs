@@ -201,7 +201,13 @@ pub struct Wado {
     pub render_timer_token: Option<RegistrationToken>,
     /// Applications launched inside the active session (the optional initial command
     /// plus any spawned at runtime). All are killed on session stop.
-    pub app_processes: Vec<std::process::Child>,
+    pub app_processes: Vec<crate::proc::Launched>,
+    /// The environment launched applications get, decided at session start from
+    /// [`wado_protocol::SessionConfig::isolate_apps`] and from whether a private bus started.
+    pub app_env: crate::session_env::AppEnv,
+    /// The session's own D-Bus daemon, when it is isolated and one could be started. Killed
+    /// with the session — see [`crate::session_env::bus`].
+    pub app_bus: Option<crate::session_env::bus::SessionBus>,
     /// True between start_session and stop_session.
     pub session_active: bool,
     /// An in-progress compositor-managed window move (long-press-drag or "move mode"),
@@ -381,6 +387,10 @@ impl Wado {
             output_global: None,
             render_timer_token: None,
             app_processes: Vec::new(),
+            // No session, nothing launched. `start_session` replaces this before it launches
+            // anything.
+            app_env: crate::session_env::AppEnv::Host,
+            app_bus: None,
             session_active: false,
             window_move: None,
             scroll_events: 0,

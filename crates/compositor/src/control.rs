@@ -52,6 +52,14 @@ pub enum CompositorCommand {
     /// Launch a command into the *running* session (in realtime, any number of times).
     /// Ignored with a warning when no session is active.
     Launch { command: String },
+    /// Which launched commands are still running — see [`crate::headless::running_apps`].
+    ///
+    /// A query rather than a push: the client asks when it opens the drawer and after it
+    /// launches something, which is exactly when the answer can have changed and someone is
+    /// looking. A periodic push would run for every viewer whether or not the drawer is open.
+    RunningApps {
+        reply: oneshot::Sender<Vec<String>>,
+    },
     /// Make the next encoded frame a forced IDR keyframe. Sent when a viewer
     /// connects or the browser requests one via RTCP PLI/FIR.
     ForceKeyframe,
@@ -113,6 +121,15 @@ pub fn handle_command(state: &mut Wado, cmd: CompositorCommand, frame_tx: &mpsc:
                 tracing::warn!("launch ignored — no active session");
             }
         }
+        CompositorCommand::RunningApps { reply } => {
+            // Empty rather than an error when there is no session: "nothing is running" is
+            // the true answer, and the drawer has nothing to do with the difference.
+            let running = state
+                .session_active
+                .then(|| headless::running_apps(state))
+                .unwrap_or_default();
+            let _ = reply.send(running);
+        }
         CompositorCommand::ForceKeyframe => headless::force_keyframe(state),
         CompositorCommand::ViewerAttached(attached) => {
             headless::set_viewer_attached(state, attached)
@@ -152,6 +169,10 @@ fn reconfigure(state: &mut Wado, config: &SessionConfig) -> Result<SessionInfo, 
     }
     state.placement = config.window.placement;
     state.focus_follows_pointer = config.input.focus_follows_pointer;
+    // `isolate_apps` is deliberately *not* re-applied. The bus is per-session and the
+    // applications already running are connected to it; switching now would leave the session
+    // split across two buses, which is worse than either answer. The client locks the control
+    // while a session runs for the same reason.
     Ok(SessionInfo { encoder: report })
 }
 
@@ -171,6 +192,18 @@ fn start(
     // start_session emits its own tracing logs and reports the encoder it actually opened.
     let encoder_report =
         headless::start_session(state, &encoder, config.scale, sink).map_err(|e| e.to_string())?;
+
+    // The environment launched applications will see, decided before anything can be launched
+    // into the session. A private bus is best-effort: `session_env::bus::start` logs and returns None when
+    // this machine has no `dbus-daemon`, and the `DISPLAY` half of the isolation still holds.
+    state.app_env = if config.isolate_apps {
+        state.app_bus = crate::session_env::bus::start();
+        crate::session_env::AppEnv::Isolated {
+            bus: state.app_bus.as_ref().map(|b| b.address.clone()),
+        }
+    } else {
+        crate::session_env::AppEnv::Host
+    };
 
     // Apply the per-domain behaviour settings (atomic sub-structs of SessionConfig).
     if let Some(keyboard) = state.seat.get_keyboard() {
