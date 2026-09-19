@@ -680,7 +680,11 @@ pub fn stop_session(state: &mut Wado) {
     if let Some(bus) = state.app_bus.take() {
         crate::session_env::bus::terminate(bus);
     }
-    state.app_env = crate::session_env::AppEnv::Host;
+    // Last: it is the display the applications were drawing on.
+    if let Some(x) = state.app_x.take() {
+        crate::session_env::xwayland::terminate(x);
+    }
+    state.app_env = crate::session_env::AppEnv::Host { x: None };
     if let Some(output) = state.output.take() {
         state.space.unmap_output(&output);
     }

@@ -4,6 +4,16 @@
 
 ### Added
 
+**An X server for the session, for apps that cannot speak Wayland.** New setting, off by
+default: the session runs its own rootful Xwayland and every application launched into it gets
+that `DISPLAY`. Steam is the case that prompted it — it is X11-only, so with the isolation
+above it could only fail, and before that it opened on the host's desktop. Verified by running
+it: the store rendered in the stream, from a frame pulled out of the encoded output. Rootful
+rather than rootless because rootless needs the compositor to be the X window manager, which is
+a milestone and not a patch — so the cost is named where the setting is: every X application
+shares one screen, that screen is a single window the size of the stream, it is there even when
+nothing is using it, and nothing inside it manages windows.
+
 **An app drawer, on the bar.** ⊞ opens a sheet over the video: a search box that is also the
 command line, a row of what you launched recently, and a grid of every installed application
 with its icon. Tap launches and closes it; long-press (right-click on a desktop) drops the

@@ -260,6 +260,17 @@ pub struct SessionConfig {
     /// desktop is the bug, not the baseline.
     #[serde(default = "default_isolate_apps")]
     pub isolate_apps: bool,
+    /// Give the session its own X server, so X11-only applications run inside it.
+    ///
+    /// Off by default, and the reason is visible rather than theoretical: the X server is
+    /// rootful, so it puts a window the size of the output into the session whether or not
+    /// anything is using it. Worth it when you are launching Steam, which cannot speak
+    /// Wayland at all; not worth it otherwise.
+    ///
+    /// See `wado_compositor::session_env::xwayland` for what it can and cannot do — notably
+    /// that every X application shares one screen with no window manager in it.
+    #[serde(default)]
+    pub x_server: bool,
 }
 
 /// Isolated. See [`SessionConfig::isolate_apps`].
@@ -316,6 +327,7 @@ mod config_validation_tests {
     fn ok() -> SessionConfig {
         SessionConfig {
             isolate_apps: true,
+            x_server: false,
             width: 1280, height: 720, fps: 60, scale: 1.0,
             quality: Quality::Balanced,
             preset: None, keyframe_interval: None,

@@ -208,6 +208,9 @@ pub struct Wado {
     /// The session's own D-Bus daemon, when it is isolated and one could be started. Killed
     /// with the session — see [`crate::session_env::bus`].
     pub app_bus: Option<crate::session_env::bus::SessionBus>,
+    /// The session's own X server, when it was asked for and could be started. Killed with the
+    /// session — see [`crate::session_env::xwayland`].
+    pub app_x: Option<crate::session_env::xwayland::XServer>,
     /// True between start_session and stop_session.
     pub session_active: bool,
     /// An in-progress compositor-managed window move (long-press-drag or "move mode"),
@@ -389,8 +392,9 @@ impl Wado {
             app_processes: Vec::new(),
             // No session, nothing launched. `start_session` replaces this before it launches
             // anything.
-            app_env: crate::session_env::AppEnv::Host,
+            app_env: crate::session_env::AppEnv::Host { x: None },
             app_bus: None,
+            app_x: None,
             session_active: false,
             window_move: None,
             scroll_events: 0,

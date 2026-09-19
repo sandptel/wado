@@ -115,6 +115,23 @@ pub fn render(ui: Ui) -> Element {
             "portals work, and X11-only apps open over there rather than failing."
         }
 
+        label {
+            class: "check",
+            input {
+                r#type: "checkbox", checked: (s.x_server)(), disabled: on,
+                onchange: move |e| s.x_server.set(e.checked()),
+            }
+            "Run an X server for X11 apps (Steam, older apps)"
+        }
+        p { class: "hint",
+            "wado speaks Wayland only, so an app that can only speak X11 — Steam is the one "
+            "people hit — cannot draw here at all. On, the session gets its own X server and "
+            "those apps run inside it. The cost is visible: every X app shares one screen, "
+            "which appears as a single window the size of the stream and is there even when "
+            "nothing is using it, and there is no window manager inside it to move or resize "
+            "what it holds."
+        }
+
         // Not disabled while a session runs, and that is the point: this is what you reach for
         // *when* the rate starts walking. The flag is browser-side, so it takes effect on the
         // next health tick with no reconfigure and no restart. See plan/sync.md §1.

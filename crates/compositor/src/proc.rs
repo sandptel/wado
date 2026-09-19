@@ -197,7 +197,7 @@ mod tests {
 
     /// The pre-isolation spawn, which is what every test below is about.
     fn spawn_host(command: &str) -> std::io::Result<Child> {
-        spawn(command, &AppEnv::Host)
+        spawn(command, &AppEnv::Host { x: None })
     }
 
     /// `0` means "spawn exactly as before" and has to survive round-tripping, because it is
@@ -267,6 +267,7 @@ mod tests {
             &format!("env > {}", out.display()),
             &AppEnv::Isolated {
                 bus: Some("unix:path=/tmp/wado-test-bus".to_string()),
+                x: None,
             },
         )
         .expect("spawn");

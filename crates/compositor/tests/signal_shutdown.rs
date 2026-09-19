@@ -35,7 +35,7 @@ fn sigterm_stops_the_session_and_its_applications() {
     // standing up the render pipeline would need a GPU and proves nothing extra here.
     state.session_active = true;
     let command = "sleep 53 & sleep 53 & wait";
-    let child = wado_compositor::proc::spawn(command, &wado_compositor::session_env::AppEnv::Host)
+    let child = wado_compositor::proc::spawn(command, &wado_compositor::session_env::AppEnv::Host { x: None })
         .expect("spawn");
     let pgid = child.id() as i32;
     state.app_processes.push(wado_compositor::proc::Launched {
