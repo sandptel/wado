@@ -6,11 +6,13 @@
 pub mod apps;
 pub mod error;
 pub mod ice;
+pub mod nat;
 pub mod panic_log;
 pub mod pumpstats;
 pub mod relay_client;
 pub mod pty;
 pub mod remote_id;
+pub mod runlane;
 pub mod sched;
 pub mod webrtc_settings;
 pub mod website;

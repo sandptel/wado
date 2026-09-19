@@ -2,6 +2,40 @@
 
 ## Unreleased
 
+### Added
+
+**A run has a lane now, and the log says which.** `WADO_RUN=perf|connection|feature|compositor`
+picks what this session is investigating; each lane is an `EnvFilter` string and nothing more, so
+switching costs a daemon restart rather than a rebuild. Deliberately not a Cargo feature: a lane
+changes several times an hour, and a feature would mean a full LTO release build of the one binary
+that must never be a debug build, to change a log level.
+
+**Every WebRTC line names the device that caused it.** Offers, answers, ICE states and the connect
+now carry `peer=<addr> room=<id>`. With a pool of daemons and several phones, a log without this
+cannot be read at all — the monitor had been using the offer's *candidate count* as a device
+fingerprint, and on `2026-09-14` its absence cost three wrong hypotheses about which daemon was
+broken.
+
+**One line says why ICE failed.** On `Failed`/`Disconnected`: both sides' candidate types and how
+long it spent trying, in a single warning, instead of four lines correlated across two logs.
+
+**wado warns when it is behind a symmetric NAT.** Two STUN servers, one socket, at startup: if
+they report different mappings, the srflx candidate in every answer names a port no peer can
+reach, and connections hang in ICE `checking` with nothing else logged. A VPN on the default route
+does this. Worth the probe because that state had been diagnosed three times as CGNAT and as
+access-point isolation, neither of which had ever been measured.
+
+### Fixed
+
+**The rig stops invalidating the URL devices are holding.** `scripts/rig.sh` reused to kill a
+working cloudflared and mint a new quick-tunnel hostname on every start, stranding every device
+still pointed at the old one — a failure with *no trace anywhere*, because the request never
+reaches the relay. The tunnel is now reused unless it is genuinely dead, and the script warns when
+the deployed client's compiled-in default is not the live tunnel.
+
+**`scripts/rig.sh --add N`** grows a running pool without interrupting a session. The moment more
+daemons are needed is exactly when devices are connected and one is being refused.
+
 ## v0.0.3 — `2026-09-12`
 
 Four Wayland protocols, the scroll fix, and the first thing that responds to a link it cannot

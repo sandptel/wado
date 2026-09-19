@@ -60,6 +60,12 @@ pub fn servers() -> Vec<RTCIceServer> {
         .collect()
 }
 
+/// The STUN servers as bare `host:port`, for anything that speaks STUN itself rather than
+/// handing the list to webrtc-rs — see [`crate::nat`].
+pub fn stun_hosts() -> Vec<String> {
+    STUN.iter().map(|u| u.trim_start_matches("stun:").to_owned()).collect()
+}
+
 /// True when an SDP carries a server-reflexive candidate.
 ///
 /// Worth checking explicitly rather than eyeballing the candidate count: host-only is not a
