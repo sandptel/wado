@@ -65,6 +65,10 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/osk.js"),
     "\n",
+    // After `input_core`, which defines `W.sendInput`, and after `osk` only for readability —
+    // the pad registers nothing at load, it is built on the first `setGamepad`.
+    include_str!("js/gamepad.js"),
+    "\n",
     include_str!("js/refresh.js"),
     "\n",
     include_str!("js/overlay.js"),
@@ -131,6 +135,7 @@ pub fn run(ui: Ui) {
         // there — doing it from here would repaint a page that is already correct.
         crate::debug::apply(ui);
         crate::ui::live::apply(ui);
+        crate::ui::gamepad::apply(ui);
 
         let server = (ui.set.server_addr)();
         let _ = document::eval(&format!("window.__wado.connectLogs({});", js(&server))).await;

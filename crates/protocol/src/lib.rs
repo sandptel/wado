@@ -150,6 +150,20 @@ pub enum InputEvent {
     /// promotes to a window move/right-click), so the app sees a cancel, not a tap. Maps
     /// to `wl_touch`'s **global** cancel (all live contacts), per the protocol.
     CancelTouch { id: u32 },
+    /// One button on the client's on-screen gamepad, as a raw Linux `BTN_*` code (`BTN_A` =
+    /// `0x130`). Delivered to a **uinput** virtual controller on the host, not to Wayland.
+    ///
+    /// There is no gamepad in Wayland — games read controllers from `/dev/input` through
+    /// evdev, below the display server — so this is the only shape that can work. Raw evdev
+    /// codes for the same reason [`InputEvent::Key`] carries them: the compositor would
+    /// otherwise translate one fixed enum into the same numbers, one layer further from the
+    /// kernel that consumes them.
+    GamepadButton { code: u16, pressed: bool },
+    /// One axis on the client's on-screen gamepad, as a raw Linux `ABS_*` code. Sticks are
+    /// `-32768..32767`, triggers `0..255`, the D-pad hat `-1..1`; the compositor clamps to the
+    /// range the virtual device advertised, since an out-of-range value is dropped by the
+    /// kernel and reads as a dead stick.
+    GamepadAxis { code: u16, value: i32 },
     /// Latency probe. The server echoes `{"t":"pong","seq":…}` straight back on the same
     /// data channel and does **not** forward this to the compositor, so the client can
     /// time the input leg (client → server → client) without a synchronised clock.
@@ -571,6 +585,37 @@ pub mod logfmt {
                 ts: String::new(),
                 text: line.to_string(),
             },
+        }
+    }
+}
+
+#[cfg(test)]
+mod input_tests {
+    use super::*;
+
+    /// `js/gamepad.js` hand-writes this JSON — the client shares no types with the server — so
+    /// the wire shape *is* the contract and these are the exact objects it sends. A rename on
+    /// either side shows up here rather than as a pad that silently does nothing.
+    #[test]
+    fn accepts_the_gamepad_json_the_browser_sends() {
+        let ev: InputEvent =
+            serde_json::from_str(r#"{"t":"gamepad_button","code":304,"pressed":true}"#).unwrap();
+        // 304 == 0x130 == BTN_A.
+        assert!(matches!(ev, InputEvent::GamepadButton { code: 0x130, pressed: true }));
+
+        let ev: InputEvent =
+            serde_json::from_str(r#"{"t":"gamepad_axis","code":1,"value":-32768}"#).unwrap();
+        assert!(matches!(ev, InputEvent::GamepadAxis { code: 1, value: -32768 }));
+    }
+
+    /// Axis values span the full signed 16-bit stick range in both directions; a `u16` or a
+    /// narrower integer would silently clamp a left/up deflection to nothing.
+    #[test]
+    fn a_stick_axis_carries_its_whole_signed_range() {
+        for v in [-32768i32, -1, 0, 32767] {
+            let json = format!(r#"{{"t":"gamepad_axis","code":0,"value":{v}}}"#);
+            let ev: InputEvent = serde_json::from_str(&json).expect(&json);
+            assert!(matches!(ev, InputEvent::GamepadAxis { value, .. } if value == v), "{json}");
         }
     }
 }

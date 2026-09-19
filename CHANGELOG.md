@@ -4,6 +4,56 @@
 
 ### Added
 
+**An on-screen gamepad.** New 🎮 button on the bar puts a translucent controller over the
+video — two sticks, a D-pad, four face buttons, four shoulders, select/home/start — and it
+works in one of two ways, which is a real choice rather than a preference.
+
+The second mode is the one worth explaining. Wayland has no gamepad protocol and never has:
+games read controllers straight from `/dev/input` through evdev, below the display server
+entirely. So "real controller" mode does the only thing that can work — the daemon opens
+`/dev/uinput` and creates a virtual Xbox 360 pad on the host, reporting the exact vendor,
+product and axis layout the `xpad` driver does, so SDL's built-in mapping database recognises
+it and no mapping string has to be pasted anywhere. Steam, Proton and anything else on that
+machine see a controller plugged in. **That device is global to the machine** — a kernel input
+device is visible to everything that can read `/dev/input`, inside the session and outside it,
+and there is no way to scope one to a Wayland session. It is created on the first press and
+destroyed with the session, so a session that never opens the pad leaves nothing behind.
+
+The default is the other mode, which maps the pad onto the keyboard and mouse events the
+session already carries: left stick walks WASD, **right stick is mouse-look**, A jumps,
+shoulders click the mouse, Select is Tab and Start is Escape. Nothing is needed on the host for
+this one — and it is also the only mode that can aim, which is what a right stick is for. It is
+the default for a blunt reason: `/dev/uinput` is `root:uinput 0660`, and until the daemon's
+user is in that group the other mode is dead. When it is, the log says so by name rather than
+by errno.
+
+Size, opacity and distance from the screen edges are sliders in a new Gamepad settings group,
+applied live.
+
+**Applications can go fullscreen.** `xdg_toplevel.set_fullscreen` was smithay's empty default,
+so a game or a video player asking to fill the screen — the first thing most of them do on
+startup — got no answer and kept its windowed size. It is granted now: the window takes the
+output, the focus ring is suppressed over it (a border drawn over something that owns the
+screen is a border drawn into the picture), and a rotation or a scale change re-sizes it
+instead of leaving it at the old output's dimensions. Restoring puts it back where it was, even
+if it was maximized first.
+
+### Changed
+
+**A phone session is now always landscape.** The browser reports the panel in whichever
+orientation the phone is held, and a phone at rest is held upright — so a session started
+without thinking about it came out 720×1600, which is a 360-pixel-wide screen for desktop
+applications that mostly refuse to be that narrow. The output size is fixed at Start and cannot
+be changed afterwards, so this is the only moment the choice exists. On a phone the long edge
+is now the width; fullscreen then locks the handset to landscape, because that already follows
+the session's own shape. Tablets and desktops are untouched.
+
+**The four window actions moved behind one ⊟ button on the bar.** Eleven buttons in a row is
+more than fits across a phone held in landscape, which is now the orientation every phone
+session is in. They pop up as a row above the bar and close after acting — the popup covers the
+video it is acting on, and "next window" is the one action you cannot judge without seeing the
+result. Nothing was removed.
+
 **Pointer lock, for 3D games.** New 🎯 button on the bar: it takes the mouse, and the mouse
 stays taken until you press Escape. Two halves, and neither works without the other. In the
 browser it is Pointer Lock, which stops reporting a *position* and starts reporting *movement* —

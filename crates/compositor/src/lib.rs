@@ -28,6 +28,7 @@ pub mod encode;
 pub mod error;
 pub mod fit;
 pub mod focus;
+pub mod fullscreen;
 pub mod glow;
 pub mod grabs;
 pub mod handlers;

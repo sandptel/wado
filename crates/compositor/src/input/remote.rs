@@ -42,11 +42,40 @@ impl Wado {
                 self.pinch(phase, x, y, scale, rotation)
             }
             InputEvent::WindowDrag { phase, x, y } => self.window_drag(phase, x, y),
+            InputEvent::GamepadButton { code, pressed } => {
+                if let Some(pad) = self.virtual_gamepad() {
+                    pad.button(code, pressed);
+                }
+            }
+            InputEvent::GamepadAxis { code, value } => {
+                if let Some(pad) = self.virtual_gamepad() {
+                    pad.axis(code, value);
+                }
+            }
             // Never reaches here in practice: the server answers Ping itself and does not
             // forward it, precisely so the probe measures the input path without the
             // compositor's render loop in the way. Ignored rather than warned so a stray
             // one can't spam the log.
             InputEvent::Ping { .. } => {}
         }
+    }
+
+    /// The session's virtual gamepad, opening it on first use.
+    ///
+    /// Lazy because the device is visible to the whole machine: a session nobody opened the
+    /// on-screen pad in must not leave a phantom controller behind for every other application
+    /// on the host to enumerate. The failure is latched so a held stick logs the permission
+    /// problem once rather than sixty times a second.
+    fn virtual_gamepad(&mut self) -> Option<&mut crate::input::gamepad::Gamepad> {
+        if self.gamepad.is_none() && !self.gamepad_failed {
+            match crate::input::gamepad::Gamepad::open() {
+                Ok(pad) => self.gamepad = Some(pad),
+                Err(e) => {
+                    self.gamepad_failed = true;
+                    tracing::error!("virtual gamepad unavailable: {e}");
+                }
+            }
+        }
+        self.gamepad.as_mut()
     }
 }

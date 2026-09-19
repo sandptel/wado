@@ -1,0 +1,147 @@
+/* The on-screen gamepad. Geometry only — what each control *does* is js/gamepad.js.
+ *
+ * Outlined and translucent rather than filled: this sits on top of a game, and anything solid
+ * enough to read comfortably is solid enough to hide what you are aiming at. Opacity is a
+ * setting for the same reason.
+ *
+ * Everything derives from one unit, `--pad-u`, so the size slider is a single multiplier and
+ * the layout cannot come apart at one end of its range. Positions are anchored to the four
+ * corners, never to the centre, because the stage is a different shape on every device.
+ *
+ * ponytail: absolute positioning off two anchors, not a drag-to-place editor. Size and edge
+ * padding are the two things people actually change; per-button placement is an editor, with
+ * its own persistence and its own reset, and nothing here is blocked on having one.
+ */
+
+/* Dioxus renders this and nothing inside it; js/gamepad.js owns the contents. */
+#wado-pad-mount { position: absolute; inset: 0; pointer-events: none; }
+
+#wado-pad {
+  position: absolute;
+  inset: 0;
+  z-index: 9; /* under #wado-bar (10) — the bar is how you switch this off */
+  /* Only the controls take input; the gaps pass touches through to the video. */
+  pointer-events: none;
+  opacity: var(--pad-opacity, 0.5);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+
+  --pad-u: calc(26px * var(--pad-scale, 1));
+  /* Distance from each screen edge, safe areas included: a control under a home indicator or
+   * a camera cutout is a control that cannot be pressed. */
+  --ix: calc(14px + var(--pad-inset-x, 0px) + env(safe-area-inset-left));
+  --iy: calc(14px + var(--pad-inset-y, 0px) + env(safe-area-inset-bottom));
+  --it: calc(14px + var(--pad-inset-y, 0px) + env(safe-area-inset-top));
+  /* Cross centres, clear of the stick below them. */
+  --cross-x: calc(var(--ix) + 2.2 * var(--pad-u));
+  --cross-y: calc(var(--iy) + 6.4 * var(--pad-u));
+}
+
+/* ── the controls ─────────────────────────────────────────────────────────────────────── */
+
+#wado-pad .padbtn,
+#wado-pad .padstick {
+  position: absolute;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  color: var(--base06);
+  border: 2px solid currentColor;
+  background: color-mix(in srgb, var(--base00) 35%, transparent);
+  font: 600 calc(0.42 * var(--pad-u)) / 1 system-ui, sans-serif;
+  letter-spacing: 0.04em;
+  /* The stroke has to survive being drawn over a bright scene as well as a dark one. */
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+#wado-pad .padbtn.on {
+  background: color-mix(in srgb, var(--base0D) 55%, transparent);
+  transform-origin: center;
+}
+
+/* ── D-pad and face buttons: two crosses, mirrored ────────────────────────────────────── */
+
+#wado-pad .dpad,
+#wado-pad .face {
+  width: calc(1.3 * var(--pad-u));
+  height: calc(1.3 * var(--pad-u));
+  bottom: var(--cross-y);
+  border-radius: calc(0.3 * var(--pad-u));
+}
+#wado-pad .dpad { left: var(--cross-x); }
+#wado-pad .face {
+  right: var(--cross-x);
+  border-radius: 50%;
+  font-size: calc(0.5 * var(--pad-u));
+}
+
+/* The anchor puts each button's centre on the cross centre; these push it out one place.
+ * 105% of its own size, so the four never touch and a thumb between two hits neither. */
+#wado-pad .up { transform: translate(-50%, -55%); }
+#wado-pad .down { transform: translate(-50%, 155%); }
+#wado-pad .left { transform: translate(-155%, 50%); }
+#wado-pad .right { transform: translate(55%, 50%); }
+#wado-pad .padbtn.on.up { transform: translate(-50%, -55%) scale(0.92); }
+#wado-pad .padbtn.on.down { transform: translate(-50%, 155%) scale(0.92); }
+#wado-pad .padbtn.on.left { transform: translate(-155%, 50%) scale(0.92); }
+#wado-pad .padbtn.on.right { transform: translate(55%, 50%) scale(0.92); }
+
+/* ── shoulders ────────────────────────────────────────────────────────────────────────── */
+
+#wado-pad .bumper {
+  width: calc(2.4 * var(--pad-u));
+  height: calc(0.95 * var(--pad-u));
+  border-radius: calc(0.28 * var(--pad-u));
+  font-size: calc(0.4 * var(--pad-u));
+}
+#wado-pad [data-id="l1"] { left: var(--ix); top: var(--it); }
+#wado-pad [data-id="l2"] { left: var(--ix); top: calc(var(--it) + 1.15 * var(--pad-u)); }
+#wado-pad [data-id="r1"] { right: var(--ix); top: var(--it); }
+#wado-pad [data-id="r2"] { right: var(--ix); top: calc(var(--it) + 1.15 * var(--pad-u)); }
+
+/* ── select / guide / start ───────────────────────────────────────────────────────────── */
+
+#wado-pad .pill {
+  top: var(--it);
+  height: calc(0.8 * var(--pad-u));
+  padding: 0 calc(0.35 * var(--pad-u));
+  border-radius: calc(0.4 * var(--pad-u));
+  font-size: calc(0.32 * var(--pad-u));
+  left: 50%;
+}
+#wado-pad [data-id="select"] { transform: translateX(calc(-50% - 3 * var(--pad-u))); }
+#wado-pad [data-id="guide"] { transform: translateX(-50%); font-size: calc(0.5 * var(--pad-u)); }
+#wado-pad [data-id="start"] { transform: translateX(calc(-50% + 3 * var(--pad-u))); }
+
+/* ── analog sticks ────────────────────────────────────────────────────────────────────── */
+
+#wado-pad .padstick {
+  width: calc(4.4 * var(--pad-u));
+  height: calc(4.4 * var(--pad-u));
+  border-radius: 50%;
+  bottom: var(--iy);
+}
+#wado-pad [data-cluster="stick-l"] { left: var(--ix); }
+#wado-pad [data-cluster="stick-r"] { right: var(--ix); }
+
+#wado-pad .padthumb {
+  width: calc(1.7 * var(--pad-u));
+  height: calc(1.7 * var(--pad-u));
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  background: color-mix(in srgb, var(--base05) 45%, transparent);
+  pointer-events: none;
+}
+
+/* A thumb returning to centre eases back; one being dragged must not lag the finger. */
+#wado-pad .padstick:not(:active) .padthumb {
+  transition: transform var(--dur) var(--ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #wado-pad .padthumb { transition: none; }
+}

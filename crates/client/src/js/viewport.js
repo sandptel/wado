@@ -11,6 +11,27 @@
 
 W.isFullscreen = () => !!document.fullscreenElement;
 
+// Is this a phone, as opposed to a desktop or a tablet?
+//
+// Two tests, because either alone is wrong: a coarse pointer alone also matches a touchscreen
+// laptop and a TV, and a small screen alone also matches a narrow desktop window. `screen`
+// rather than `window` for the size, so a half-width browser window on a desktop is not read
+// as a handset. 820 CSS px on the short edge is the usual phone/tablet line — an iPad mini is
+// 744, a 12.9" iPad 1024, and no phone is above 500.
+//
+// This is a *display* question, not an input one: the answer decides which way round the
+// session is offered, and nothing else.
+W.isPhone = () => {
+  try {
+    return (
+      matchMedia("(pointer: coarse)").matches &&
+      Math.min(screen.width, screen.height) <= 820
+    );
+  } catch (_) {
+    return false;
+  }
+};
+
 W.toggleFullscreen = async (w, h) => {
   try {
     if (document.fullscreenElement) {
@@ -39,12 +60,19 @@ W.toggleFullscreen = async (w, h) => {
 // `screen` and not `window`: the intended mode is fullscreen, where browser chrome is gone.
 W.reportScreen = () => {
   const d = window.devicePixelRatio || 1;
-  emit({
-    type: "screen",
-    w: Math.round(screen.width * d),
-    h: Math.round(screen.height * d),
-    dpr: d,
-  });
+  let w = Math.round(screen.width * d);
+  let h = Math.round(screen.height * d);
+  // **A phone session is always landscape.** The panel is reported in whichever orientation
+  // the phone happens to be held, and a phone at rest is held upright — so a session started
+  // without thinking about it came out 720x1600, and every desktop application inside it then
+  // had a 360px-wide screen to lay itself out on. The output's size is fixed at Start and
+  // cannot be changed afterwards (invariant #8), so this is the only moment the choice exists.
+  //
+  // The long edge becomes the width; `screen.orientation.lock` in `toggleFullscreen` already
+  // follows the session's own aspect, so pinning the phone to landscape on fullscreen falls
+  // out of this with no second rule to keep in sync.
+  if (W.isPhone() && h > w) [w, h] = [h, w];
+  emit({ type: "screen", w, h, dpr: d });
 };
 W.reportScreen();
 // Rotating swaps the axes. The running session cannot resize (invariant #8), so this only

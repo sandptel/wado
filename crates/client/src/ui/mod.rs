@@ -12,6 +12,7 @@ pub mod connection;
 pub mod console;
 pub mod debug;
 pub mod drawer;
+pub mod gamepad;
 pub mod health;
 pub mod launcher;
 pub mod live;
@@ -57,6 +58,10 @@ pub fn panel(ui: Ui) -> Element {
 
         Group { title: "Live", note: "Applies immediately.", open: true,
             {live::render(ui)}
+        }
+
+        Group { title: "Gamepad", note: "Applies immediately.", open: false,
+            {gamepad::render(ui)}
         }
 
         Group { title: "Appearance", note: "Applies immediately.", open: false,

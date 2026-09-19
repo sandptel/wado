@@ -85,6 +85,23 @@ pub struct Settings {
     pub show_hidden: Signal<bool>,
     pub move_mode: Signal<bool>,
     pub scroll_speed: Signal<f64>,
+
+    // ── gamepad: the on-screen pad, all of it live ──────────────────────────────
+    /// Whether the pad is drawn over the video. A preference rather than session state: a
+    /// viewer who plays with the pad wants it back on the next page load, and the bar's 🎮
+    /// is one tap either way for the one who does not.
+    pub pad_on: Signal<bool>,
+    /// `"keys"` maps the pad to keyboard/mouse events inside the session; `"pad"` drives a
+    /// real uinput controller on the host. See `js/gamepad.js` for why these are two genuinely
+    /// different things and not one setting with a flag.
+    pub pad_mode: Signal<String>,
+    /// Multiplier on every dimension of the overlay.
+    pub pad_scale: Signal<f64>,
+    /// 0..1. The pad sits on top of a game, so how much it hides is a real choice.
+    pub pad_opacity: Signal<f64>,
+    /// Extra distance from the left/right and top/bottom screen edges, in CSS pixels.
+    pub pad_inset_x: Signal<f64>,
+    pub pad_inset_y: Signal<f64>,
     pub natural_scroll: Signal<bool>,
 
     // ── appearance ──────────────────────────────────────────────────────────────
@@ -158,6 +175,16 @@ impl Settings {
             scroll_speed: use_signal(|| 0.35),
             natural_scroll: use_signal(|| false),
 
+            pad_on: use_signal(|| false),
+            // Keys, not pad: the uinput device needs the daemon's user in the `uinput` group,
+            // which is not true on a fresh machine. The mode that works everywhere is the one
+            // to land on first.
+            pad_mode: use_signal(|| "keys".to_string()),
+            pad_scale: use_signal(|| 1.0),
+            pad_opacity: use_signal(|| 0.5),
+            pad_inset_x: use_signal(|| 0.0),
+            pad_inset_y: use_signal(|| 0.0),
+
             panel_open: use_signal(|| true),
             theme: use_signal(|| "default-dark".to_string()),
             theme_custom: use_signal(String::new),
@@ -194,6 +221,10 @@ pub struct Live {
     /// it the panel is docked and this is ignored. Not persisted: reopening a page with the
     /// settings sheet already covering the video is never what someone wanted.
     pub sheet_open: Signal<bool>,
+
+    /// Whether the bar's window-action group is expanded. Not persisted — a popup that is
+    /// open on load is chrome nobody asked for, and it is one tap to reopen.
+    pub win_open: Signal<bool>,
 
     /// What the server actually opened, from the `/session/start` reply: the hw/sw `mode`
     /// drives the persistent software banner (invariant #5), the `pipeline` tier id drives
@@ -291,6 +322,7 @@ impl Live {
             console_open: use_signal(|| false),
             console_tab: use_signal(|| "shell".to_string()),
             sheet_open: use_signal(|| false),
+            win_open: use_signal(|| false),
             encoder_mode: use_signal(String::new),
             encoder_pipeline: use_signal(String::new),
             decode_drop_pct: use_signal(|| 0.0),
