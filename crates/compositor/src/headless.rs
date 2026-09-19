@@ -577,22 +577,51 @@ pub fn launch_command(state: &mut Wado, command: &str) {
         warn!("empty command — nothing to launch");
         return;
     }
+    // Kept apart on purpose: `asked` is what the client will compare against when it asks
+    // which applications are running, `command` is what actually runs.
+    let asked = command.trim().to_string();
     let command = &with_ime_flag(command);
 
-    // Through a shell and in its own process group — see `proc::spawn`.
+    // Through a shell, in its own process group, and in the session's own environment —
+    // see `proc::spawn` and `crate::session_env`.
     //
     // This grants no access that did not exist: the field was already free-form and spawned
     // whatever it named. It is still the reason the direct-mode control plane binds
     // localhost, and the reason the relay's Remote ID is the only thing between a stranger
     // and this shell — see the auth gate in TODO's NECESSARY list.
-    match crate::proc::spawn(command) {
+    let spawned = crate::proc::spawn(command, &state.app_env);
+    match spawned {
         Ok(child) => {
             info!(pid = child.id(), command, "launched session application");
-            state.app_processes.push(child);
+            state.app_processes.push(crate::proc::Launched {
+                command: asked,
+                child,
+            });
         }
         // Not fatal to the session: the stream still runs, the window is just empty.
         Err(e) => tracing::error!("failed to launch session app {command:?}: {e}"),
     }
+}
+
+/// Which launched commands are still running, reaping the ones that are not.
+///
+/// **"Running" means the process is alive, not that it has a window.** Those differ for a few
+/// seconds at startup, and for good in the case of an application that exits without ever
+/// mapping one. Tying it to a window would mean matching `xdg_toplevel.app_id` against a
+/// desktop entry's `Exec`, and those two strings disagree constantly (`org.gnome.Nautilus`
+/// versus `nautilus`) — a dot that is briefly early is worth more than one that is often wrong.
+///
+/// ponytail: reaped here, on the question, rather than by a timer. Nothing else needs to know
+/// an application has exited, so nothing else has to be woken to find out.
+pub fn running_apps(state: &mut Wado) -> Vec<String> {
+    state
+        .app_processes
+        .retain_mut(|app| !matches!(app.child.try_wait(), Ok(Some(_))));
+    state
+        .app_processes
+        .iter()
+        .map(|app| app.command.clone())
+        .collect()
 }
 
 /// Add `--enable-wayland-ime` to a Chromium-family command that does not already have it.
@@ -643,9 +672,15 @@ pub fn stop_session(state: &mut Wado) {
     // Whole groups, not single pids: `child.kill()` reaped the shell and left everything it
     // had forked running — a browser kept playing audio after the session it belonged to was
     // gone. See `proc::terminate`.
-    for mut child in state.app_processes.drain(..) {
-        crate::proc::terminate(&mut child);
+    for mut app in state.app_processes.drain(..) {
+        crate::proc::terminate(&mut app.child);
     }
+    // After the applications, never before: killing the bus first would take the socket out
+    // from under processes that are still shutting down.
+    if let Some(bus) = state.app_bus.take() {
+        crate::session_env::bus::terminate(bus);
+    }
+    state.app_env = crate::session_env::AppEnv::Host;
     if let Some(output) = state.output.take() {
         state.space.unmap_output(&output);
     }

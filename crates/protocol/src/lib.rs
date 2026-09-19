@@ -240,6 +240,31 @@ pub struct SessionConfig {
     /// Encoder backend preference (hardware vs software). Applied at session start.
     #[serde(default)]
     pub encoder: EncoderPref,
+    /// Run the session's applications away from the host desktop. Applied at session start.
+    ///
+    /// On (the default), each session gets its own D-Bus session bus and its applications are
+    /// launched with `DISPLAY` removed. Both halves answer the same complaint — "I launched it
+    /// in wado and it opened on my computer's desktop" — by different routes:
+    ///
+    /// - **The bus.** A single-instance application (a browser, a file manager, most GTK apps)
+    ///   checks the session bus for an existing copy of itself and, finding one, asks *it* to
+    ///   open a window. That window belongs to the host's compositor. A private bus means
+    ///   nothing is found and a real process starts inside the session.
+    /// - **`DISPLAY`.** wado has no Xwayland, so an X11 client cannot draw here at all. With
+    ///   `DISPLAY` inherited it connects to the host's X server instead and appears there —
+    ///   and Chromium/Electron *prefer* X11 whenever `DISPLAY` is set, even with
+    ///   `WAYLAND_DISPLAY` present. Removing it forces the Wayland backend, and an X11-only
+    ///   application fails visibly rather than opening somewhere else.
+    ///
+    /// Defaults to true on both the wire and the UI: an application escaping to the host
+    /// desktop is the bug, not the baseline.
+    #[serde(default = "default_isolate_apps")]
+    pub isolate_apps: bool,
+}
+
+/// Isolated. See [`SessionConfig::isolate_apps`].
+fn default_isolate_apps() -> bool {
+    true
 }
 
 /// Unscaled. Anything else is an explicit choice.
@@ -290,6 +315,7 @@ mod config_validation_tests {
 
     fn ok() -> SessionConfig {
         SessionConfig {
+            isolate_apps: true,
             width: 1280, height: 720, fps: 60, scale: 1.0,
             quality: Quality::Balanced,
             preset: None, keyframe_interval: None,

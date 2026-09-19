@@ -44,13 +44,24 @@ const GRACE: Duration = Duration::from_millis(300);
 /// How often the grace period looks to see whether the leader has gone.
 const POLL: Duration = Duration::from_millis(20);
 
+/// An application launched into the session: what was asked for, and the process running it.
+///
+/// The command is kept because it is the only name the client and the compositor share — the
+/// drawer marks a tile as running by matching this string against the desktop entry's `Exec`.
+/// It is the command **as the client sent it**, before `with_ime_flag` rewrites it, or that
+/// match would fail for exactly the applications the flag is added to.
+pub struct Launched {
+    pub command: String,
+    pub child: Child,
+}
+
 /// Spawn a command as its own process-group leader.
 ///
 /// Through a shell, because splitting on whitespace is not what anyone means when they type
 /// a command: it breaks quoted arguments into pieces and leaves `~`, `$VAR`, globs, pipes
 /// and redirection as literal text. `sh -c` is the rule a desktop entry's `Exec` line
 /// already follows.
-pub fn spawn(command: &str) -> std::io::Result<Child> {
+pub fn spawn(command: &str, env: &crate::session_env::AppEnv) -> std::io::Result<Child> {
     let mut cmd = match cpu_weight() {
         // A transient scope puts the application in its own cgroup with a CPU weight below
         // the default 100, so the kernel prefers wado's render and send threads whenever the
@@ -70,6 +81,7 @@ pub fn spawn(command: &str) -> std::io::Result<Child> {
             c
         }
     };
+    crate::session_env::apply(&mut cmd, env);
     // The whole point: a new group, whose id is this child's pid, so everything the
     // command goes on to fork can be signalled as one unit. Kept even under a scope —
     // the scope is for resources, the group is for lifetime, and the group is the one
@@ -181,6 +193,13 @@ fn signal_group(pgid: i32, sig: i32) {
 mod tests {
     use super::*;
 
+    use crate::session_env::AppEnv;
+
+    /// The pre-isolation spawn, which is what every test below is about.
+    fn spawn_host(command: &str) -> std::io::Result<Child> {
+        spawn(command, &AppEnv::Host)
+    }
+
     /// `0` means "spawn exactly as before" and has to survive round-tripping, because it is
     /// the escape hatch when a scope turns out to be the thing that broke something.
     /// An unparseable value falls back to the default rather than to unconstrained: a typo
@@ -213,7 +232,7 @@ mod tests {
         }
         let out = std::env::temp_dir().join(format!("wado-weight-{}", std::process::id()));
         let _ = std::fs::remove_file(&out);
-        let mut child = spawn(&format!(
+        let mut child = spawn_host(&format!(
             "cat /sys/fs/cgroup$(cut -d: -f3 /proc/self/cgroup)/cpu.weight > {}",
             out.display()
         ))
@@ -226,6 +245,45 @@ mod tests {
             weight.trim().parse::<u32>().ok(),
             Some(DEFAULT_APP_CPU_WEIGHT),
             "app should run in its own scope at the reduced weight, got {weight:?}"
+        );
+    }
+
+    /// The isolation is two environment edits, and getting either wrong is invisible until an
+    /// application opens a window on the wrong desktop. Reading them back out of a real child
+    /// is the only check that covers both.
+    #[test]
+    fn an_isolated_app_loses_display_and_gains_the_private_bus() {
+        // ponytail: `set_var` is unsafe and process-global; this and the cpu-weight test are
+        // the only two, and they touch different variables.
+        unsafe { std::env::set_var("DISPLAY", ":0") };
+        let out = std::env::temp_dir().join(format!("wado-env-{}", std::process::id()));
+        let _ = std::fs::remove_file(&out);
+
+        // `env`, not `printf "${DISPLAY-unset}"` — and that is not a style choice. Under the
+        // systemd scope the command line is expanded by `systemd-run` *before* the shell sees
+        // it, so a `${...}` in it is replaced with an empty string and the probe reads blank
+        // whatever the environment actually holds. It failed exactly that way once.
+        let mut child = spawn(
+            &format!("env > {}", out.display()),
+            &AppEnv::Isolated {
+                bus: Some("unix:path=/tmp/wado-test-bus".to_string()),
+            },
+        )
+        .expect("spawn");
+        let _ = child.wait();
+
+        let got = std::fs::read_to_string(&out).unwrap_or_default();
+        let _ = std::fs::remove_file(&out);
+        unsafe { std::env::remove_var("DISPLAY") };
+
+        assert!(
+            !got.lines().any(|l| l.starts_with("DISPLAY=")),
+            "DISPLAY survived into an isolated app"
+        );
+        assert!(
+            got.lines()
+                .any(|l| l == "DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/wado-test-bus"),
+            "the private bus address did not reach the app"
         );
     }
 
@@ -260,7 +318,7 @@ mod tests {
         // what keep running. Before this module they outlived the session and reparented to
         // init. Identified by process group, never by matching a command line — that is how
         // you kill the test runner.
-        let mut child = spawn("sleep 47 & sleep 47 & wait").expect("spawn");
+        let mut child = spawn_host("sleep 47 & sleep 47 & wait").expect("spawn");
         let pgid = child.id() as i32;
         std::thread::sleep(Duration::from_millis(250));
         assert!(
@@ -279,7 +337,7 @@ mod tests {
 
     #[test]
     fn a_command_that_exits_on_its_own_is_still_reaped() {
-        let mut child = spawn("true").expect("spawn");
+        let mut child = spawn_host("true").expect("spawn");
         let pgid = child.id() as i32;
         terminate(&mut child);
         assert!(wait_group_gone(pgid, Duration::from_secs(2)));

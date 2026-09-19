@@ -34,9 +34,14 @@ fn sigterm_stops_the_session_and_its_applications() {
     // A session with one application in it, which is all `stop_session` needs to act on —
     // standing up the render pipeline would need a GPU and proves nothing extra here.
     state.session_active = true;
-    let child = wado_compositor::proc::spawn("sleep 53 & sleep 53 & wait").expect("spawn");
+    let command = "sleep 53 & sleep 53 & wait";
+    let child = wado_compositor::proc::spawn(command, &wado_compositor::session_env::AppEnv::Host)
+        .expect("spawn");
     let pgid = child.id() as i32;
-    state.app_processes.push(child);
+    state.app_processes.push(wado_compositor::proc::Launched {
+        command: command.to_string(),
+        child,
+    });
     std::thread::sleep(Duration::from_millis(250));
     assert!(
         unsafe { libc::killpg(pgid, 0) } == 0,
