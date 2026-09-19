@@ -65,6 +65,10 @@ pub struct Settings {
     /// [`wado_protocol::SessionConfig::isolate_apps`]. In the Session group because the
     /// session's D-Bus bus is created at Start and cannot be swapped underneath running apps.
     pub isolate_apps: Signal<bool>,
+    /// Give the session its own X server for X11-only applications — see
+    /// [`wado_protocol::SessionConfig::x_server`]. Session-scoped for two reasons: it is
+    /// started at Start, and its screen is fixed at the output's size.
+    pub x_server: Signal<bool>,
 
     // ── live: applied immediately, editable mid-session ─────────────────────────
     pub command: Signal<String>,
@@ -133,6 +137,9 @@ impl Settings {
             keyframe: use_signal(String::new),
             // On by default: an app escaping to the host desktop is the bug, not the baseline.
             isolate_apps: use_signal(|| true),
+            // Off: it puts a window the size of the output into every session that has it on,
+            // whether or not anything X11 is running.
+            x_server: use_signal(|| false),
 
             command: use_signal(|| "weston-terminal".to_string()),
             recent: use_signal(Vec::new),

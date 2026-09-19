@@ -169,10 +169,11 @@ fn reconfigure(state: &mut Wado, config: &SessionConfig) -> Result<SessionInfo, 
     }
     state.placement = config.window.placement;
     state.focus_follows_pointer = config.input.focus_follows_pointer;
-    // `isolate_apps` is deliberately *not* re-applied. The bus is per-session and the
+    // Neither `isolate_apps` nor `x_server` is re-applied. The bus is per-session and the
     // applications already running are connected to it; switching now would leave the session
-    // split across two buses, which is worse than either answer. The client locks the control
-    // while a session runs for the same reason.
+    // split across two buses, which is worse than either answer. The X server is the same
+    // story with a second twist: its screen is the size it was created at. The client locks
+    // both controls while a session runs.
     Ok(SessionInfo { encoder: report })
 }
 
@@ -196,13 +197,22 @@ fn start(
     // The environment launched applications will see, decided before anything can be launched
     // into the session. A private bus is best-effort: `session_env::bus::start` logs and returns None when
     // this machine has no `dbus-daemon`, and the `DISPLAY` half of the isolation still holds.
+    // Sized to the output, because the X screen cannot be resized afterwards any more than the
+    // output can — same reason as invariant #8.
+    state.app_x = config
+        .x_server
+        .then(|| crate::session_env::xwayland::start(config.width, config.height))
+        .flatten();
+    let x = state.app_x.as_ref().map(|x| x.display.clone());
+
     state.app_env = if config.isolate_apps {
         state.app_bus = crate::session_env::bus::start();
         crate::session_env::AppEnv::Isolated {
             bus: state.app_bus.as_ref().map(|b| b.address.clone()),
+            x,
         }
     } else {
-        crate::session_env::AppEnv::Host
+        crate::session_env::AppEnv::Host { x }
     };
 
     // Apply the per-domain behaviour settings (atomic sub-structs of SessionConfig).
