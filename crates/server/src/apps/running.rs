@@ -59,6 +59,7 @@ mod tests {
             exec: exec.into(),
             icon: None,
             running: false,
+            hidden: false,
         }
     }
 

@@ -299,8 +299,15 @@
 }
 .drawerhandle:hover::before { background: var(--base04); }
 
-.drawersearch { width: 100%; }
-.drawerrun { margin-top: 8px; }
+/* The box and its two verbs on one line. `stretch` rather than `center`: the buttons are the
+ * 44px touch target the bar's are, and a shorter input beside them reads as a mistake. */
+.drawerbar { display: flex; align-items: stretch; gap: 6px; }
+/* min-width:0 is what stops a flex item with an intrinsic width from refusing to shrink —
+ * without it the buttons get pushed off the right edge on a narrow phone. */
+.drawersearch { flex: 1; min-width: 0; }
+/* Reuses .barbtn wholesale, including its `active` state for the eye: the same kind of
+ * control, and a second look for it would be a second thing to keep in step. */
+.drawerbar .barbtn { flex: none; }
 .drawerlabel { margin: 10px 2px 4px; }
 
 .drawerbody { flex: 1; min-height: 0; overflow-y: auto; padding-top: 4px; }

@@ -49,6 +49,10 @@ fn search_dirs() -> Vec<PathBuf> {
 
 /// Scan the system for launchable applications, sorted by name.
 ///
+/// *Launchable*, not *listable*: entries marked `NoDisplay`/`Hidden` come back too, flagged.
+/// On the machine this was written on that is 70 of 142 files — the client hides them behind
+/// one toggle rather than the server deciding for it.
+///
 /// Entries are keyed by desktop-file id so a user override in `~/.local/share` shadows the
 /// system copy rather than appearing twice — which is the entire reason the search order is
 /// most-specific-first.
@@ -87,6 +91,7 @@ pub fn discover() -> Vec<AppEntry> {
                         // Filled in by `running::mark` when the list is answered; discovery
                         // cannot know it.
                         running: false,
+                        hidden: entry.no_display,
                     },
                 );
             }

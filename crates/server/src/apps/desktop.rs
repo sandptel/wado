@@ -23,6 +23,13 @@ pub struct DesktopEntry {
     pub exec: String,
     /// The `Icon=` value verbatim — a theme icon name, or an absolute path.
     pub icon: Option<String>,
+    /// `NoDisplay=true` or `Hidden=true`: installed and launchable, but not for a menu.
+    ///
+    /// Reported rather than used to reject the entry. It used to reject it, and that was
+    /// wrong in one specific way: half the desktop files on a normal machine carry it, and
+    /// among them are the ones someone reaches a launcher *for* when the pretty list does
+    /// not have what they want.
+    pub no_display: bool,
 }
 
 /// Strip the `Exec=` field codes a launcher is expected to substitute.
@@ -51,12 +58,16 @@ fn strip_field_codes(exec: &str) -> String {
 }
 
 /// Parse one desktop file. `None` when it is not something a person can launch.
+///
+/// "Can launch" is the only bar: a `Type=Application` with a name and a command. Whether it
+/// *should be listed* is a separate question, answered by [`DesktopEntry::no_display`] and
+/// decided by the client.
 pub fn parse_entry(text: &str) -> Option<DesktopEntry> {
     let mut name = None;
     let mut exec = None;
     let mut icon = None;
     let mut is_application = false;
-    let mut hidden = false;
+    let mut no_display = false;
 
     // Only the `[Desktop Entry]` group counts; later groups are per-action overrides that
     // would otherwise overwrite the real Exec with an action's variant of it.
@@ -79,17 +90,19 @@ pub fn parse_entry(text: &str) -> Option<DesktopEntry> {
             ("Exec", v) => exec = Some(strip_field_codes(v)),
             ("Icon", v) => icon = Some(v.to_string()),
             // NoDisplay means "installed, but not for humans to pick" — mime handlers,
-            // helper stubs. Hidden means "deleted" per the spec.
-            ("NoDisplay" | "Hidden", "true") => hidden = true,
+            // helper stubs. Hidden means "deleted" per the spec. Both are carried, not
+            // obeyed: see the field's docs.
+            ("NoDisplay" | "Hidden", "true") => no_display = true,
             _ => {}
         }
     }
 
     let (name, exec) = (name?, exec?);
-    (is_application && !hidden && !name.is_empty() && !exec.is_empty()).then_some(DesktopEntry {
+    (is_application && !name.is_empty() && !exec.is_empty()).then_some(DesktopEntry {
         name,
         exec,
         icon,
+        no_display,
     })
 }
 
@@ -119,6 +132,7 @@ mod tests {
                 exec: "nautilus".into(),
                 // The name, not a resolved file: resolution happens a layer up.
                 icon: Some("folder".into()),
+                no_display: false,
             }
         );
     }
@@ -137,19 +151,27 @@ mod tests {
     }
 
     #[test]
-    fn skips_what_a_person_should_not_be_offered() {
+    fn not_for_a_menu_is_reported_not_rejected() {
+        // Both spellings, and both still parse: the client decides whether to list them.
+        for key in ["NoDisplay", "Hidden"] {
+            let app = parse_entry(&format!(
+                "[Desktop Entry]\nType=Application\nName=X\nExec=x\n{key}=true\n"
+            ))
+            .expect("still launchable");
+            assert!(app.no_display, "{key} must be carried");
+            assert_eq!(app.exec, "x");
+        }
+        assert!(
+            !parse_entry("[Desktop Entry]\nType=Application\nName=X\nExec=x\n")
+                .unwrap()
+                .no_display
+        );
+    }
+
+    #[test]
+    fn skips_what_cannot_be_launched() {
         // Not an application.
         assert!(parse_entry("[Desktop Entry]\nType=Link\nName=Web\nExec=x\n").is_none());
-        // Installed but not for picking: mime handlers and helper stubs.
-        assert!(
-            parse_entry("[Desktop Entry]\nType=Application\nName=X\nExec=x\nNoDisplay=true\n")
-                .is_none()
-        );
-        // "Deleted" per the spec.
-        assert!(
-            parse_entry("[Desktop Entry]\nType=Application\nName=X\nExec=x\nHidden=true\n")
-                .is_none()
-        );
         // Nothing to run, or nothing to show.
         assert!(parse_entry("[Desktop Entry]\nType=Application\nName=X\n").is_none());
         assert!(parse_entry("[Desktop Entry]\nType=Application\nExec=x\n").is_none());

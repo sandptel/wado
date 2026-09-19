@@ -9,7 +9,7 @@
 //! every holder sees the same state.
 
 use dioxus::prelude::*;
-use wado_protocol::{logfmt::LogLine, AppEntry};
+use wado_protocol::{AppEntry, logfmt::LogLine};
 
 /// Default server the client talks to. Editable in the UI; the dev server typically runs the
 /// client on a different port and reaches the wado server here over CORS.
@@ -78,6 +78,11 @@ pub struct Settings {
     /// re-looked-up from the live app list, so a recent entry cannot go stale, and a
     /// hand-typed command that matches no entry still comes back.
     pub recent: Signal<Vec<String>>,
+    /// Whether the drawer lists *everything* installed — the entries marked `NoDisplay` in
+    /// their desktop file, and the ones no icon could be found for. See [`crate::ui::drawer`]
+    /// for why those are the default-hidden set. A preference, so it is persisted; not
+    /// session-scoped, so it can be flipped mid-session.
+    pub show_hidden: Signal<bool>,
     pub move_mode: Signal<bool>,
     pub scroll_speed: Signal<f64>,
     pub natural_scroll: Signal<bool>,
@@ -143,6 +148,10 @@ impl Settings {
 
             command: use_signal(|| "weston-terminal".to_string()),
             recent: use_signal(Vec::new),
+            // Off: on the machine this was measured on, half the desktop files installed
+            // (71 of 143) are stubs, MIME handlers and setup helpers. Listing them by
+            // default buries the twenty applications someone opened the drawer to find.
+            show_hidden: use_signal(|| false),
             move_mode: use_signal(|| false),
             // See ui/live.rs: 1.0 meant "pass the raw browser delta through", which is
             // too fast everywhere. Acceleration covers the range this gives up.
@@ -206,6 +215,13 @@ pub struct Live {
     /// browser rather than assumed, because a back gesture closes the keyboard without
     /// anyone pressing the button.
     pub osk_on: Signal<bool>,
+    /// Whether the browser currently holds a pointer lock on the video.
+    ///
+    /// Reported by the browser, never assumed, for the same reason as `osk_on` and then some:
+    /// the browser drops a pointer lock on Escape, on a tab switch and on leaving fullscreen,
+    /// and it is not allowed to be talked out of doing so. A local flag would latch on and the
+    /// button would lie.
+    pub pointer_lock: Signal<bool>,
     pub screen_w: Signal<u32>,
     pub screen_h: Signal<u32>,
     /// The device's pixel density. Drives the default output scale the way a desktop
@@ -280,6 +296,7 @@ impl Live {
             decode_drop_pct: use_signal(|| 0.0),
             refresh_hz: use_signal(|| None),
             osk_on: use_signal(|| false),
+            pointer_lock: use_signal(|| false),
             screen_w: use_signal(|| 0),
             screen_dpr: use_signal(|| 0.0),
             screen_h: use_signal(|| 0),
