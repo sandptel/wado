@@ -52,6 +52,15 @@ Run lanes exist now: `WADO_RUN=perf|connection|feature|compositor` selects a tra
       tick cadence, not encoded frames; rendering was correctly paused. The instrument lied, not
       the code. Noted in `memory/shared/environment.md`.
 
+- [ ] **(perf lane) A steady 111 of 120 fps reaches the client on a 0 ms path.** Observed
+      2026-09-19 17:00-17:09, ten consecutive health lines: `render 120.0/120fps pump p99=0.2ms
+      over=0 client fps=111.0 rtt=0ms`. A ~7.5% shortfall that does not vary, with the pump
+      clean and nothing dropped, on localhost — so it is neither the link nor the encoder queue.
+      The verdict calls it healthy, which is why nothing has ever surfaced it. Candidates: the
+      client's own `framesPerSecond` window, or frames the compositor renders but never hands to
+      the pump. Cheap to settle: compare `framesReceived` deltas against the server's sent count
+      over the same 60 s.
+
 - [ ] **(perf lane) The client verdict flaps ok↔"settling" indefinitely.** Observed 16:08–16:10
       on 2026-09-19, four flips in two minutes, ~46–51 ms behind each time, at 3.9–4.5 Mbps
       against a 3.9 Mbps target — so not starvation, and not the post-connect transient the
