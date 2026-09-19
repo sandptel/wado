@@ -130,5 +130,7 @@ pub fn render(ui: Ui) -> Element {
         // Over the picture, not under it: as a sibling below the video it took height off
         // the stream and letterboxed it.
         {super::console::render(ui)}
+        // Same reason as the console: over the picture, never a sibling that steals its height.
+        {super::drawer::render(ui)}
     }
 }

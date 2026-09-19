@@ -28,12 +28,32 @@ pub fn start(ui: Ui) {
     ));
 }
 
+/// Launch whatever is in the command box.
 pub fn launch(ui: Ui) {
-    let command = (ui.set.command)();
-    if command.trim().is_empty() {
+    launch_command(ui, &(ui.set.command)());
+}
+
+/// Launch one specific command — what a drawer tile does, where there is no box to read.
+pub fn launch_command(ui: Ui, command: &str) {
+    let command = command.trim();
+    if command.is_empty() {
         return;
     }
+    remember(ui, command);
     bridge::call(format!("window.__wado.launch({});", bridge::js(&command)));
+}
+
+/// Move `command` to the front of the recents list.
+///
+/// Deduplicated, so launching the same thing twice does not fill the row with one app; capped,
+/// because the row is one line on a phone.
+fn remember(ui: Ui, command: &str) {
+    let mut recent = ui.set.recent;
+    let mut list = recent.read().clone();
+    list.retain(|c| c != command);
+    list.insert(0, command.to_string());
+    list.truncate(crate::state::MAX_RECENT);
+    recent.set(list);
 }
 
 /// Apply the current settings to the session that is **already running**.

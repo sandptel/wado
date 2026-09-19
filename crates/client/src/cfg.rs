@@ -72,6 +72,7 @@ pub fn build(ui: Ui) -> SessionConfig {
         },
         window: WindowConfig { placement },
         encoder: EncoderPref { backend },
+        isolate_apps: (s.isolate_apps)(),
     }
 }
 

@@ -39,8 +39,10 @@ pub struct Saved {
     pub repeat_delay: Option<i32>,
     pub preset: Option<String>,
     pub keyframe: Option<String>,
+    pub isolate_apps: Option<bool>,
 
     pub command: Option<String>,
+    pub recent: Option<Vec<String>>,
     pub move_mode: Option<bool>,
     pub scroll_speed: Option<f64>,
     pub natural_scroll: Option<bool>,
@@ -60,6 +62,7 @@ pub struct Saved {
 pub fn snapshot(ui: Ui) -> Saved {
     let s = ui.set;
     let flags = s.debug.read().clone();
+    let recent = s.recent.read().clone();
     Saved {
         conn_mode: Some((s.conn_mode)()),
         server_addr: Some((s.server_addr)()),
@@ -81,8 +84,10 @@ pub fn snapshot(ui: Ui) -> Saved {
         repeat_delay: Some((s.repeat_delay)()),
         preset: Some((s.preset)()),
         keyframe: Some((s.keyframe)()),
+        isolate_apps: Some((s.isolate_apps)()),
 
         command: Some((s.command)()),
+        recent: Some(recent),
         move_mode: Some((s.move_mode)()),
         scroll_speed: Some((s.scroll_speed)()),
         natural_scroll: Some((s.natural_scroll)()),
@@ -135,7 +140,9 @@ pub fn restore(ui: Ui, saved: Saved) {
     put!(repeat_delay);
     put!(preset);
     put!(keyframe);
+    put!(isolate_apps);
     put!(command);
+    put!(recent);
     put!(move_mode);
     // Clamped, not just restored: the slider's range shrank from 0.2-5 to 0.05-2, and a
     // blob saved under the old range holds values the control can no longer represent. A
