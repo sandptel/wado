@@ -19,9 +19,19 @@
 #   * **Release only.** A debug daemon does not look broken, it looks like a slow pipeline —
 #     see the note in daemon.sh for the session that cost.
 #
+# WADO_RUN picks the run lane — which subsystem this session is investigating — and is passed
+# to every daemon, where it selects a tracing filter (see crates/server/src/runlane.rs):
+#
+#   perf (default) | connection | feature | compositor
+#
+# It is an env var and not a Cargo feature on purpose: a lane is switched several times an hour,
+# and a feature would cost a full fat-LTO release rebuild of the one binary that must never be a
+# debug build — to change a log level. `WADO_RUN=connection scripts/rig.sh --daemon` is instant.
+#
 # Usage:  scripts/rig.sh            start everything (reuses the existing binaries)
 #         scripts/rig.sh --build    rebuild release first, then start everything
 #         scripts/rig.sh --daemon   restart ONLY the daemons, keeping relay and tunnel up
+#         scripts/rig.sh --add N    add N more daemons to the RUNNING pool, disturbing nothing
 #         scripts/rig.sh --stop     stop everything and exit
 #
 # WADO_INSTANCES=N controls how many daemons are started (default 2). They all register under
@@ -43,6 +53,10 @@ cd "$(dirname "$0")/.."
 LOGS="${TMPDIR:-/tmp}/wado-rig"
 RELAY_PORT=4000
 INSTANCES="${WADO_INSTANCES:-2}"
+LANE="${WADO_RUN:-perf}"
+# The relay is a separate binary with its own flag, and it is only worth turning up in the lane
+# that reads it: the pool assignment and refusal lines are already info.
+if [ "$LANE" = connection ]; then RELAY_LEVEL=debug; else RELAY_LEVEL=info; fi
 mkdir -p "$LOGS"
 
 say() { printf '  %s\n' "$*"; }
@@ -51,12 +65,69 @@ stop_all() {
   # -x: exact process name. Never -f here; see the header.
   pkill -x wado        2>/dev/null || true
   pkill -x wado-relay  2>/dev/null || true
-  pkill -x cloudflared 2>/dev/null || true
+  [ "${KEEP_TUNNEL:-0}" = 1 ] || pkill -x cloudflared 2>/dev/null || true
   sleep 1
+}
+
+# Is the tunnel already up and serving? Answered before anything is killed.
+#
+# This is the whole reason a device gets stranded. A quick-tunnel URL is minted per cloudflared
+# process, so a plain `rig.sh` used to rotate it — and every phone still holding the old one
+# knocked on a dead hostname, which produces *no trace anywhere*: not on the phone, not in the
+# relay log, because the request never reaches the relay. Diagnosing that from the sofa is
+# impossible. Observed 2026-09-19, and it is the second time.
+#
+# So the tunnel is now treated as the long-lived piece it actually is: reused unless it is
+# genuinely dead. Only `--stop` (or a reboot) rotates the URL.
+#
+# The probe is deliberately NOT /health: that answers from the relay, which is about to be
+# restarted, so a healthy tunnel in front of a stopped relay would read as a dead tunnel. Any
+# HTTP status at all — 502 included — proves the edge is still serving this hostname. `000` is
+# curl for "no response", which is the only answer that means the tunnel is gone.
+tunnel_is_live() {
+  pgrep -x cloudflared >/dev/null 2>&1 || return 1
+  local u code
+  u="$(grep -om1 'https://[a-z0-9-]*\.trycloudflare\.com' "$LOGS/tunnel.log" 2>/dev/null || true)"
+  [ -n "$u" ] || return 1
+  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "$u/health" || echo 000)"
+  [ "$code" != "000" ]
+}
+
+# Grow the pool without touching anything that is running.
+#
+# `--daemon` restarts every daemon, which costs every connected device its session — and the
+# moment you need more daemons is precisely when devices are connected and one is being refused.
+# A daemon joins the pool by registering with the relay, so more of them is purely additive:
+# same Remote ID, its own UDP slice, its own log. Verified live on 2026-09-19, 2 → 4 with two
+# sessions streaming and neither interrupted.
+add_daemons() {
+  local want="$1" rid first n
+  pgrep -x wado-relay >/dev/null || { echo "relay is not running — start the full rig first" >&2; exit 1; }
+  rid="$(sed -e 's/\x1b\[[0-9;]*m//g' "$LOGS/daemon-1.log" 2>/dev/null \
+         | grep -om1 'Remote ID [0-9-]*' | awk '{print $3}' || true)"
+  [ -n "$rid" ] || { echo "cannot read the Remote ID from $LOGS/daemon-1.log" >&2; exit 1; }
+  # Number from the logs, not from a count of processes: a dead instance must not have its
+  # number reused while its log is still the place someone is looking for it.
+  first=$(( $(ls "$LOGS"/daemon-*.log 2>/dev/null | wc -l) + 1 ))
+  for n in $(seq "$first" $((first + want - 1))); do
+    : > "$LOGS/daemon-$n.log"
+    setsid env WADO_RELAY_URL="ws://127.0.0.1:$RELAY_PORT" WADO_REMOTE_ID="$rid" \
+      WADO_UDP_SLICE="$((n - 1))" WADO_RUN="$LANE" \
+      nohup ./target/release/wado > "$LOGS/daemon-$n.log" 2>&1 < /dev/null &
+    for _ in $(seq 60); do
+      grep -q "clients can connect" "$LOGS/daemon-$n.log" 2>/dev/null && break
+      sleep 0.25
+    done
+    grep -q "clients can connect" "$LOGS/daemon-$n.log" 2>/dev/null \
+      && say "daemon $n up — watch it with scripts/watch.sh $n" \
+      || echo "WARNING: daemon $n has not reported ready — see $LOGS/daemon-$n.log" >&2
+  done
+  say "pool now: $(curl -s --max-time 2 "http://127.0.0.1:$RELAY_PORT/health" || echo '?')"
 }
 
 DAEMON_ONLY=0
 case "${1:-}" in
+  --add) add_daemons "${2:-1}"; exit 0 ;;
   --stop) stop_all; echo "rig stopped"; exit 0 ;;
   --build) nice -n 19 cargo build --release -p wado -p wado-relay ;;
   --daemon) DAEMON_ONLY=1 ;;
@@ -78,9 +149,13 @@ if [ "$DAEMON_ONLY" = 1 ]; then
   pkill -x wado 2>/dev/null || true
   sleep 1
 else
+  if tunnel_is_live; then
+    KEEP_TUNNEL=1
+    say "reusing the live tunnel — its URL is what every device already has"
+  fi
   stop_all
 
-setsid nohup ./target/release/wado-relay --log-level info \
+setsid nohup ./target/release/wado-relay --log-level "$RELAY_LEVEL" \
   > "$LOGS/relay.log" 2>&1 < /dev/null &
 
 # Poll rather than sleep a fixed amount: the relay is usually up in well under a second, and a
@@ -94,9 +169,12 @@ curl -sf --max-time 2 "http://127.0.0.1:$RELAY_PORT/health" >/dev/null \
 
 # http2 + IPv4: the defaults (QUIC, dual-stack) fail on links that block UDP/443 or advertise
 # IPv6 without a working route, and the failure looks like a hung tunnel rather than an error.
-setsid nohup "$CF" tunnel --url "http://localhost:$RELAY_PORT" \
-  --protocol http2 --edge-ip-version 4 \
-  > "$LOGS/tunnel.log" 2>&1 < /dev/null &
+if [ "${KEEP_TUNNEL:-0}" != 1 ]; then
+  : > "$LOGS/tunnel.log"
+  setsid nohup "$CF" tunnel --url "http://localhost:$RELAY_PORT" \
+    --protocol http2 --edge-ip-version 4 \
+    > "$LOGS/tunnel.log" 2>&1 < /dev/null &
+fi
 
 fi
 
@@ -106,7 +184,7 @@ URL=""
 for _ in $(seq 60); do
   URL="$(grep -om1 'https://[a-z0-9-]*\.trycloudflare\.com' "$LOGS/tunnel.log" || true)"
   [ -n "$URL" ] && break
-  [ "$DAEMON_ONLY" = 1 ] && break
+  { [ "$DAEMON_ONLY" = 1 ] || [ "${KEEP_TUNNEL:-0}" = 1 ]; } && break
   sleep 0.5
 done
 [ -n "$URL" ] || echo "WARNING: no tunnel URL found — see $LOGS/tunnel.log" >&2
@@ -119,7 +197,7 @@ done
 # Logs are per instance: `watch.sh` keeps per-session state (target fps, last dropped count),
 # and two sessions interleaved into one file make it attribute one device's numbers to another.
 : > "$LOGS/daemon-1.log"
-setsid env WADO_RELAY_URL="ws://127.0.0.1:$RELAY_PORT" WADO_UDP_SLICE=0 \
+setsid env WADO_RELAY_URL="ws://127.0.0.1:$RELAY_PORT" WADO_UDP_SLICE=0 WADO_RUN="$LANE" \
   nohup ./target/release/wado > "$LOGS/daemon-1.log" 2>&1 < /dev/null &
 
 RID=""
@@ -137,7 +215,7 @@ for n in $(seq 2 "$INSTANCES"); do
   # Its own UDP slice. Sharing one range is what made all four daemons fail ICE while each
   # log looked healthy — see `udp_port_range` in crates/server/src/webrtc_settings.rs.
   setsid env WADO_RELAY_URL="ws://127.0.0.1:$RELAY_PORT" WADO_REMOTE_ID="$RID" \
-    WADO_UDP_SLICE="$((n - 1))" \
+    WADO_UDP_SLICE="$((n - 1))" WADO_RUN="$LANE" \
     nohup ./target/release/wado > "$LOGS/daemon-$n.log" 2>&1 < /dev/null &
   for _ in $(seq 60); do
     grep -q "clients can connect" "$LOGS/daemon-$n.log" 2>/dev/null && break
@@ -161,6 +239,7 @@ echo
 say "Relay URL   ${URL:-<none — check the tunnel log>}"
 say "Remote ID   ${RID:-<none — check the daemon log>}"
 echo
+say "run lane    $LANE   (WADO_RUN=perf|connection|feature|compositor)"
 say "daemons     $INSTANCES in the pool — ${POOLED:-?} registered with the relay"
 say "            $(date -r target/release/wado '+%Y-%m-%d %H:%M') build   pids $(pgrep -x wado | tr '\n' ' ')"
 say "logs        $LOGS/{daemon-N,relay,tunnel}.log"
@@ -168,6 +247,18 @@ echo
 say "$INSTANCES devices can hold a session at once. The ${INSTANCES}+1st is refused with a reason,"
 say "not queued — raise it with WADO_INSTANCES=N scripts/rig.sh."
 echo
-say "The relay URL changes every restart. Paste it into the client's relay field —"
-say "the compiled-in default points at whichever tunnel was live when the client was built."
+# The compiled-in default is a quick-tunnel URL baked into the wasm at build time, so it goes
+# stale the moment a tunnel rotates — and a device using it fails with NO trace on either side,
+# because the request never reaches the relay. rig.sh is the only thing that knows both halves,
+# so it is the only thing that can say so. Read from the source, never remembered.
+DEF="$(sed -n 's/.*DEFAULT_RELAY: &str = "\(.*\)";/\1/p' crates/client/src/state.rs | head -1)"
+if [ -n "$URL" ] && [ -n "$DEF" ] && [ "$URL" != "$DEF" ]; then
+  echo
+  say "⚠ the deployed client defaults to  $DEF"
+  say "  which is NOT this tunnel. Any device that has never had a URL pasted will fail"
+  say "  silently — it never reaches the relay, so nothing logs it anywhere. Paste the URL"
+  say "  above on each device, or update DEFAULT_RELAY in crates/client/src/state.rs and deploy."
+fi
+echo
+say "This tunnel is reused across rig restarts now — only --stop (or a reboot) rotates the URL."
 echo

@@ -49,22 +49,37 @@ function say(s) { print t() " " s; fflush() }
 # hypotheses: two daemons showed 27 and 29 failures and looked poisoned, when it was one
 # device with a dead media path retrying across whatever daemon was free. One of those
 # "broken" daemons connected first try for a different device minutes later.
+# A device that cannot connect re-offers on a timer — the failing Mac did it every 12 s for
+# thirteen minutes on 2026-09-19, four identical lines a cycle. Relaying all of them buries the
+# NEXT distinct event, which is the only one that says whether anything changed. Same treatment
+# the client anomalies already get: first one speaks, repeats are counted, one line a minute.
 /offer received/  { sub(/.*offer received — /,"")
                     cands = match($0, /^[0-9]+/) ? substr($0, RSTART, RLENGTH) : "?"
-                    say("◇ ICE      offer  " $0); next }
-/answer sent/     { sub(/.*answer sent — /,"");    say("◇ ICE      answer " $0); next }
+                    if ($0 == last_offer && systime() - last_offer_t < 60) { offer_n++; next }
+                    say("◇ ICE      offer  " $0 (offer_n ? "   (+" offer_n " identical since " strftime("%H:%M:%S", last_offer_t) ")" : ""))
+                    last_offer=$0; last_offer_t=systime(); offer_n=0; next }
+/answer sent/     { sub(/.*answer sent — /,"")
+                    if ($0 == last_answer && systime() - last_answer_t < 60) next
+                    last_answer=$0; last_answer_t=systime()
+                    say("◇ ICE      answer " $0); next }
+# Said once at startup, and it explains every ICE failure in the log below it at once.
+/SYMMETRIC NAT/ { say("✖ NAT      symmetric — the srflx candidate we advertise is a port no peer can reach. Only cone-NAT peers connect; anything else needs TURN. A VPN on the default route does this"); next }
 /no server-reflexive candidate/ { say("✖ ICE      NO srflx — STUN timed out; only LAN clients can connect"); next }
 /ICE connection state/ {
   s=kv("state")
   if (s=="?" && match($0, /state changed: [a-z]+/)) s=substr($0, RSTART+15, RLENGTH-15)
   s=tolower(s)
   if (s ~ /failed|disconnected/ && stopped_t > 0 && systime() - stopped_t <= 90) next
-  if (s == last_ice) next
+  # Keyed per state, not on the previous one: a retry loop alternates closed and checking, so
+  # every line differs from the one before it and a consecutive-duplicate test never fires.
+  if (systime() - ice_t[s] < 60) { ice_n[s]++; next }
+  suppressed = ice_n[s]; ice_t[s]=systime(); ice_n[s]=0
   last_ice=s
   # Tagged with the offering device, so a run of failures can be read as "this device" rather
   # than "this daemon" at a glance.
   say((s ~ /^connected$|completed/ ? "◆" : s ~ /failed|disconnected/ ? "✖" : "◇") " ICE      " s \
-      (cands != "" ? "   [device: " cands "-candidate]" : ""))
+      (cands != "" ? "   [device: " cands "-candidate]" : "") \
+      (suppressed ? "   (+" suppressed " more in the last minute)" : ""))
   next }
 
 # Browser-side stats relayed up. Only the ANOMALY ones; the 5-tick heartbeats stay in the log.
