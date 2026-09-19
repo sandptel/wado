@@ -98,6 +98,23 @@ pub fn render(ui: Ui) -> Element {
             }
         }
 
+        label {
+            class: "check",
+            input {
+                r#type: "checkbox", checked: (s.isolate_apps)(), disabled: on,
+                onchange: move |e| s.isolate_apps.set(e.checked()),
+            }
+            "Isolate apps from this computer's desktop"
+        }
+        p { class: "hint",
+            "On, the session gets its own D-Bus bus and its apps are launched with no X11 "
+            "display. That is what stops an app you launch here from opening a window on the "
+            "computer running wado instead — browsers and file managers hand the request to "
+            "the copy already running over there, and anything X11 draws on its screen. "
+            "Off, apps share this computer's desktop services: notifications and file-chooser "
+            "portals work, and X11-only apps open over there rather than failing."
+        }
+
         // Not disabled while a session runs, and that is the point: this is what you reach for
         // *when* the rate starts walking. The flag is browser-side, so it takes effect on the
         // next health tick with no reconfigure and no restart. See plan/sync.md §1.

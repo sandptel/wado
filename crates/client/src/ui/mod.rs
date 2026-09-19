@@ -11,6 +11,7 @@ pub mod bar;
 pub mod connection;
 pub mod console;
 pub mod debug;
+pub mod drawer;
 pub mod health;
 pub mod launcher;
 pub mod live;

@@ -249,3 +249,112 @@
 }
 .health-warn .healthfix { color: var(--base0A); }
 .health-bad  .healthfix { color: var(--base08); }
+
+/* ── app drawer ──────────────────────────────────────────────────────────────
+ * Same sheet shape as the console, and deliberately so: two panels that slide up over the
+ * video from the same bar should not look like two different ideas.
+ *
+ * Every size here is fluid rather than stepped, because the devices this has to serve are not
+ * two categories. A 360px phone in portrait, the same phone in landscape with 340px of height,
+ * a tablet, and a desktop where the panel is docked and the stage is only part of the window —
+ * one `clamp` covers all four better than three breakpoints ever did. */
+#drawer {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 4;
+  display: flex; flex-direction: column;
+  max-height: min(62dvh, 560px);
+  /* The safe area is why this is not a flat 12px: a row of tiles under an iPhone's home
+   * indicator is a row you cannot reliably tap. */
+  padding: 0 12px calc(12px + env(safe-area-inset-bottom));
+  background: var(--base01);
+  border-top: 1px solid var(--base02);
+  border-radius: 14px 14px 0 0;
+  box-shadow: 0 -8px 24px rgb(0 0 0 / 0.35);
+  animation: console-in var(--dur) var(--ease);
+}
+#drawer.shut { display: none; }
+@media (prefers-reduced-motion: reduce) { #drawer { animation: none; } }
+
+/* On a wide screen the sheet still spans the stage — a panel that stops halfway looks broken —
+ * but its contents stop before the tiles are strung out across a metre of desk. */
+#drawer > * { width: 100%; max-width: 1100px; margin-inline: auto; }
+
+/* Landscape on a phone: there is no vertical room to give, so take more of it and make the
+ * tiles smaller rather than showing one row and a scrollbar. */
+@media (orientation: landscape) and (max-height: 520px) {
+  #drawer { max-height: 84dvh; }
+  .drawerhandle { height: 20px; }
+  .drawerhandle::before { margin-top: 8px; }
+}
+
+/* The grab lip. A bare button so it is reachable by keyboard and screen reader, drawn as the
+ * handle everyone already knows from a phone sheet. 28px of target for a 4px line. */
+.drawerhandle {
+  flex: none; align-self: center;
+  height: 28px; padding: 0;
+  background: none; border: 0; cursor: pointer;
+}
+.drawerhandle::before {
+  content: ""; display: block; width: 44px; height: 4px; margin: 12px auto 0;
+  border-radius: 2px; background: var(--base03);
+}
+.drawerhandle:hover::before { background: var(--base04); }
+
+.drawersearch { width: 100%; }
+.drawerrun { margin-top: 8px; }
+.drawerlabel { margin: 10px 2px 4px; }
+
+.drawerbody { flex: 1; min-height: 0; overflow-y: auto; padding-top: 4px; }
+
+/* auto-fill, not auto-fit: a drawer with three apps in it should show three tiles at their
+ * own size, not three stretched across the whole width. The clamp is what makes one rule fit
+ * every screen — ~4 columns on a 360px phone, wider tiles on a desktop, and never a tile so
+ * narrow that its icon and its name collide. */
+.appgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(clamp(74px, 20vw, 96px), 1fr));
+  gap: 6px;
+}
+.apptile {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 10px 4px;
+  background: none; border: 0; border-radius: var(--r);
+  color: var(--base05); font-weight: 400;
+  cursor: pointer;
+  /* The long-press that fills the command box is a contextmenu, and on touch the browser
+   * will happily start a text selection or an image drag underneath it first. */
+  -webkit-touch-callout: none; user-select: none; -webkit-user-drag: none;
+}
+.apptile:hover { background: var(--base02); color: var(--base06); }
+
+/* Positioning context for the running dot, and the thing that keeps the grid from going
+ * ragged when one theme hands back a 512-wide PNG and the next a square SVG. */
+.appiconwrap {
+  position: relative;
+  width: clamp(38px, 11vw, 48px); height: clamp(38px, 11vw, 48px);
+  flex: none;
+}
+.appicon { width: 100%; height: 100%; object-fit: contain; }
+/* The no-icon fallback: the app's first letter, sized like an icon so the rows stay aligned. */
+.appletter {
+  display: grid; place-items: center;
+  border-radius: 12px;
+  background: var(--base02); color: var(--base04);
+  font-size: clamp(16px, 5vw, 22px);
+}
+/* Running. Colour alone is not a label — the tile's title says "running" too — but the ring
+ * in the sheet's own background is what keeps the dot visible over a pale icon. */
+.appdot {
+  position: absolute; right: -2px; bottom: -2px;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--base0B);
+  box-shadow: 0 0 0 2px var(--base01);
+}
+.apptile.running { color: var(--base06); }
+
+/* Two lines, then ellipsis. A name that wraps to four lines shoves the row below it down. */
+.apptile .appname {
+  font-size: 11px; line-height: 1.25; text-align: center;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; overflow-wrap: anywhere;
+}

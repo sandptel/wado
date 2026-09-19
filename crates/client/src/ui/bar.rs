@@ -48,6 +48,26 @@ pub fn render(ui: Ui) -> Element {
                 onclick: move |_| set.panel_open.set(!panel),
                 if panel { "⟨" } else { "⟩" }
             }
+            // The app drawer. Beside the window actions because it is the same kind of thing:
+            // something you do to the running session, and pointless without one.
+            button {
+                class: "barbtn",
+                title: "Apps",
+                "aria-label": "Apps",
+                disabled: !(live.session_on)(),
+                onclick: move |_| {
+                    let open = !(live.drawer_open)();
+                    live.drawer_open.set(open);
+                    // Re-ask on every open. The list carries which applications are running,
+                    // and that is only true at the moment it is answered — a dot from two
+                    // minutes ago is worse than no dot. Cheap: the scan is a few milliseconds
+                    // of directory reads and one round trip to the compositor.
+                    if open {
+                        bridge::call("window.__wado.requestApps();".to_string());
+                    }
+                },
+                "⊞"
+            }
             // Window actions need a running session to act on; the bar itself does not.
             for (action, glyph, title) in WINDOW_ACTIONS {
                 button {

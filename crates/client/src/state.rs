@@ -24,6 +24,10 @@ pub const DEFAULT_RELAY: &str = "https://pam-names-tags-remembered.trycloudflare
 /// Not a valid option value, so it cannot survive the effect that resolves it.
 pub const SCALE_UNSET: &str = "";
 
+/// How many recently-launched commands the drawer pins above the grid. One short row on a
+/// phone; more would push the grid itself off the sheet.
+pub const MAX_RECENT: usize = 4;
+
 /// Keep at most this many log lines in memory / the DOM.
 pub const MAX_LOG_LINES: usize = 500;
 
@@ -57,9 +61,19 @@ pub struct Settings {
     pub repeat_delay: Signal<i32>,
     pub preset: Signal<String>,
     pub keyframe: Signal<String>,
+    /// Keep the session's applications off the host desktop — see
+    /// [`wado_protocol::SessionConfig::isolate_apps`]. In the Session group because the
+    /// session's D-Bus bus is created at Start and cannot be swapped underneath running apps.
+    pub isolate_apps: Signal<bool>,
 
     // ── live: applied immediately, editable mid-session ─────────────────────────
     pub command: Signal<String>,
+    /// Commands launched from the drawer, most recent first, capped at [`MAX_RECENT`].
+    ///
+    /// Stored as the `Exec` string rather than as an [`AppEntry`]: the name and icon are
+    /// re-looked-up from the live app list, so a recent entry cannot go stale, and a
+    /// hand-typed command that matches no entry still comes back.
+    pub recent: Signal<Vec<String>>,
     pub move_mode: Signal<bool>,
     pub scroll_speed: Signal<f64>,
     pub natural_scroll: Signal<bool>,
@@ -117,8 +131,11 @@ impl Settings {
             repeat_delay: use_signal(|| 200),
             preset: use_signal(String::new),
             keyframe: use_signal(String::new),
+            // On by default: an app escaping to the host desktop is the bug, not the baseline.
+            isolate_apps: use_signal(|| true),
 
             command: use_signal(|| "weston-terminal".to_string()),
+            recent: use_signal(Vec::new),
             move_mode: use_signal(|| false),
             // See ui/live.rs: 1.0 meant "pass the raw browser delta through", which is
             // too fast everywhere. Acceleration covers the range this gives up.
@@ -206,6 +223,9 @@ pub struct Live {
     /// Launchable applications, from the server. Empty until requested — and it stays empty
     /// on a server that could not be reached, which the free-text command box covers.
     pub apps: Signal<Vec<AppEntry>>,
+    /// Whether the app drawer is over the video. Not persisted — a drawer covering the
+    /// picture on load is never what anyone wanted.
+    pub drawer_open: Signal<bool>,
 
     pub fps: Signal<Option<f64>>,
     pub ping: Signal<Option<f64>>,
@@ -260,6 +280,7 @@ impl Live {
             conn_error: use_signal(String::new),
             session_alive: use_signal(|| None),
             apps: use_signal(Vec::new),
+            drawer_open: use_signal(|| false),
             fps: use_signal(|| None),
             ping: use_signal(|| None),
             jbuf: use_signal(|| None),

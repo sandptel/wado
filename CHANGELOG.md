@@ -4,6 +4,39 @@
 
 ### Added
 
+**An app drawer, on the bar.** ⊞ opens a sheet over the video: a search box that is also the
+command line, a row of what you launched recently, and a grid of every installed application
+with its icon. Tap launches and closes it; long-press (right-click on a desktop) drops the
+command in the box instead, for when you want to add a flag first. Launching used to cost
+open-settings → scroll past the session group → type → Launch, which is four deliberate actions
+for the thing people do most on a phone. Sizes are fluid rather than stepped — one `clamp`
+covers a 360px phone, the same phone in landscape, a tablet and a docked desktop panel better
+than three breakpoints did.
+
+**Icons in the list.** The server resolves each desktop entry's `Icon=` against the icon themes
+installed on the machine and carries the file inline as a `data:` URI, because the client is a
+web page that cannot read the server's filesystem and, in relay mode, has no HTTP route back to
+it at all. One cached directory walk, the closest size bucket to 64 px, 32 KiB per file — 72
+applications came to 661 KB here. An application whose icon is not installed gets a letter tile.
+
+**A dot on what is already running.** The list says which of its entries the session has a live
+process for, joined on the exact command that launched it, refreshed each time the drawer opens.
+It means the process is alive rather than that a window is mapped: the alternative is matching
+`xdg_toplevel.app_id` against a desktop entry's `Exec`, and those two strings disagree constantly
+(`org.gnome.Nautilus` versus `nautilus`).
+
+**Session applications no longer open on the computer running wado.** New setting, on by default:
+the session gets its own D-Bus bus and its applications are launched with no `DISPLAY`. Both
+halves are needed and neither is obvious. A single-instance application — a browser, a file
+manager, most GTK apps — asks the *session bus* whether a copy of itself is running, finds the
+one on the host desktop, and hands its command line to it; the window then opens over there and
+launching appears to have done nothing. And wado has no Xwayland, so an X11 client cannot draw
+here at all — with `DISPLAY` inherited it draws on the host's X server, which Chromium and
+Electron make the common case rather than an edge one by preferring X11 whenever `DISPLAY` is
+set, `WAYLAND_DISPLAY` or not. The cost is named in the UI: the private bus is empty, so
+notifications and file-chooser portals are gone, and an X11-only application now fails where you
+can see it. Audio is untouched — PipeWire and PulseAudio are reached through `XDG_RUNTIME_DIR`.
+
 **A run has a lane now, and the log says which.** `WADO_RUN=perf|connection|feature|compositor`
 picks what this session is investigating; each lane is an `EnvFilter` string and nothing more, so
 switching costs a daemon restart rather than a rebuild. Deliberately not a Cargo feature: a lane
