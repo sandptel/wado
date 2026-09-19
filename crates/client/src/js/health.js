@@ -358,12 +358,25 @@ W.health = (s) => {
   // `warn`, never `bad`, and never a strain report: nothing is wrong with the phone, nothing is
   // wrong with the link, and shedding the frame rate would not shorten a queue that is being
   // held for jitter rather than filled by congestion. See plan/sync.md §1b.
+  //
+  // ⚠ The threshold is NOT the thing to loosen when this fires a lot. On 2026-09-19 it sat at
+  // jbuf 42-51 against a 40 ms threshold on a 93 ms path and flapped ok/warn six times in two
+  // minutes, which looked like a false positive. It is not one: 50 ms of playout buffer is six
+  // frame periods of input lag at 120 fps, against a whole-system target of 80-100 ms. Gating
+  // it on the browser's own `jtarget` was tried and reverted — jtarget read 49-54 in that same
+  // window, so that rule would have silenced precisely the field trace this exists to catch
+  // (see the SETTLING fixture in scripts/health-check.mjs, which pairs jbuf 50 with jtarget 54
+  // and asserts a warning).
+  //
+  // What WAS wrong is the wording: it promised the buffer clears on its own, and on a path with
+  // a steady round trip it does not. Say what is true instead.
   const jbufWarn = budget !== null
     ? Math.max(JBUF_WARN_MS, budget * JBUF_WARN_FRAMES)
     : JBUF_WARN_MS;
   if (s.jbuf !== null && s.jbuf >= jbufWarn) {
     worse("warn", "settling", "the picture is about " + s.jbuf.toFixed(0) +
-          " ms behind while the connection settles — this clears on its own");
+          " ms behind — the browser is holding that much playout buffer. It drains when the " +
+          "path steadies, and stays while the round trip does; no setting here shortens it");
   }
 
   // What to do about it. One suggestion per side, and none while healthy — advice offered
