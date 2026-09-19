@@ -26,6 +26,7 @@ pub mod conf;
 pub mod control;
 pub mod encode;
 pub mod error;
+pub mod focus;
 pub mod grabs;
 pub mod handlers;
 pub mod headless;
