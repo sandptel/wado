@@ -35,4 +35,13 @@ pub struct AppEntry {
     /// `wado_compositor::headless::running_apps` for why that trade was made.
     #[serde(default)]
     pub running: bool,
+    /// Installed, but not meant to appear in a menu: `NoDisplay=true` (MIME handlers, setup
+    /// helpers, per-scheme stubs) or `Hidden=true` (deleted, per the spec).
+    ///
+    /// Carried rather than filtered out at the source, because "not normally listed" and "not
+    /// launchable" are different claims and only the first one is true. On a normal desktop
+    /// this is *half* of the desktop files installed — see the drawer's eye toggle, which is
+    /// the one place they are wanted.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hidden: bool,
 }
