@@ -46,18 +46,100 @@ const STUN: &[&str] = &[
     "stun:global.stun.twilio.com:3478",
 ];
 
+/// The TURN server, when one is configured.
+///
+/// **This is the only candidate type that works when both ends are behind a symmetric NAT**, and
+/// a VPN on either end is enough to cause that — measured 2026-09-19, WARP on the host and
+/// Zscaler on the client, a connection that could not be made between two machines on one WiFi.
+/// See [`crate::nat`] for how that state is detected and why no code change routes around it.
+///
+/// Configured from the environment rather than a config file because the daemon already takes
+/// `WADO_RELAY_URL`, `WADO_REMOTE_ID` and `WADO_UDP_SLICE` that way, and a pool starts N of them
+/// from one script. Absent means STUN only, which is what wado has always done.
+///
+/// ponytail: long-lived shared credentials, no REST/ephemeral-token scheme. The upgrade path is
+/// coturn's `use-auth-secret` with time-limited usernames, and it matters only once the TURN
+/// server is reachable by people who are not us.
+fn turn() -> Option<RTCIceServer> {
+    let urls: Vec<String> = std::env::var("WADO_TURN_URL")
+        .ok()?
+        .split(',')
+        .map(str::trim)
+        .filter(|u| !u.is_empty())
+        .map(str::to_owned)
+        .collect();
+    if urls.is_empty() {
+        return None;
+    }
+    // Said out loud, because a TURN server that is configured but unusable looks exactly like no
+    // TURN at all: ICE simply never produces a `relay` candidate and the answer looks normal.
+    if let Some(bad) = urls.iter().find(|u| !u.starts_with("turn:") && !u.starts_with("turns:")) {
+        tracing::error!(
+            "WADO_TURN_URL entry {bad:?} is not a turn: or turns: URL — webrtc-rs will reject it \
+             and this daemon will fall back to STUN only, which cannot connect two peers that \
+             are both behind a VPN or a symmetric NAT."
+        );
+        return None;
+    }
+    Some(RTCIceServer {
+        urls,
+        username: std::env::var("WADO_TURN_USER").unwrap_or_default(),
+        credential: std::env::var("WADO_TURN_PASS").unwrap_or_default(),
+        ..Default::default()
+    })
+}
+
+/// Whether a TURN server is configured at all. Read by [`crate::nat`] so the symmetric-NAT
+/// warning can say whether anything will rescue it.
+pub fn has_turn() -> bool {
+    turn().is_some()
+}
+
 /// The ICE configuration for every peer connection wado makes, in both relay and direct mode.
 ///
-/// No TURN. A relayed candidate is the only thing that works behind symmetric NAT on both ends,
-/// and it needs a server with a real public UDP address — the cloudflared quick tunnel in front
-/// of the relay is HTTP only. That is roadmap iteration 3, not something this list can fake.
+/// STUN always; TURN when `WADO_TURN_URL` is set. Without TURN a relayed candidate cannot exist,
+/// and two peers behind symmetric NAT — which a VPN on either end produces — cannot connect at
+/// all. See the `2026-09-19` Decision Log entry.
 pub fn servers() -> Vec<RTCIceServer> {
-    STUN.iter()
+    let mut out: Vec<RTCIceServer> = STUN
+        .iter()
         .map(|u| RTCIceServer {
             urls: vec![(*u).to_owned()],
             ..Default::default()
         })
-        .collect()
+        .collect();
+    if let Some(t) = turn() {
+        tracing::info!(urls = ?t.urls, "TURN configured — relayed candidates are available");
+        out.push(t);
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// One test, not three: these read a process-global env var and `cargo test` runs tests in
+    /// parallel threads of one process, so split across `#[test]`s they race and fail at random.
+    ///
+    /// A scheme typo is the case worth covering — it is silent otherwise: ICE simply never
+    /// gathers a relay candidate and the answer looks like a normal STUN-only one.
+    #[test]
+    fn turn_is_configured_from_the_environment_and_a_bad_scheme_is_refused() {
+        unsafe { std::env::remove_var("WADO_TURN_URL") };
+        assert!(turn().is_none(), "unset means STUN only");
+        assert_eq!(servers().len(), STUN.len());
+
+        unsafe { std::env::set_var("WADO_TURN_URL", "stun:example.org:3478") };
+        assert!(turn().is_none(), "a stun: URL in the TURN slot is refused, not passed through");
+
+        unsafe { std::env::set_var("WADO_TURN_URL", "turn:example.org:3478,turns:example.org:5349") };
+        let t = turn().expect("both schemes accepted");
+        assert_eq!(t.urls.len(), 2, "comma-separated entries are split");
+        assert_eq!(servers().len(), STUN.len() + 1);
+
+        unsafe { std::env::remove_var("WADO_TURN_URL") };
+    }
 }
 
 /// The STUN servers as bare `host:port`, for anything that speaks STUN itself rather than

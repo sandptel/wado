@@ -63,7 +63,7 @@ function say(s) { print t() " " s; fflush() }
                     last_answer=$0; last_answer_t=systime()
                     say("◇ ICE      answer " $0); next }
 # Said once at startup, and it explains every ICE failure in the log below it at once.
-/SYMMETRIC NAT/ { say("✖ NAT      symmetric — the srflx candidate we advertise is a port no peer can reach. Only cone-NAT peers connect; anything else needs TURN. A VPN on the default route does this"); next }
+/SYMMETRIC NAT AND NO TURN/ { say("✖ NAT      symmetric, no TURN — the srflx candidate we advertise is a port no peer can reach. Only cone-NAT peers connect; anything else needs TURN. A VPN on the default route does this"); next }
 /no server-reflexive candidate/ { say("✖ ICE      NO srflx — STUN timed out; only LAN clients can connect"); next }
 /ICE connection state/ {
   s=kv("state")
