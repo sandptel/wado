@@ -338,7 +338,10 @@ async fn handle_conn(mut stream: TcpStream, ctx: Arc<ServerCtx>) -> crate::Resul
         // it into. Scanned per request rather than cached — a package can be installed while
         // the server is running, and the scan is a few milliseconds of directory reads.
         ("GET", "/apps") => {
-            let apps = crate::apps::discover();
+            let mut apps = crate::apps::discover();
+            // Marked here rather than in `discover`, because "what is installed" and "what is
+            // running" come from different places and only one of them needs the compositor.
+            crate::apps::running::mark(&mut apps, &ctx.cmd_tx).await;
             let body = serde_json::to_vec(&apps).unwrap_or_else(|_| b"[]".to_vec());
             write_response(&mut stream, "200 OK", "application/json", &body).await?;
         }
