@@ -69,6 +69,7 @@ pointed at it tails a dead file, which looks exactly like a quiet system.
 | Piece | How it runs |
 |---|---|
 | `wado` daemons | `WADO_RELAY_URL=ws://127.0.0.1:4000`, release build, `WADO_INSTANCES=N` (default 2), logs → `daemon-N.log` |
+| Run lane | `WADO_RUN=perf\|connection\|feature\|compositor` — a tracing filter, nothing more (`crates/server/src/runlane.rs`). Logged at startup, so a log says which lane produced it. `RUST_LOG` still overrides. **Not** a Cargo feature: a lane switch would otherwise cost a fat-LTO release rebuild |
 | `wado-relay` | local, port 4000 |
 | `cloudflared` | quick tunnel fronting the relay, `*.trycloudflare.com` |
 | Client | GitHub Pages, `https://sandptel.github.io/wado/`, rebuilt on push to main |
@@ -103,6 +104,61 @@ WebRTC/UDP.
 A viewer who reports "the shell opens fine but there is no picture" has therefore told you the
 **control plane is healthy and the media plane is not** — which is a diagnosis, not a
 contradiction. Observed `2026-09-14` on a macOS client stuck at `ICE checking`.
+
+## ⛔ A VPN on EITHER end is the first thing to check when ICE hangs in `checking`
+
+Settled `2026-09-19`, after this symptom had been misdiagnosed three times across two sessions.
+**Both ends had one**: Cloudflare WARP on the host, Zscaler on the macOS client. Either alone is
+enough; the two together are unfixable without TURN.
+
+The confirmation is unambiguous — same Mac, same network, same minute:
+
+| Zscaler | offer candidates | result |
+|---|---|---|
+| on | **15** | ICE `checking` forever. 13 minutes, ~65 re-offers, four daemons |
+| off | **9** | connected in **under one second**, 1670x1080@120 |
+
+**The offer candidate count is the tell.** A VPN adds its tunnel interface to the gather, so the
+count goes *up* while the chance of connecting goes *down*. A device offering noticeably more
+candidates than its peers is the one to ask about a VPN — that is what the mysterious
+"15-candidate device" in earlier notes was, all along.
+
+Ask for the VPN before anything else. It costs one question and it has now cost two sessions.
+
+## ⛔ This host runs Cloudflare WARP, and that makes its NAT **symmetric**
+
+Measured `2026-09-19`. Three STUN servers, one local UDP socket, three different external ports:
+
+```
+stun.cloudflare.com     -> 104.28.155.88:10189
+stun.l.google.com       -> 104.28.155.88:10257
+global.stun.twilio.com  -> 104.28.155.88:11497
+```
+
+A mapping per destination is the definition of symmetric NAT. **Every srflx candidate this host
+advertises names a port no peer can reach**, so ICE sits in `checking` and times out with nothing
+in the log naming a cause. `warp=on` in `curl cloudflare.com/cdn-cgi/trace`; the default route is
+`1.1.1.1 dev CloudflareWARP src 172.16.0.2` while the LAN stays on `wlp97s0`.
+
+**A code fix cannot route around it.** Binding a probe socket to `192.168.1.239` and sending
+anyway returns `Operation not permitted` — WARP enforces its own egress. So
+`set_interface_filter`, the obvious idea, is not available.
+
+Why a phone on mobile data still connects: symmetric ↔ cone pairs fine because *we* initiate and
+the peer learns our real mapping from the connectivity check. Symmetric ↔ symmetric cannot pair
+at all. A peer on WARP is therefore unreachable, LAN or not.
+
+`crates/server/src/nat.rs` now probes two STUN servers from one socket at daemon startup and logs
+`⛔ SYMMETRIC NAT` when the mappings differ; `scripts/watch.sh` surfaces it. **Check that line
+before forming any hypothesis about a connection failure on this machine.**
+
+### ⚠️ Withdrawn: "stuck at ICE checking here means CGNAT or AP isolation"
+
+Both were asserted below and **neither was ever measured on this host**. The CGNAT reading came
+from a genuinely CGNAT session (2026-09-12, a tethered 464XLAT link) and was then reused as a
+general explanation. On `2026-09-19` the same symptom on the same machine was WARP. The AP
+client-isolation theory for the macOS client is **still unconfirmed** — `ping 192.168.1.239` from
+that Mac has been asked for four times and never run.
 
 ## ⛔ ICE has **no TURN**, and CGNAT-to-CGNAT is where that bites
 
@@ -199,6 +255,16 @@ teardown, so a log monitor should exclude `webrtc_ice` explicitly rather than re
 `RUST_LOG=wado_compositor::headless=debug,wado_compositor::input=trace` already works. Do not
 build a logging abstraction for this.
 
+## `render pacing healthy fps=120` does NOT mean frames are being encoded
+
+It is the **tick cadence**, not the render count. A session whose viewer has gone is paused
+(`render_this_tick` is gated on `state.viewer_attached`) and still logs a healthy 120 fps, because
+the calloop timer keeps firing. On 2026-09-19 that line was read as "a session burning GPU for
+nobody" and an abandoned-session leak was reported on the strength of it. There was no leak.
+
+The line that actually answers the question is `viewer detached — rendering paused` /
+`viewer attached — rendering resumed` in `headless.rs`. Check for that, not the fps.
+
 ## A verdict that only logs "yes" reads the same as nobody looking
 
 Applied to the dmabuf question (`headless.rs` / `handlers/dmabuf.rs`): a session logs
@@ -279,8 +345,26 @@ and greppable instead of bare stderr.
 
 Two teardown rules that came out of the same audit: cleanup written at the end of a function
 does not run on an unwind (use an `AbortOnDrop` guard), and a long-lived resource must never
-depend on a *single* event to be released — both transports now have a `viewer_watchdog` that
-stops a session after 45 s with no viewer by any route.
+depend on a *single* event to be released — both transports have a `viewer_watchdog`
+that stops a session with no viewer by any route. **`VIEWER_GRACE` is 600 s, not the 45 s this
+file used to say** — it was raised once `ViewerAttached(false)` started pausing the render tick,
+which removed the reason to be stingy.
+
+**The watchdog works — verified live 2026-09-19**: an abandoned session on daemon-3 was reaped at
+16:12:17, exactly 600 s after its client disconnected at 16:02:14.
+
+⚠ **Withdrawn, same day: "the relay keepalive killed the watchdog".** The reasoning was that
+`should_reap` needs `silent_ms >= 600 s` while `last_relay_msg` is bumped by every relay frame,
+so a 30 s keepalive would make it unsatisfiable. It is wrong about who gets pinged: `KEEPALIVE` is
+spawned in `join_loop` and sends into the **client** inbox, so a daemon never sees a `Ping` and
+`silent_ms` grows honestly. A code change made on that premise was reverted.
+
+**What it cost and what avoids it next time:** the claim came from reading `should_reap` and
+`KEEPALIVE` and not checking which socket the ping goes to — one `grep -n` away. It survived
+because the symptom that prompted it (a session apparently running with no viewer) was itself a
+misread of `render pacing healthy`, below. Two instruments misread in a row, each making the other
+look confirmed. **A constraint that still holds:** if a daemon-side keepalive is ever added, the
+bump at the top of the message loop must start excluding it, or the watchdog dies silently.
 
 ## Killing a monitor's pid orphans its pipeline
 

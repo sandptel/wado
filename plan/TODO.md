@@ -7,6 +7,76 @@ Last updated: `2026-09-14`
 
 ---
 
+## Run of 2026-09-19 — connection hardening (lane 2)
+
+Run lanes exist now: `WADO_RUN=perf|connection|feature|compositor` selects a tracing filter
+(`crates/server/src/runlane.rs`), passed through by `rig.sh` and logged at startup.
+
+- [x] **The "one device never establishes media" mystery is solved on the host side: Cloudflare
+      WARP gives this machine a symmetric NAT.** Three STUN servers, one socket, three different
+      external ports. Every srflx candidate wado advertises is unreachable. Measured twice; a
+      bypass bound to the LAN interface is blocked by WARP itself (`Operation not permitted`), so
+      no code change avoids it. Detail and the withdrawn CGNAT/AP-isolation readings are in
+      `memory/shared/environment.md`. `nat.rs` now says so at startup.
+- [x] Per-device attribution in the daemon log: offers, answers, ICE states and the connect all
+      carry `peer=<addr> room=<id>`, so a pool log can be read per device. `watch.sh` was using
+      the offer candidate count as a fingerprint.
+- [x] ICE `Failed`/`Disconnected` emits one line with both sides' candidate types and the elapsed
+      time, instead of four lines correlated across two logs.
+- [x] `scripts/watch-relay.sh` — nothing was watching the relay log, which is the only place that
+      knows which device got which daemon and who was refused.
+- [x] `rig.sh` reuses a live tunnel instead of rotating the URL, and warns when the deployed
+      client's `DEFAULT_RELAY` is not it. That rotation stranded a phone twice, with no trace
+      anywhere because the request never reaches the relay.
+- [x] `rig.sh --add N` grows a running pool with no session interrupted. Verified 2 → 4 live.
+
+### Connect timings (first concurrent numbers — for `memory/latency/measurements.md`)
+
+| device | offer candidates | join → media | note |
+|---|---|---|---|
+| desktop 1728x1080@120 | 18 | **1881 ms** | cold |
+| phone 1080x2422@90 | 8 | **2161 ms** | concurrent with the desktop |
+| MacBook 1670x1080@120 | 15 | **never** | ICE stuck in `checking` |
+
+### Open
+
+- [x] **The MacBook: solved — Zscaler.** Turned off at `16:00:45`, connected in under a second.
+      Offer candidates dropped 15 → 9; the extra six were the VPN tunnel. This closes the
+      long-standing "one device never establishes media" item and withdraws the AP-isolation
+      theory entirely. Both ends had a VPN: WARP here, Zscaler there.
+- [x] **Withdrawn: "the viewer watchdog was dead for five days".** The keepalive goes to the
+      *client* inbox, not the daemon, so `silent_ms` was never refreshed by it. The watchdog was
+      then verified firing live at exactly 600 s (daemon-3, 16:02:14 → 16:12:17). The change made
+      on the false premise was reverted; only a comment naming the real constraint remains.
+- [x] **Withdrawn: "daemon-3 renders 120 fps with no viewer".** `render pacing healthy` reports
+      tick cadence, not encoded frames; rendering was correctly paused. The instrument lied, not
+      the code. Noted in `memory/shared/environment.md`.
+
+- [ ] **(perf lane) The client verdict flaps ok↔"settling" indefinitely.** Observed 16:08–16:10
+      on 2026-09-19, four flips in two minutes, ~46–51 ms behind each time, at 3.9–4.5 Mbps
+      against a 3.9 Mbps target — so not starvation, and not the post-connect transient the
+      wording claims. Either the threshold sits right on this link's steady state, or the buffer
+      genuinely is not draining. **A verdict that calls a persistent condition transient reads as
+      "nothing to do" forever** — same failure as `render pacing healthy` reporting tick cadence.
+      Decide it with the jitter-buffer number, not the verdict.
+      **Likely already explained:** client rtt moved 2 ms → 93 ms over the same window (16:10:18
+      health line). A ~93 ms path carries ~46 ms of buffer as a matter of course, so the
+      threshold is probably just below this path's steady state and the condition is permanent,
+      not settling. Check rtt before assuming a fault.
+
+- [ ] **Retry storm, now with evidence.** The failing Mac re-offers every ~12 s, and each re-offer
+      **restarts the compositor session** on its daemon while holding the pool slot. This is the
+      "a device that cannot connect occupies a pool slot" item below, observed for 12 minutes
+      straight. A slot held by a peer that has never reached `Connected` should be reclaimable
+      sooner than a streaming one.
+- [ ] **The pinned UDP range is not taking effect.** `webrtc_settings.rs` sets
+      `UDPNetwork::Ephemeral(50000-50400 sliced)`, but the daemon's live ICE sockets are
+      `192.168.1.239:55333` and `172.16.0.2:59097`. No "pin failed" warning was logged. Not the
+      cause of anything today — but a firewall rule opening the pinned range protects nothing.
+- [ ] `global.stun.twilio.com` fails on every gather: `No available ipv6 IP address found`.
+      It answers fine over IPv4 in 95 ms from a raw socket, so this is webrtc-ice resolving it
+      v6-only, not a dead server. One of three STUN servers wasted.
+
 ## Run of 2026-09-14 — multi-device pool
 
 **Landed.** A Remote ID is now a **pool** of daemons; each device gets its own. Detail and the
@@ -51,7 +121,12 @@ it are in `plan/memory/shared/environment.md`.
       drove `pool_busy` to 4 of 4 and began refusing working devices. Worth a cheap guard: a
       slot held by a peer that has never reached `Connected` should be reclaimable sooner than
       one streaming. Pool size is also a retry-storm blast radius, not just a resource ceiling.
-- [ ] **The client marker is written but not deployed.** `js/relay_link.js` stores the assigned
+- [x] **Stickiness IS deployed — entry below withdrawn.** Observed live `2026-09-19 15:48`: a
+      browser disconnected and rejoined as `assignment="reclaimed"` onto its own instance
+      (`29eb0c39`), windows intact. The Mac did the same onto `f49ba537` repeatedly. The
+      `?instance=` marker is in the shipped wasm.
+
+- [ ] ~~**The client marker is written but not deployed.**~~ `js/relay_link.js` stores the assigned
       instance, sends `?instance=`, logs which daemon answered with the pool occupancy, and
       logs the refusal with its numbers. Until Pages ships it, **stickiness does not exist** —
       every join is `assigned`, so a device that reloads may get a different daemon and an
