@@ -36,6 +36,20 @@ W.coalesce = {
     if (this._raf == null) this._raf = requestAnimationFrame(this._flush);
   },
 
+  // Queue an *additive* update: `dx`/`dy` sum into whatever is already pending instead of
+  // replacing it. Newest-wins is right for a position and wrong for a movement — a mouse
+  // reporting at 1000 Hz into a 60 Hz flush would have fifteen sixteenths of every gesture
+  // thrown away, so a fast flick would travel a fraction of the distance it should.
+  add(kind, payload) {
+    const prev = this._pending.get(kind);
+    if (prev) {
+      payload.dx += prev.dx;
+      payload.dy += prev.dy;
+    }
+    this._pending.set(kind, payload);
+    if (this._raf == null) this._raf = requestAnimationFrame(this._flush);
+  },
+
   // Send `payload` immediately, flushing anything already queued so ordering holds.
   // Use for terminal/stateful events (button, key, drag up, touch down/up).
   now(payload) {

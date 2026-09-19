@@ -4,6 +4,71 @@
 
 ### Added
 
+**Pointer lock, for 3D games.** New 🎯 button on the bar: it takes the mouse, and the mouse
+stays taken until you press Escape. Two halves, and neither works without the other. In the
+browser it is Pointer Lock, which stops reporting a *position* and starts reporting *movement* —
+the fix for a first-person camera that stops turning the moment the pointer reaches the edge of
+the video while the real mouse keeps going, and then leaves the page entirely. In the compositor
+it is `zwp_relative_pointer_v1` and `zwp_pointer_constraints_v1`, advertised for the first time;
+SDL, GLFW and the engines on top of them look for **both** before they will enable relative mouse
+mode, and fall back to warping the pointer back to the centre when either is missing. Verified by
+reading the registry a real client is offered.
+
+Deltas are summed rather than dropped when they are rate-limited to the display's refresh — a
+1000 Hz mouse coalesced newest-wins would have thrown away fifteen sixteenths of every flick.
+Clicks and scrolls that arrive during a lock act on the pointer's real location, not on the
+frozen one the browser reports. Escape is the release, and it is the browser's guarantee rather
+than wado's, so there is no way to be stranded; the button follows `pointerlockchange`, so it
+also turns itself off when a tab switch or leaving fullscreen drops the lock. Not available on
+iPhone Safari, which says so rather than doing nothing.
+
+**A glow around the focused window.** Two rings of solid colour tiled around the focused
+window's edge — a 2px accent border and a wider one at low alpha for the falloff. It exists
+because focus here is not what focus is on a desktop: every window action on the bar acts on
+"the focused window", with focus-follows-pointer it moves silently under the pointer, and the
+usual answer — the application's own title bar — is not available to a server-side-decorated
+window, to an X11 client under the session's Xwayland, or to anything fullscreen.
+
+Drawn from buffers held on the session rather than rebuilt per frame, which is the whole
+performance story: a stable element id and commit counter mean a focused window sitting still
+adds nothing to the frame's damage. Measured with a static window — 1 damage rectangle per
+frame with the ring on screen, 1 without. Rebuilding the elements each tick would have made
+every frame a full-screen repaint.
+
+### Fixed
+
+**Windows no longer open, or stay, bigger than the screen.** Three gaps that failed together.
+`xdg_toplevel.configure_bounds` was never sent, so a client had no idea how big the screen was
+and opened at whatever it uses on a desktop; the initial configure carried no size, so nothing
+followed up; and the reconfigure path resized only *maximized* windows, so raising the scale
+shrank the logical output underneath every window already open and told none of them. Measured
+on a 640x360 logical screen — 720p at scale 2, the phone case — kitty opened at 884x1078 and now
+takes 640x360; nautilus opened at 890x550 and now takes 640x380. Raising the scale under an
+already-open nautilus used to leave it at 890x550 and now shrinks it the same way.
+
+The two numbers that are not the screen size are the honest part: nautilus will not go below 380
+high and gnome-calculator will not go below 616, and a client is allowed to refuse a configure it
+cannot honour. Scale is a divisor on the logical output, so at scale 2 a 720p stream is smaller
+than the minimum size of a good many desktop apps. Nothing at the protocol level fixes that —
+scaling the window at render time does, and that is its own piece of work.
+
+Restoring a maximized window now re-fits the size it was remembered at, which could have been
+measured against a larger output before a reconfigure.
+
+### Added
+
+**The drawer shows everything, behind one eye.** Three changes, one complaint: applications
+were missing from it. The grid was capped at 40 tiles, which on this machine hid 32 of the 72
+it had found — the cap is now a DOM guard at 400 rather than a curation. The server had also
+been *dropping* every entry marked `NoDisplay` or `Hidden`, 71 of the 143 installed here; it
+now carries them with a flag, because "not a menu item" and "not launchable" are different
+claims and only the first one is true. Those, and the entries no installed theme has an icon
+for, sit behind 👁 on the search row — one tap to list everything and search it, and the
+button says how many more that is. Beside it, ▶ runs what is in the box, as Enter now does:
+text naming an installed application by name or by command launches that application, anything
+else is run verbatim with its flags. The whole list costs 869 KB per open with the hidden half
+included, up from 645 KB — the icons, as before.
+
 **An X server for the session, for apps that cannot speak Wayland.** New setting, off by
 default: the session runs its own rootful Xwayland and every application launched into it gets
 that `DISPLAY`. Steam is the case that prompted it — it is X11-only, so with the isolation

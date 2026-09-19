@@ -20,6 +20,20 @@ W.mouse = {
   },
 
   move(e, video) {
+    // Locked, the browser reports movement instead of a position — and a position is exactly
+    // what stops being reported once the pointer reaches the edge of the video. See
+    // `input_lock.js`. `cssToLogical` is the same viewer-pixels-to-session-pixels conversion
+    // the wheel does, so a given hand movement turns the same amount whatever the stream's
+    // resolution is.
+    if (W.pointerLock && W.pointerLock.on) {
+      const k = W.cssToLogical(video);
+      W.coalesce.add("pointer_relative", {
+        t: "pointer_relative",
+        dx: (e.movementX || 0) * k,
+        dy: (e.movementY || 0) * k,
+      });
+      return;
+    }
     const n = W.normPoint(e.clientX, e.clientY, video);
     if (!n) return;
     // A button-held drag is a swipe, not a series of clicks — same trail the touch path

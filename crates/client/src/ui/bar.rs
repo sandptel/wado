@@ -129,6 +129,21 @@ pub fn render(ui: Ui) -> Element {
                 "⌨"
             }
 
+            // Pointer lock, for games. No `onclick`: `js/input_lock.js` listens for the click
+            // on this id in the capture phase, because `requestPointerLock` needs the user
+            // gesture and a Dioxus handler's `bridge::call` is an async eval that arrives after
+            // it. The state comes back from `pointerlockchange`, which is also what turns this
+            // off when the browser drops the lock on Escape.
+            button {
+                id: "wado-lock",
+                class: if (live.pointer_lock)() { "barbtn active" } else { "barbtn" },
+                title: "Take the mouse (for games) — Escape releases it",
+                "aria-label": "Take the mouse",
+                "aria-pressed": "{(live.pointer_lock)()}",
+                disabled: !(live.session_on)(),
+                "🎯"
+            }
+
             // A fresh peer connection, which is the only thing that resets the browser's
             // playout buffer after a network hitch has permanently inflated it. The compositor
             // session survives — windows, apps and the shell are not tied to the connection.

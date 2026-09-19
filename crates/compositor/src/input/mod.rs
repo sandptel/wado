@@ -7,6 +7,7 @@ pub mod common;
 pub mod keyboard;
 pub mod pinch;
 pub mod pointer;
+pub mod relative;
 pub mod remote;
 pub mod touch;
 pub mod window_drag;

@@ -25,7 +25,9 @@ use smithay::{
         fractional_scale::FractionalScaleManagerState,
         output::OutputManagerState,
         presentation::PresentationState,
+        pointer_constraints::PointerConstraintsState,
         pointer_gestures::PointerGesturesState,
+        relative_pointer::RelativePointerManagerState,
         selection::data_device::DataDeviceState,
         shell::xdg::{XdgShellState, decoration::XdgDecorationState},
         shm::ShmState,
@@ -242,6 +244,10 @@ pub struct Wado {
     pub pending_placement: Vec<Window>,
     /// Running counter for `Placement::Cascade` step offsets.
     pub cascade_count: u32,
+    /// The ring drawn around the focused window. Held here rather than rebuilt per frame so
+    /// its buffers keep stable ids — see [`crate::glow`] for why that is a damage question and
+    /// not a tidiness one.
+    pub glow: crate::glow::Glow,
 }
 
 /// Tracks a compositor-driven interactive window move. Unlike the app-initiated CSD grabs
@@ -311,6 +317,13 @@ impl Wado {
         // the same reason as the two above: a toolkit looks for its gesture global when it
         // binds the seat, and one that appears later is one it never asks for again.
         let pointer_gestures_state = PointerGesturesState::new::<Self>(&dh);
+        // The two halves of pointer lock, and they are only useful together: engines look for
+        // both before enabling relative mouse mode and fall back to warping if either is
+        // missing. Unconditional for the same reason as the globals above — a toolkit asks once,
+        // when it binds. Neither handle is kept: the returned value is only an id, and dropping
+        // it does not retire the global.
+        RelativePointerManagerState::new::<Self>(&dh);
+        PointerConstraintsState::new::<Self>(&dh);
         let dmabuf_state = DmabufState::new();
         let xdg_activation_state = XdgActivationState::new::<Self>(&dh);
         let clock = Clock::<Monotonic>::new();
@@ -404,6 +417,7 @@ impl Wado {
             pre_maximize: std::collections::HashMap::new(),
             pending_placement: Vec::new(),
             cascade_count: 0,
+            glow: crate::glow::Glow::new(),
         }
     }
 

@@ -100,13 +100,26 @@ impl Wado {
         let is_max =
             toplevel.with_pending_state(|s| s.states.contains(xdg_toplevel::State::Maximized));
 
+        let output_geo = self
+            .space
+            .outputs()
+            .next()
+            .and_then(|o| self.space.output_geometry(o));
+
         if is_max {
             // Restore. A window with no remembered geometry (maximized at map time by the
             // session's Placement setting) gets `size = None`, which hands the choice back to
             // the client rather than inventing one.
+            //
+            // The remembered size is re-fitted rather than trusted: it was measured against
+            // whatever the output was at the time, and a reconfigure since — a scale change is
+            // enough — can have left it bigger than the screen it is being restored onto.
             let restore = self.pre_maximize.remove(window);
             toplevel.with_pending_state(|s| {
-                s.size = restore.map(|(_, size)| size);
+                s.size = restore.map(|(_, size)| match output_geo {
+                    Some(geo) => crate::fit::shrink_to(size, geo.size).unwrap_or(size),
+                    None => size,
+                });
                 s.states.unset(xdg_toplevel::State::Maximized);
             });
             toplevel.send_pending_configure();
@@ -115,12 +128,7 @@ impl Wado {
             return;
         }
 
-        let Some(geo) = self
-            .space
-            .outputs()
-            .next()
-            .and_then(|o| self.space.output_geometry(o))
-        else {
+        let Some(geo) = output_geo else {
             tracing::warn!("maximize ignored — no output");
             return;
         };

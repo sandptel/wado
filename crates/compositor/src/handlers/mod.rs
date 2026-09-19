@@ -3,6 +3,7 @@ mod compositor;
 pub(crate) mod content_type;
 mod decoration;
 mod dmabuf;
+mod pointer_constraints;
 pub(crate) mod text_input;
 mod xdg_shell;
 

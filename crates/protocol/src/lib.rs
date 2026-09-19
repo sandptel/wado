@@ -86,6 +86,18 @@ pub enum InputEvent {
     /// == "mouse"`), so apps get `wl_pointer` motion (hover, menus, tooltips). No cursor is
     /// drawn. Touchscreens use `Touch` instead.
     PointerMotion { x: f64, y: f64 },
+    /// Relative pointer motion, in the session's **logical pixels** — a movement, not a
+    /// position.
+    ///
+    /// Sent instead of [`InputEvent::PointerMotion`] while the viewer holds a browser pointer
+    /// lock, which is what a 3D game needs: a camera turns by how far the mouse moved, and a
+    /// position normalised against the video rect stops changing the moment the pointer reaches
+    /// the edge of it, so the camera stops while the real mouse keeps going.
+    ///
+    /// The compositor forwards it as `zwp_relative_pointer_v1` and *also* moves the absolute
+    /// pointer, unless the application holds an active pointer lock — see
+    /// `wado_compositor::input::relative`.
+    PointerRelative { dx: f64, dy: f64 },
     /// A scroll/wheel tick at (`x`,`y`). `dx`/`dy` are already-normalized **pixel** deltas
     /// (the client folds in `deltaMode`, scroll-speed and natural-direction); the compositor
     /// turns them into a value-only `wl_pointer` axis frame.
