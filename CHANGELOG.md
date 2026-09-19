@@ -25,6 +25,15 @@ reach, and connections hang in ICE `checking` with nothing else logged. A VPN on
 does this. Worth the probe because that state had been diagnosed three times as CGNAT and as
 access-point isolation, neither of which had ever been measured.
 
+**TURN, when you have a server for it.** `WADO_TURN_URL` (plus `WADO_TURN_USER` /
+`WADO_TURN_PASS`) adds a TURN server to the ICE configuration; comma-separated URLs are split,
+and a URL that is not `turn:`/`turns:` is refused loudly rather than passed to webrtc-rs, because
+a rejected entry is indistinguishable from no TURN at all — ICE simply never produces a `relay`
+candidate. Without it, two peers that are both behind a VPN cannot connect, which is not a
+hypothetical: it cost twelve minutes between two machines on one WiFi on `2026-09-19`. The
+startup NAT warning now says whether TURN is configured, because symmetric NAT with TURN is
+survivable and symmetric NAT without it is not.
+
 ### Fixed
 
 **The rig stops invalidating the URL devices are holding.** `scripts/rig.sh` reused to kill a
@@ -182,6 +191,15 @@ themselves in the log: whether any client took the dmabuf path (said on **both**
 "live" or "unused this session"), and which surfaces asked for a fractional scale, which is the
 only way to see the population that the integer fallback actually serves.
 
+**TURN, when you have a server for it.** `WADO_TURN_URL` (plus `WADO_TURN_USER` /
+`WADO_TURN_PASS`) adds a TURN server to the ICE configuration; comma-separated URLs are split,
+and a URL that is not `turn:`/`turns:` is refused loudly rather than passed to webrtc-rs, because
+a rejected entry is indistinguishable from no TURN at all — ICE simply never produces a `relay`
+candidate. Without it, two peers that are both behind a VPN cannot connect, which is not a
+hypothetical: it cost twelve minutes between two machines on one WiFi on `2026-09-19`. The
+startup NAT warning now says whether TURN is configured, because symmetric NAT with TURN is
+survivable and symmetric NAT without it is not.
+
 ### Fixed
 
 **Scrolling asked for about 1.6x too much finger.**
@@ -331,6 +349,15 @@ times.
 
 **A playout-delay hint** to the browser, and an ICE gathering cap so a STUN server that never
 answers cannot hold the offer back.
+
+**TURN, when you have a server for it.** `WADO_TURN_URL` (plus `WADO_TURN_USER` /
+`WADO_TURN_PASS`) adds a TURN server to the ICE configuration; comma-separated URLs are split,
+and a URL that is not `turn:`/`turns:` is refused loudly rather than passed to webrtc-rs, because
+a rejected entry is indistinguishable from no TURN at all — ICE simply never produces a `relay`
+candidate. Without it, two peers that are both behind a VPN cannot connect, which is not a
+hypothetical: it cost twelve minutes between two machines on one WiFi on `2026-09-19`. The
+startup NAT warning now says whether TURN is configured, because symmetric NAT with TURN is
+survivable and symmetric NAT without it is not.
 
 ### Fixed in this release
 
