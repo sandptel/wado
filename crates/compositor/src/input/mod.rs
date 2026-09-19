@@ -4,6 +4,7 @@
 //! cursorless `wl_pointer`; touchscreens drive `wl_touch`).
 
 pub mod common;
+pub mod gamepad;
 pub mod keyboard;
 pub mod pinch;
 pub mod pointer;

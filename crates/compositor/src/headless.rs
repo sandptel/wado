@@ -547,9 +547,14 @@ fn refit_windows(state: &mut Wado) -> usize {
             continue;
         };
         crate::fit::advertise_bounds(toplevel, geo.size);
-        let maximized =
-            toplevel.with_pending_state(|s| s.states.contains(xdg_toplevel::State::Maximized));
-        if maximized {
+        // Fullscreen counts here for the same reason maximized does — both are sized *to* the
+        // output, so both are wrong the instant the output changes shape. Missing it meant a
+        // fullscreen game kept the old size across a rotation or a scale change.
+        let fills_output = toplevel.with_pending_state(|s| {
+            s.states.contains(xdg_toplevel::State::Maximized)
+                || s.states.contains(xdg_toplevel::State::Fullscreen)
+        });
+        if fills_output {
             toplevel.with_pending_state(|s| s.size = Some(geo.size));
             toplevel.send_pending_configure();
             state.space.map_element(window.clone(), (0, 0), false);
@@ -720,6 +725,11 @@ pub fn stop_session(state: &mut Wado) {
     state.encoder_report = None;
     state.frame_sink = None;
     state.session_active = false;
+    // Dropping it runs UI_DEV_DESTROY: the virtual controller is global to the machine, so
+    // leaving one behind would have every other application on the host enumerating a pad that
+    // nothing can press any more.
+    state.gamepad = None;
+    state.gamepad_failed = false;
     state.window_move = None;
     state.pending_placement.clear();
     state.cascade_count = 0;
@@ -1017,8 +1027,12 @@ fn render_tick(state: &mut Wado) -> crate::Result<()> {
         // reads the seat and the space and this closure holds `&mut` on neighbouring fields.
         // Output-relative: `render_output` offsets space elements by the output's own origin
         // and custom elements are expected to arrive already in that frame.
+        // No ring on a fullscreen window: it owns the output, so a border drawn over its edges
+        // is a border drawn into the picture, and there is nothing beside it to distinguish it
+        // from anyway — which is the only thing the ring is for.
         let focused = state
             .focused_window()
+            .filter(|w| !crate::fullscreen::is_fullscreen(w))
             .and_then(|w| state.space.element_geometry(&w))
             .map(|mut geo| {
                 geo.loc -= state

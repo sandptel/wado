@@ -9,7 +9,7 @@ use smithay::{
         wayland_protocols::xdg::shell::server::xdg_toplevel,
         wayland_server::{
             Resource,
-            protocol::{wl_seat, wl_surface::WlSurface},
+            protocol::{wl_output, wl_seat, wl_surface::WlSurface},
         },
     },
     utils::{Rectangle, Serial},
@@ -118,6 +118,20 @@ impl XdgShellHandler for Wado {
             let grab = TouchResizeSurfaceGrab::start(start_data, window, edges.into(), initial_rect);
             touch.set_grab(self, grab, serial);
         }
+    }
+
+    /// The `output` argument is ignored: a wado session has exactly one output by construction
+    /// (invariant #8), so there is nothing to choose between. See [`crate::fullscreen`].
+    fn fullscreen_request(
+        &mut self,
+        surface: ToplevelSurface,
+        _output: Option<wl_output::WlOutput>,
+    ) {
+        self.set_fullscreen(&surface, true);
+    }
+
+    fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
+        self.set_fullscreen(&surface, false);
     }
 
     fn grab(&mut self, _surface: PopupSurface, _seat: wl_seat::WlSeat, _serial: Serial) {}

@@ -102,5 +102,7 @@ W.resetInput = () => {
   W.gesture = null;
   W.mouseDragging = false;
   W.pressedKeys.clear();
+  // A pad control still held when the session ends is a key nothing can ever release.
+  if (W.gamepad) W.gamepad.releaseAll();
   W.activePointers.clear();
 };

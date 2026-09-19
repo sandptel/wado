@@ -320,3 +320,22 @@ label.barbtn.off { color: var(--base03); pointer-events: none; }
 .rejoinbtns { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 .rejoinbtns button { flex: 1 1 10rem; padding: 0.6rem 0.9rem; }
 .rejoinbtns .danger { border-color: var(--base08); color: var(--base08); }
+
+/* A bar button that opens a row of related actions above it — today the four window actions.
+ * Absolute and bottom-anchored so the bar itself never changes width when it opens: a bar that
+ * grows under your thumb moves every other button out from under it. */
+.bargroup { position: relative; display: inline-flex; }
+.barpop {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: calc(var(--r) + 4px);
+  background: color-mix(in srgb, var(--base01) 94%, transparent);
+  border: 1px solid var(--base02);
+  /* Wider than the button it hangs off, so it must not be clipped by the bar's own rounding. */
+  white-space: nowrap;
+}

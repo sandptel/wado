@@ -239,6 +239,18 @@ pub struct Wado {
     /// go back to. Only maximized windows appear here; the entry is removed on restore, and
     /// a window maximized at map time by `Placement::Maximized` never has one.
     pub pre_maximize: std::collections::HashMap<Window, crate::window::PreMaximize>,
+    /// The same, for fullscreen. A separate map because the two states nest: a window can be
+    /// maximized and then fullscreened, and one map would lose the windowed geometry the
+    /// moment the second happened. See [`crate::fullscreen`].
+    pub pre_fullscreen: std::collections::HashMap<Window, crate::window::PreMaximize>,
+    /// The session's virtual gamepad, created on the first gamepad event and destroyed with
+    /// the session. `None` until something asks for it — a session that never opens the
+    /// on-screen pad must not leave a phantom controller on the machine. See
+    /// [`crate::input::gamepad`].
+    pub gamepad: Option<crate::input::gamepad::Gamepad>,
+    /// Set once the device has failed to open, so the failure is logged once rather than on
+    /// every stick sample. Cleared with the session.
+    pub gamepad_failed: bool,
     /// Toplevels mapped but awaiting placement (Center/Cascade need the post-commit size).
     /// Drained by `Wado::apply_pending_placement`. See `placement.rs`.
     pub pending_placement: Vec<Window>,
@@ -415,6 +427,9 @@ impl Wado {
             placement: Placement::default(),
             focus_follows_pointer: false,
             pre_maximize: std::collections::HashMap::new(),
+            pre_fullscreen: std::collections::HashMap::new(),
+            gamepad: None,
+            gamepad_failed: false,
             pending_placement: Vec::new(),
             cascade_count: 0,
             glow: crate::glow::Glow::new(),

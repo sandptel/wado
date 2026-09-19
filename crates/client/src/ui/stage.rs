@@ -126,6 +126,15 @@ pub fn render(ui: Ui) -> Element {
             }
         }
         video { id: "wado-video", autoplay: true, playsinline: true, muted: true }
+        // An empty, stable mount point that `js/gamepad.js` builds the on-screen pad inside.
+        //
+        // A *portal*, and deliberately: the pad is ~30 absolutely-positioned elements that
+        // change on every touch, and driving that through signals would re-render the stage
+        // on every thumb movement. Dioxus owns this div and nothing inside it — which is the
+        // whole point, since a foreign node appended into a VDOM-managed parent is exactly
+        // the thing a later diff is entitled to move. After the video, so the controls paint
+        // over the picture rather than under it.
+        div { id: "wado-pad-mount" }
         }
         // Over the picture, not under it: as a sibling below the video it took height off
         // the stream and letterboxed it.

@@ -9,7 +9,7 @@
 
 use dioxus::prelude::*;
 
-use crate::{bridge, cfg, state::Ui};
+use crate::{bridge, cfg, state::Ui, ui::gamepad};
 
 /// The window actions, in the order they sit on the bar: the two that change a window's size
 /// first, then the destructive one, then the one that moves on. `close` is deliberately not
@@ -27,6 +27,8 @@ pub fn render(ui: Ui) -> Element {
     let mut set = ui.set;
     let open = (live.sheet_open)();
     let panel = (set.panel_open)();
+    let wins = (live.win_open)();
+    let pad = (set.pad_on)();
 
     rsx! {
         // No `idle` class here: the bar starts visible and js/bar.js fades it on a timer.
@@ -68,18 +70,46 @@ pub fn render(ui: Ui) -> Element {
                 },
                 "⊞"
             }
-            // Window actions need a running session to act on; the bar itself does not.
-            for (action, glyph, title) in WINDOW_ACTIONS {
+            // The four window actions, behind one button.
+            //
+            // They were flat on the bar and that made eleven buttons in a row, which is more
+            // than fits comfortably across a phone held in landscape — the orientation the
+            // session is now always in. Grouping costs one tap on the four rarest things here
+            // (a window is maximized once and then used) and buys back three slots for the
+            // ones pressed mid-game. Nothing is removed.
+            div { class: "bargroup",
                 button {
-                    key: "{action}",
-                    class: "barbtn",
-                    title: "{title}",
-                    "aria-label": "{title}",
+                    class: if wins { "barbtn active" } else { "barbtn" },
+                    title: "Window actions",
+                    "aria-label": "Window actions",
+                    "aria-expanded": "{wins}",
                     disabled: !(live.session_on)(),
-                    onclick: move |_| bridge::call(format!(
-                        "window.__wado.windowAction({});", bridge::js(action)
-                    )),
-                    "{glyph}"
+                    onclick: move |_| live.win_open.set(!wins),
+                    "⊟"
+                }
+                if wins {
+                    div { class: "barpop",
+                        for (action, glyph, title) in WINDOW_ACTIONS {
+                            button {
+                                key: "{action}",
+                                class: "barbtn",
+                                title: "{title}",
+                                "aria-label": "{title}",
+                                disabled: !(live.session_on)(),
+                                onclick: move |_| {
+                                    bridge::call(format!(
+                                        "window.__wado.windowAction({});", bridge::js(action)
+                                    ));
+                                    // Closed after acting. The popup covers the video it is
+                                    // acting on, so leaving it up hides the result of the tap
+                                    // that opened it — and "next window" is the one action
+                                    // here you genuinely cannot judge without seeing it.
+                                    live.win_open.set(false);
+                                },
+                                "{glyph}"
+                            }
+                        }
+                    }
                 }
             }
 
@@ -142,6 +172,24 @@ pub fn render(ui: Ui) -> Element {
                 "aria-pressed": "{(live.pointer_lock)()}",
                 disabled: !(live.session_on)(),
                 "🎯"
+            }
+
+            // The on-screen gamepad. Beside pointer lock because it is the same kind of
+            // decision — both are "this is a game now, change what my fingers mean" — and a
+            // plain toggle rather than a menu because what it *does* when it is on is six
+            // settings away in the panel, and nobody needs those mid-match.
+            button {
+                class: if pad { "barbtn active" } else { "barbtn" },
+                title: "On-screen gamepad",
+                "aria-label": "On-screen gamepad",
+                "aria-pressed": "{pad}",
+                disabled: !(live.session_on)(),
+                onclick: move |_| {
+                    let mut set = set;
+                    set.pad_on.set(!pad);
+                    gamepad::apply(ui);
+                },
+                "🎮"
             }
 
             // A fresh peer connection, which is the only thing that resets the browser's

@@ -49,6 +49,13 @@ pub struct Saved {
     pub scroll_speed: Option<f64>,
     pub natural_scroll: Option<bool>,
 
+    pub pad_on: Option<bool>,
+    pub pad_mode: Option<String>,
+    pub pad_scale: Option<f64>,
+    pub pad_opacity: Option<f64>,
+    pub pad_inset_x: Option<f64>,
+    pub pad_inset_y: Option<f64>,
+
     pub panel_open: Option<bool>,
     pub theme: Option<String>,
     pub theme_custom: Option<String>,
@@ -95,6 +102,13 @@ pub fn snapshot(ui: Ui) -> Saved {
         move_mode: Some((s.move_mode)()),
         scroll_speed: Some((s.scroll_speed)()),
         natural_scroll: Some((s.natural_scroll)()),
+
+        pad_on: Some((s.pad_on)()),
+        pad_mode: Some((s.pad_mode)()),
+        pad_scale: Some((s.pad_scale)()),
+        pad_opacity: Some((s.pad_opacity)()),
+        pad_inset_x: Some((s.pad_inset_x)()),
+        pad_inset_y: Some((s.pad_inset_y)()),
 
         panel_open: Some((s.panel_open)()),
         theme: Some((s.theme)()),
@@ -158,6 +172,12 @@ pub fn restore(ui: Ui, saved: Saved) {
         s.scroll_speed.clone().set(v.clamp(0.05, 2.0));
     }
     put!(natural_scroll);
+    put!(pad_on);
+    put!(pad_mode);
+    put!(pad_scale);
+    put!(pad_opacity);
+    put!(pad_inset_x);
+    put!(pad_inset_y);
     put!(panel_open);
     put!(theme);
     put!(theme_custom);

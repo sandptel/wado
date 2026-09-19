@@ -97,6 +97,7 @@ fn App() -> Element {
         document::Stylesheet { href: asset!("/assets/base.css") }
         document::Stylesheet { href: asset!("/assets/layout.css") }
         document::Stylesheet { href: asset!("/assets/stage.css") }
+        document::Stylesheet { href: asset!("/assets/gamepad.css") }
 
         // `sheet` on the shell is what the layout breakpoint reads to decide whether the
         // panel is docked beside the video or slid over it. One markup tree, two
