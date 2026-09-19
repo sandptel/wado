@@ -456,10 +456,14 @@ events about 2 s apart on each cycle.
 client deploy. `KEEPALIVE` is 30 s in `signaling.rs`, sent into the room's own inbox so it goes
 through the single task that owns the socket rather than a second writer.
 
-⚠ **Deployed 22:14, not yet confirmed.** Confirming it needs a device left **idle and untouched
-for ~5 minutes** with no re-join in the relay log; the measurement taken straight after was
-confounded by someone actively reconnecting. Until that is done, treat this as reasoned rather
-than verified.
+✅ **CONFIRMED 2026-09-19**, through the public tunnel: a bare `WebSocket` that sends nothing was
+held 200 s and received pings at 30.6/60.6/90.7/120.6/150.7/180.7 s, no re-join logged.
+
+**The test was wrong for five days, not the fix.** It was written as "leave a device idle for
+~5 minutes" — but a device is never idle: while a session runs the client posts stats over the
+same relay socket, so it can never isolate the keepalive from ordinary traffic. Twenty lines of
+`node` holding a silent socket settles it in three minutes and needs no hardware. **Prefer a
+synthetic client over a human with a phone whenever the thing under test is the socket itself.**
 
 A `pong` from a client is swallowed at the relay — forwarding it to the daemon would get an
 "unknown message" `SessionError` back, because the daemon has no reason to know about this

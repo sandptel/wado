@@ -69,7 +69,20 @@ Run lanes exist now: `WADO_RUN=perf|connection|feature|compositor` selects a tra
       "a device that cannot connect occupies a pool slot" item below, observed for 12 minutes
       straight. A slot held by a peer that has never reached `Connected` should be reclaimable
       sooner than a streaming one.
-- [ ] **The pinned UDP range is not taking effect.** `webrtc_settings.rs` sets
+- [x] **Withdrawn: "the pinned UDP range is not taking effect".** Measured 2026-09-19 during a
+      live session by mapping `/proc/<pid>/fd` socket inodes to `/proc/net/udp`: daemon-1 held
+      50010/50013/50018/50024/50025/50031/50055/50089 — all inside its 50000-50099 slice. The
+      pin works.
+
+      **It took three instruments to get one answer, and the first two lied by construction:**
+      `ss -lun` output with no process attribution (the ports seen were never shown to be
+      wado's); then `ss -un`, which excludes unconnected sockets and so can never show an ICE
+      socket at all. A third check failed silently on a shell bug — `grep -c` prints `0` *and*
+      exits 1, so `$(... | grep -c x || echo 0)` yields two lines and every `[ "$N" -gt ... ]`
+      errored, reporting "no offer in 8 minutes" for an offer that had happened. **Attribute to a
+      pid, and make a check prove it can detect the thing before trusting a negative.**
+
+- [x] ~~The pinned UDP range is not taking effect.~~ `webrtc_settings.rs` sets
       `UDPNetwork::Ephemeral(50000-50400 sliced)`, but the daemon's live ICE sockets are
       `192.168.1.239:55333` and `172.16.0.2:59097`. No "pin failed" warning was logged. Not the
       cause of anything today — but a firewall rule opening the pinned range protects nothing.
@@ -99,7 +112,16 @@ it are in `plan/memory/shared/environment.md`.
 
 ### Awaiting the user
 
-- [ ] **Confirm the relay keepalive.** Deployed 22:14: the relay now pings idle clients every
+- [x] **CONFIRMED 2026-09-19 — and it never needed a device.** A silent WebSocket joined through
+      the public tunnel and was held 200 s with zero client traffic, receiving pings at 30.6,
+      60.6, 90.7, 120.6, 150.7 and 180.7 s, with no re-join in the relay log. Before the
+      keepalive the tunnel closed an idle socket every 1–2.5 min.
+      **Why it sat open for five days:** the test was written as "leave a device untouched for
+      ~5 minutes", and a real device is never idle — it sends stats over the same socket while a
+      session runs, so the measurement could not isolate the keepalive. `node` with a bare
+      `WebSocket` and no sends is the test. Script: `plan/`-adjacent scratch, 20 lines.
+
+- [x] ~~Confirm the relay keepalive.~~ Deployed 22:14: the relay now pings idle clients every
       30 s (`KEEPALIVE` in `signaling.rs`). Before it, an idle signalling socket was closed by
       the cloudflared tunnel and every device re-joined every 1-2.5 minutes, renegotiating
       twice each time — which read as flaky Wi-Fi. **To confirm: leave one device connected and
@@ -395,10 +417,26 @@ smithay looks the popup up in `known_popups` to hand it to `XdgShellHandler::gra
 nothing, the missing lookup changes no behaviour — it is a symptom pointing at the empty handler,
 not a fault in it.
 
-- [ ] Implement the popup grab: `PopupGrab`/`PopupKeyboardGrab` from `smithay::desktop`, started
-      from `grab()` and released on dismissal. Note the **touch** angle — wado's primary input is
-      touch, and the grab APIs are written around pointer and keyboard, so the dismiss gesture has
-      to be wired deliberately rather than inherited.
+- [ ] Implement the popup grab. **Scoped 2026-09-19 — this is not a handler fill-in, and the
+      entry above understated it.** Two findings:
+
+      1. `PopupManager::grab_popup` requires `SeatHandler::KeyboardFocus: From<PopupKind>`, and
+         wado has `type KeyboardFocus = WlSurface` (`handlers/mod.rs:28`). `From<PopupKind> for
+         WlSurface` cannot be written — both types are foreign, so the orphan rule blocks it.
+         Using the upstream grab means introducing wado-owned focus enums
+         (`KeyboardFocusTarget`/`PointerFocusTarget`, as anvil has) and threading them through
+         pointer, touch, keyboard, state and every existing grab. That is an architectural
+         change and needs agreement, not a patch.
+      2. The pinned smithay has `PopupGrab`, `PopupKeyboardGrab`, `PopupPointerGrab` — and **no
+         `PopupTouchGrab`**. The touch angle noted above is not "wire it deliberately"; there is
+         no upstream API for it at this revision.
+
+      **Cheap alternative, ~15 lines, fixes the symptom only:** `PopupManager::dismiss_popup`
+      called from `input/touch.rs` on `TouchPhase::Down` (and the pointer equivalent) when the
+      surface under the point is not itself a popup. **Not proposed without a decision**: it
+      would dismiss *every* open popup on any outside input, where a correct compositor dismisses
+      only popups that asked for a grab. Chrome manages its own menus today and works; this could
+      regress that. ⇒ **Awaiting the user:** symptom fix now, or the focus-enum refactor properly?
 
 ## Optimisation candidates (measure first, none is justified yet)
 
