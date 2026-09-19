@@ -7,6 +7,27 @@ described at the bottom.
 
 
 
+## ⚑ Connect time, join → media, first concurrent numbers (`2026-09-19`)
+
+Measured from the relay's `client joined` to the daemon's `viewer connected via WebRTC`. Both
+ends on one rig, 4-daemon pool.
+
+| device | offer candidates | join → media | note |
+|---|---|---|---|
+| desktop 1728×1080@120 | 18 | **1881 ms** | cold, first of the day |
+| desktop, reclaimed | 18 | **~1300 ms** | same daemon, session kept |
+| phone 1080×2422@90 | 8 | **2161 ms** | concurrent with the desktop |
+| MacBook 1670×1080@120, VPN on | 15 | **never** | ICE stuck `checking`, 13 min, ~65 re-offers |
+| MacBook, VPN off | 9 | **<1000 ms** | same machine, same AP, minutes later |
+
+⚑ **The offer candidate count is a VPN detector.** A VPN adds its tunnel interface to the gather,
+so the count goes *up* while the chance of connecting goes *down*. 15 → 9 when Zscaler was
+switched off. Any device offering noticeably more candidates than its peers is the one to ask
+about a VPN — see `shared/environment.md`.
+
+Gather time (`gather_ms` on the answer) ran **28–294 ms** across every session, against a 2 s
+`GATHER_WAIT` cap — gathering has never been the constraint here.
+
 ## ⚑ Read the decoder's **duty cycle**, not its decode time
 
 `dec` is mean decode time per frame decoded, so `fps × dec / 1000` is the fraction of each second

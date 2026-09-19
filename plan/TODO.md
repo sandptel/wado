@@ -7,6 +7,45 @@ Last updated: `2026-09-14`
 
 ---
 
+## ▣ RUN CLOSED — 2026-09-19, connection hardening (lane 2)
+
+**Headline: five of seven investigated items were not bugs, and three proposed fixes would each
+have deleted something that worked.** The run's real output is a diagnosis (VPNs), a lane system,
+and a set of corrected beliefs. Details below; the corrections are the part worth reading.
+
+### Needs you (nothing else is blocked)
+
+| | |
+|---|---|
+| **TURN server** | Decided and wired — `WADO_TURN_URL`/`_USER`/`_PASS` is live in `ice.rs`. **No server exists yet.** Until one does, two peers both behind a VPN still cannot connect. wado's half is reasoned, not verified. |
+| **Popup grabs, steps 2–5** | Step 1 landed (additive). Steps 2–4 are the invasive swap, held for review. Step 5 (touch) has no upstream API. Plan in `memory/compositor/wayland.md`. |
+| **Lane 3** | Not started. The original plan for today was lane 2 → lane 3 (wifi, audio, system settings, notifications, app launcher). Restart with `WADO_RUN=feature`. |
+
+### Carried, unblocked, nobody waiting
+
+- `(perf)` 111 of 120 fps reaching the client on a 0 ms path — see below.
+- `(perf)` the buffer verdict flapping — see below; likely correct and merely worded badly now.
+- `(compositor)` popup grabs, steps 2–5.
+- Concurrent hardware-encode ceiling is still unmeasured; do that before raising
+  `WADO_INSTANCES` much past 4.
+
+### ⚠️ Corrections made this run — read these before trusting older notes
+
+1. **"Stuck at ICE checking here means CGNAT or AP isolation"** — withdrawn. It was a **VPN at
+   both ends** (WARP here, Zscaler there). Neither older theory was ever measured on this host.
+2. **"The viewer watchdog has been dead for five days"** — withdrawn, mine, same day. The relay
+   keepalive goes to the *client* inbox, not the daemon. Verified firing at exactly 600 s.
+3. **"daemon-3 is rendering 120 fps with no viewer"** — withdrawn. `render pacing healthy` is
+   tick cadence, not encoded frames; rendering was correctly paused.
+4. **"The pinned UDP range is not taking effect"** — withdrawn. It is. Two of the three
+   instruments used to check it could not have detected it.
+5. **"The client instance marker is not deployed"** — withdrawn. Stickiness is live; observed
+   `assignment="reclaimed"` repeatedly.
+6. **Every smithay API fact quoted before 17:0x came from the wrong checkout.** Two exist;
+   the lockfile pins `85f83ab`. Conclusions survived, by luck. See `shared/environment.md`.
+
+---
+
 ## Run of 2026-09-19 — connection hardening (lane 2)
 
 Run lanes exist now: `WADO_RUN=perf|connection|feature|compositor` selects a tracing filter

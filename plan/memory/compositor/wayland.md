@@ -4,6 +4,42 @@ Smithay, headless, GLES2/Glow renderer, Pixman as the no-GPU fallback. Not the w
 (slated for deprecation). Smithay tracks a **git revision pinned in the lockfile only** —
 upstream `main` breaks API regularly.
 
+## Popup grabs: why the handler was empty, and the shape of the fix
+
+`XdgShellHandler::grab` was an empty body, so no popup ever got a grab and `send_popup_done` was
+never sent — tapping outside a menu does not dismiss it. Scoped `2026-09-19`.
+
+**The blocker is a trait bound, not effort.** `PopupManager::grab_popup` is bounded on
+`SeatHandler::KeyboardFocus: From<PopupKind>`, and wado had `type KeyboardFocus = WlSurface`.
+`impl From<PopupKind> for WlSurface` is **forbidden by the orphan rule** — both types are
+foreign. That is why the handler sat empty; it cannot be filled in as written.
+
+**The cut that keeps it small.** `grab_popup` also wants `PointerFocus: From<KeyboardFocus>`, and
+*that* direction is legal with `WlSurface` as the pointer focus, because the local type sits in
+the parameter position. So **only `KeyboardFocus` changes**: 8 call sites, not the 63 an
+anvil-style `PointerFocusTarget`/`TouchFocusTarget` refactor would touch. Pointer, touch and
+every existing grab are untouched.
+
+Steps, in order — 1 is landed and additive:
+
+1. `compositor/src/focus.rs` — `KeyboardFocusTarget { Surface | Popup }` with `WaylandFocus`,
+   `From<PopupKind>`, `From<KeyboardFocusTarget> for WlSurface`, `KeyboardTarget<Wado>`
+   (delegating to the inner surface). **Done.**
+2. `handlers/mod.rs` — `type KeyboardFocus = KeyboardFocusTarget`; `focus_changed` takes
+   `Option<&KeyboardFocusTarget>` and hands `set_data_device_focus` / `text_inputs` the inner
+   surface.
+3. The 8 call sites: `input/{common,keyboard,pointer}.rs`, `window.rs`, `control.rs`.
+4. `handlers/xdg_shell.rs::grab` — `grab_popup` + `PopupKeyboardGrab` + `PopupPointerGrab`.
+5. **Touch dismissal is bespoke.** The pinned smithay has `PopupGrab`, `PopupKeyboardGrab` and
+   `PopupPointerGrab` and **no `PopupTouchGrab`** — verified against the revision the lockfile
+   actually pins, not the stale checkout. wado is touch-first, so step 4 fixes a mouse and
+   leaves the phone. **Do not record popup grabs as done when the pointer path works.**
+
+⛔ **Rejected:** dismissing popups directly with `PopupManager::dismiss_popup` on any input
+landing outside one (~15 lines). It dismisses *every* open popup on any outside input, where the
+protocol dismisses only popups that asked for a grab — a behaviour regression in front of Chrome,
+which manages its own menus correctly today. Decision Log, `2026-09-19`.
+
 ## Two clocks
 
 The compositor is a **synchronous calloop loop**; the transport is **async tokio**. Every
