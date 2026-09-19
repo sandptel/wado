@@ -94,6 +94,10 @@ W.setupInputCapture = () => {
 // Drop all transient input state (called on session teardown).
 W.resetInput = () => {
   W.coalesce.clear();
+  // A lock outlives the session otherwise: the browser holds it against the video element,
+  // which is still there, so the next session would start with the mouse already captured and
+  // no obvious way to tell.
+  if (W.pointerLock) W.pointerLock.release();
   if (W.gesture && W.gesture.holdTimer) clearTimeout(W.gesture.holdTimer);
   W.gesture = null;
   W.mouseDragging = false;

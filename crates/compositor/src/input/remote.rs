@@ -6,6 +6,7 @@
 //! - [`touch`](super::touch) — `Touch` / `CancelTouch` → `wl_touch` (touchscreens)
 //! - [`pointer`](super::pointer) — `PointerMotion` / `Button` / `Scroll` → `wl_pointer` (mouse,
 //!   cursorless)
+//! - [`relative`](super::relative) — `PointerRelative` → `zwp_relative_pointer_v1` (pointer lock)
 //! - [`pinch`](super::pinch) — `Pinch` → `zwp_pointer_gestures_v1`
 //! - [`window_drag`](super::window_drag) — `WindowDrag` → compositor window move
 //!
@@ -30,6 +31,7 @@ impl Wado {
             InputEvent::Touch { id, phase, x, y } => self.touch(id, phase, x, y),
             InputEvent::CancelTouch { .. } => self.touch_cancel(),
             InputEvent::PointerMotion { x, y } => self.pointer_motion(x, y),
+            InputEvent::PointerRelative { dx, dy } => self.pointer_relative(dx, dy),
             InputEvent::Button { x, y, button, pressed } => {
                 self.pointer_button(x, y, button, pressed)
             }

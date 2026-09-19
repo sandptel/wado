@@ -45,7 +45,10 @@ impl Wado {
     /// pressing raises + focuses the window under the pointer (or clears focus on empty
     /// space), which is also what makes apps issue `move_request`/`resize_request`.
     pub(crate) fn pointer_button(&mut self, x: f64, y: f64, button: PointerButton, pressed: bool) {
-        let Some(loc) = self.map_point(x, y) else {
+        // While a pointer lock is held the position that arrived is stale by definition — see
+        // `locked_pointer_location`. The click still lands, on the pointer where it really is.
+        let locked = self.locked_pointer_location();
+        let Some(loc) = locked.or_else(|| self.map_point(x, y)) else {
             return;
         };
         let (serial, time) = self.input_clock();
@@ -58,7 +61,9 @@ impl Wado {
 
         let under = self.surface_under(loc);
         let pointer = self.seat.get_pointer().unwrap();
-        pointer.motion(self, under, &MotionEvent { location: loc, serial, time });
+        if locked.is_none() {
+            pointer.motion(self, under, &MotionEvent { location: loc, serial, time });
+        }
 
         if state == ButtonState::Pressed && !pointer.is_grabbed() {
             let keyboard = self.seat.get_keyboard().unwrap();
@@ -97,15 +102,19 @@ impl Wado {
         source: ScrollSource,
         stop: bool,
     ) {
-        let Some(loc) = self.map_point(x, y) else {
+        let locked = self.locked_pointer_location();
+        let Some(loc) = locked.or_else(|| self.map_point(x, y)) else {
             return;
         };
         let (serial, time) = self.input_clock();
         let under = self.surface_under(loc);
         let pointer = self.seat.get_pointer().unwrap();
-        // Focus the surface under the scroll point (no cursor) so the axis lands on it.
-        pointer.motion(self, under, &MotionEvent { location: loc, serial, time });
-        pointer.frame(self);
+        // Focus the surface under the scroll point (no cursor) so the axis lands on it — but
+        // not while the pointer is locked, where moving it is the one thing forbidden.
+        if locked.is_none() {
+            pointer.motion(self, under, &MotionEvent { location: loc, serial, time });
+            pointer.frame(self);
+        }
 
         // The source is not cosmetic. On Finger a toolkit scrolls smoothly and starts its
         // own kinetic animation when the axis stops; on Wheel it steps. A finger drag

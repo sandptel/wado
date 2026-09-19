@@ -7,7 +7,7 @@ use smithay::{
         renderer::{
             ImportDma,
             damage::OutputDamageTracker,
-            element::surface::WaylandSurfaceRenderElement,
+            element::solid::SolidColorRenderElement,
             gles::{GlesRenderer, GlesTarget},
         },
     },
@@ -515,16 +515,24 @@ fn retire_output_global(state: &mut Wado, id: smithay::reexports::wayland_server
 
 /// Put the windows back inside the output after its geometry changed.
 ///
-/// Two cases, and only two on purpose:
+/// Three passes, and the middle one used to be missing:
 ///
+/// * **Bounds** are re-advertised to every toplevel, because the screen they were told about at
+///   map time is not the screen any more.
 /// * **Maximized** windows are sized *to* the output, so they are told the new size. An app that
 ///   is not reconfigured keeps drawing at the old one and is either clipped or letterboxed.
-/// * **Everything else** is clamped so its top-left stays on the output. A window whose corner
-///   is off the new screen cannot be dragged back — there is nothing left to grab.
+/// * **Everything else** is shrunk to fit if it no longer does, then clamped so it sits fully on
+///   the output where it can.
 ///
-/// ponytail: does not rescale or re-tile ordinary windows. Rotating a phone from landscape to
-/// portrait will leave a wide window wide. Re-tiling is a policy decision and there is no tiling
-/// policy here yet; clamping is the part that is unambiguously a bug if it is missing.
+/// The shrink is what makes raising the **scale** work. Scale divides the logical output — 720p
+/// at scale 2 is a 640x360 logical screen — so every window already open is suddenly too big,
+/// and before this pass existed none of them were told. Measured: nautilus opens at 890x550,
+/// and a scale change to 2 left it at 890x550 on a 640x360 screen. It now takes 640x380 — its
+/// own minimum height is 380, which is the part no configure can fix.
+///
+/// ponytail: shrink-to-fit, not re-tile. Rotating a phone from landscape to portrait leaves a
+/// wide window wide, just no longer wider than the screen. Re-tiling is a policy decision and
+/// there is no tiling policy here yet.
 fn refit_windows(state: &mut Wado) -> usize {
     let Some(output) = state.output.clone() else {
         return 0;
@@ -533,31 +541,35 @@ fn refit_windows(state: &mut Wado) -> usize {
         return 0;
     };
 
-    let maximized: Vec<_> = state
-        .space
-        .elements()
-        .filter(|w| {
-            w.toplevel().is_some_and(|t| {
-                t.with_pending_state(|s| s.states.contains(xdg_toplevel::State::Maximized))
-            })
-        })
-        .cloned()
-        .collect();
-    for window in maximized {
-        if let Some(t) = window.toplevel() {
-            t.with_pending_state(|s| s.size = Some(geo.size));
-            t.send_pending_configure();
+    let windows: Vec<_> = state.space.elements().cloned().collect();
+    for window in &windows {
+        let Some(toplevel) = window.toplevel() else {
+            continue;
+        };
+        crate::fit::advertise_bounds(toplevel, geo.size);
+        let maximized =
+            toplevel.with_pending_state(|s| s.states.contains(xdg_toplevel::State::Maximized));
+        if maximized {
+            toplevel.with_pending_state(|s| s.size = Some(geo.size));
+            toplevel.send_pending_configure();
+            state.space.map_element(window.clone(), (0, 0), false);
+        } else {
+            // Sends a configure only when the window really is too big — see `fit::shrink_to`.
+            crate::fit::fit(window, geo.size);
         }
-        state.space.map_element(window, (0, 0), false);
     }
 
-    let strays: Vec<(smithay::desktop::Window, smithay::utils::Point<i32, smithay::utils::Logical>)> = state
-        .space
-        .elements()
+    // Position, after the sizes are settled: a window is "on the output" if the *whole* of it
+    // is, so the bound depends on the size it was just asked to take. Clamping the top-left to
+    // the screen alone — which is what this used to do — leaves a too-wide window hanging off
+    // the right edge with no way to drag it back.
+    let strays: Vec<(smithay::desktop::Window, smithay::utils::Point<i32, smithay::utils::Logical>)> = windows
+        .iter()
         .filter_map(|w| {
             let loc = state.space.element_location(w)?;
-            let x = loc.x.clamp(0, (geo.size.w - 1).max(0));
-            let y = loc.y.clamp(0, (geo.size.h - 1).max(0));
+            let size = w.geometry().size;
+            let x = loc.x.clamp(0, (geo.size.w - size.w).max(0));
+            let y = loc.y.clamp(0, (geo.size.h - size.h).max(0));
             (x != loc.x || y != loc.y).then(|| (w.clone(), (x, y).into()))
         })
         .collect();
@@ -1001,6 +1013,23 @@ fn render_tick(state: &mut Wado) -> crate::Result<()> {
     let (result, capture_dur, encode_dur): (crate::Result<Option<Vec<u8>>>, Duration, Duration) = if !render_this_tick {
         (Ok(None), Duration::ZERO, Duration::ZERO)
     } else {
+        // Built before the renderer is borrowed, because working out which window is focused
+        // reads the seat and the space and this closure holds `&mut` on neighbouring fields.
+        // Output-relative: `render_output` offsets space elements by the output's own origin
+        // and custom elements are expected to arrive already in that frame.
+        let focused = state
+            .focused_window()
+            .and_then(|w| state.space.element_geometry(&w))
+            .map(|mut geo| {
+                geo.loc -= state
+                    .space
+                    .output_geometry(&output)
+                    .map(|o| o.loc)
+                    .unwrap_or_default();
+                geo
+            });
+        let glow = state.glow.elements(focused, state.output_scale as f64);
+
         let renderer = state.renderer.as_mut().unwrap();
         let capture = state.capture.as_mut().unwrap();
         let damage_tracker = state.damage_tracker.as_mut().unwrap();
@@ -1008,12 +1037,9 @@ fn render_tick(state: &mut Wado) -> crate::Result<()> {
         let bg = [0.1, 0.1, 0.1, 1.0];
 
         let mut render = |r: &mut GlesRenderer, fb: &mut GlesTarget<'_>| -> crate::Result<()> {
-            smithay::desktop::space::render_output::<
-                _,
-                WaylandSurfaceRenderElement<GlesRenderer>,
-                _,
-                _,
-            >(&output, r, fb, 1.0, 0, [space], &[], damage_tracker, bg)
+            // The second parameter is the *custom* element type, which is now the focus ring
+            // rather than the empty slice this used to pass.
+            smithay::desktop::space::render_output::<_, SolidColorRenderElement, _, _>(&output, r, fb, 1.0, 0, [space], &glow, damage_tracker, bg)
             .map_err(renderer_err("render_output"))?;
             Ok(())
         };

@@ -55,6 +55,8 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/input_pointer.js"),
     "\n",
+    include_str!("js/input_lock.js"),
+    "\n",
     include_str!("js/input_touch.js"),
     "\n",
     include_str!("js/input_scroll.js"),
@@ -163,6 +165,10 @@ pub fn run(ui: Ui) {
                     live.screen_dpr.set(num("dpr").unwrap_or(0.0));
                 }
                 "refresh" => live.refresh_hz.set(num("hz").map(|v| v as u32)),
+                "pointer_lock" => {
+                    let on = msg.get("on").and_then(|v| v.as_bool()).unwrap_or(false);
+                    live.pointer_lock.set(on);
+                }
                 "osk" => {
                     let on = msg.get("on").and_then(|v| v.as_bool()).unwrap_or(false);
                     live.osk_on.set(on);
