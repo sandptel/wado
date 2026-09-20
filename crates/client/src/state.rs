@@ -102,6 +102,10 @@ pub struct Settings {
     /// Extra distance from the left/right and top/bottom screen edges, in CSS pixels.
     pub pad_inset_x: Signal<f64>,
     pub pad_inset_y: Signal<f64>,
+    /// Per-control position and size overrides from edit mode, as the JSON `js/gamepad.js`
+    /// writes. Opaque here on purpose: the shape belongs to the overlay that draws it, and
+    /// nothing on this side has a reason to parse it.
+    pub pad_layout: Signal<String>,
     pub natural_scroll: Signal<bool>,
 
     // ── appearance ──────────────────────────────────────────────────────────────
@@ -184,6 +188,7 @@ impl Settings {
             pad_opacity: use_signal(|| 0.5),
             pad_inset_x: use_signal(|| 0.0),
             pad_inset_y: use_signal(|| 0.0),
+            pad_layout: use_signal(String::new),
 
             panel_open: use_signal(|| true),
             theme: use_signal(|| "default-dark".to_string()),
@@ -225,6 +230,9 @@ pub struct Live {
     /// Whether the bar's window-action group is expanded. Not persisted — a popup that is
     /// open on load is chrome nobody asked for, and it is one tap to reopen.
     pub win_open: Signal<bool>,
+    /// Whether the on-screen pad is being laid out rather than played. Live, not a setting:
+    /// an edit mode that survived a reload would be a pad whose buttons silently do nothing.
+    pub pad_edit: Signal<bool>,
 
     /// What the server actually opened, from the `/session/start` reply: the hw/sw `mode`
     /// drives the persistent software banner (invariant #5), the `pipeline` tier id drives
@@ -323,6 +331,7 @@ impl Live {
             console_tab: use_signal(|| "shell".to_string()),
             sheet_open: use_signal(|| false),
             win_open: use_signal(|| false),
+            pad_edit: use_signal(|| false),
             encoder_mode: use_signal(String::new),
             encoder_pipeline: use_signal(String::new),
             decode_drop_pct: use_signal(|| 0.0),

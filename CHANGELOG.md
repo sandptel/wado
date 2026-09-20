@@ -4,6 +4,16 @@
 
 ### Added
 
+**Lay the gamepad out yourself.** Gamepad settings gained an *Edit layout* switch: with it on,
+every control on the pad drags where you want it, and − / + resize whichever one you last
+touched — sticks included. The default layout is a guess about a hand it has never seen, and a
+thumb is not in the same place on a 6" phone as on a tablet.
+
+Positions are stored as a fraction of the stage rather than in pixels, so the same layout lands
+under the same thumb in a session of a different resolution. Nothing presses while edit mode is
+on, ⟲ puts one control back, and *Reset the layout* in settings puts them all back.
+
+
 **An on-screen gamepad.** New 🎮 button on the bar puts a translucent controller over the
 video — two sticks, a D-pad, four face buttons, four shoulders, select/home/start — and it
 works in one of two ways, which is a real choice rather than a preference.
@@ -39,6 +49,12 @@ instead of leaving it at the old output's dimensions. Restoring puts it back whe
 if it was maximized first.
 
 ### Changed
+
+**The gamepad tells you it was pressed.** A pressed control now grows and throws a ring wider
+than the fingertip covering it — the old feedback was a colour change under the thumb that
+pressed it. Done with the `scale` property rather than a `transform`, so it survives a control
+that has been dragged somewhere else.
+
 
 **A phone session is now always landscape.** The browser reports the panel in whichever
 orientation the phone is held, and a phone at rest is held upright — so a session started

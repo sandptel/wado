@@ -174,6 +174,17 @@ pub fn run(ui: Ui) {
                     let on = msg.get("on").and_then(|v| v.as_bool()).unwrap_or(false);
                     live.pointer_lock.set(on);
                 }
+                // Edit mode writes the layout back after every drag and every resize. Stored
+                // as the string it arrived as — see `Settings::pad_layout`.
+                "pad_layout" => {
+                    let mut set = ui.set;
+                    set.pad_layout.set(string("json"));
+                }
+                "pad_edit" => {
+                    let on = msg.get("on").and_then(|v| v.as_bool()).unwrap_or(false);
+                    live.pad_edit.set(on);
+                    crate::ui::gamepad::apply(ui);
+                }
                 "osk" => {
                     let on = msg.get("on").and_then(|v| v.as_bool()).unwrap_or(false);
                     live.osk_on.set(on);

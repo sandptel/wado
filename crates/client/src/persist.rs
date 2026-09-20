@@ -55,6 +55,7 @@ pub struct Saved {
     pub pad_opacity: Option<f64>,
     pub pad_inset_x: Option<f64>,
     pub pad_inset_y: Option<f64>,
+    pub pad_layout: Option<String>,
 
     pub panel_open: Option<bool>,
     pub theme: Option<String>,
@@ -109,6 +110,7 @@ pub fn snapshot(ui: Ui) -> Saved {
         pad_opacity: Some((s.pad_opacity)()),
         pad_inset_x: Some((s.pad_inset_x)()),
         pad_inset_y: Some((s.pad_inset_y)()),
+        pad_layout: Some((s.pad_layout)()),
 
         panel_open: Some((s.panel_open)()),
         theme: Some((s.theme)()),
@@ -178,6 +180,7 @@ pub fn restore(ui: Ui, saved: Saved) {
     put!(pad_opacity);
     put!(pad_inset_x);
     put!(pad_inset_y);
+    put!(pad_layout);
     put!(panel_open);
     put!(theme);
     put!(theme_custom);
