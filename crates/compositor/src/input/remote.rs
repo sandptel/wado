@@ -43,11 +43,18 @@ impl Wado {
             }
             InputEvent::WindowDrag { phase, x, y } => self.window_drag(phase, x, y),
             InputEvent::GamepadButton { code, pressed } => {
+                // Discrete and human-paced, so it can be logged at info: this is the one
+                // trace that says a stroke crossed the wire and reached the host device.
+                tracing::info!(target: "wado::gamepad", "gamepad button {code:#x} {}",
+                    if pressed { "down" } else { "up" });
                 if let Some(pad) = self.virtual_gamepad() {
                     pad.button(code, pressed);
                 }
             }
             InputEvent::GamepadAxis { code, value } => {
+                // Debug, not info: a stick at rest still sends sixty of these a second, and
+                // a log that scrolls is a log nobody reads the button presses out of.
+                tracing::debug!(target: "wado::gamepad", "gamepad axis {code:#x} = {value}");
                 if let Some(pad) = self.virtual_gamepad() {
                     pad.axis(code, value);
                 }

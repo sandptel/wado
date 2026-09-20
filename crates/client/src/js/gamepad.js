@@ -83,10 +83,16 @@ const CONTROLS = [
   { id: "a", cluster: "face", glyph: "A", shape: "face down" },
 ];
 
-W.padCfg = { on: false, mode: "keys", scale: 1, opacity: 0.5, insetX: 0, insetY: 0 };
+// `layout` is the edit-mode override map: { <control id>: { x, y, s } }, where x/y are the
+// control's centre as a fraction of the stage and s multiplies its size. Fractions, not
+// pixels, because the same phone is a different number of pixels in a different session —
+// and the pad has to land in the same place under the thumb either way.
+W.padCfg = { on: false, mode: "keys", scale: 1, opacity: 0.5, insetX: 0, insetY: 0, layout: {} };
 
 W.gamepad = {
   root: null,
+  editing: false,
+  selId: "",
   held: new Set(),     // control ids currently pressed, so hide() can release them all
   look: { x: 0, y: 0 },
   lookRaf: 0,
@@ -205,12 +211,15 @@ W.gamepad = {
       const base = document.createElement("div");
       base.className = "padstick";
       base.dataset.cluster = `stick-${side}`;
+      base.dataset.id = `stick-${side}`; // the editor addresses everything by data-id
       const thumb = document.createElement("div");
       thumb.className = "padthumb";
       base.appendChild(thumb);
       this.bindStick(base, thumb, side);
       root.appendChild(base);
     }
+    root.appendChild(this.buildEditBar());
+    this.editBind(root);
     mount.appendChild(root);
     this.root = root;
     return root;
@@ -276,15 +285,167 @@ W.gamepad = {
     this[`release${side}`] = () => release(null);
   },
 
+
+  // ── edit mode ────────────────────────────────────────────────────────────────────────
+  //
+  // Drag any control where you want it; ‑/+ resize the one last touched. A thumb is not in
+  // the same place on a 6" phone as on a tablet, and the default layout is a guess about a
+  // hand it has never seen.
+  //
+  // The whole editor is one capture-phase listener on the root rather than a second set of
+  // handlers per control: capture runs before the target's own `pointerdown`, so stopping it
+  // there is what keeps a drag from also firing the button.
+
+  el(id) { return this.root && this.root.querySelector(`[data-id="${id}"]`); },
+
+  // The override for a control, created from wherever it currently sits. Seeding it from the
+  // live rect is what lets resizing alone work: nothing teleports on the first ‑/+ press.
+  slot(id) {
+    const L = W.padCfg.layout || (W.padCfg.layout = {});
+    if (!L[id]) {
+      const el = this.el(id);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      const pr = this.root.getBoundingClientRect();
+      L[id] = {
+        x: (r.left + r.width / 2 - pr.left) / pr.width,
+        y: (r.top + r.height / 2 - pr.top) / pr.height,
+        s: 1,
+      };
+    }
+    return L[id];
+  },
+
+  // Inline styles, so one moved control does not cost the other fourteen their CSS anchors.
+  place(el, o) {
+    if (!o) {
+      for (const k of ["left", "top", "right", "bottom", "transform"]) el.style[k] = "";
+      el.style.removeProperty("--pad-u");
+      return;
+    }
+    el.style.left = `${o.x * 100}%`;
+    el.style.top = `${o.y * 100}%`;
+    el.style.right = "auto";
+    el.style.bottom = "auto";
+    el.style.transform = "translate(-50%, -50%)";
+    // Every dimension of a control derives from --pad-u, so overriding it on the element is
+    // the whole of per-control sizing.
+    if (o.s && o.s !== 1) el.style.setProperty("--pad-u", `calc(var(--pad-u0) * ${o.s})`);
+    else el.style.removeProperty("--pad-u");
+  },
+
+  applyLayout() {
+    const L = W.padCfg.layout || {};
+    for (const el of this.root.querySelectorAll(".padbtn, .padstick")) {
+      this.place(el, L[el.dataset.id]);
+    }
+  },
+
+  select(el) {
+    this.selId = el ? el.dataset.id : "";
+    for (const n of this.root.querySelectorAll(".sel")) n.classList.remove("sel");
+    if (el) el.classList.add("sel");
+  },
+
+  resize(mul) {
+    const o = this.slot(this.selId);
+    if (!o) return;
+    o.s = Math.min(2.5, Math.max(0.5, (o.s || 1) * mul));
+    this.place(this.el(this.selId), o);
+    this.saveLayout();
+  },
+
+  resetOne() {
+    if (!this.selId) return;
+    delete (W.padCfg.layout || {})[this.selId];
+    const el = this.el(this.selId);
+    if (el) this.place(el, null);
+    this.saveLayout();
+  },
+
+  // Back to Rust, which is what persists it — the same round trip every other setting takes.
+  saveLayout() {
+    emit({ type: "pad_layout", json: JSON.stringify(W.padCfg.layout || {}) });
+  },
+
+  buildEditBar() {
+    const bar = document.createElement("div");
+    bar.className = "padedit";
+    for (const [act, glyph, title] of [
+      ["small", "－", "Smaller"],
+      ["big", "＋", "Bigger"],
+      ["reset", "⟲", "Reset this control"],
+      ["done", "✓", "Done"],
+    ]) {
+      const b = document.createElement("button");
+      b.dataset.act = act;
+      b.title = title;
+      b.textContent = glyph;
+      b.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (act === "small") this.resize(1 / 1.12);
+        else if (act === "big") this.resize(1.12);
+        else if (act === "reset") this.resetOne();
+        else emit({ type: "pad_edit", on: false });
+      });
+      bar.appendChild(b);
+    }
+    return bar;
+  },
+
+  editBind(root) {
+    let drag = null;
+    root.addEventListener("pointerdown", (e) => {
+      if (!this.editing) return;
+      const el = e.target.closest(".padbtn, .padstick");
+      if (!el) return;
+      e.preventDefault();
+      e.stopPropagation();
+      this.select(el);
+      const r = el.getBoundingClientRect();
+      const o = this.slot(el.dataset.id);
+      // The grab offset, so a control does not jump its centre under the finger.
+      drag = {
+        el, o,
+        pr: root.getBoundingClientRect(),
+        ox: r.left + r.width / 2 - e.clientX,
+        oy: r.top + r.height / 2 - e.clientY,
+      };
+      try { el.setPointerCapture(e.pointerId); } catch (_) {}
+    }, true);
+    root.addEventListener("pointermove", (e) => {
+      if (!drag) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const { pr } = drag;
+      drag.o.x = Math.min(1, Math.max(0, (e.clientX + drag.ox - pr.left) / pr.width));
+      drag.o.y = Math.min(1, Math.max(0, (e.clientY + drag.oy - pr.top) / pr.height));
+      this.place(drag.el, drag.o);
+    }, true);
+    const end = (e) => {
+      if (!drag) return;
+      drag = null;
+      e.stopPropagation();
+      this.saveLayout();
+    };
+    root.addEventListener("pointerup", end, true);
+    root.addEventListener("pointercancel", end, true);
+  },
+
   // ── config ───────────────────────────────────────────────────────────────────────────
   apply() {
     const root = this.build();
     if (!root) return;
     const c = W.padCfg;
     root.style.setProperty("--pad-scale", c.scale);
-    root.style.setProperty("--pad-opacity", c.opacity);
+    // Readable while being edited, whatever it is set to for playing.
+    root.style.setProperty("--pad-opacity", this.editing ? 0.95 : c.opacity);
     root.style.setProperty("--pad-inset-x", `${c.insetX}px`);
     root.style.setProperty("--pad-inset-y", `${c.insetY}px`);
+    root.classList.toggle("editing", !!this.editing);
+    if (!this.editing) this.select(null);
+    this.applyLayout();
     if (root.hidden !== !c.on) {
       root.hidden = !c.on;
       if (!c.on) this.releaseAll();
@@ -310,5 +471,19 @@ W.gamepad = {
 // drift apart a field at a time.
 W.setGamepad = (cfg) => {
   Object.assign(W.padCfg, cfg || {});
+  // The layout arrives as text because that is how it is stored: one opaque string Rust
+  // never has to know the shape of.
+  if (typeof W.padCfg.layout === "string") {
+    try { W.padCfg.layout = JSON.parse(W.padCfg.layout || "{}") || {}; }
+    catch (_) { W.padCfg.layout = {}; }
+  }
+  W.gamepad.apply();
+};
+
+// Edit mode is session state, not a setting: it is never what you want on a fresh load.
+W.setPadEdit = (on) => {
+  W.gamepad.editing = !!on;
+  // Anything held when the finger starts dragging instead of pressing is held forever.
+  W.gamepad.releaseAll();
   W.gamepad.apply();
 };

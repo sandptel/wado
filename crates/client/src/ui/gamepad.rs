@@ -22,19 +22,24 @@ use crate::{bridge, state::Ui};
 pub fn apply(ui: Ui) {
     let s = ui.set;
     bridge::call(format!(
-        "window.__wado.setGamepad({{on:{},mode:{},scale:{},opacity:{},insetX:{},insetY:{}}});",
+        "window.__wado.setPadEdit({});\
+         window.__wado.setGamepad({{on:{},mode:{},scale:{},opacity:{},insetX:{},insetY:{},layout:{}}});",
+        (ui.live.pad_edit)(),
         (s.pad_on)(),
         bridge::js(&(s.pad_mode)()),
         (s.pad_scale)(),
         (s.pad_opacity)(),
         (s.pad_inset_x)(),
         (s.pad_inset_y)(),
+        bridge::js(&(s.pad_layout)()),
     ));
 }
 
 pub fn render(ui: Ui) -> Element {
     let mut s = ui.set;
+    let mut live = ui.live;
     let mode = (s.pad_mode)();
+    let edit = (live.pad_edit)();
 
     rsx! {
         label {
@@ -68,6 +73,31 @@ pub fn render(ui: Ui) -> Element {
                  mouse. Nothing is needed on the host — but a game that reads only a controller
                  will not see this."
             }
+        }
+
+        // Laying the pad out is done on the pad, not in here: the thing being positioned is
+        // behind this panel, and a slider per control for fifteen controls is a worse editor
+        // than a finger. This is only the switch.
+        label {
+            class: "check",
+            input {
+                r#type: "checkbox", checked: edit, disabled: !(s.pad_on)(),
+                onchange: move |e| { live.pad_edit.set(e.checked()); apply(ui); },
+            }
+            " Edit layout — drag the controls"
+        }
+        if edit {
+            p { class: "hint",
+                "Drag any control where you want it. Tap one and use − / + on the middle of
+                 the screen to resize just that one, ⟲ to put it back. ✓ ends edit mode.
+                 Nothing presses while this is on."
+            }
+        }
+        button {
+            class: "wide",
+            disabled: (s.pad_layout)().is_empty(),
+            onclick: move |_| { s.pad_layout.set(String::new()); apply(ui); },
+            "Reset the layout"
         }
 
         label { "Size: {(s.pad_scale)():.2}×" }

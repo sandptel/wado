@@ -8,9 +8,9 @@
  * the layout cannot come apart at one end of its range. Positions are anchored to the four
  * corners, never to the centre, because the stage is a different shape on every device.
  *
- * ponytail: absolute positioning off two anchors, not a drag-to-place editor. Size and edge
- * padding are the two things people actually change; per-button placement is an editor, with
- * its own persistence and its own reset, and nothing here is blocked on having one.
+ * Positions here are the default layout. Edit mode overrides any control with inline
+ * left/top/--pad-u — see the `layout` map in js/gamepad.js — so these rules are what a
+ * control falls back to when its override is reset, not the last word.
  */
 
 /* Dioxus renders this and nothing inside it; js/gamepad.js owns the contents. */
@@ -27,7 +27,10 @@
   user-select: none;
   -webkit-user-select: none;
 
-  --pad-u: calc(26px * var(--pad-scale, 1));
+  /* --pad-u0 is the size slider alone; --pad-u is what the controls read, and is what a
+   * per-control override in edit mode replaces on that one element. */
+  --pad-u0: calc(26px * var(--pad-scale, 1));
+  --pad-u: var(--pad-u0);
   /* Distance from each screen edge, safe areas included: a control under a home indicator or
    * a camera cutout is a control that cannot be pressed. */
   --ix: calc(14px + var(--pad-inset-x, 0px) + env(safe-area-inset-left));
@@ -56,11 +59,24 @@
   /* The stroke has to survive being drawn over a bright scene as well as a dark one. */
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  /* `scale` and not a scale() inside `transform`, because `transform` is where the layout
+   * lives: the cross arms translate with it and edit mode writes an inline one. A separate
+   * property composes with both, so press feedback cannot be cancelled by where a control
+   * happens to sit. */
+  transition:
+    scale 90ms var(--ease, ease-out),
+    background-color 90ms var(--ease, ease-out),
+    box-shadow 160ms var(--ease, ease-out);
 }
 
+/* A finger covers the control it is pressing, so the feedback has to happen at the edges:
+ * it grows past the fingertip and throws a ring wider than that again. */
 #wado-pad .padbtn.on {
   background: color-mix(in srgb, var(--base0D) 55%, transparent);
-  transform-origin: center;
+  scale: 1.16;
+  box-shadow:
+    0 0 0 calc(0.18 * var(--pad-u)) color-mix(in srgb, var(--base0D) 30%, transparent),
+    0 1px 3px rgba(0, 0, 0, 0.45);
 }
 
 /* ── D-pad and face buttons: two crosses, mirrored ────────────────────────────────────── */
@@ -85,10 +101,6 @@
 #wado-pad .down { transform: translate(-50%, 155%); }
 #wado-pad .left { transform: translate(-155%, 50%); }
 #wado-pad .right { transform: translate(55%, 50%); }
-#wado-pad .padbtn.on.up { transform: translate(-50%, -55%) scale(0.92); }
-#wado-pad .padbtn.on.down { transform: translate(-50%, 155%) scale(0.92); }
-#wado-pad .padbtn.on.left { transform: translate(-155%, 50%) scale(0.92); }
-#wado-pad .padbtn.on.right { transform: translate(55%, 50%) scale(0.92); }
 
 /* ── shoulders ────────────────────────────────────────────────────────────────────────── */
 
@@ -137,11 +149,49 @@
   pointer-events: none;
 }
 
+/* The stick reads as pressed too, or the two halves of the pad behave differently. */
+#wado-pad .padstick:active .padthumb {
+  scale: 1.12;
+  background: color-mix(in srgb, var(--base0D) 55%, transparent);
+}
+
 /* A thumb returning to centre eases back; one being dragged must not lag the finger. */
 #wado-pad .padstick:not(:active) .padthumb {
   transition: transform var(--dur) var(--ease);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  #wado-pad .padthumb { transition: none; }
+  #wado-pad .padthumb,
+  #wado-pad .padbtn { transition: none; }
+}
+
+/* ── edit mode ─────────────────────────────────────────────────────────────────────────── */
+
+/* Every control is draggable, including the gaps it is dragged across. */
+#wado-pad.editing { pointer-events: auto; }
+#wado-pad.editing .padbtn,
+#wado-pad.editing .padstick { cursor: grab; }
+#wado-pad .sel { outline: 2px dashed var(--base0A); outline-offset: 3px; }
+
+/* Middle of the stage: the one place no control sits by default, and the one place a thumb
+ * dragging from a corner is not already covering. */
+#wado-pad .padedit {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: none;
+  gap: 6px;
+  pointer-events: auto;
+}
+#wado-pad.editing .padedit { display: flex; }
+#wado-pad .padedit button {
+  width: calc(1.5 * var(--pad-u0));
+  height: calc(1.5 * var(--pad-u0));
+  border-radius: calc(0.3 * var(--pad-u0));
+  border: 2px solid var(--base06);
+  background: color-mix(in srgb, var(--base00) 80%, transparent);
+  color: var(--base06);
+  font: 600 calc(0.5 * var(--pad-u0)) / 1 system-ui, sans-serif;
+  cursor: pointer;
 }
