@@ -32,13 +32,32 @@ W.isPhone = () => {
   }
 };
 
+// Which way round a session is offered. "auto" is the historical behaviour — landscape on a
+// phone, native on anything else. Set from the Rust settings panel; see `ui/session.rs`.
+W.orientPref = "auto";
+W.setOrientPref = (pref) => {
+  W.orientPref = pref || "auto";
+  W.reportScreen();
+};
+
+// ⚠️ A lock outlives the fullscreen it was taken in, and fullscreen can end without us.
+//
+// The gesture back, the system back button and Escape all exit fullscreen without going
+// through `toggleFullscreen`, so the unlock written in its exit branch never ran — and the
+// page stayed pinned to landscape in a normal browser window, with no control left on screen
+// that would release it. Releasing on the *event* covers every exit, ours included.
+document.addEventListener("fullscreenchange", () => {
+  if (!document.fullscreenElement) {
+    try { screen.orientation.unlock(); } catch (_) {}
+  }
+});
+
 W.toggleFullscreen = async (w, h) => {
   try {
     if (document.fullscreenElement) {
       await document.exitFullscreen();
-      // Releasing on exit matters: a lock left behind would pin the *page* after the user
-      // has gone back to a normal browser window.
-      try { screen.orientation.unlock(); } catch (_) {}
+      // The unlock is on `fullscreenchange` above, not here: this branch is only one of the
+      // ways fullscreen ends, and the others were leaving the page pinned.
       return;
     }
     // The whole shell, not just the stage: on a phone the settings sheet is a sibling of
@@ -62,16 +81,23 @@ W.reportScreen = () => {
   const d = window.devicePixelRatio || 1;
   let w = Math.round(screen.width * d);
   let h = Math.round(screen.height * d);
-  // **A phone session is always landscape.** The panel is reported in whichever orientation
-  // the phone happens to be held, and a phone at rest is held upright — so a session started
+  // **Which way round the session is.** The panel is reported in whichever orientation the
+  // phone happens to be held, and a phone at rest is held upright — so a session started
   // without thinking about it came out 720x1600, and every desktop application inside it then
   // had a 360px-wide screen to lay itself out on. The output's size is fixed at Start and
   // cannot be changed afterwards (invariant #8), so this is the only moment the choice exists.
   //
-  // The long edge becomes the width; `screen.orientation.lock` in `toggleFullscreen` already
-  // follows the session's own aspect, so pinning the phone to landscape on fullscreen falls
-  // out of this with no second rule to keep in sync.
-  if (W.isPhone() && h > w) [w, h] = [h, w];
+  // "auto" keeps that rule: landscape on a phone, native everywhere else — a desktop window is
+  // already the shape its owner wants. The two explicit settings exist because a phone held
+  // upright to read something is a real session, and because a desktop user testing a phone
+  // layout wants the opposite. `screen.orientation.lock` in `toggleFullscreen` follows the
+  // session's own aspect, so the fullscreen lock falls out of this with no second rule.
+  const wantLandscape =
+    W.orientPref === "landscape" ? true :
+    W.orientPref === "portrait" ? false :
+    W.isPhone() ? true : w >= h;
+  if (wantLandscape && h > w) [w, h] = [h, w];
+  if (!wantLandscape && w > h) [w, h] = [h, w];
   emit({ type: "screen", w, h, dpr: d });
 };
 W.reportScreen();

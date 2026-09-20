@@ -47,6 +47,7 @@ pub struct Saved {
     pub show_hidden: Option<bool>,
     pub move_mode: Option<bool>,
     pub scroll_speed: Option<f64>,
+    pub orientation: Option<String>,
     pub natural_scroll: Option<bool>,
 
     pub pad_on: Option<bool>,
@@ -101,6 +102,7 @@ pub fn snapshot(ui: Ui) -> Saved {
         show_hidden: Some((s.show_hidden)()),
         move_mode: Some((s.move_mode)()),
         scroll_speed: Some((s.scroll_speed)()),
+        orientation: Some((s.orientation)()),
         natural_scroll: Some((s.natural_scroll)()),
 
         pad_on: Some((s.pad_on)()),
@@ -171,6 +173,7 @@ pub fn restore(ui: Ui, saved: Saved) {
     if let Some(v) = saved.scroll_speed {
         s.scroll_speed.clone().set(v.clamp(0.05, 2.0));
     }
+    put!(orientation);
     put!(natural_scroll);
     put!(pad_on);
     put!(pad_mode);

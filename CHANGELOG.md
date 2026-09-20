@@ -4,6 +4,28 @@
 
 ### Added
 
+**Every aspect ratio, and a straight answer about each one.** The resolution picker now has
+two groups. *Recommended* is derived from your own screen — five rungs from 540p to 1440p, all
+of them exactly your panel's shape. Below it is every standard mode there is: 16:9, 16:10, 3:2,
+4:3, 5:4, 21:9, 32:9, 20:9, 19.5:9, 18:9 and square, in your device's orientation.
+
+The point is the labels. A mode that is not your screen's shape is drawn with black bars, and
+**a bar is not part of the session** — a tap there reaches nothing, which is what "I cannot
+click everywhere" meant. So every option says which it is: *"1920 × 1080 — 16:9, bars at the
+sides, 20% of the screen unused"* against *"2400 × 1080 — 20:9, fills this screen"*. The
+sentence under the picker repeats it for whatever is currently chosen.
+
+**A session orientation setting, and a fullscreen lock that lets go.** Entering fullscreen pins
+a phone to the session's orientation, and the release was written only into the ⛶ button's own
+exit path — so leaving fullscreen by the gesture, the system back button or Escape left the
+page pinned to landscape with nothing on screen able to release it. The unlock now happens on
+`fullscreenchange`, which covers every way fullscreen can end.
+
+Alongside it, *Orientation* in session settings: **Auto** keeps the existing rule (landscape on
+a phone, as-is on a desktop — a phone at rest is held upright, and an unthinking start gave
+desktop applications a 360px-wide screen), **Landscape** and **Portrait** force it either way
+on any device. It decides the shape of the resolution options too, so the two stay consistent.
+
 **Lay the gamepad out yourself.** Gamepad settings gained an *Edit layout* switch: with it on,
 every control on the pad drags where you want it, and − / + resize whatever you last touched.
 The default layout is a guess about a hand it has never seen, and a thumb is not in the same
