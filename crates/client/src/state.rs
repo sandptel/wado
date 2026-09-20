@@ -18,7 +18,7 @@ pub const DEFAULT_SERVER: &str = "http://127.0.0.1:8080";
 /// Default relay the client dials in relay mode. Editable in the UI.
 /// ponytail: a trycloudflare quick tunnel — ephemeral, it changes every `cloudflared`
 /// restart. Replace when the relay gets a stable hostname.
-pub const DEFAULT_RELAY: &str = "https://pam-names-tags-remembered.trycloudflare.com";
+pub const DEFAULT_RELAY: &str = "https://specs-represented-enables-services.trycloudflare.com";
 
 /// Marks a scale that has never been chosen — neither by the user nor from pixel density.
 /// Not a valid option value, so it cannot survive the effect that resolves it.
@@ -102,10 +102,6 @@ pub struct Settings {
     /// Extra distance from the left/right and top/bottom screen edges, in CSS pixels.
     pub pad_inset_x: Signal<f64>,
     pub pad_inset_y: Signal<f64>,
-    /// Per-control position and size overrides from edit mode, as the JSON `js/gamepad.js`
-    /// writes. Opaque here on purpose: the shape belongs to the overlay that draws it, and
-    /// nothing on this side has a reason to parse it.
-    pub pad_layout: Signal<String>,
     pub natural_scroll: Signal<bool>,
 
     // ── appearance ──────────────────────────────────────────────────────────────
@@ -188,7 +184,6 @@ impl Settings {
             pad_opacity: use_signal(|| 0.5),
             pad_inset_x: use_signal(|| 0.0),
             pad_inset_y: use_signal(|| 0.0),
-            pad_layout: use_signal(String::new),
 
             panel_open: use_signal(|| true),
             theme: use_signal(|| "default-dark".to_string()),
