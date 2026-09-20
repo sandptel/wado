@@ -78,3 +78,23 @@ alive through a broken session — a crash-isolation invariant in `CLAUDE.md`.
 copy `/proc/<pid>/environ` (NUL-separated) and re-exec with exactly that env and cwd. SIGTERM
 is graceful now — the signalfd handler stops the session and releases the render node before
 exit, so wait for the process to go rather than following up with SIGKILL.
+
+## ⛔ A reload in the ten minutes after a deploy gets the OLD client
+
+`2026-09-20`. GitHub Pages serves `index.html` with `cache-control: max-age=600`, and that file
+is the only unhashed thing in the build — it names the hashed JS, which names the hashed wasm.
+So for ten minutes after a push, a phone that reloads re-reads its cached index and re-fetches
+**the previous build**, with nothing anywhere saying so: CI is green, the three-hop hash check
+passes against the server, and the device is still running last build's code.
+
+Cost here: four reload cycles and a wrong hypothesis about which build was under test.
+
+The tell is a feature you just shipped being absent on the device while `curl` proves it is in
+the deployed wasm. Two ways past it, and the first is instant:
+
+```
+https://sandptel.github.io/wado/?v=<anything>   # a different URL, so a different cache entry
+```
+
+or wait out the 600 s. **Verify the deploy against the device, not against the origin** — the
+origin was never the thing in doubt.
