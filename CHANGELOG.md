@@ -9,11 +9,18 @@ two groups. *Recommended* is derived from your own screen — five rungs from 54
 of them exactly your panel's shape. Below it is every standard mode there is: 16:9, 16:10, 3:2,
 4:3, 5:4, 21:9, 32:9, 20:9, 19.5:9, 18:9 and square, in your device's orientation.
 
-The point is the labels. A mode that is not your screen's shape is drawn with black bars, and
-**a bar is not part of the session** — a tap there reaches nothing, which is what "I cannot
-click everywhere" meant. So every option says which it is: *"1920 × 1080 — 16:9, bars at the
-sides, 20% of the screen unused"* against *"2400 × 1080 — 20:9, fills this screen"*. The
-sentence under the picker repeats it for whatever is currently chosen.
+Every mode is offered both ways round, in two further groups — *landscape* and *portrait* —
+because a desktop testing a phone layout and a phone driving a portrait kiosk are both real.
+
+The point is the labels. Each one says what the shape is, **what kind of screen it suits**, and
+what it does to yours: *"1920 × 1080 — 16:9 landscape · desktop & TV · bars at the sides, 20% of
+the screen unused"* against *"2400 × 1080 — 20:9 landscape · your phone · fills it (1080p)"*. A
+mode that is not your screen's shape is drawn with black bars, and **a bar is not part of the
+session** — a tap there reaches nothing, which is what "I cannot click everywhere" meant. The
+sentence under the picker repeats the verdict for whatever is currently chosen, and below that
+sits the panel the recommendation was derived from: its pixels, its aspect, the CSS size the
+browser reported and the density — so a suggestion that looks wrong can be checked rather than
+argued about.
 
 **A session orientation setting, and a fullscreen lock that lets go.** Entering fullscreen pins
 a phone to the session's orientation, and the release was written only into the ⛶ button's own

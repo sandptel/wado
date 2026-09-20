@@ -45,7 +45,8 @@ pub fn scaled(sw: u32, sh: u32, target: u32) -> (u32, u32) {
 
 /// The device-exact options, as `(value, label)` pairs ready for a `<select>`.
 /// Values are `"WxH"` so they parse with the same rule as every other option.
-pub fn options(sw: u32, sh: u32) -> Vec<(String, String)> {
+pub fn options(sw: u32, sh: u32, phone: bool) -> Vec<(String, String)> {
+    let device = if phone { "your phone" } else { "your screen" };
     let mut out: Vec<(String, String)> = Vec::new();
     for t in TARGETS {
         let (w, h) = scaled(sw, sh, t);
@@ -57,7 +58,14 @@ pub fn options(sw: u32, sh: u32) -> Vec<(String, String)> {
         if out.iter().any(|(v, _)| *v == value) {
             continue;
         }
-        out.push((value, format!("{w} × {h} — fills this screen ({t}p)")));
+        out.push((
+            value,
+            format!(
+                "{w} × {h} — {} {} · {device} · fills it ({t}p)",
+                super::fit::aspect(w, h),
+                super::fit::orientation(w, h),
+            ),
+        ));
     }
     // A screen shorter than the smallest rung — a 640x480 panel, a small embedded display —
     // would otherwise be offered nothing at all, and an empty group is how a blank `<select>`
@@ -76,7 +84,7 @@ pub fn options(sw: u32, sh: u32) -> Vec<(String, String)> {
 /// otherwise the largest it does have — never a rung that is not in the list, which is how a
 /// blank `<select>` used to happen.
 pub fn default_value(sw: u32, sh: u32) -> Option<String> {
-    let opts = options(sw, sh);
+    let opts = options(sw, sh, false);
     let (w, h) = scaled(sw, sh, DEFAULT_TARGET);
     let exact = format!("{w}x{h}");
     opts.iter()
@@ -113,7 +121,7 @@ mod tests {
     #[test]
     fn never_offers_an_upscale() {
         // A 720p-class device gets the rungs at or below its own panel and no more.
-        let opts = options(720, 1600);
+        let opts = options(720, 1600, true);
         assert!(
             opts.iter().all(|(v, _)| v == "720x1600" || v == "540x1200"),
             "{opts:?}"
@@ -124,7 +132,7 @@ mod tests {
     #[test]
     fn every_device_option_actually_fills_the_screen() {
         for (sw, sh) in [(1080u32, 2400u32), (1179, 2556), (2400, 1080), (1920, 1080)] {
-            for (v, _) in options(sw, sh) {
+            for (v, _) in options(sw, sh, false) {
                 let (w, h) = v.split_once('x').unwrap();
                 let (w, h) = (w.parse().unwrap(), h.parse().unwrap());
                 assert_eq!(
@@ -144,7 +152,7 @@ mod tests {
         for (sw, sh) in [(1080u32, 2400u32), (640, 480), (3840, 2160), (400, 900)] {
             let d = default_value(sw, sh).unwrap();
             assert!(
-                options(sw, sh).iter().any(|(v, _)| *v == d),
+                options(sw, sh, false).iter().any(|(v, _)| *v == d),
                 "{sw}x{sh} -> {d}"
             );
         }
