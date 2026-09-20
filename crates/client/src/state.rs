@@ -102,6 +102,12 @@ pub struct Settings {
     /// Extra distance from the left/right and top/bottom screen edges, in CSS pixels.
     pub pad_inset_x: Signal<f64>,
     pub pad_inset_y: Signal<f64>,
+    /// Which way round a session is offered: `auto`, `landscape` or `portrait`.
+    ///
+    /// Read by `js/viewport.js` when it reports the screen, so it decides the *shape* of the
+    /// resolution options as well as the fullscreen orientation lock. A session cannot be
+    /// re-sized once started (invariant #8), so this only ever affects the next Start.
+    pub orientation: Signal<String>,
     pub natural_scroll: Signal<bool>,
 
     // ── appearance ──────────────────────────────────────────────────────────────
@@ -173,6 +179,7 @@ impl Settings {
             // See ui/live.rs: 1.0 meant "pass the raw browser delta through", which is
             // too fast everywhere. Acceleration covers the range this gives up.
             scroll_speed: use_signal(|| 0.35),
+            orientation: use_signal(|| "auto".to_string()),
             natural_scroll: use_signal(|| false),
 
             pad_on: use_signal(|| false),

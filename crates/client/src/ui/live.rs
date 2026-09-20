@@ -29,6 +29,12 @@ pub fn apply(ui: Ui) {
         (s.scroll_speed)(),
         (s.natural_scroll)()
     ));
+    // Same shape as the two above, and for the same reason: it is a browser-side flag the
+    // Rust side only stores. It re-reports the screen, so the resolution list follows it.
+    bridge::call(format!(
+        "window.__wado.setOrientPref({});",
+        bridge::js(&(s.orientation)())
+    ));
 }
 
 pub fn render(ui: Ui) -> Element {
