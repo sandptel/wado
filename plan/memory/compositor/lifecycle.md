@@ -117,3 +117,113 @@ Invariant #8 forces a fresh `Output` on resize. Two things learned doing it:
 Neither saved `kitty`, which exits on an output replacement for reasons of its own
 (`ConnectionClosed`, no stderr). Chrome survives. See **I16** — the reconfigure path is not
 broken in general.
+
+## Launched apps are isolated from the host desktop (since 2026-09-19)
+
+**The complaint:** "I launch it in wado and it opens on my computer's desktop." Setting
+`WAYLAND_DISPLAY` — which `build` has always done — does not prevent it, for two reasons:
+
+1. **The session bus.** A single-instance app (browser, file manager, most GTK apps) asks the
+   *session bus* whether a copy of itself is running. On a dev desktop one is, so the new
+   process hands over its command line and exits — and the window opens over there.
+2. **`DISPLAY`.** wado has **no Xwayland at all**, so an X11 client cannot draw here. With
+   `DISPLAY` inherited it draws on the host's X server. Chromium and Electron make this the
+   common case, not an edge one: they pick X11 whenever `DISPLAY` is set, *even with*
+   `WAYLAND_DISPLAY` present.
+
+**The fix** (`compositor/src/session_env/`): `SessionConfig.isolate_apps` (default **on**,
+locked while a session runs). At Start the session spawns its own `dbus-daemon --session
+--print-address --nofork`, and every launched app gets `DBUS_SESSION_BUS_ADDRESS` pointing at
+it with `DISPLAY` removed. The bus is killed after the apps, on stop.
+
+**Cost, accepted:** the private bus is empty — no notification daemon, no XDG portals, no
+secrets service. Audio is unaffected (PipeWire/Pulse are `XDG_RUNTIME_DIR` sockets, left
+alone). X11-only apps now fail visibly instead of opening on the host.
+
+**Not re-applied on reconfigure**, deliberately: apps already running hold the old address, and
+a session split across two buses is worse than either answer.
+
+⚠️ **`systemd-run` expands `${VAR}` in the command line before the shell sees it.** A test
+probing the child's env with `printf "${DISPLAY-unset}"` read blank no matter what the
+environment held — it fails as "the isolation does not work" when the isolation is fine. Dump
+`env` to a file and assert in Rust instead.
+
+## X11 apps run inside the session, rootfully (since 2026-09-19)
+
+Isolation made X11-only apps fail honestly instead of opening on the host desktop. Steam is
+X11-only, so "honestly" meant "not at all" — hence `SessionConfig.x_server` (off by default):
+`Xwayland :N -geometry WxH -noreset` as an **ordinary Wayland client of the session**, with
+`DISPLAY=:N` for everything launched. `compositor/src/session_env/xwayland.rs`.
+
+**Verified, not reasoned** (2026-09-19): Steam's store rendered in the stream, logged in, read
+off a frame extracted from the session's own H.264 output with ffmpeg. End-to-end through
+`handle_command(Start)` afterwards: `app_x = :20`, launched app sees `DISPLAY=:20` plus the
+private bus, socket cleaned up on stop.
+
+**Rootless is the upgrade path and is a milestone.** It needs the compositor to implement the
+XWM side (`-wm`); without it X windows are never mapped as Wayland surfaces at all. Rootful
+needs nothing from the compositor, which is why it shipped first. Its ceiling: one shared X
+screen, sized at Start, no window manager inside it.
+
+### Traps found while building it
+
+- **`Xwayland -displayfd` reported a number that was already in use** on this machine (`0`,
+  while the host session held `:0`). Scanning `/tmp/.X11-unix/XN` *and* `/tmp/.XN-lock` from
+  `:20` up, then waiting for the socket to appear, is what replaced it — the socket existing is
+  a state, a printed number is not.
+- **`xterm` is a broken test client here.** It dies with `fatal IO error 11` against wado's
+  Xwayland *and* against the host's X server, and its core bitmap font is missing too. Three
+  probes were nearly misread as "the X server does not work". `xsetroot -solid red` returns 0
+  and is a better liveness check; Steam itself is the real one.
+- **An example that builds `Wado` by hand must set `WAYLAND_DISPLAY` itself.** `build()` does
+  it; `Wado::new` + `init_headless` does not, so a probe's Xwayland silently connected to the
+  *host* compositor and mapped nothing here. The giveaway was globals in its registry that wado
+  does not implement (`xdg_system_bell_v1`, `zxdg_exporter_v2`).
+
+
+## Windows, the output, and what a client may refuse (2026-09-19)
+
+**`configure_bounds` was never sent.** A client that is not told how big the screen is opens at
+its desktop default. GTK4/Qt6/recent Electron honour the hint; `crates/compositor/src/fit.rs`
+sends it at map time and re-sends it on every reconfigure.
+
+**Scale is a divisor on the logical output.** 720p at scale 2 is a 640×360 logical screen.
+`refit_windows` used to resize only *maximized* windows, so raising the scale left every other
+window at its old size — that is the "changing the zoom doesn't resize anything" report, and it
+was never about zoom.
+
+⚠️ **A client may refuse a configure, and the good ones do.** Measured on 640×360: kitty complies
+(884×1078 → 640×360), nautilus stops at its 380px minimum height (890×550 → 640×380),
+gnome-calculator refuses entirely (616 high). No protocol-level fix exists for this. Render-time
+rescale is the only answer, and its hard half is the inverse transform for input.
+
+⚠️ **kitty exits when a session is reconfigured.** Measured 2026-09-19, and it happens on an
+unmodified tree too — not caused by the fit work. GTK apps survive the same reconfigure. Suspect
+`retire_output_global`. This contradicts the documented promise that reconfigure keeps
+applications alive, so do not repeat that promise without qualifying it.
+
+## Focus glow: damage is the whole design (2026-09-19)
+
+`crates/compositor/src/glow.rs` draws the focused window's ring as custom elements passed to
+`render_output`. **The `SolidColorBuffer`s live on `Wado`.** Built fresh per frame they would
+carry a new `Id` each tick, which the damage tracker can only read as a full-screen repaint —
+forever, at a fixed bitrate. Measured with a static window: 1 damage rect/frame with the ring on
+screen, 1 without.
+
+Custom elements render **in front of** the space, so a ring cannot be an expanded filled rect
+behind the window. It is four non-overlapping quads tiled around the geometry; non-overlapping
+matters because the outer ring is translucent and two stacked quads show a bright seam.
+
+## Pointer lock needs both protocols (2026-09-19)
+
+`zwp_relative_pointer_v1` alone is not enough: SDL/GLFW check for `zwp_pointer_constraints_v1`
+too and fall back to warping when it is missing. Both are advertised unconditionally in
+`state.rs::new` — verified by reading the registry `WAYLAND_DEBUG=1` shows a real client.
+
+The browser half is the security boundary: Escape releases the lock and cannot be intercepted,
+so there is no way for wado to strand a pointer. `pointerlockchange` is the only source of truth
+for the button's state.
+
+⚠️ **While locked the browser freezes `clientX`/`clientY`.** A click or scroll arriving during a
+lock carries a pre-lock position; acting on it teleports the pointer. `locked_pointer_location`
+substitutes the pointer's real location and suppresses the motion.

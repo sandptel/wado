@@ -3,7 +3,127 @@
 Working list for runs. The repo's `TODO.md` holds project milestones; this holds the loop.
 Newest concerns first. Keep it short — close items or move them to memory.
 
-Last updated: `2026-09-14`
+Last updated: `2026-09-19`
+
+---
+
+## ▣ RUN OPEN — 2026-09-20, gamepad layout + who is connecting
+
+Rig up, monitor armed on relay + both daemon logs. Pushed as `6af544b`, `370b6b7`, `2ada127`;
+Pages deploy verified by the wasm hash moving to `dxh9a29c22acaca66f7`.
+
+- [x] **The tunnel was dead and the rig looked fine.** No `cloudflared` since 13:21. New URL
+      `specs-represented-enables-services`, baked into `DEFAULT_RELAY` (the old value was two
+      rotations stale). Trap recorded in `memory/shared/environment.md`.
+- [x] **The relay logs the device's real address**, not `127.0.0.1` — `peer_ip()` reads
+      `CF-Connecting-IP`/`X-Forwarded-For`. Verified live: a phone joined as
+      `2409:40d0:3100:afa3:8000::`, assigned daemon-2, media up in ~1 s, 1614x720@90.
+- [x] **Gamepad edit mode: clusters, browser-owned layout.** Harness landed as
+      `scripts/padlayout-check.mjs`. Hint text and the CHANGELOG block rewritten.
+- [x] `cargo test --workspace` 133 passed · `dx build --platform web` clean.
+- [x] **uinput works on this host now** — `virtual gamepad created`, six button codes clean.
+      The "cannot work here yet" memory entry is withdrawn.
+
+### Awaiting the user — only a phone can answer
+
+- [ ] Dragging the cross moves it as one piece, and resize spreads the arms rather than
+      overlapping them.
+- [ ] Press feedback visible past a fingertip; a *dragged* control still animates on press.
+- [ ] The layout survives a reload of the deployed client.
+
+### Left for next time
+
+- [ ] The monitor renders `LEAVE` as a raw log line — cosmetic, the other rules are formatted.
+- [ ] `DEFAULT_RELAY` is a quick-tunnel URL and will go stale on the next `cloudflared`
+      restart. A stable hostname is the only real fix.
+
+---
+
+## ▣ RUN CLOSED — 2026-09-19, drawer + windows fit + focus glow + pointer lock
+
+Follow-up to the drawer run below: "applications are missing from the menu".
+
+- [x] **The 40-tile cap was hiding 32 of 72 apps.** `MAX_TILES` 40 → 400; it is a DOM guard,
+      not curation.
+- [x] **`NoDisplay`/`Hidden` entries are carried, not dropped.** New `AppEntry.hidden`;
+      `parse_entry` reports instead of rejecting. 71 of 143 entries here.
+- [x] **👁 and ▶ on the search row.** The eye lists everything installed (hidden-marked and
+      iconless), persisted as `Settings::show_hidden`; ▶ and Enter run the box, resolving a
+      typed name or command against the app list first (`ui/drawer/run.rs`).
+
+Measured: 143 apps / 869 KB per drawer open, up from 72 / 645 KB. Findings in
+`memory/ui/client.md`. Daemon pool on the 2026-09-19 21:59 build. **Not committed** — the
+client is not deployed with these changes yet.
+
+### ▣ All three done, same session
+
+- [x] **Windows overflow the output.** `crates/compositor/src/fit.rs` — `configure_bounds` on
+      every new toplevel and on every reconfigure, shrink-to-fit at first commit and in
+      `refit_windows`, position clamped by the *whole* window rather than its top-left.
+      Measured on a 640×360 logical screen: kitty 884×1078 → 640×360, nautilus 890×550 →
+      640×380. Restoring a maximized window re-fits its remembered size.
+- [x] **A glow on the focused window.** `crates/compositor/src/glow.rs` — two tiled rings of
+      `SolidColorRenderElement` as custom elements. Buffers live on `Wado` so a still window
+      adds no damage: measured 1 damage rect/frame with the ring, 1 without.
+- [x] **Pointer lock.** `zwp_relative_pointer_v1` + `zwp_pointer_constraints_v1` advertised
+      (verified in a real client's registry), `InputEvent::PointerRelative`,
+      `input/relative.rs`, `js/input_lock.js`, 🎯 on the bar.
+
+### Still open, from the same thread
+
+- [ ] **Render-time rescale for windows that cannot shrink.** nautilus stops at 380 high and
+      gnome-calculator at 616; a client may refuse a configure it cannot honour, and at scale 2
+      a 720p stream is below many toolkits' minimum. `RescaleRenderElement` around an oversized
+      window is the answer, and it is what "force applications to respect the aspect ratio"
+      actually means. **Input needs the inverse transform** or every tap lands wrong — that is
+      the hard half, not the drawing.
+- [ ] **kitty exits when the session is reconfigured.** Measured, and **pre-existing** — it
+      happens with the fit changes stashed too. GTK apps (gnome-text-editor, nautilus) survive
+      the same reconfigure. Suspect the `wl_output` global being retired and replaced; see
+      `retire_output_global`. Contradicts the documented promise that a reconfigure keeps the
+      session's applications.
+
+---
+
+## ▣ RUN CLOSED — 2026-09-19, app drawer + app isolation (lane 3, feature)
+
+Two of lane 3's items. Both landed; the daemon pool is running the build.
+
+- [x] **App drawer with icons.** ⊞ on the bar opens a bottom sheet: search/command box,
+      recents row, icon grid. Tap launches, long-press fills the box. Icons are resolved
+      server-side and carried inline as `data:` URIs — `server/src/apps/{mod,desktop,icons/}`,
+      `client/src/ui/drawer/`. Details and the two traps in `memory/ui/client.md`.
+- [x] **Running-app dot on the tiles.** `AppEntry.running`, filled in when the list is
+      *answered* from the compositor's live child processes (`CompositorCommand::RunningApps`,
+      `server/src/apps/running.rs`). Joined by exact command string, refreshed on every drawer
+      open. Means "the process is alive", not "it has a window" — see the note in the code.
+- [x] **X11-only apps run inside the session.** `x_server` (off by default) starts a rootful
+      Xwayland as a client of the session; launched apps get its `DISPLAY`.
+      `compositor/src/session_env/xwayland.rs`. Steam verified visually from an encoded frame —
+      see `memory/compositor/lifecycle.md`, including the three traps that nearly read as
+      "Xwayland does not work here".
+- [x] **Apps no longer escape to the host desktop.** `isolate_apps` (default on): private
+      `dbus-daemon` per session, `DISPLAY` removed. `compositor/src/session_env/`. Why each
+      half is needed, and what the private bus costs, in `memory/compositor/lifecycle.md`.
+
+### Not verified yet — needs a human looking at a phone
+
+Nothing here was checked against a real device: the drawer's layout and press behaviour, and
+whether a browser launched with isolation on actually opens *inside* the session. Sizing is
+fluid (`clamp`) rather than stepped, with one landscape rule for short screens — that is a
+claim about the CSS, not an observation of a phone.
+
+### Deliberately skipped
+
+- **Per-window app ids.** The dot tracks processes, not windows, so it appears a second or two
+  before the window does and stays lit for an application that is alive without one. Matching
+  `xdg_toplevel.app_id` against a desktop entry's `Exec` is the upgrade path, and those two
+  strings disagree constantly (`org.gnome.Nautilus` vs `nautilus`).
+- **A live dot.** It is a snapshot taken when the drawer opens, not a subscription.
+- **Rootless Xwayland**, which needs XWM support in the compositor. Until it exists, X apps
+  share one unmanaged screen. This is the next real compositor milestone if Steam is meant to
+  be a first-class citizen.
+- Favourites, categories, theme-aware icon lookup (the walk ignores `index.theme`).
 
 ---
 

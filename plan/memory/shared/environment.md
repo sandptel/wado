@@ -95,6 +95,16 @@ Fixed by splitting the filters per layer:
 
 `RUST_LOG` still overrides the terminal filter entirely.
 
+## The relay logs the device's own address, not the socket it arrived on
+
+Every client through the tunnel connects from `127.0.0.1`, so the socket address answers "did it
+come through the tunnel" and never "who is it". `peer_ip()` in `crates/relay/src/signaling.rs`
+prefers `CF-Connecting-IP`, then the first entry of `X-Forwarded-For`, and falls back to the
+socket for a direct LAN client. Joins, denials, disconnects **and the `PeerConnected` handed to
+the daemon** all carry it, so a daemon log can be read per device.
+
+Display only — the headers are client-settable and nothing is authorized on them.
+
 ## The shell working proves nothing about video
 
 `W.ptyOpen`/`ptyInput` go through `relaySend` — the relay **WebSocket**, TCP through the
@@ -303,6 +313,17 @@ Tethering the host to the phone is the known-good path: it puts both ends on one
 bypasses the WAN entirely. Every session that worked on `2026-09-12` was tethered; every one
 that failed was on WiFi.
 
+## ⛔ A rig that looks up can still be unreachable — check the tunnel process itself
+
+`2026-09-20`: relay healthy, `/health` returning `{"servers":2}`, two daemons registered — and
+**no `cloudflared` process at all**. It had been killed by the last `rig.sh` run at 13:21 and
+never came back, so the public URL had no listener and no device could reach the rig. Nothing in
+the relay or daemon logs says so: they are locally healthy and simply never hear from anyone.
+
+`ps -eo pid,comm | grep cloudflared` is the check, and it is cheaper than reading `tunnel.log` —
+the log's last lines were `Tunnel server stopped`, which is easy to read as old noise. The
+local-vs-tunnel `/health` pair below still decides it, but only if the public one is actually run.
+
 ## The cloudflared quick tunnel is the weakest link in the rig
 
 `DEFAULT_RELAY` in `crates/client/src/state.rs` is a **quick tunnel URL, and it changes every
@@ -468,3 +489,25 @@ synthetic client over a human with a phone whenever the thing under test is the 
 A `pong` from a client is swallowed at the relay — forwarding it to the daemon would get an
 "unknown message" `SessionError` back, because the daemon has no reason to know about this
 socket's liveness.
+
+## The virtual gamepad needs `/dev/uinput` access — this machine now has it
+
+`crates/compositor/src/input/gamepad.rs` opens `/dev/uinput` to create the host-side
+controller. That needs the daemon's user in the `uinput` group:
+
+```nix
+hardware.uinput.enable = true;                          # loads the module, makes the group
+users.users.bushido.extraGroups = [ "uinput" ];
+```
+
+✅ **Landed here.** `2026-09-20 19:01` a live session logged
+`virtual gamepad created (uinput, xbox360-compatible)` and 0x130/0x131/0x133/0x134/0x136/0x137
+each pressed and released clean. **The earlier "cannot work here yet" entry is withdrawn.**
+
+On a machine without it the failure is `EACCES`, not a bug: the error names the fix, once per
+session rather than once per stick sample, and "keys" mode — the default — needs nothing on the
+host. A pad that appears to do nothing at all is this, and the daemon log says so by name.
+
+The device is **global to the machine**, not scoped to the session: a uinput device is a kernel
+input device and there is no way to hide one from processes outside the wado session. That is
+recorded as a design consequence in `WADO_PLAN.md`'s Decision Log, not as a bug to fix.
