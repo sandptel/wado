@@ -101,11 +101,19 @@ W.reportScreen = () => {
   // `phone` and the raw CSS numbers travel with it: the Rust side names the recommendation
   // after the device ("fits this phone"), and a recommendation that looks wrong is otherwise
   // undiagnosable from the far end — the panel can show exactly what the browser said.
-  emit({
-    type: "screen", w, h, dpr: d,
-    phone: W.isPhone(),
-    css: `${screen.width}x${screen.height}`,
-  });
+  const phone = W.isPhone();
+  emit({ type: "screen", w, h, dpr: d, phone, css: `${screen.width}x${screen.height}` });
+  // Also into the server log, best-effort. A resolution recommendation is derived entirely
+  // from these four numbers, so "the suggestion is wrong" is unanswerable without them — and
+  // asking someone to read them off a phone screen is a worse instrument than logging them.
+  // Lost before the relay socket is up, which is fine: `setOrientPref` re-reports after the
+  // settings are restored, and that is after the join.
+  if (W.rlog) {
+    W.rlog(
+      `screen ${w}x${h} (${screen.width}x${screen.height} CSS @ ${d}x)` +
+      ` phone=${phone} pref=${W.orientPref}`,
+    );
+  }
 };
 W.reportScreen();
 // Rotating swaps the axes. The running session cannot resize (invariant #8), so this only
