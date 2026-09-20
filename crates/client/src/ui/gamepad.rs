@@ -23,7 +23,7 @@ pub fn apply(ui: Ui) {
     let s = ui.set;
     bridge::call(format!(
         "window.__wado.setPadEdit({});\
-         window.__wado.setGamepad({{on:{},mode:{},scale:{},opacity:{},insetX:{},insetY:{},layout:{}}});",
+         window.__wado.setGamepad({{on:{},mode:{},scale:{},opacity:{},insetX:{},insetY:{}}});",
         (ui.live.pad_edit)(),
         (s.pad_on)(),
         bridge::js(&(s.pad_mode)()),
@@ -31,7 +31,6 @@ pub fn apply(ui: Ui) {
         (s.pad_opacity)(),
         (s.pad_inset_x)(),
         (s.pad_inset_y)(),
-        bridge::js(&(s.pad_layout)()),
     ));
 }
 
@@ -88,15 +87,16 @@ pub fn render(ui: Ui) -> Element {
         }
         if edit {
             p { class: "hint",
-                "Drag any control where you want it. Tap one and use − / + on the middle of
-                 the screen to resize just that one, ⟲ to put it back. ✓ ends edit mode.
-                 Nothing presses while this is on."
+                "Drag any control where you want it — the D-pad and each stick move as one
+                 piece. Tap one and use − / + on the middle of the screen to resize that whole
+                 cluster, ⟲ to put it back. ✓ ends edit mode. Nothing presses while this is on."
             }
         }
+        // Straight to the overlay: the layout is stored by the browser, next to the controls
+        // it describes, and this side has never needed to know what is in it.
         button {
             class: "wide",
-            disabled: (s.pad_layout)().is_empty(),
-            onclick: move |_| { s.pad_layout.set(String::new()); apply(ui); },
+            onclick: move |_| bridge::call("window.__wado.resetPadLayout();".to_string()),
             "Reset the layout"
         }
 

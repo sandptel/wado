@@ -5,13 +5,18 @@
 ### Added
 
 **Lay the gamepad out yourself.** Gamepad settings gained an *Edit layout* switch: with it on,
-every control on the pad drags where you want it, and − / + resize whichever one you last
-touched — sticks included. The default layout is a guess about a hand it has never seen, and a
-thumb is not in the same place on a 6" phone as on a tablet.
+every control on the pad drags where you want it, and − / + resize whatever you last touched.
+The default layout is a guess about a hand it has never seen, and a thumb is not in the same
+place on a 6" phone as on a tablet.
+
+A control moves with the cluster it belongs to, not alone: the D-pad is four arms of one pad and
+drags as one piece, and resizing it spreads the arms apart rather than growing them into each
+other. Same for each stick, the face buttons, each shoulder pair and select/home/start.
 
 Positions are stored as a fraction of the stage rather than in pixels, so the same layout lands
-under the same thumb in a session of a different resolution. Nothing presses while edit mode is
-on, ⟲ puts one control back, and *Reset the layout* in settings puts them all back.
+under the same thumb in a session of a different resolution — and the layout lives in the
+browser, beside the controls it describes, so it survives a reload. Nothing presses while edit
+mode is on, ⟲ puts a cluster back, and *Reset the layout* in settings puts them all back.
 
 
 **An on-screen gamepad.** New 🎮 button on the bar puts a translucent controller over the

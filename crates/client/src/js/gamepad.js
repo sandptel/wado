@@ -83,11 +83,24 @@ const CONTROLS = [
   { id: "a", cluster: "face", glyph: "A", shape: "face down" },
 ];
 
-// `layout` is the edit-mode override map: { <control id>: { x, y, s } }, where x/y are the
-// control's centre as a fraction of the stage and s multiplies its size. Fractions, not
-// pixels, because the same phone is a different number of pixels in a different session —
-// and the pad has to land in the same place under the thumb either way.
-W.padCfg = { on: false, mode: "keys", scale: 1, opacity: 0.5, insetX: 0, insetY: 0, layout: {} };
+// The edit-mode override map: { <control id>: { x, y, s } }, where x/y are the control's
+// centre as a fraction of the stage and s multiplies its size. Fractions, not pixels, because
+// the same phone is a different number of pixels in a different session — and the pad has to
+// land in the same place under the thumb either way.
+//
+// Stored here rather than in the Rust settings blob, and under its own key: it is written on
+// every drag from a DOM handler, read back before the app has mounted, and Rust has no use
+// for its contents. Routing it through a signal only to be handed straight back was three
+// layers in which it could go missing.
+const LAYOUT_KEY = "wado.padLayout";
+const loadLayout = () => {
+  try { return JSON.parse(localStorage.getItem(LAYOUT_KEY)) || {}; } catch (_) { return {}; }
+};
+
+W.padCfg = {
+  on: false, mode: "keys", scale: 1, opacity: 0.5, insetX: 0, insetY: 0,
+  layout: loadLayout(),
+};
 
 W.gamepad = {
   root: null,
@@ -300,9 +313,14 @@ W.gamepad = {
 
   // ── edit mode ────────────────────────────────────────────────────────────────────────
   //
-  // Drag any control where you want it; ‑/+ resize the one last touched. A thumb is not in
+  // Drag any control where you want it; − / + resize the one last touched. A thumb is not in
   // the same place on a 6" phone as on a tablet, and the default layout is a guess about a
   // hand it has never seen.
+  //
+  // What moves is the **cluster**, not the control: a D-pad whose arms can be dragged apart
+  // is four buttons, not a D-pad, and nobody wants to place four of them to move one. So the
+  // cross, the face buttons, each shoulder pair and each stick move and scale as a unit —
+  // `data-cluster` already said which is which for the CSS.
   //
   // The whole editor is one capture-phase listener on the root rather than a second set of
   // handlers per control: capture runs before the target's own `pointerdown`, so stopping it
@@ -310,13 +328,16 @@ W.gamepad = {
 
   el(id) { return this.root && this.root.querySelector(`[data-id="${id}"]`); },
 
+  all() { return [...this.root.querySelectorAll(".padbtn, .padstick")]; },
+
+  group(cluster) { return this.all().filter((n) => n.dataset.cluster === cluster); },
+
   // The override for a control, created from wherever it currently sits. Seeding it from the
-  // live rect is what lets resizing alone work: nothing teleports on the first ‑/+ press.
-  slot(id) {
+  // live rect is what lets resizing alone work: nothing teleports on the first − / + press.
+  slot(el) {
     const L = W.padCfg.layout || (W.padCfg.layout = {});
+    const id = el.dataset.id;
     if (!L[id]) {
-      const el = this.el(id);
-      if (!el) return null;
       const r = el.getBoundingClientRect();
       const pr = this.root.getBoundingClientRect();
       L[id] = {
@@ -328,7 +349,7 @@ W.gamepad = {
     return L[id];
   },
 
-  // Inline styles, so one moved control does not cost the other fourteen their CSS anchors.
+  // Inline styles, so one moved cluster does not cost the others their CSS anchors.
   place(el, o) {
     if (!o) {
       for (const k of ["left", "top", "right", "bottom", "transform"]) el.style[k] = "";
@@ -348,45 +369,57 @@ W.gamepad = {
 
   applyLayout() {
     const L = W.padCfg.layout || {};
-    for (const el of this.root.querySelectorAll(".padbtn, .padstick")) {
-      this.place(el, L[el.dataset.id]);
-    }
+    for (const el of this.all()) this.place(el, L[el.dataset.id]);
   },
 
-  select(el) {
-    this.selId = el ? el.dataset.id : "";
-    for (const n of this.root.querySelectorAll(".sel")) n.classList.remove("sel");
-    if (el) el.classList.add("sel");
+  select(cluster) {
+    this.sel = cluster || "";
+    for (const n of this.all()) n.classList.toggle("sel", !!cluster && n.dataset.cluster === cluster);
   },
 
+  // Scaling a cluster spreads it too: the arms of a cross are positions, not padding, so
+  // growing the buttons alone would just make them overlap.
   resize(mul) {
-    const o = this.slot(this.selId);
-    if (!o) return;
-    o.s = Math.min(2.5, Math.max(0.5, (o.s || 1) * mul));
-    this.place(this.el(this.selId), o);
-    this.saveLayout();
+    if (!this.sel) return;
+    const members = this.group(this.sel).map((n) => ({ n, o: this.slot(n) }));
+    if (!members.length) return;
+    // One clamp for the whole cluster, or a member that hits the limit first would be left
+    // behind by the others.
+    for (const { o } of members) {
+      mul = Math.min(mul, 2.5 / (o.s || 1));
+      mul = Math.max(mul, 0.5 / (o.s || 1));
+    }
+    const cx = members.reduce((a, m) => a + m.o.x, 0) / members.length;
+    const cy = members.reduce((a, m) => a + m.o.y, 0) / members.length;
+    for (const { n, o } of members) {
+      o.s = (o.s || 1) * mul;
+      o.x = cx + (o.x - cx) * mul;
+      o.y = cy + (o.y - cy) * mul;
+      this.place(n, o);
+    }
+    this.save();
   },
 
-  resetOne() {
-    if (!this.selId) return;
-    delete (W.padCfg.layout || {})[this.selId];
-    const el = this.el(this.selId);
-    if (el) this.place(el, null);
-    this.saveLayout();
+  reset() {
+    if (!this.sel) return;
+    for (const n of this.group(this.sel)) {
+      delete (W.padCfg.layout || {})[n.dataset.id];
+      this.place(n, null);
+    }
+    this.save();
   },
 
-  // Back to Rust, which is what persists it — the same round trip every other setting takes.
-  saveLayout() {
-    emit({ type: "pad_layout", json: JSON.stringify(W.padCfg.layout || {}) });
+  save() {
+    try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(W.padCfg.layout || {})); } catch (_) {}
   },
 
   buildEditBar() {
     const bar = document.createElement("div");
     bar.className = "padedit";
     for (const [act, glyph, title] of [
-      ["small", "－", "Smaller"],
-      ["big", "＋", "Bigger"],
-      ["reset", "⟲", "Reset this control"],
+      ["small", "−", "Smaller"],
+      ["big", "+", "Bigger"],
+      ["reset", "⟲", "Reset this cluster"],
       ["done", "✓", "Done"],
     ]) {
       const b = document.createElement("button");
@@ -398,7 +431,7 @@ W.gamepad = {
         e.stopPropagation();
         if (act === "small") this.resize(1 / 1.12);
         else if (act === "big") this.resize(1.12);
-        else if (act === "reset") this.resetOne();
+        else if (act === "reset") this.reset();
         else emit({ type: "pad_edit", on: false });
       });
       bar.appendChild(b);
@@ -414,15 +447,21 @@ W.gamepad = {
       if (!el) return;
       e.preventDefault();
       e.stopPropagation();
-      this.select(el);
-      const r = el.getBoundingClientRect();
-      const o = this.slot(el.dataset.id);
-      // The grab offset, so a control does not jump its centre under the finger.
+      const cluster = el.dataset.cluster;
+      this.select(cluster);
+      const members = this.group(cluster).map((n) => {
+        const o = this.slot(n);
+        return { n, o, x0: o.x, y0: o.y };
+      });
       drag = {
-        el, o,
+        members,
         pr: root.getBoundingClientRect(),
-        ox: r.left + r.width / 2 - e.clientX,
-        oy: r.top + r.height / 2 - e.clientY,
+        sx: e.clientX,
+        sy: e.clientY,
+        // How far the cluster can travel before its leading member leaves the stage. Clamped
+        // once for the group, so it stays rigid instead of folding up against an edge.
+        lo: [-Math.min(...members.map((m) => m.x0)), -Math.min(...members.map((m) => m.y0))],
+        hi: [1 - Math.max(...members.map((m) => m.x0)), 1 - Math.max(...members.map((m) => m.y0))],
       };
       try { el.setPointerCapture(e.pointerId); } catch (_) {}
     }, true);
@@ -430,16 +469,20 @@ W.gamepad = {
       if (!drag) return;
       e.preventDefault();
       e.stopPropagation();
-      const { pr } = drag;
-      drag.o.x = Math.min(1, Math.max(0, (e.clientX + drag.ox - pr.left) / pr.width));
-      drag.o.y = Math.min(1, Math.max(0, (e.clientY + drag.oy - pr.top) / pr.height));
-      this.place(drag.el, drag.o);
+      const { pr, lo, hi } = drag;
+      const dx = Math.min(hi[0], Math.max(lo[0], (e.clientX - drag.sx) / pr.width));
+      const dy = Math.min(hi[1], Math.max(lo[1], (e.clientY - drag.sy) / pr.height));
+      for (const m of drag.members) {
+        m.o.x = m.x0 + dx;
+        m.o.y = m.y0 + dy;
+        this.place(m.n, m.o);
+      }
     }, true);
     const end = (e) => {
       if (!drag) return;
       drag = null;
       e.stopPropagation();
-      this.saveLayout();
+      this.save();
     };
     root.addEventListener("pointerup", end, true);
     root.addEventListener("pointercancel", end, true);
@@ -456,7 +499,7 @@ W.gamepad = {
     root.style.setProperty("--pad-inset-x", `${c.insetX}px`);
     root.style.setProperty("--pad-inset-y", `${c.insetY}px`);
     root.classList.toggle("editing", !!this.editing);
-    if (!this.editing) this.select(null);
+    if (!this.editing) this.select("");
     this.applyLayout();
     if (root.hidden !== !c.on) {
       root.hidden = !c.on;
@@ -484,12 +527,13 @@ W.gamepad = {
 // drift apart a field at a time.
 W.setGamepad = (cfg) => {
   Object.assign(W.padCfg, cfg || {});
-  // The layout arrives as text because that is how it is stored: one opaque string Rust
-  // never has to know the shape of.
-  if (typeof W.padCfg.layout === "string") {
-    try { W.padCfg.layout = JSON.parse(W.padCfg.layout || "{}") || {}; }
-    catch (_) { W.padCfg.layout = {}; }
-  }
+  W.gamepad.apply();
+};
+
+// The settings panel's "Reset the layout": every cluster back to its CSS anchor.
+W.resetPadLayout = () => {
+  W.padCfg.layout = {};
+  W.gamepad.save();
   W.gamepad.apply();
 };
 
