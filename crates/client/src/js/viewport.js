@@ -98,7 +98,14 @@ W.reportScreen = () => {
     W.isPhone() ? true : w >= h;
   if (wantLandscape && h > w) [w, h] = [h, w];
   if (!wantLandscape && w > h) [w, h] = [h, w];
-  emit({ type: "screen", w, h, dpr: d });
+  // `phone` and the raw CSS numbers travel with it: the Rust side names the recommendation
+  // after the device ("fits this phone"), and a recommendation that looks wrong is otherwise
+  // undiagnosable from the far end — the panel can show exactly what the browser said.
+  emit({
+    type: "screen", w, h, dpr: d,
+    phone: W.isPhone(),
+    css: `${screen.width}x${screen.height}`,
+  });
 };
 W.reportScreen();
 // Rotating swaps the axes. The running session cannot resize (invariant #8), so this only

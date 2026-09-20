@@ -65,11 +65,25 @@ fn gcd(a: u32, b: u32) -> u32 {
     if b == 0 { a.max(1) } else { gcd(b, a % b) }
 }
 
-/// One phrase for an option label: what this mode is, and what it does here.
-pub fn label(sw: u32, sh: u32, w: u32, h: u32) -> String {
-    let a = aspect(w, h);
+/// Which way round a mode is, in the word a person would use.
+pub fn orientation(w: u32, h: u32) -> &'static str {
+    if w == h {
+        "square"
+    } else if w > h {
+        "landscape"
+    } else {
+        "portrait"
+    }
+}
+
+/// One phrase for an option label: what this mode is, what kind of screen it suits, and what
+/// it does *here*. All three, because a number alone is not a suggestion and a suggestion that
+/// hides its cost is worse than none.
+pub fn label(sw: u32, sh: u32, w: u32, h: u32, class: &str) -> String {
+    let (a, o) = (aspect(w, h), orientation(w, h));
+    let what = format!("{w} × {h} — {a} {o} · {class}");
     match of(sw, sh, w, h) {
-        (Fit::Fills, _) => format!("{w} × {h} — {a}, fills this screen"),
+        (Fit::Fills, _) => format!("{what} · fills this screen"),
         (fit, cov) => {
             let lost = ((1.0 - cov) * 100.0).round() as u32;
             let bars = if fit == Fit::Pillarbox {
@@ -77,7 +91,7 @@ pub fn label(sw: u32, sh: u32, w: u32, h: u32) -> String {
             } else {
                 "bars top and bottom"
             };
-            format!("{w} × {h} — {a}, {bars}, {lost}% of the screen unused")
+            format!("{what} · {bars}, {lost}% of the screen unused")
         }
     }
 }

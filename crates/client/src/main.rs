@@ -60,7 +60,7 @@ fn App() -> Element {
             return;
         }
         let current = (ui.set.res)();
-        let device = res::options(w, h);
+        let device = res::options(w, h, (ui.live.screen_phone)());
         let exclude: Vec<String> = device.iter().map(|(v, _)| v.clone()).collect();
         let offered = device
             .iter()

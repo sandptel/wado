@@ -265,6 +265,13 @@ pub struct Live {
     pub pointer_lock: Signal<bool>,
     pub screen_w: Signal<u32>,
     pub screen_h: Signal<u32>,
+    /// Whether the browser calls this a handset (`js/viewport.js`'s two-part test). Only a
+    /// *display* question: it names the recommendation and decides the default orientation.
+    pub screen_phone: Signal<bool>,
+    /// What `screen.width x screen.height` said, in CSS pixels, before the density multiply.
+    /// Shown in the panel because a recommendation derived from the wrong panel size is
+    /// otherwise impossible to diagnose from the far end.
+    pub screen_css: Signal<String>,
     /// The device's pixel density. Drives the default output scale the way a desktop
     /// compositor does: a phone reporting 2.6 wants roughly 3x, not 1x.
     pub screen_dpr: Signal<f64>,
@@ -341,6 +348,8 @@ impl Live {
             osk_on: use_signal(|| false),
             pointer_lock: use_signal(|| false),
             screen_w: use_signal(|| 0),
+            screen_phone: use_signal(|| false),
+            screen_css: use_signal(String::new),
             screen_dpr: use_signal(|| 0.0),
             screen_h: use_signal(|| 0),
             conn_stage: use_signal(|| 0),

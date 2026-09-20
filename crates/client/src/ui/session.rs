@@ -17,12 +17,36 @@ pub fn render(ui: Ui) -> Element {
     // stream can fill it edge to edge instead of being letterboxed into a 16:9 box on a 20:9
     // panel — then every standard mode, each carrying what it costs *here*.
     let (sw, sh) = ((ui.live.screen_w)(), (ui.live.screen_h)());
-    let device = crate::res::options(sw, sh);
+    let phone = (ui.live.screen_phone)();
+    let device = crate::res::options(sw, sh, phone);
     let exclude: Vec<String> = device.iter().map(|(v, _)| v.clone()).collect();
-    let catalog = crate::res::catalog::options(sw, sh, &exclude);
+    let (catalog_same, catalog_turned) = crate::res::catalog::grouped(sw, sh, &exclude);
     // What the current choice does to this screen, in a sentence. The labels say it per
     // option; this says it for the one actually selected, which is the one being asked about.
     let fit_note = parse_wh(&(s.res)()).map(|(w, h)| crate::res::fit::verdict(sw, sh, w, h));
+    // Names the device, because "recommended" with no subject reads as an opinion rather than
+    // a measurement of the screen you are holding.
+    let recommended_for = format!(
+        "Recommended — fits this {} exactly ({})",
+        if phone { "phone" } else { "screen" },
+        crate::res::fit::orientation(sw, sh)
+    );
+    // What the browser actually reported. On screen because a recommendation derived from a
+    // wrong panel size is otherwise undiagnosable — and the numbers are the first thing to ask
+    // for when someone says the suggestion looks wrong.
+    let (way, other_way) = {
+        let d = crate::res::fit::orientation(sw, sh);
+        if d == "portrait" { ("portrait", "landscape") } else { ("landscape", "portrait") }
+    };
+    let other_same = format!("Other shapes, {way} — each says what it costs here");
+    let other_turned = format!("Other shapes, {other_way} — turned the other way round");
+    let detected = format!(
+        "Detected {}: {sw} × {sh} px · {} · {} CSS px at {:.2}× density.",
+        if phone { "phone screen" } else { "screen" },
+        crate::res::fit::aspect(sw, sh),
+        (ui.live.screen_css)(),
+        (ui.live.screen_dpr)()
+    );
     let custom_q = (s.quality)() == "custom";
 
     rsx! {
@@ -50,13 +74,18 @@ pub fn render(ui: Ui) -> Element {
         select {
             value: "{(s.res)()}", disabled: on,
             onchange: move |e| s.res.set(e.value()),
-            optgroup { label: "Recommended — fits this screen exactly",
+            optgroup { label: "{recommended_for}",
                 for (value, label) in device.iter().cloned() {
                     option { key: "{value}", value: "{value}", "{label}" }
                 }
             }
-            optgroup { label: "Every other shape — the label says what it costs here",
-                for (value, label) in catalog.iter().cloned() {
+            optgroup { label: "{other_same}",
+                for (value, label) in catalog_same.iter().cloned() {
+                    option { key: "{value}", value: "{value}", "{label}" }
+                }
+            }
+            optgroup { label: "{other_turned}",
+                for (value, label) in catalog_turned.iter().cloned() {
                     option { key: "{value}", value: "{value}", "{label}" }
                 }
             }
@@ -65,6 +94,7 @@ pub fn render(ui: Ui) -> Element {
         if let Some(note) = fit_note {
             p { class: "hint", "{note}" }
         }
+        p { class: "hint", "{detected}" }
         if custom_res {
             div { class: "row",
                 input {
