@@ -182,13 +182,34 @@ pub async fn handle_join(
     Path(remote_id): Path<String>,
     query: Option<axum::extract::Query<JoinQuery>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: axum::http::HeaderMap,
     State(state): State<AppState>,
 ) -> impl IntoResponse {
     // `Option<Query<_>>` so a malformed query string is an empty preference rather than a
     // rejected upgrade: the instance hint is an optimisation, and losing it must cost the
     // client its stickiness, not its connection.
     let wanted = query.and_then(|axum::extract::Query(q)| q.instance);
-    ws.on_upgrade(move |socket| join_loop(socket, remote_id, wanted, addr, state))
+    let peer = peer_ip(&headers, addr);
+    ws.on_upgrade(move |socket| join_loop(socket, remote_id, wanted, addr, peer, state))
+}
+
+/// The device's own address, as opposed to the socket the relay sees.
+///
+/// Every client that arrives through the cloudflared tunnel connects from `127.0.0.1`, so the
+/// socket address answers "did it come through the tunnel", never "who is it". Cloudflare puts
+/// the real one in `CF-Connecting-IP`; a plain reverse proxy uses `X-Forwarded-For`, whose first
+/// entry is the originating client. Direct LAN clients have neither and the socket is the truth.
+///
+/// ponytail: display only — the headers are client-settable, so nothing is authorized on this.
+fn peer_ip(headers: &axum::http::HeaderMap, addr: SocketAddr) -> String {
+    headers
+        .get("cf-connecting-ip")
+        .or_else(|| headers.get("x-forwarded-for"))
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.split(',').next())
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| addr.to_string())
 }
 
 async fn join_loop(
@@ -196,6 +217,7 @@ async fn join_loop(
     remote_id: String,
     wanted_instance: Option<String>,
     addr: SocketAddr,
+    peer: String,
     state: AppState,
 ) {
     let remote_id = normalize_remote_id(&remote_id);
@@ -205,7 +227,7 @@ async fn join_loop(
     let pool = state.registry.instances_for(&remote_id);
     if pool.is_empty() {
         warn!(
-            %addr,
+            client = %peer,
             remote_id = %display_remote_id(&remote_id),
             "join: no server online with this Remote ID"
         );
@@ -239,7 +261,7 @@ async fn join_loop(
             // client. It carries the numbers that make it actionable, because a bare denial is
             // indistinguishable from a broken connection.
             warn!(
-                %addr,
+                client = %peer,
                 remote_id = %display_remote_id(&remote_id),
                 pool_size,
                 "join: every daemon in the pool already has a client"
@@ -276,7 +298,7 @@ async fn join_loop(
         assignment,
         pool_busy,
         pool_size,
-        client = %addr,
+        client = %peer,
         "client joined — {assignment} daemon, {pool_busy} of {pool_size} session(s) in use"
     );
 
@@ -285,7 +307,7 @@ async fn join_loop(
     // sending JoinAccepted.)
     let peer_msg = match serde_json::to_string(&RelayMsg::PeerConnected {
         room_id: room_id.clone(),
-        client_addr: addr.to_string(),
+        client_addr: peer.clone(),
     }) {
         Ok(s) => s,
         Err(_) => {
@@ -373,7 +395,7 @@ async fn join_loop(
                 }
                 debug!(
                     remote_id = %display_remote_id(&remote_id),
-                    client = %addr,
+                    client = %peer,
                     "client msg: {}",
                     head(&text)
                 );
@@ -412,7 +434,7 @@ async fn join_loop(
         remote_id = %display_remote_id(&remote_id),
         room_id = %room_id,
         instance = %instance_id,
-        client = %addr,
+        client = %peer,
         "client disconnected — room removed"
     );
 }
