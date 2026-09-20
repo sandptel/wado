@@ -103,6 +103,13 @@ every frame a full-screen repaint.
 
 ### Fixed
 
+**Both analog sticks can move at once.** In "real controller" mode the two sticks shared one
+slot in the input coalescer, so a sample from one could replace a sample from the other and
+the losing stick simply stopped. Each axis now has its own slot, and a sample that repeats the
+value already sent is dropped rather than queued — a thumb held at full deflection was
+restating the same number sixty times a second.
+
+
 **Windows no longer open, or stay, bigger than the screen.** Three gaps that failed together.
 `xdg_toplevel.configure_bounds` was never sent, so a client had no idea how big the screen was
 and opened at whatever it uses on a desktop; the initial configure carried no size, so nothing

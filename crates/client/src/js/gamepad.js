@@ -142,14 +142,26 @@ W.gamepad = {
   stick(side, nx, ny) {
     if (W.padCfg.mode === "pad") {
       const [cx, cy] = side === "l" ? [ABS.lx, ABS.ly] : [ABS.rx, ABS.ry];
-      W.coalesce.queue("pad-ax", { t: "gamepad_axis", code: cx, value: Math.round(nx * STICK_MAX) });
-      W.coalesce.queue("pad-ay", { t: "gamepad_axis", code: cy, value: Math.round(ny * STICK_MAX) });
+      this.axis(`${side}x`, cx, Math.round(nx * STICK_MAX));
+      this.axis(`${side}y`, cy, Math.round(ny * STICK_MAX));
       return;
     }
     if (side === "l") return this.walk(nx, ny);
     this.look.x = nx;
     this.look.y = ny;
     this.startLook();
+  },
+
+  // An axis is state, not an event: the far end holds the last value until a new one arrives,
+  // and the kernel drops a repeated EV_ABS anyway. A thumb resting at full deflection still
+  // produces a pointermove per frame, so without this the same number rides the channel sixty
+  // times a second for nothing — and input is the one thing that must never be queued behind
+  // anything (invariant 1).
+  axis(key, code, value) {
+    this._ax = this._ax || {};
+    if (this._ax[key] === value) return;
+    this._ax[key] = value;
+    W.coalesce.queue(`pad-${key}`, { t: "gamepad_axis", code, value });
   },
 
   // Digital WASD with edge detection: only the keys that changed are sent, or a held stick
@@ -461,6 +473,7 @@ W.gamepad = {
     if (this.releaser) this.releaser();
     this.look.x = this.look.y = 0;
     this._walk = {};
+    this._ax = {};
     if (this.root) {
       for (const el of this.root.querySelectorAll(".padbtn.on")) el.classList.remove("on");
     }
