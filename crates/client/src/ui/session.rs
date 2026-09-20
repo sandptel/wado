@@ -13,22 +13,57 @@ pub fn render(ui: Ui) -> Element {
     let mut s = ui.set;
     let on = (ui.live.session_on)();
     let custom_res = (s.res)() == "custom";
-    // Derived from the viewing device, so a stream can fill it edge to edge instead of
-    // being letterboxed into a 16:9 box on a 20:9 panel.
-    let device = crate::res::options((ui.live.screen_w)(), (ui.live.screen_h)());
+    // Two groups, and the order is the advice: derived from the viewing device first, so a
+    // stream can fill it edge to edge instead of being letterboxed into a 16:9 box on a 20:9
+    // panel — then every standard mode, each carrying what it costs *here*.
+    let (sw, sh) = ((ui.live.screen_w)(), (ui.live.screen_h)());
+    let device = crate::res::options(sw, sh);
+    let exclude: Vec<String> = device.iter().map(|(v, _)| v.clone()).collect();
+    let catalog = crate::res::catalog::options(sw, sh, &exclude);
+    // What the current choice does to this screen, in a sentence. The labels say it per
+    // option; this says it for the one actually selected, which is the one being asked about.
+    let fit_note = parse_wh(&(s.res)()).map(|(w, h)| crate::res::fit::verdict(sw, sh, w, h));
     let custom_q = (s.quality)() == "custom";
 
     rsx! {
+        label { "Orientation" }
+        select {
+            value: "{(s.orientation)()}", disabled: on,
+            onchange: move |e| {
+                s.orientation.set(e.value());
+                // Straight through, because the resolution list below is derived from what
+                // the browser reports and this changes it.
+                super::live::apply(ui);
+            },
+            option { value: "auto", "Auto — landscape on a phone, as-is on a desktop" }
+            option { value: "landscape", "Landscape — long edge across, always" }
+            option { value: "portrait", "Portrait — short edge across, always" }
+        }
+        p { class: "hint",
+            "Which way round the session is. A phone at rest is held upright, so an unthinking
+             start gave desktop applications a 360px-wide screen to lay themselves out on —
+             hence the default. Entering fullscreen pins the phone to whichever way this makes
+             the session, and leaving fullscreen by any route releases it."
+        }
+
         label { "Resolution" }
         select {
             value: "{(s.res)()}", disabled: on,
             onchange: move |e| s.res.set(e.value()),
-            for (value, label) in device.iter().cloned() {
-                option { key: "{value}", value: "{value}", "{label}" }
+            optgroup { label: "Recommended — fits this screen exactly",
+                for (value, label) in device.iter().cloned() {
+                    option { key: "{value}", value: "{value}", "{label}" }
+                }
             }
-            option { value: "1280x720", "1280 × 720 (720p)" }
-            option { value: "1920x1080", "1920 × 1080 (1080p)" }
+            optgroup { label: "Every other shape — the label says what it costs here",
+                for (value, label) in catalog.iter().cloned() {
+                    option { key: "{value}", value: "{value}", "{label}" }
+                }
+            }
             option { value: "custom", "Custom…" }
+        }
+        if let Some(note) = fit_note {
+            p { class: "hint", "{note}" }
         }
         if custom_res {
             div { class: "row",
@@ -301,4 +336,11 @@ mod fps_label_tests {
         // 3:2 pulldown — alternating 2-refresh and 1-refresh frames.
         assert_eq!(fps_label(60, Some(90)), "60 — uneven on this 90 Hz screen");
     }
+}
+
+/// `"1920x1080"` → `(1920, 1080)`. `None` for `custom` and for anything malformed, which is
+/// the same answer: there is no fit to report for a size that is not yet decided.
+fn parse_wh(v: &str) -> Option<(u32, u32)> {
+    let (w, h) = v.split_once('x')?;
+    Some((w.trim().parse().ok()?, h.trim().parse().ok()?))
 }

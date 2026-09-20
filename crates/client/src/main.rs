@@ -60,10 +60,13 @@ fn App() -> Element {
             return;
         }
         let current = (ui.set.res)();
-        let offered = res::options(w, h)
-            .into_iter()
-            .map(|(v, _)| v)
-            .chain(["1280x720".into(), "1920x1080".into(), "custom".into()]);
+        let device = res::options(w, h);
+        let exclude: Vec<String> = device.iter().map(|(v, _)| v.clone()).collect();
+        let offered = device
+            .iter()
+            .map(|(v, _)| v.clone())
+            .chain(res::catalog::options(w, h, &exclude).into_iter().map(|(v, _)| v))
+            .chain(["custom".into()]);
         if !offered.into_iter().any(|v| v == current) {
             if let Some(d) = res::default_value(w, h) {
                 ui.set.res.clone().set(d);
