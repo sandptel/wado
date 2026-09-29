@@ -38,39 +38,31 @@
 //! The launch command is free-form, so this server binds `127.0.0.1` by default.
 //! A password/approval gate (and only then LAN exposure) is the next step.
 
+mod http;
 pub mod logbus;
+mod offer;
+mod pump;
+mod routes;
+mod sse;
+mod watchdog;
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
-use bytes::Bytes;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{broadcast, mpsc, oneshot};
+use tokio::net::TcpListener;
+use tokio::sync::{mpsc, watch};
 use tracing::{error, info, warn};
-use wado_protocol::SessionControl;
 use webrtc::api::interceptor_registry::register_default_interceptors;
 use webrtc::api::media_engine::{MIME_TYPE_H264, MediaEngine};
 use webrtc::api::{API, APIBuilder};
-use webrtc::data_channel::RTCDataChannel;
-use webrtc::data_channel::data_channel_message::DataChannelMessage;
 use webrtc::interceptor::registry::Registry;
-use webrtc::media::Sample;
 use webrtc::peer_connection::RTCPeerConnection;
-use webrtc::peer_connection::configuration::RTCConfiguration;
-use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
-use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
-use webrtc::rtcp::payload_feedbacks::full_intra_request::FullIntraRequest;
-use webrtc::rtcp::payload_feedbacks::picture_loss_indication::PictureLossIndication;
 use webrtc::rtp_transceiver::rtp_codec::RTCRtpCodecCapability;
-use webrtc::track::track_local::TrackLocal;
 use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
 
 use logbus::LogBus;
-use tokio::sync::watch;
-use wado_compositor::{CommandSender, CompositorCommand, FrameMsg, InputEvent, InputSender};
-use wado_protocol::{INPUT_CHANNEL, MOTION_CHANNEL, SessionInfo, StageTimings};
+use wado_compositor::{CommandSender, FrameMsg, InputSender};
+use wado_protocol::StageTimings;
 
 /// Bounded so encoded frames never pile up behind a slow/absent network.
 ///
@@ -79,10 +71,6 @@ use wado_protocol::{INPUT_CHANNEL, MOTION_CHANNEL, SessionInfo, StageTimings};
 /// slots absorb a single scheduling hiccup between the render tick and the pump without
 /// letting a standing backlog form (4 slots at 60 fps was up to ~66 ms of queue).
 pub const FRAME_CHANNEL_CAPACITY: usize = 2;
-/// Reject oversized request bodies (SDP/config are tiny; this is a DoS guard).
-const MAX_BODY_BYTES: usize = 256 * 1024;
-/// How long `/session/start` waits for the compositor thread to reply.
-const START_REPLY_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// `Send`able sender for [`CompositorCommand`]s into the compositor's calloop loop.
 type CmdSender = CommandSender;
@@ -107,9 +95,9 @@ struct ServerCtx {
     /// frame was actually picked up. Atomic so the pump task and the HTTP handlers can
     /// share it without a lock on the hot path.
     queue_us: Arc<AtomicU64>,
-    /// Unix-millis of the last HTTP request from a viewer. See [`viewer_watchdog`].
+    /// Unix-millis of the last HTTP request from a viewer. See [`watchdog::viewer_watchdog`].
     last_request: Arc<AtomicU64>,
-    /// Whether a session is running and has not been stopped. See [`viewer_watchdog`].
+    /// Whether a session is running and has not been stopped. See [`watchdog::viewer_watchdog`].
     session_started: Arc<AtomicBool>,
 }
 
@@ -161,7 +149,7 @@ pub fn start(
 
 async fn run_server(
     addr: String,
-    mut frame_rx: mpsc::Receiver<FrameMsg>,
+    frame_rx: mpsc::Receiver<FrameMsg>,
     cmd_tx: CmdSender,
     input_tx: InputSender,
     timings: watch::Receiver<StageTimings>,
@@ -197,29 +185,7 @@ async fn run_server(
     // signal is meaningless noise.
     let queue_us = Arc::new(AtomicU64::new(0));
 
-    // Frame pump: encoded frames → write_sample. Harmless no-op when no viewer.
-    {
-        let track = Arc::clone(&track);
-        let queue_us = Arc::clone(&queue_us);
-        tokio::spawn(async move {
-            while let Some(frame) = frame_rx.recv().await {
-                // Stamped by the compositor at hand-off, so this is pure waiting time.
-                let waited = frame.queued_at.elapsed().as_micros() as u64;
-                // EWMA, 1/8 weight on the newest sample.
-                let prev = queue_us.load(Ordering::Relaxed);
-                queue_us.store((prev * 7 + waited) / 8, Ordering::Relaxed);
-
-                let sample = Sample {
-                    data: Bytes::from(frame.data),
-                    duration: frame.duration,
-                    ..Default::default()
-                };
-                if let Err(e) = track.write_sample(&sample).await {
-                    warn!("write_sample error: {e}");
-                }
-            }
-        });
-    }
+    pump::spawn(frame_rx, Arc::clone(&track), Arc::clone(&queue_us));
 
     let ctx = Arc::new(ServerCtx {
         api,
@@ -238,7 +204,7 @@ async fn run_server(
     let listener = TcpListener::bind(&addr).await?;
     info!(%addr, "control server listening — connect with the wado-client app");
 
-    tokio::spawn(viewer_watchdog(
+    tokio::spawn(watchdog::viewer_watchdog(
         ctx.cmd_tx.clone(),
         Arc::clone(&ctx.last_request),
         Arc::clone(&ctx.session_started),
@@ -261,491 +227,9 @@ async fn run_server(
         };
         let ctx = Arc::clone(&ctx);
         tokio::spawn(async move {
-            if let Err(e) = handle_conn(stream, ctx).await {
+            if let Err(e) = routes::handle_conn(stream, ctx).await {
                 warn!("connection error: {e}");
             }
         });
-    }
-}
-
-async fn handle_conn(mut stream: TcpStream, ctx: Arc<ServerCtx>) -> crate::Result<()> {
-    let mut buf = Vec::new();
-    let mut tmp = [0u8; 4096];
-
-    let header_end = loop {
-        let n = stream.read(&mut tmp).await?;
-        if n == 0 {
-            return Ok(());
-        }
-        buf.extend_from_slice(&tmp[..n]);
-        if let Some(pos) = find_subsequence(&buf, b"\r\n\r\n") {
-            break pos;
-        }
-        if buf.len() > 64 * 1024 {
-            write_response(
-                &mut stream,
-                "431 Request Header Fields Too Large",
-                "text/plain",
-                b"",
-            )
-            .await?;
-            return Ok(());
-        }
-    };
-
-    // Liveness for `viewer_watchdog`: a viewer polls this server constantly (stats, events,
-    // timings), so silence here means nobody is on the other end.
-    ctx.last_request.store(now_ms(), Ordering::Relaxed);
-
-    let header_text = String::from_utf8_lossy(&buf[..header_end]);
-    let mut lines = header_text.split("\r\n");
-    let request_line = lines.next().unwrap_or("");
-    let mut parts = request_line.split_whitespace();
-    let method = parts.next().unwrap_or("").to_string();
-    let path = parts.next().unwrap_or("").to_string();
-
-    let mut content_length = 0usize;
-    for line in lines {
-        if let Some((name, value)) = line.split_once(':') {
-            if name.trim().eq_ignore_ascii_case("content-length") {
-                content_length = value.trim().parse().unwrap_or(0);
-            }
-        }
-    }
-    if content_length > MAX_BODY_BYTES {
-        write_response(
-            &mut stream,
-            "413 Payload Too Large",
-            "text/plain",
-            b"body too large",
-        )
-        .await?;
-        return Ok(());
-    }
-
-    // CORS preflight: the client is a separate origin, so browsers preflight the
-    // JSON POSTs. Answer any OPTIONS with the allowed methods/headers. No body.
-    if method == "OPTIONS" {
-        return write_preflight(&mut stream).await;
-    }
-
-    // Live log stream is a long-lived response — handle before the normal path.
-    if method == "GET" && path == "/events" {
-        return serve_sse(stream, &ctx.log_bus).await;
-    }
-
-    let body_start = header_end + 4;
-    let mut body = buf[body_start..].to_vec();
-    while body.len() < content_length {
-        let n = stream.read(&mut tmp).await?;
-        if n == 0 {
-            break;
-        }
-        body.extend_from_slice(&tmp[..n]);
-    }
-
-    match (method.as_str(), path.as_str()) {
-        // Per-stage pipeline timings for the client's latency breakdown. A plain polled
-        // GET rather than a new SSE event type: /events is a hand-rolled raw-TCP log
-        // stream with no named-event support, and telemetry the client samples once a
-        // second does not justify building that out.
-        // No session required: you pick what to launch before there is anything to launch
-        // it into. Scanned per request rather than cached — a package can be installed while
-        // the server is running, and the scan is a few milliseconds of directory reads.
-        ("GET", "/apps") => {
-            let mut apps = crate::apps::discover();
-            // Marked here rather than in `discover`, because "what is installed" and "what is
-            // running" come from different places and only one of them needs the compositor.
-            crate::apps::running::mark(&mut apps, &ctx.cmd_tx).await;
-            let body = serde_json::to_vec(&apps).unwrap_or_else(|_| b"[]".to_vec());
-            write_response(&mut stream, "200 OK", "application/json", &body).await?;
-        }
-        ("GET", "/timing") => {
-            let t = *ctx.timings.borrow();
-            let queue_ms = ctx.queue_us.load(Ordering::Relaxed) as f64 / 1e3;
-            let body = serde_json::json!({
-                "capture_ms": t.capture_ms,
-                "encode_ms": t.encode_ms,
-                "queue_ms": queue_ms,
-                "tick_ms": t.tick_ms,
-                "fps": t.fps,
-                "dropped": t.dropped,
-            });
-            write_response(
-                &mut stream,
-                "200 OK",
-                "application/json",
-                body.to_string().as_bytes(),
-            )
-            .await?;
-        }
-        ("GET", "/") => {
-            // No UI here anymore — the client is the separate `wado-client` app.
-            let msg = b"wado control server (API only). Run the wado-client app to connect.";
-            write_response(&mut stream, "200 OK", "text/plain", msg).await?;
-        }
-        ("POST", "/session/start") => match handle_session_start(&ctx, &body).await {
-            Ok(info) => {
-                ctx.session_started.store(true, Ordering::SeqCst);
-                let body = serde_json::to_string(&info).unwrap_or_else(|_| "{}".into());
-                write_response(&mut stream, "200 OK", "application/json", body.as_bytes()).await?
-            }
-            Err(e) => {
-                warn!("session start rejected: {e}");
-                write_response(&mut stream, "409 Conflict", "text/plain", e.as_bytes()).await?
-            }
-        },
-        ("POST", "/session/stop") => {
-            ctx.session_started.store(false, Ordering::SeqCst);
-            let _ = ctx.cmd_tx.send(CompositorCommand::Stop);
-            write_response(&mut stream, "200 OK", "text/plain", b"stopped").await?;
-        }
-        // One route for every verb against a running session. `/session/launch` was its
-        // predecessor; adding four window actions in that shape would have meant four more
-        // routes here and four more relay messages, so the verb moved into the body.
-        ("POST", "/session/control") => match serde_json::from_slice::<SessionControl>(&body) {
-            Ok(SessionControl::Launch { command }) if command.trim().is_empty() => {
-                write_response(
-                    &mut stream,
-                    "400 Bad Request",
-                    "text/plain",
-                    b"empty command",
-                )
-                .await?
-            }
-            Ok(SessionControl::Launch { command }) => {
-                let _ = ctx.cmd_tx.send(CompositorCommand::Launch { command });
-                write_response(&mut stream, "200 OK", "text/plain", b"launched").await?;
-            }
-            Ok(SessionControl::Window(action)) => {
-                let _ = ctx.cmd_tx.send(CompositorCommand::Window(action));
-                write_response(&mut stream, "200 OK", "text/plain", b"ok").await?;
-            }
-            Err(e) => {
-                warn!("control rejected: {e}");
-                write_response(&mut stream, "400 Bad Request", "text/plain", b"bad control").await?
-            }
-        },
-        ("POST", "/offer") => {
-            let offer_json = String::from_utf8_lossy(&body);
-            match handle_offer(&ctx, &offer_json).await {
-                Ok(answer) => {
-                    write_response(&mut stream, "200 OK", "application/json", answer.as_bytes())
-                        .await?
-                }
-                Err(e) => {
-                    error!("offer handling failed: {e}");
-                    write_response(
-                        &mut stream,
-                        "500 Internal Server Error",
-                        "text/plain",
-                        b"offer failed",
-                    )
-                    .await?
-                }
-            }
-        }
-        _ => write_response(&mut stream, "404 Not Found", "text/plain", b"not found").await?,
-    }
-
-    Ok(())
-}
-
-/// Parse a `SessionConfig` and ask the compositor thread to start a session,
-/// bounded by a timeout so a wedged compositor can't hang the HTTP connection.
-async fn handle_session_start(
-    ctx: &ServerCtx,
-    body: &[u8],
-) -> std::result::Result<SessionInfo, String> {
-    let config = serde_json::from_slice(body).map_err(|e| format!("bad config: {e}"))?;
-    let (reply_tx, reply_rx) = oneshot::channel();
-    ctx.cmd_tx
-        .send(CompositorCommand::Start {
-            config,
-            reply: reply_tx,
-        })
-        .map_err(|_| "compositor unavailable".to_string())?;
-    match tokio::time::timeout(START_REPLY_TIMEOUT, reply_rx).await {
-        Ok(Ok(result)) => result,
-        Ok(Err(_)) => Err("compositor dropped reply".into()),
-        Err(_) => Err("session start timed out".into()),
-    }
-}
-
-/// Build a peer connection for one viewer, attach the shared track, wire RTCP
-/// PLI→keyframe, and answer. A generation tag prevents a stale viewer's teardown
-/// from killing a session started later.
-async fn handle_offer(ctx: &ServerCtx, offer_json: &str) -> crate::Result<String> {
-    let offer: RTCSessionDescription = serde_json::from_str(offer_json)?;
-
-    // STUN so ICE can discover server-reflexive candidates, enabling cross-NAT connections
-    // when direct mode is port-forwarded. For pure localhost/LAN use, host candidates still
-    // work without it. See `crate::ice` for why the list has three entries and not one.
-    let pc = Arc::new(
-        ctx.api
-            .new_peer_connection(RTCConfiguration {
-                ice_servers: crate::ice::servers(),
-                ..Default::default()
-            })
-            .await?,
-    );
-
-    let rtp_sender = pc
-        .add_track(Arc::clone(&ctx.track) as Arc<dyn TrackLocal + Send + Sync>)
-        .await?;
-
-    // Remote input: the browser opens TWO data channels in its offer — INPUT_CHANNEL
-    // (reliable+ordered: buttons, keys, scroll, touch, drag start/end) and MOTION_CHANNEL
-    // (zero-retransmit: high-rate pointer/drag motion, latest-wins). Both carry
-    // JSON InputEvents and both funnel into the same compositor input channel (never
-    // behind video — invariant #1). Bad frames are dropped.
-    //
-    // The split exists because a high-polling-rate mouse saturates a reliable channel and
-    // everything else then queues behind its backlog. See MOTION_CHANNEL's docs for why
-    // each event type is safe on the channel it uses.
-    {
-        let input_tx = ctx.input_tx.clone();
-        pc.on_data_channel(Box::new(move |dc: Arc<RTCDataChannel>| {
-            let input_tx = input_tx.clone();
-            Box::pin(async move {
-                let label = dc.label().to_string();
-                if label != INPUT_CHANNEL && label != MOTION_CHANNEL {
-                    info!("ignoring data channel {label:?} (not an input channel)");
-                    return;
-                }
-                {
-                    let label = label.clone();
-                    dc.on_open(Box::new(move || {
-                        let label = label.clone();
-                        Box::pin(async move { info!("input data channel {label:?} open") })
-                    }));
-                }
-                let input_tx = input_tx.clone();
-                let dc_echo = Arc::clone(&dc);
-                dc.on_message(Box::new(move |msg: DataChannelMessage| {
-                    let input_tx = input_tx.clone();
-                    let dc_echo = Arc::clone(&dc_echo);
-                    Box::pin(async move {
-                        match serde_json::from_slice::<InputEvent>(&msg.data) {
-                            // Latency probe: bounce it straight back and do NOT forward it.
-                            // Answering here measures the input path itself — if it went
-                            // via the compositor the number would include a wait for the
-                            // render loop, which is a different question.
-                            Ok(InputEvent::Ping { seq }) => {
-                                let pong = format!("{{\"t\":\"pong\",\"seq\":{seq}}}");
-                                if let Err(e) = dc_echo.send_text(pong).await {
-                                    tracing::debug!("pong send failed: {e}");
-                                }
-                            }
-                            Ok(ev) => {
-                                tracing::debug!(?ev, "input event");
-                                if input_tx.send(ev).is_err() {
-                                    warn!("compositor input channel closed — dropping input");
-                                }
-                            }
-                            Err(e) => warn!("bad input event dropped: {e}"),
-                        }
-                    })
-                }));
-            })
-        }));
-    }
-
-    // This viewer's generation; only this generation may auto-stop the session.
-    let my_gen = ctx.generation.fetch_add(1, Ordering::SeqCst) + 1;
-    *ctx.active_pc.lock().unwrap_or_else(|e| e.into_inner()) = Some(Arc::clone(&pc));
-
-    // RTCP read loop: the browser sends PLI/FIR when it needs a keyframe.
-    let cmd_tx_rtcp = ctx.cmd_tx.clone();
-    tokio::spawn(async move {
-        loop {
-            match rtp_sender.read_rtcp().await {
-                Ok((packets, _)) => {
-                    for p in packets {
-                        let any = p.as_any();
-                        if any.downcast_ref::<PictureLossIndication>().is_some()
-                            || any.downcast_ref::<FullIntraRequest>().is_some()
-                        {
-                            let _ = cmd_tx_rtcp.send(CompositorCommand::ForceKeyframe);
-                        }
-                    }
-                }
-                Err(_) => break, // sender closed
-            }
-        }
-    });
-
-    let cmd_tx = ctx.cmd_tx.clone();
-    let generation = Arc::clone(&ctx.generation);
-    let active_pc = Arc::clone(&ctx.active_pc);
-    pc.on_peer_connection_state_change(Box::new(move |state| {
-        info!("viewer connection state: {state}");
-        match state {
-            // Force an IDR so the new viewer gets a picture immediately.
-            RTCPeerConnectionState::Connected => {
-                let _ = cmd_tx.send(CompositorCommand::ForceKeyframe);
-            }
-            // Only the current viewer tears the session down (generation guard).
-            RTCPeerConnectionState::Failed | RTCPeerConnectionState::Closed => {
-                if generation.load(Ordering::SeqCst) == my_gen {
-                    info!("viewer gone — stopping session");
-                    let _ = cmd_tx.send(CompositorCommand::Stop);
-                    *active_pc.lock().unwrap_or_else(|e| e.into_inner()) = None;
-                }
-            }
-            _ => {}
-        }
-        Box::pin(async {})
-    }));
-
-    pc.set_remote_description(offer).await?;
-    let answer = pc.create_answer(None).await?;
-    let mut gather_complete = pc.gathering_complete_promise().await;
-    pc.set_local_description(answer).await?;
-    // Bounded — see `crate::ice::GATHER_WAIT` and the twin in `relay_client.rs`.
-    if tokio::time::timeout(crate::ice::GATHER_WAIT, gather_complete.recv())
-        .await
-        .is_err()
-    {
-        tracing::warn!(
-            "ICE gathering still running after {:?} — answering with what we have",
-            crate::ice::GATHER_WAIT
-        );
-    }
-
-    let local = pc
-        .local_description()
-        .await
-        .ok_or_else(|| crate::WadoError::Other("no local description after gathering".into()))?;
-    Ok(serde_json::to_string(&local)?)
-}
-
-/// Stream wado's live tracing output to a `/events` listener as Server-Sent Events.
-async fn serve_sse(mut stream: TcpStream, log_bus: &LogBus) -> crate::Result<()> {
-    let header = "HTTP/1.1 200 OK\r\n\
-         Content-Type: text/event-stream\r\n\
-         Cache-Control: no-cache\r\n\
-         Access-Control-Allow-Origin: *\r\n\
-         Connection: keep-alive\r\n\r\n";
-    stream.write_all(header.as_bytes()).await?;
-
-    // Backfill recent history so a freshly opened panel isn't empty.
-    for line in log_bus.backfill() {
-        stream
-            .write_all(format!("data: {line}\n\n").as_bytes())
-            .await?;
-    }
-    stream.flush().await?;
-
-    let mut rx = log_bus.subscribe();
-    let mut heartbeat = tokio::time::interval(Duration::from_secs(15));
-    loop {
-        tokio::select! {
-            recv = rx.recv() => match recv {
-                Ok(line) => {
-                    if stream.write_all(format!("data: {line}\n\n").as_bytes()).await.is_err() {
-                        break; // client disconnected
-                    }
-                }
-                Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                Err(broadcast::error::RecvError::Closed) => break,
-            },
-            _ = heartbeat.tick() => {
-                // Comment line; also surfaces a dead socket as a write error.
-                if stream.write_all(b": keepalive\n\n").await.is_err() {
-                    break;
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
-/// Answer a CORS preflight (`OPTIONS`) with the methods/headers the client needs.
-async fn write_preflight(stream: &mut TcpStream) -> crate::Result<()> {
-    let header = "HTTP/1.1 204 No Content\r\n\
-         Access-Control-Allow-Origin: *\r\n\
-         Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n\
-         Access-Control-Allow-Headers: Content-Type\r\n\
-         Access-Control-Max-Age: 86400\r\n\
-         Content-Length: 0\r\n\
-         Connection: close\r\n\r\n";
-    stream.write_all(header.as_bytes()).await?;
-    stream.flush().await?;
-    Ok(())
-}
-
-async fn write_response(
-    stream: &mut TcpStream,
-    status: &str,
-    content_type: &str,
-    body: &[u8],
-) -> crate::Result<()> {
-    let header = format!(
-        "HTTP/1.1 {status}\r\n\
-         Content-Type: {content_type}\r\n\
-         Content-Length: {}\r\n\
-         Access-Control-Allow-Origin: *\r\n\
-         Connection: close\r\n\r\n",
-        body.len()
-    );
-    stream.write_all(header.as_bytes()).await?;
-    stream.write_all(body).await?;
-    stream.flush().await?;
-    Ok(())
-}
-
-fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    haystack.windows(needle.len()).position(|w| w == needle)
-}
-
-/// How long a started session may go without a viewer before it is stopped. See the twin in
-/// `relay_client.rs` for the full reasoning.
-const VIEWER_GRACE: std::time::Duration = std::time::Duration::from_secs(45);
-
-/// Stop a direct-mode session whose viewer has vanished.
-///
-/// Direct mode had only two stop triggers: an explicit `POST /session/stop`, and the WebRTC
-/// peer reaching `Failed`/`Closed`. The second cannot fire at all in the window that matters:
-/// `POST /session/start` brings up the compositor, encoder and render loop **before** any peer
-/// connection exists, so a browser that dies, navigates away or loses the network before
-/// `POST /offer` leaves `active_pc` as `None` with no callback registered — nothing in the
-/// process can ever send `Stop`. The session then runs forever at full frame rate with no
-/// viewer, and `control.rs` rejects every later start with "a session is already active", so
-/// the daemon is unusable until restarted.
-///
-/// Two conditions, as in relay mode: silence alone would kill a connected-but-idle viewer, so
-/// the session is stopped only when HTTP has been silent *and* WebRTC is not connected.
-async fn viewer_watchdog(
-    cmd_tx: CmdSender,
-    last_request: Arc<AtomicU64>,
-    session_started: Arc<AtomicBool>,
-    active_pc: Arc<Mutex<Option<Arc<RTCPeerConnection>>>>,
-) {
-    let mut tick = tokio::time::interval(std::time::Duration::from_secs(5));
-    loop {
-        tick.tick().await;
-        if !session_started.load(Ordering::SeqCst) {
-            continue;
-        }
-        let silent_ms = now_ms().saturating_sub(last_request.load(Ordering::Relaxed));
-        if silent_ms < VIEWER_GRACE.as_millis() as u64 {
-            continue;
-        }
-        let connected = {
-            let pc = active_pc.lock().unwrap_or_else(|e| e.into_inner()).clone();
-            pc.map(|pc| pc.connection_state() == RTCPeerConnectionState::Connected)
-                .unwrap_or(false)
-        };
-        if connected {
-            continue;
-        }
-        warn!(
-            silent_ms,
-            "no sign of a viewer for {VIEWER_GRACE:?} and WebRTC is not connected — stopping \
-             the session so its applications do not outlive it"
-        );
-        session_started.store(false, Ordering::SeqCst);
-        let _ = cmd_tx.send(CompositorCommand::Stop);
     }
 }
