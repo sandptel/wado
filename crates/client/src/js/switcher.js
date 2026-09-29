@@ -10,6 +10,12 @@
 // the default is vertical at bottom-right. It floats over the picture rather than taking a
 // strip of the screen, so the stream is never letterboxed by it.
 //
+// While a finger is on it, and while it springs after one, the dial also *drives the strip*:
+// every frame sends its position (InputEvent::StripView), and the compositor lays the real
+// windows out side by side, gaps included, at exactly that point — so the windows slide and
+// bounce with the dial. Once settled it hands the view back to focus-following, which by then
+// is the same place.
+//
 // Built by hand into a JS-owned mount, like the gamepad: it redraws every animation frame
 // while moving, which must not go through a Dioxus re-render. The physics and layout are pure
 // functions on W.dialMath so scripts/switcher-check.mjs can pin them without a DOM.
@@ -65,6 +71,7 @@ W.dial = {
   target: 0,
   raf: null,
   drag: null,
+  live: false,    // driving the compositor's view (a gesture, not an outside focus change)
   els: [],        // icon elements, strip order
   ids: "",        // the id list the elements were built for
 
@@ -93,9 +100,11 @@ W.dial = {
       el.title = list[i].title || list[i].app_id || "window";
       el.setAttribute("aria-label", el.title);
     });
-    // Follow focus that moved elsewhere (a tap in the app, a launch), unless a finger is on us.
+    // Follow focus that moved elsewhere (a tap in the app, a launch) — but never during our own
+    // gesture: a list update landing mid-spring (a title change) still names the old focus,
+    // and would yank the spring back to it.
     const fi = Math.max(0, list.findIndex((w) => w.focused));
-    if (!this.drag) this.springTo(fi, false);
+    if (!this.drag && !this.live) this.springTo(fi, false);
   },
 
   build(mount, list, ids) {
@@ -140,6 +149,9 @@ W.dial = {
       el.style.pointerEvents = s.opacity > 0.05 ? "auto" : "none";
       el.classList.toggle("centre", i === centre);
     });
+    // Coalesced per frame on the reliable channel: a late position arriving after the
+    // hand-back below would leave the view stuck mid-slide, so these must stay ordered.
+    if (this.live) W.coalesce.queue("strip_view", { t: "strip_view", pos: this.p });
     if (this.bubble && W.windows[centre]) {
       this.bubble.textContent = W.windows[centre].title || W.windows[centre].app_id || "";
     }
@@ -148,6 +160,7 @@ W.dial = {
   springTo(index, commit) {
     this.target = index;
     if (commit) {
+      this.live = true;
       const w = W.windows[index];
       if (w && !w.focused) W.focusWindow(w.id);
     }
@@ -167,6 +180,10 @@ W.dial = {
           this.v = 0;
           this.raf = null;
           this.paint();
+          if (this.live) {
+            this.live = false;
+            W.coalesce.now({ t: "strip_view", pos: null });
+          }
           return;
         }
         this.paint();
@@ -183,6 +200,7 @@ W.dial = {
       e.stopPropagation();
       try { pill.setPointerCapture(e.pointerId); } catch (_) {}
       if (this.raf != null) { cancelAnimationFrame(this.raf); this.raf = null; }
+      this.live = true;
       this.drag = { id: e.pointerId, a0: along(e), p0: this.p, last: along(e),
         t: performance.now(), v: 0, moved: false, icon: e.target.closest(".dialicon") };
       pill.classList.add("dragging");
@@ -208,7 +226,9 @@ W.dial = {
       pill.classList.remove("dragging");
       if (!d.moved) {
         const i = d.icon ? this.els.indexOf(d.icon) : -1;
-        if (i >= 0) { this.v = 0; this.springTo(i, true); }
+        // A tap on nothing still ends the gesture: spring home so the view is handed back.
+        this.v = 0;
+        this.springTo(i >= 0 ? i : Math.round(this.p), true);
         return;
       }
       this.v = d.v;

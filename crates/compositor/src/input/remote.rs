@@ -54,6 +54,7 @@ impl Wado {
                 rotation,
             } => self.pinch(phase, x, y, scale, rotation),
             InputEvent::WindowDrag { phase, x, y } => self.window_drag(phase, x, y),
+            InputEvent::StripView { pos } => self.strip_view(pos),
             InputEvent::GamepadButton { code, pressed } => {
                 // Discrete and human-paced, so it can be logged at info: this is the one
                 // trace that says a stroke crossed the wire and reached the host device.

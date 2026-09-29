@@ -56,6 +56,11 @@ impl Wado {
                 .unwrap_or(usize::MAX)
         };
         list.sort_by_key(|w| (column(w.id), w.id));
+        // In the strip the list *is* the row: the dial's slot i is column i, so dialogs (which
+        // float over their parent) stay out of it.
+        if self.placement == wado_protocol::Placement::Strip {
+            list.retain(|w| column(w.id) != usize::MAX);
+        }
         self.windows_tx.send_if_modified(|cur| {
             if *cur == list {
                 return false;
