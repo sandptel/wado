@@ -80,6 +80,9 @@ struct RelayCtx {
     /// tell a frame rate *it asked us to reduce* from a compositor that has stopped producing.
     /// Latest-value-wins and marked changed on attach, for the same reasons as `text_input`.
     shedding: tokio::sync::watch::Receiver<u32>,
+    /// The session's windows, forwarded as `RelayMsg::Windows`. Latest-value-wins state, the
+    /// same shape as `text_input`.
+    windows: tokio::sync::watch::Receiver<Vec<wado_protocol::WindowInfo>>,
     /// Bitrate actually written to the video track over the last stretch, in kbps. Forwarded to
     /// the viewer — see [`wado_protocol::RelayMsg::SentKbps`] for why it has to be.
     sent_kbps: tokio::sync::watch::Receiver<u32>,
@@ -119,6 +122,7 @@ pub fn start(
     timings: tokio::sync::watch::Receiver<wado_protocol::StageTimings>,
     text_input: tokio::sync::watch::Receiver<bool>,
     shedding: tokio::sync::watch::Receiver<u32>,
+    windows: tokio::sync::watch::Receiver<Vec<wado_protocol::WindowInfo>>,
     frame_rx: mpsc::Receiver<FrameMsg>,
     relay_url: String,
     remote_id: String,
@@ -139,7 +143,7 @@ pub fn start(
             };
             rt.block_on(async move {
                 if let Err(e) = run(
-                    cmd_tx, input_tx, timings, text_input, shedding, frame_rx, relay_url,
+                    cmd_tx, input_tx, timings, text_input, shedding, windows, frame_rx, relay_url,
                     remote_id, log_bus,
                 )
                 .await
@@ -157,6 +161,7 @@ async fn run(
     timings: tokio::sync::watch::Receiver<wado_protocol::StageTimings>,
     text_input: tokio::sync::watch::Receiver<bool>,
     shedding: tokio::sync::watch::Receiver<u32>,
+    windows: tokio::sync::watch::Receiver<Vec<wado_protocol::WindowInfo>>,
     mut frame_rx: mpsc::Receiver<FrameMsg>,
     relay_url: String,
     remote_id: String,
@@ -362,6 +367,7 @@ async fn run(
         log_bus,
         text_input,
         shedding,
+        windows,
         sent_kbps,
         queue_us,
         active_pc: Arc::new(Mutex::new(None)),
@@ -561,6 +567,26 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 let kbps = *rx.borrow_and_update();
                 if kbps > 0 {
                     let _ = send_relay_nowait(&out_tx_sk, &RelayMsg::SentKbps { kbps }).await;
+                }
+            }
+        })
+    };
+
+    // Same shape as the three above. Awaited rather than `nowait`: a dropped log line is
+    // replaced by the next one, but a dropped window list stays wrong until something else
+    // changes — the bar would show a closed app until the next focus change.
+    let windows_task = {
+        let mut rx = ctx.windows.clone();
+        let out_tx_w = out_tx.clone();
+        tokio::spawn(async move {
+            rx.mark_changed();
+            while rx.changed().await.is_ok() {
+                let windows = rx.borrow_and_update().clone();
+                if send_relay(&out_tx_w, &RelayMsg::Windows { windows })
+                    .await
+                    .is_err()
+                {
+                    break;
                 }
             }
         })
@@ -1020,6 +1046,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     text_input_task.abort();
     shedding_task.abort();
     sent_kbps_task.abort();
+    windows_task.abort();
     write_task.abort();
     Ok(())
 }

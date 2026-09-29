@@ -67,6 +67,13 @@ impl Wado {
         if action == WindowAction::CycleFocus {
             return self.cycle_focus();
         }
+        if let WindowAction::Focus { id } = action {
+            match self.window_by_id(id) {
+                Some(w) => self.focus_window(&w),
+                None => tracing::warn!(id, "focus ignored — no window with that id"),
+            }
+            return;
+        }
         let Some(window) = self.focused_window() else {
             tracing::warn!(?action, "window action ignored — nothing is focused");
             return;
@@ -80,7 +87,7 @@ impl Wado {
                     t.send_close();
                 }
             }
-            WindowAction::CycleFocus => unreachable!("handled above"),
+            WindowAction::CycleFocus | WindowAction::Focus { .. } => unreachable!("handled above"),
         }
     }
 

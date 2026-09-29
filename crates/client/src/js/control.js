@@ -38,3 +38,6 @@ W.launch = (command) =>
 // One of "maximize" | "minimize" | "close" | "cycle_focus", acting on the focused window.
 W.windowAction = (action) =>
   sendControl({ Window: action }, { type: "session_window", action });
+
+// Focus a window by its id from the window list (W.windows) — the bottom bar's tap.
+W.focusWindow = (id) => W.windowAction({ focus: { id } });

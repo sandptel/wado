@@ -50,6 +50,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             handles.timings,
             handles.text_input,
             handles.shedding,
+            handles.windows,
             frame_rx,
             relay_url,
             remote_id,
@@ -83,7 +84,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // for the next render tick to flush it (which quantised input to the frame period).
     // One flush per loop iteration, however many sources fired — cheaper than flushing
     // per event and it covers commands and Wayland traffic too.
-    event_loop.run(None, &mut state, |state| state.flush_clients())?;
+    event_loop.run(None, &mut state, |state| state.after_dispatch())?;
     Ok(())
 }
 

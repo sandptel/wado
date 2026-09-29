@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 /// HTTP endpoints the client talks to on the server. Shared as constants so the
 /// two sides cannot disagree on a path.
 pub use apps::AppEntry;
-pub use control::{SessionControl, WindowAction};
+pub use control::{SessionControl, WindowAction, WindowInfo};
 
 pub mod endpoints {
     /// `POST` a [`crate::SessionConfig`] (JSON) to start a session.

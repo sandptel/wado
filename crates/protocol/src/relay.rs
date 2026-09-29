@@ -221,6 +221,11 @@ pub enum RelayMsg {
     SessionLaunched,
     /// A window action was accepted.
     SessionWindowed,
+    /// The session's windows, in strip order. Sent whenever any window's id, title, app_id or
+    /// focus changes, and once when a viewer attaches — see [`crate::WindowInfo`].
+    Windows {
+        windows: Vec<crate::WindowInfo>,
+    },
     /// The launchable applications the server found.
     AppsList {
         apps: Vec<crate::AppEntry>,
@@ -412,6 +417,31 @@ mod wire_tests {
                 "{name} no longer parses"
             );
         }
+    }
+
+    #[test]
+    fn window_list_and_focus_wire_shape() {
+        let json = serde_json::to_value(RelayMsg::Windows {
+            windows: vec![crate::WindowInfo {
+                id: 7,
+                title: "Files".into(),
+                app_id: "org.gnome.Nautilus".into(),
+                focused: true,
+            }],
+        })
+        .unwrap();
+        assert_eq!(json["type"], "windows");
+        assert_eq!(json["windows"][0]["app_id"], "org.gnome.Nautilus");
+        // What js/relay.js sends when a bar icon is tapped.
+        let tap: RelayMsg =
+            serde_json::from_str(r#"{"type":"session_window","action":{"focus":{"id":7}}}"#)
+                .unwrap();
+        assert!(matches!(
+            tap,
+            RelayMsg::SessionWindow {
+                action: crate::WindowAction::Focus { id: 7 }
+            }
+        ));
     }
 
     #[test]
