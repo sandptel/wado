@@ -53,7 +53,6 @@ pub struct Saved {
     pub dial_orient: Option<String>,
     pub dial_pos: Option<String>,
     pub dial_count: Option<String>,
-    pub dial_hold: Option<String>,
 
     pub pad_on: Option<bool>,
     pub pad_mode: Option<String>,
@@ -113,7 +112,6 @@ pub fn snapshot(ui: Ui) -> Saved {
         dial_orient: Some((s.dial_orient)()),
         dial_pos: Some((s.dial_pos)()),
         dial_count: Some((s.dial_count)()),
-        dial_hold: Some((s.dial_hold)()),
 
         pad_on: Some((s.pad_on)()),
         pad_mode: Some((s.pad_mode)()),
@@ -189,7 +187,6 @@ pub fn restore(ui: Ui, saved: Saved) {
     put!(dial_orient);
     put!(dial_pos);
     put!(dial_count);
-    put!(dial_hold);
     put!(pad_on);
     put!(pad_mode);
     put!(pad_scale);

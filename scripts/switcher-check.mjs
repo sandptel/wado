@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 
 const src = readFileSync(new URL("../crates/client/src/js/switcher.js", import.meta.url), "utf8");
 const W = {};
+globalThis.document = { addEventListener() {} }; // the dial registers one listener at load
 new Function("W", src)(W);
 const M = W.dialMath;
 
