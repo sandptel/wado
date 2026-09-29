@@ -16,9 +16,9 @@
 // bounce with the dial. Once settled it hands the view back to focus-following, which by then
 // is the same place.
 //
-// Long-press an icon to act on *that* app: one fixed action (a setting — close by default)
-// springs out of the icon, perpendicular to the dial, on the side facing the screen. Lifting
-// performs it; a cancelled touch retracts it. One action, not a menu, by the user's choice.
+// Long-press an icon to act on *that* app: minimize, maximize and close spring out,
+// perpendicular to the dial and well clear of the thumb that is holding it. Slide onto one and
+// lift, or lift first and tap one; anything else (or a few seconds) tucks them away.
 //
 // Built by hand into a JS-owned mount, like the gamepad: it redraws every animation frame
 // while moving, which must not go through a Dioxus re-render. The physics and layout are pure
@@ -26,6 +26,10 @@
 
 // How long a still finger on an icon takes to become a long-press.
 const DIAL_HOLD_MS = 450;
+// The long-press buttons: how far out from the dial, and how far apart along it.
+const DIAL_ACTION_OUT = 112;
+const DIAL_ACTION_GAP = 56;
+const DIAL_ACTIONS = [["minimize", "—"], ["maximize", "◧"], ["close", "✕"]];
 
 W.dialMath = {
   // Pixels between neighbouring icon centres along the dial.
@@ -78,14 +82,13 @@ W.dial = {
   target: 0,
   raf: null,
   drag: null,
-  hold: "close",  // the long-press action: "close" | "maximize" | "minimize"
+  actions: null,  // the open long-press buttons: { pill, index, chips, timer }
   live: false,    // driving the compositor's view (a gesture, not an outside focus change)
   els: [],        // icon elements, strip order
   ids: "",        // the id list the elements were built for
 
   // Settings setter, from the Rust UI (see ui/live.rs).
-  configure(orient, pos, count, hold) {
-    this.hold = ["close", "maximize", "minimize"].includes(hold) ? hold : "close";
+  configure(orient, pos, count) {
     this.orient = orient === "horizontal" ? "horizontal" : "vertical";
     this.pos = pos || "bottom-right";
     this.count = +count === 5 ? 5 : 3;
@@ -215,6 +218,10 @@ W.dial = {
     pill.addEventListener("pointerdown", (e) => {
       e.preventDefault();
       e.stopPropagation();
+      // A tap on an open action button: do it. Anywhere else on the dial closes them first.
+      const chip = e.target.closest(".dialchip");
+      if (chip) { this.fireAction(chip); return; }
+      this.closeActions();
       try { pill.setPointerCapture(e.pointerId); } catch (_) {}
       if (this.raf != null) { cancelAnimationFrame(this.raf); this.raf = null; }
       this.live = true;
@@ -228,7 +235,11 @@ W.dial = {
     pill.addEventListener("pointermove", (e) => {
       const d = this.drag;
       if (!d || e.pointerId !== d.id) return;
-      if (d.chip) return; // armed: the dial stays put until the finger lifts
+      if (d.armed) {
+        // Armed: the dial stays put; the finger may slide onto a button to pick it.
+        this.hoverAction(e.clientX, e.clientY);
+        return;
+      }
       const a = along(e);
       if (Math.abs(a - d.a0) > 6) {
         d.moved = true;
@@ -249,9 +260,12 @@ W.dial = {
       this.drag = null;
       clearTimeout(d.holdTimer);
       pill.classList.remove("dragging");
-      if (d.chip) {
-        this.releaseHold(d, e.type !== "pointercancel");
-        return;
+      if (d.armed) {
+        this.handBack();
+        d.icon.classList.remove("held");
+        const over = e.type !== "pointercancel" && this.actionAt(e.clientX, e.clientY);
+        if (over) this.fireAction(over);
+        return; // otherwise the buttons stay out for a tap
       }
       if (!d.moved) {
         const i = d.icon ? this.els.indexOf(d.icon) : -1;
@@ -267,46 +281,87 @@ W.dial = {
     pill.addEventListener("pointercancel", end);
   },
 
-  // The long-press fired: spring the action chip out of the held icon.
+  // The long-press fired: spring minimize / maximize / close out of the held icon.
   armHold(pill, d) {
     const i = this.els.indexOf(d.icon);
     if (i < 0 || this.drag !== d) return;
-    d.index = i;
-    const chip = document.createElement("div");
-    chip.className = "dialchip";
-    chip.textContent = { close: "✕", maximize: "◧", minimize: "—" }[this.hold];
-    chip.title = this.hold;
-    // Along the dial: where the icon sits. Across it: out towards the middle of the screen.
+    d.armed = true;
+    d.icon.classList.add("held");
+    // Along the dial: centred on the icon, a button's width apart. Across it: far out towards
+    // the middle of the screen, so the thumb on the icon never covers them.
     const along = W.dialMath.item(i - this.p, (this.count - 1) / 2).offset;
     const vertical = this.orient === "vertical";
-    const out = 62 * (vertical ? (this.pos.includes("left") ? 1 : -1) : (this.pos.includes("top") ? 1 : -1));
-    const [ax, ay] = vertical ? [0, along] : [along, 0];
-    const [ox, oy] = vertical ? [out, 0] : [0, out];
-    chip.style.setProperty("--from", `translate(${ax}px, ${ay}px) scale(0.3)`);
-    chip.style.setProperty("--to", `translate(${ax + ox}px, ${ay + oy}px) scale(1)`);
-    pill.appendChild(chip);
-    d.chip = chip;
-    d.icon.classList.add("held");
+    const out = DIAL_ACTION_OUT * (vertical ? (this.pos.includes("left") ? 1 : -1)
+                                            : (this.pos.includes("top") ? 1 : -1));
+    const chips = DIAL_ACTIONS.map(([action, glyph], k) => {
+      const spread = (k - 1) * DIAL_ACTION_GAP;
+      const [ax, ay] = vertical ? [0, along] : [along, 0];
+      const [tx, ty] = vertical ? [out, along + spread] : [along + spread, out];
+      const chip = document.createElement("div");
+      chip.className = "dialchip " + action;
+      chip.dataset.action = action;
+      chip.textContent = glyph;
+      chip.title = action;
+      chip.style.setProperty("--from", `translate(${ax}px, ${ay}px) scale(0.3)`);
+      chip.style.setProperty("--to", `translate(${tx}px, ${ty}px) scale(1)`);
+      chip.style.animationDelay = `${k * 45}ms`; // they spring out one after another
+      pill.appendChild(chip);
+      return chip;
+    });
+    this.actions = { pill, index: i, chips, timer: setTimeout(() => this.closeActions(), 4000) };
     if (navigator.vibrate) navigator.vibrate(12);
   },
 
-  // Lift: perform the action on the held app. Cancel: tuck the chip back in.
-  releaseHold(d, fire) {
-    const w = W.windows[d.index];
-    d.icon.classList.remove("held");
-    // The press made the dial live, and a finger's jitter before the hold may have sent a view
-    // position — hand the strip back, or it stays pinned where that jitter left it.
+  // The button under a client point, if any.
+  actionAt(x, y) {
+    if (!this.actions) return null;
+    return this.actions.chips.find((c) => {
+      const r = c.getBoundingClientRect();
+      return x >= r.left && x < r.right && y >= r.top && y < r.bottom;
+    }) || null;
+  },
+
+  hoverAction(x, y) {
+    if (!this.actions) return;
+    const over = this.actionAt(x, y);
+    this.actions.chips.forEach((c) => c.classList.toggle("hover", c === over));
+  },
+
+  // Perform a button's action on the held app, then put the buttons away.
+  fireAction(chip) {
+    const a = this.actions;
+    if (!a) return;
+    const w = W.windows[a.index];
+    chip.classList.add("fired");
+    this.closeActions(chip);
+    if (!w) return;
+    // Window actions act on the focused window, so focus the held one first; both ride the
+    // same ordered socket, so the compositor sees them in this order.
+    if (!w.focused) W.focusWindow(w.id);
+    W.windowAction(chip.dataset.action);
+  },
+
+  // Tuck the buttons back in (all but `keep`, which is mid-"fired" animation).
+  closeActions(keep) {
+    const a = this.actions;
+    if (!a) return;
+    this.actions = null;
+    clearTimeout(a.timer);
+    a.chips.forEach((c) => {
+      if (c !== keep) c.classList.add("retract");
+      setTimeout(() => c.remove(), 240);
+    });
+    const held = this.els[a.index];
+    if (held) held.classList.remove("held");
+  },
+
+  // The press made the dial live, and a finger's jitter before the hold may have sent a view
+  // position — hand the strip back, or it stays pinned where that jitter left it.
+  handBack() {
     if (this.live) {
       this.live = false;
       W.coalesce.now({ t: "strip_view", pos: null });
     }
-    d.chip.classList.add(fire ? "fired" : "retract");
-    setTimeout(() => d.chip.remove(), 220);
-    if (!fire || !w) return;
-    // Window actions act on the focused window, so focus the held one first; the two ride the
-    // same ordered socket, so the compositor sees them in this order.
-    if (!w.focused) W.focusWindow(w.id);
-    W.windowAction(this.hold);
   },
 
   // The session is gone: nothing on the dial names a live window any more.
@@ -324,4 +379,10 @@ const iconFor = (appId) => {
 };
 
 W.onWindows = (list) => W.dial.render(list);
-W.setSwitcher = (orient, pos, count, hold) => W.dial.configure(orient, pos, count, hold);
+W.setSwitcher = (orient, pos, count) => W.dial.configure(orient, pos, count);
+
+// A tap anywhere off the dial puts open action buttons away (and is otherwise untouched).
+document.addEventListener("pointerdown", (e) => {
+  const a = W.dial.actions;
+  if (a && !a.pill.contains(e.target)) W.dial.closeActions();
+}, true);

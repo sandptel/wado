@@ -301,6 +301,23 @@ impl Wado {
         self.strip_relayout();
     }
 
+    /// Minimize, for a row of columns: send `window` to the end of the row and show the column
+    /// that was beside it. Reversible and still reachable from the dial, which is what
+    /// minimizing means when nothing can be hidden behind anything else.
+    pub(crate) fn strip_send_back(&mut self, window: &Window) {
+        let Some(i) = self.strip.iter().position(|c| &c.window == window) else {
+            return;
+        };
+        if self.strip.len() < 2 {
+            return;
+        }
+        let col = self.strip.remove(i);
+        self.strip.push(col);
+        // The neighbour that slid into its place, or the one before when it was already last.
+        let next = self.strip[i.min(self.strip.len() - 2)].window.clone();
+        self.focus_window(&next); // relayouts via the focus hook
+    }
+
     /// Size every column and map it at its place on the row, relative to the viewport.
     pub(crate) fn strip_relayout(&mut self) {
         let Some(geo) = self

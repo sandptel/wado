@@ -89,7 +89,7 @@ pub fn render(ui: Ui) -> Element {
                             },
                             "⛶"
                         }
-                        // Close / maximize / minimize moved to a long-press on the app's own
+                        // Minimize / maximize / close live on a long-press of the app's own
                         // icon in the switcher dial (js/switcher.js), which names the app.
                         button {
                             class: "barbtn",

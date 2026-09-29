@@ -34,11 +34,10 @@ pub fn apply(ui: Ui) {
         bridge::js(&(s.touch_mode)())
     ));
     bridge::call(format!(
-        "window.__wado.setSwitcher({}, {}, {}, {});",
+        "window.__wado.setSwitcher({}, {}, {});",
         bridge::js(&(s.dial_orient)()),
         bridge::js(&(s.dial_pos)()),
-        bridge::js(&(s.dial_count)()),
-        bridge::js(&(s.dial_hold)())
+        bridge::js(&(s.dial_count)())
     ));
     // Same shape as the two above, and for the same reason: it is a browser-side flag the
     // Rust side only stores. It re-reports the screen, so the resolution list follows it.
@@ -139,17 +138,6 @@ pub fn render(ui: Ui) -> Element {
             },
             option { value: "3", "3 apps visible" }
             option { value: "5", "5 apps visible" }
-        }
-        label { "Long-press an app on the switcher to" }
-        select {
-            value: "{(s.dial_hold)()}",
-            onchange: move |e| {
-                s.dial_hold.set(e.value());
-                apply(ui);
-            },
-            option { value: "close", "Close it" }
-            option { value: "maximize", "Maximize it (half / full width in the strip)" }
-            option { value: "minimize", "Minimize it" }
         }
     }
 }

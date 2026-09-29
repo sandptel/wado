@@ -91,9 +91,7 @@ impl Wado {
             WindowAction::Maximize if strip => self.strip_toggle_width(&window),
             WindowAction::Maximize => self.toggle_maximize(&window),
             // Nothing to lower in a row of columns; the bar is how you leave one.
-            WindowAction::Minimize if strip => {
-                tracing::debug!("minimize ignored in the strip")
-            }
+            WindowAction::Minimize if strip => self.strip_send_back(&window),
             WindowAction::Minimize => self.lower(&window),
             WindowAction::Close => {
                 if let Some(t) = window.toplevel() {
