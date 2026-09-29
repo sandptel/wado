@@ -10,8 +10,9 @@
 //   tap                 → left click, at the finger's down point
 //   second tap ≤300 ms  → left click snapped onto the first tap's point, so the toolkit sees a
 //                         double-click (a finger jitters further than its few-pixel tolerance)
-//   hold still ~500 ms  → release: right click. Drag instead: window move (until the phone
-//                         shell's strip replaces window moving)
+//   hold still ~500 ms  → release: right click. Drag instead: pick the item up — left pressed
+//                         where the hold began, pointer following the finger (select, drag
+//                         files), the way a phone's long-press-and-drag works
 //   one-finger drag     → finger-source scroll; the axis-stop on lift starts toolkit kinetics
 //   two fingers         → whichever commits first: the gap changing is a pinch (handed to
 //                         W.scrollg, as in raw mode), the primary moving is a press-and-drag —
@@ -69,7 +70,7 @@ W.touchp = {
       return;
     }
     // Pinch, owned by the two-finger scroll module. A further contact changes nothing.
-    if (g.state === "scroll" || g.second != null) return;
+    if (g.state === "scroll" || g.second != null || g.state === "hold-drag") return;
     if (g.holdTimer) { clearTimeout(g.holdTimer); g.holdTimer = null; }
     if (g.state === "pan") W.fingerScroll.stop(g.lastN);
     else if (g.state === "move") W.windowDragAt("up", g.lastClientX, g.lastClientY, video);
@@ -132,9 +133,15 @@ W.touchp = {
       if (n) g.lastN = n;
     } else if (g.state === "held") {
       if (dist <= MOVE_THRESHOLD) return;
-      g.state = "move";
-      W.windowDragAt("down", g.startClientX, g.startClientY, video); // grab the original window
-      W.windowDragAt("motion", e.clientX, e.clientY, video);
+      const n0 = W.normPoint(g.startClientX, g.startClientY, video);
+      if (!n0) return;
+      g.state = "hold-drag";
+      W.coalesce.now({ t: "button", x: n0.x, y: n0.y, button: "left", pressed: true });
+      const n = W.normPoint(e.clientX, e.clientY, video);
+      if (n) W.coalesce.queue("pointer_motion", { t: "pointer_motion", x: n.x, y: n.y });
+    } else if (g.state === "hold-drag") {
+      const n = W.normPoint(e.clientX, e.clientY, video);
+      if (n) W.coalesce.queue("pointer_motion", { t: "pointer_motion", x: n.x, y: n.y });
     } else if (g.state === "move") {
       W.windowDragAt("motion", e.clientX, e.clientY, video);
     }
@@ -168,6 +175,9 @@ W.touchp = {
     } else if (g.state === "held") {
       const n = W.normPoint(g.startClientX, g.startClientY, video);
       if (n) clickAt(n, "right");
+    } else if (g.state === "hold-drag") {
+      const n = W.normPoint(e.clientX, e.clientY, video);
+      if (n) W.coalesce.now({ t: "button", x: n.x, y: n.y, button: "left", pressed: false });
     } else if (g.state === "move") {
       W.windowDragAt("up", e.clientX, e.clientY, video);
     }
