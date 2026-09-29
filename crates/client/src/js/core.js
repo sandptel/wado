@@ -43,6 +43,8 @@ W.fpsLock = false;
 W.showTouches = false;
 W.scrollSpeed = 1.0;
 W.naturalScroll = false;
+// "pointer" (translated gestures, input_tap.js) or "touch" (raw wl_touch, input_touch.js).
+W.touchMode = "pointer";
 
 const emit = (msg) => { try { dioxus.send(msg); } catch (_) {} };
 const status = (text) => emit({ type: "status", text });

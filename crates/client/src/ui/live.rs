@@ -29,6 +29,10 @@ pub fn apply(ui: Ui) {
         (s.scroll_speed)(),
         (s.natural_scroll)()
     ));
+    bridge::call(format!(
+        "window.__wado.setTouchMode({});",
+        bridge::js(&(s.touch_mode)())
+    ));
     // Same shape as the two above, and for the same reason: it is a browser-side flag the
     // Rust side only stores. It re-reports the screen, so the resolution list follows it.
     bridge::call(format!(
@@ -82,6 +86,17 @@ pub fn render(ui: Ui) -> Element {
                 },
             }
             " Natural scroll direction"
+        }
+
+        label { "Touch" }
+        select {
+            value: "{(s.touch_mode)()}",
+            onchange: move |e| {
+                s.touch_mode.set(e.value());
+                apply(ui);
+            },
+            option { value: "pointer", "Gestures (tap, hold for right-click, drag to scroll)" }
+            option { value: "touch", "Raw touch (for touch-native apps)" }
         }
     }
 }

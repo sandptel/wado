@@ -2,8 +2,9 @@
 //
 // Attaches DOM listeners to the <video> once and routes each event to the right subsystem,
 // keyed on PointerEvent.pointerType: a real **mouse** drives the cursorless wl_pointer
-// (W.mouse, see input_pointer.js); **touch/pen** drive wl_touch gestures (W.touchg, see
-// input_touch.js); the keyboard goes to W.kbd (input_keyboard.js). Coordinates are normalized
+// (W.mouse, see input_pointer.js); **touch/pen** drive either the translated-pointer gestures
+// (W.touchp, input_tap.js — the default) or raw wl_touch (W.touchg, input_touch.js), per
+// W.touchMode; the keyboard goes to W.kbd (input_keyboard.js). Coordinates are normalized
 // 0..1 against the displayed video *content* rect (object-fit:contain letterbox math) so the
 // server scales 1:1 to the output. wado renders no cursor.
 
@@ -57,6 +58,8 @@ W.setupInputCapture = () => {
   video.style.touchAction = "none"; // stop browser pan/zoom so we get raw pointer events
 
   const isMouse = (e) => e.pointerType === "mouse";
+  // Read per event, so switching the setting mid-session takes effect on the next contact.
+  const touch = () => (W.touchMode === "touch" ? W.touchg : W.touchp);
 
   video.addEventListener("pointerdown", (e) => {
     e.preventDefault();
@@ -64,18 +67,18 @@ W.setupInputCapture = () => {
     try { video.setPointerCapture(e.pointerId); } catch (_) {}
     W.activePointers.add(e.pointerId);
     if (W.showTouches) W.overlay.mark(e.clientX, e.clientY);
-    (isMouse(e) ? W.mouse.down : W.touchg.down)(e, video);
+    if (isMouse(e)) W.mouse.down(e, video); else touch().down(e, video);
   });
   video.addEventListener("pointermove", (e) => {
     // Mouse hover fires with no button down; touch only while a contact is held.
     if (!isMouse(e) && !W.activePointers.has(e.pointerId)) return;
-    (isMouse(e) ? W.mouse.move : W.touchg.move)(e, video);
+    if (isMouse(e)) W.mouse.move(e, video); else touch().move(e, video);
   });
   const end = (e) => {
     const had = W.activePointers.delete(e.pointerId);
     try { video.releasePointerCapture(e.pointerId); } catch (_) {}
     if (!isMouse(e) && !had) return;
-    (isMouse(e) ? W.mouse.up : W.touchg.up)(e, video);
+    if (isMouse(e)) W.mouse.up(e, video); else touch().up(e, video);
   };
   video.addEventListener("pointerup", end);
   video.addEventListener("pointercancel", end);

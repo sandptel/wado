@@ -27,6 +27,45 @@ const SCROLL_DEADZONE = 2;
 const PINCH_DEADZONE = 0.01;    // fraction of the starting gap
 const ROTATE_DEADZONE = 0.5;    // degrees
 
+// Finger-source axis emission, shared by this two-finger scroll and the one-finger pan in
+// input_tap.js so both spend a finger's movement through the same conversion.
+W.fingerScroll = {
+  // Send the axis for a (dx, dy) CSS-pixel movement at a client point. Returns the normalized
+  // point it was sent at (the caller keeps it for `stop`), or null when off the video.
+  delta(dx, dy, clientX, clientY, video) {
+    const n = W.normPoint(clientX, clientY, video);
+    if (!n) return null;
+    // Content follows the finger, which is what a touchscreen means by scrolling — so the
+    // delta is negated before the shared direction/speed settings are applied. Routed through
+    // the same W.naturalScroll and W.scrollSpeed as the wheel so one setting governs both.
+    const sign = W.naturalScroll ? -1 : 1;
+    // Gain from the speed of the drag, so a slow adjustment stays precise and a flick still
+    // crosses the page — see input_accel.js. Taken once from the combined magnitude rather
+    // than per axis, or a diagonal drag would accelerate its two axes by different amounts
+    // and curve away from the finger.
+    // `cssToLogical` is what makes the content keep up with the finger: dx is in the viewer's
+    // CSS pixels and the axis is consumed in the session's logical ones. See input_units.js.
+    const speed =
+      (W.scrollSpeed || 1) * W.scrollAccel.gain(Math.hypot(dx, dy)) * W.cssToLogical(video);
+    W.sendInput({
+      t: "scroll",
+      x: n.x,
+      y: n.y,
+      dx: -dx * speed * sign,
+      dy: -dy * speed * sign,
+      source: "finger",
+    });
+    return n;
+  },
+
+  // Terminate the axis. Without it a toolkit keeps waiting for more deltas and never starts
+  // the kinetic phase, so a flick just stops dead where the finger left off.
+  stop(n) {
+    if (!n) return;
+    W.sendInput({ t: "scroll", x: n.x, y: n.y, dx: 0, dy: 0, source: "finger", stop: true });
+  },
+};
+
 W.scrollg = {
   // Take over from the primary-contact FSM. Called on the second pointerdown.
   begin(e, video) {
@@ -109,29 +148,8 @@ W.scrollg = {
     g.anchorX = mx;
     g.anchorY = my;
 
-    const n = W.normPoint(mx, my, video);
-    if (!n) return true;
-    // Content follows the finger, which is what a touchscreen means by scrolling — so the
-    // delta is negated before the shared direction/speed settings are applied. Routed through
-    // the same W.naturalScroll and W.scrollSpeed as the wheel so one setting governs both.
-    const sign = W.naturalScroll ? -1 : 1;
-    // Gain from the speed of the drag, so a slow adjustment stays precise and a flick still
-    // crosses the page — see input_accel.js. Taken once from the combined magnitude rather
-    // than per axis, or a diagonal drag would accelerate its two axes by different amounts
-    // and curve away from the finger.
-    // `cssToLogical` is what makes the content keep up with the finger: dx is in the viewer's
-    // CSS pixels and the axis is consumed in the session's logical ones. See input_units.js.
-    const speed =
-      (W.scrollSpeed || 1) * W.scrollAccel.gain(Math.hypot(dx, dy)) * W.cssToLogical(video);
-    W.sendInput({
-      t: "scroll",
-      x: n.x,
-      y: n.y,
-      dx: -dx * speed * sign,
-      dy: -dy * speed * sign,
-      source: "finger",
-    });
-    g.lastN = n;
+    const n = W.fingerScroll.delta(dx, dy, mx, my, video);
+    if (n) g.lastN = n;
     return true;
   },
 
@@ -150,19 +168,7 @@ W.scrollg = {
         });
         g.pinchOn = false;
       }
-      // Terminate the axis. Without it a toolkit keeps waiting for more deltas and never
-      // starts the kinetic phase, so a flick just stops dead where the finger left off.
-      if (g.lastN) {
-        W.sendInput({
-          t: "scroll",
-          x: g.lastN.x,
-          y: g.lastN.y,
-          dx: 0,
-          dy: 0,
-          source: "finger",
-          stop: true,
-        });
-      }
+      W.fingerScroll.stop(g.lastN);
       W.gesture = null;
       return true;
     }

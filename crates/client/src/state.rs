@@ -109,6 +109,9 @@ pub struct Settings {
     /// re-sized once started (invariant #8), so this only ever affects the next Start.
     pub orientation: Signal<String>,
     pub natural_scroll: Signal<bool>,
+    /// What a finger is to the session: `pointer` (gestures translated to clicks, scrolls and
+    /// drags — `js/input_tap.js`) or `touch` (raw `wl_touch` — `js/input_touch.js`).
+    pub touch_mode: Signal<String>,
 
     // ── appearance ──────────────────────────────────────────────────────────────
     /// Bundled base16 scheme name; ignored while `theme_custom` parses.
@@ -181,6 +184,7 @@ impl Settings {
             scroll_speed: use_signal(|| 0.35),
             orientation: use_signal(|| "auto".to_string()),
             natural_scroll: use_signal(|| false),
+            touch_mode: use_signal(|| "pointer".to_string()),
 
             pad_on: use_signal(|| false),
             // Keys, not pad: the uinput device needs the daemon's user in the `uinput` group,

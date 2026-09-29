@@ -59,6 +59,9 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/input_touch.js"),
     "\n",
+    // After `input_touch`, which defines `W.windowDragAt`.
+    include_str!("js/input_tap.js"),
+    "\n",
     include_str!("js/input_scroll.js"),
     "\n",
     include_str!("js/input_keyboard.js"),

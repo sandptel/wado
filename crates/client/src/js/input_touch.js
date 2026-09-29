@@ -1,4 +1,5 @@
-// wado bridge — touchscreen gestures (pointerType "touch"/"pen"). A per-primary-contact FSM:
+// wado bridge — RAW touchscreen mode (touch mode "touch"; the default is input_tap.js). A
+// per-primary-contact FSM:
 //   • plain press/drag        → wl_touch contact
 //   • press-hold ~500ms still → retract (CancelTouch), then drag → window move, release →
 //     right-click
@@ -16,14 +17,15 @@ const touchAt = (id, phase, clientX, clientY, video) => {
   if (phase === "motion") W.coalesce.queue("touch:" + id, ev);
   else W.coalesce.now(ev);
 };
-const dragAt = (phase, clientX, clientY, video) => {
+// Shared with input_tap.js, whose press-hold-drag moves windows the same way.
+const dragAt = (W.windowDragAt = (phase, clientX, clientY, video) => {
   const n = W.normPoint(clientX, clientY, video);
   if (!n) return;
   const ev = { t: "window_drag", phase, x: n.x, y: n.y };
   // Motion coalesces (newest position wins); down/up must arrive, and in order.
   if (phase === "motion") W.coalesce.queue("window_drag", ev);
   else W.coalesce.now(ev);
-};
+});
 // Primary-contact hold fired: retract the tap and arm hold (→ move or right-click). The one
 // gesture transition with no motion and nothing sent that a viewer could otherwise see, so it
 // gets its own overlay mark — see `overlay.holdRing`.
