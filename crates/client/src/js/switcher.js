@@ -149,6 +149,14 @@ W.dial = {
       el.style.pointerEvents = s.opacity > 0.05 ? "auto" : "none";
       el.classList.toggle("centre", i === centre);
     });
+    // Switch the moment a window reaches the centre under the finger, not on release: the
+    // dial is a selector, and waiting for the hand to lift made it feel like a preview. Only
+    // while dragging — a flick's spring passes through windows it is not stopping at.
+    if (this.drag && centre !== this.drag.centre) {
+      this.drag.centre = centre;
+      const w = W.windows[centre];
+      if (w && !w.focused) W.focusWindow(w.id);
+    }
     // Coalesced per frame on the reliable channel: a late position arriving after the
     // hand-back below would leave the view stuck mid-slide, so these must stay ordered.
     if (this.live) W.coalesce.queue("strip_view", { t: "strip_view", pos: this.p });
@@ -202,7 +210,8 @@ W.dial = {
       if (this.raf != null) { cancelAnimationFrame(this.raf); this.raf = null; }
       this.live = true;
       this.drag = { id: e.pointerId, a0: along(e), p0: this.p, last: along(e),
-        t: performance.now(), v: 0, moved: false, icon: e.target.closest(".dialicon") };
+        t: performance.now(), v: 0, moved: false, icon: e.target.closest(".dialicon"),
+        centre: Math.round(Math.max(0, Math.min(this.els.length - 1, this.p))) };
       pill.classList.add("dragging");
     });
     pill.addEventListener("pointermove", (e) => {
