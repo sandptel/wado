@@ -390,3 +390,40 @@ pub enum RelayMsg {
         message: String,
     },
 }
+
+/// The JS client builds and matches these `type` strings by hand, so a renamed variant
+/// breaks the relay path silently. Pin the names the client depends on.
+#[cfg(test)]
+mod wire_tests {
+    use super::RelayMsg;
+
+    #[test]
+    fn unit_requests_parse_from_bare_type() {
+        for name in [
+            "timing_request",
+            "apps_request",
+            "session_stop",
+            "session_rejoin",
+            "pty_close",
+        ] {
+            let json = format!(r#"{{"type":"{name}"}}"#);
+            assert!(
+                serde_json::from_str::<RelayMsg>(&json).is_ok(),
+                "{name} no longer parses"
+            );
+        }
+    }
+
+    #[test]
+    fn timing_round_trips_with_queue_ms() {
+        let mut timings = crate::StageTimings::default();
+        timings.queue_ms = 1.5;
+        let json = serde_json::to_value(RelayMsg::Timing { timings }).unwrap();
+        assert_eq!(json["type"], "timing");
+        assert_eq!(json["timings"]["queue_ms"], 1.5);
+        match serde_json::from_value(json).unwrap() {
+            RelayMsg::Timing { timings } => assert_eq!(timings.queue_ms, 1.5),
+            other => panic!("round-trip gave {other:?}"),
+        }
+    }
+}
