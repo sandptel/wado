@@ -65,6 +65,8 @@ W.touchp = {
         // is committed. A pointer motion can never need retracting.
         const n = W.normPoint(e.clientX, e.clientY, video);
         if (n) W.coalesce.queue("pointer_motion", { t: "pointer_motion", x: n.x, y: n.y });
+        // Ask now what is under the finger, so the answer is back by the time it lifts.
+        if (W.targets) ng.ticket = W.targets.ask(e.clientX, e.clientY, video);
       }
       W.gesture = ng;
       return;
@@ -161,6 +163,9 @@ W.touchp = {
       if (g.state === "drag2") {
         const n = W.normPoint(g.p1.x, g.p1.y, video);
         if (n) W.coalesce.now({ t: "button", x: n.x, y: n.y, button: "left", pressed: false });
+      } else if (W.lens) {
+        // Two fingers down and up without moving: the lens, on demand, between them.
+        W.lens.open((g.p1.x + g.p2.x) / 2, (g.p1.y + g.p2.y) / 2);
       }
       if (W.showTouches) W.overlay.trailEnd(g.id);
       W.gesture = null;
@@ -196,13 +201,31 @@ W.touchp = {
       n = W.normPoint(g.startClientX, g.startClientY, video);
     }
     if (!n) return;
-    clickAt(n, "left");
+    const snapped = prev && n === prev.n;
     // Chained from the first tap's position, so a triple-tap stays on the same spot too.
+    // Recorded before any waiting below, so a quick second tap already sees it.
     this.lastTap = {
       t: now,
-      clientX: prev && n === prev.n ? prev.clientX : g.startClientX,
-      clientY: prev && n === prev.n ? prev.clientY : g.startClientY,
+      clientX: snapped ? prev.clientX : g.startClientX,
+      clientY: snapped ? prev.clientY : g.startClientY,
       n,
     };
+    // The second tap of a double is already aimed — at the first. Only a fresh tap consults
+    // the targets (see targets.js), and only when that machinery is loaded.
+    if (snapped || g.ticket == null || !W.targets) { clickAt(n, "left"); return; }
+    const cx = g.startClientX, cy = g.startClientY;
+    W.targets.wait(g.ticket).then((targets) => {
+      const k = W.targets.content(video);
+      if (targets === null) {
+        // No tree for this app: judge the pixels instead.
+        if (W.lens && W.lens.dense(cx, cy)) W.lens.open(cx, cy);
+        else clickAt(n, "left");
+        return;
+      }
+      const size = (t) => ({ w: t.w * (k ? k.w : 1), h: t.h * (k ? k.h : 1) });
+      const d = W.decideTap(n, targets, size);
+      if (d.kind === "lens" && W.lens) W.lens.open(cx, cy);
+      else clickAt(d.at || n, "left");
+    });
   },
 };

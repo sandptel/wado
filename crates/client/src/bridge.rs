@@ -62,6 +62,13 @@ pub const JS: &str = concat!(
     // After `input_touch`, which defines `W.windowDragAt`.
     include_str!("js/input_tap.js"),
     "\n",
+    // After `relay.js` (for `W.relayOn`) and before any tap is taken.
+    include_str!("js/targets.js"),
+    "\n",
+    include_str!("js/lens.js"),
+    "\n",
+    include_str!("js/menu_sheet.js"),
+    "\n",
     include_str!("js/input_scroll.js"),
     "\n",
     include_str!("js/input_keyboard.js"),

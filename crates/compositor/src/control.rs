@@ -58,6 +58,12 @@ pub enum CompositorCommand {
     /// launches something, which is exactly when the answer can have changed and someone is
     /// looking. A periodic push would run for every viewer whether or not the drawer is open.
     RunningApps { reply: oneshot::Sender<Vec<String>> },
+    /// The window under a normalized point, for an accessibility query — see [`crate::hit`].
+    HitWindow {
+        x: f64,
+        y: f64,
+        reply: oneshot::Sender<Option<crate::hit::HitWindow>>,
+    },
     /// Make the next encoded frame a forced IDR keyframe. Sent when a viewer
     /// connects or the browser requests one via RTCP PLI/FIR.
     ForceKeyframe,
@@ -127,6 +133,9 @@ pub fn handle_command(state: &mut Wado, cmd: CompositorCommand, frame_tx: &mpsc:
                 .then(|| headless::running_apps(state))
                 .unwrap_or_default();
             let _ = reply.send(running);
+        }
+        CompositorCommand::HitWindow { x, y, reply } => {
+            let _ = reply.send(state.hit_window(x, y));
         }
         CompositorCommand::ForceKeyframe => headless::force_keyframe(state),
         CompositorCommand::ViewerAttached(attached) => {

@@ -128,6 +128,8 @@ pub struct Wado {
     pub shedding_tx: tokio::sync::watch::Sender<u32>,
     /// The window list for the viewer's bottom bar — see [`crate::window_list`].
     pub windows_tx: tokio::sync::watch::Sender<Vec<wado_protocol::WindowInfo>>,
+    /// The menu open on the focused window, for the S7 menu sheet — see [`crate::hit`].
+    pub menu_tx: tokio::sync::watch::Sender<Option<crate::hit::MenuSpot>>,
     /// Stable per-window ids for that list. Never reused within a process.
     pub window_ids: std::collections::HashMap<Window, u64>,
     pub next_window_id: u64,
@@ -329,6 +331,7 @@ impl Wado {
             self.strip_tick();
         }
         self.publish_windows();
+        self.publish_menu();
     }
 
     pub fn flush_clients(&mut self) {
@@ -419,6 +422,7 @@ impl Wado {
             text_input_tx: tokio::sync::watch::channel(false).0,
             shedding_tx: tokio::sync::watch::channel(1).0,
             windows_tx: tokio::sync::watch::channel(Vec::new()).0,
+            menu_tx: tokio::sync::watch::channel(None).0,
             window_ids: std::collections::HashMap::new(),
             next_window_id: 0,
             strip: Vec::new(),

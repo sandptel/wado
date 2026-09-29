@@ -8,7 +8,9 @@
 
 pub mod apps;
 pub mod control;
+pub mod menu;
 pub mod relay;
+pub mod targets;
 
 use serde::{Deserialize, Serialize};
 
@@ -16,6 +18,8 @@ use serde::{Deserialize, Serialize};
 /// two sides cannot disagree on a path.
 pub use apps::AppEntry;
 pub use control::{SessionControl, WindowAction, WindowInfo};
+pub use menu::{MenuItem, MenuSheet};
+pub use targets::Target;
 
 pub mod endpoints {
     /// `POST` a [`crate::SessionConfig`] (JSON) to start a session.
