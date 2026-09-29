@@ -84,6 +84,11 @@ if it was maximized first.
 
 ### Changed
 
+**Housekeeping.** The workspace is now `cargo fmt`-clean. The server's 31 KB control-plane
+module was split into one file per job (routes, WebRTC offer, frame pump, log stream, HTTP
+writers, viewer watchdog). There are new tests for the encoder fallback ladder and for the
+relay message names the web client depends on.
+
 **The gamepad tells you it was pressed.** A pressed control now grows and throws a ring wider
 than the fingertip covering it — the old feedback was a colour change under the thumb that
 pressed it. Done with the `scale` property rather than a `transform`, so it survives a control
@@ -136,6 +141,12 @@ frame with the ring on screen, 1 without. Rebuilding the elements each tick woul
 every frame a full-screen repaint.
 
 ### Fixed
+
+**The latency breakdown's queue leg is real over the relay.** Debug → *Latency breakdown*
+always showed `queue 0 ms` for relay sessions. The relay pump measured how long each frame
+waited before it was sent and then discarded the number, so the zero came from the
+compositor, which cannot see that wait. The relay path now reports the same smoothed value
+as a direct connection. It is the leg that grows first when the sender falls behind.
 
 **Both analog sticks can move at once.** In "real controller" mode the two sticks shared one
 slot in the input coalescer, so a sample from one could replace a sample from the other and
