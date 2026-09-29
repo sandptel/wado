@@ -126,6 +126,11 @@ pub struct Wado {
     /// the strip read `bad the server — only 816 kbps arriving of 5.7 Mbps` about a frame rate
     /// the phone itself had asked for three seconds earlier.
     pub shedding_tx: tokio::sync::watch::Sender<u32>,
+    /// The window list for the viewer's bottom bar — see [`crate::window_list`].
+    pub windows_tx: tokio::sync::watch::Sender<Vec<wado_protocol::WindowInfo>>,
+    /// Stable per-window ids for that list. Never reused within a process.
+    pub window_ids: std::collections::HashMap<Window, u64>,
+    pub next_window_id: u64,
     /// Per-surface content-type change log. Cleared on session stop.
     pub content_type_log: crate::handlers::content_type::ContentTypeLog,
     /// `CLOCK_MONOTONIC`, read for presentation timestamps. `start_time.elapsed()` is *not*
@@ -304,6 +309,13 @@ impl Wado {
         });
     }
 
+    /// Everything that must run after each event-loop dispatch: the client flush below, and
+    /// republishing the window list, whose inputs change on every kind of dispatch.
+    pub fn after_dispatch(&mut self) {
+        self.flush_clients();
+        self.publish_windows();
+    }
+
     pub fn flush_clients(&mut self) {
         let _ = self.display_handle.flush_clients();
     }
@@ -391,6 +403,9 @@ impl Wado {
             text_inputs: Default::default(),
             text_input_tx: tokio::sync::watch::channel(false).0,
             shedding_tx: tokio::sync::watch::channel(1).0,
+            windows_tx: tokio::sync::watch::channel(Vec::new()).0,
+            window_ids: std::collections::HashMap::new(),
+            next_window_id: 0,
             clock,
             frame_seq: 0,
             presentation_logged: false,

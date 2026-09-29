@@ -42,6 +42,7 @@ pub mod sink;
 pub mod state;
 pub mod timing;
 mod window;
+pub mod window_list;
 
 use std::panic::AssertUnwindSafe;
 
@@ -89,6 +90,8 @@ pub struct CompositorHandles {
     /// The render-tick divisor in force — see [`congestion`]. Forwarded to the viewer so it can
     /// tell a frame rate *it asked us to reduce* from a compositor that has stopped producing.
     pub shedding: tokio::sync::watch::Receiver<u32>,
+    /// The window list — see [`window_list`]. Latest-value-wins state, like `text_input`.
+    pub windows: tokio::sync::watch::Receiver<Vec<wado_protocol::WindowInfo>>,
 }
 
 /// Build the compositor: create the event loop, display, and [`Wado`] state, claim the
@@ -175,6 +178,7 @@ pub fn build(
 
     let text_input = state.text_input_tx.subscribe();
     let shedding = state.shedding_tx.subscribe();
+    let windows = state.windows_tx.subscribe();
     Ok((
         event_loop,
         state,
@@ -184,6 +188,7 @@ pub fn build(
             timings,
             text_input,
             shedding,
+            windows,
         },
     ))
 }

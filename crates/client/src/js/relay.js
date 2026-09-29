@@ -395,6 +395,14 @@ W.relayOn("session_stopped", () => {
 // the phone keyboard on a text field without anyone pressing ⌨.
 W.relayOn("text_input", (msg) => W.textInput(!!msg.active));
 
+// The session's windows, in strip order: [{ id, title, app_id, focused }]. State, re-sent whole
+// on every change and on attach. `W.onWindows` is the bottom bar's hook.
+W.windows = [];
+W.relayOn("windows", (msg) => {
+  W.windows = msg.windows || [];
+  if (W.onWindows) W.onWindows(W.windows);
+});
+
 // The compositor is sending 1 render tick in N. The verdict has to know, or it measures the
 // effect of a mitigation this phone asked for and reports it as the server failing.
 W.relayOn("shedding", (msg) => W.setShedding(msg.divisor));

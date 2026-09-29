@@ -47,6 +47,27 @@ pub enum WindowAction {
     Close,
     /// Focus and raise the next window in the stack.
     CycleFocus,
+    /// Focus and raise the window with this [`WindowInfo::id`] — the bottom bar's tap target.
+    /// An id that no longer exists is a logged no-op: the list the viewer tapped can be a
+    /// moment older than the window it names.
+    Focus { id: u64 },
+}
+
+/// One toplevel, as the viewer sees it in the window list.
+///
+/// State, not events: the compositor publishes the whole list whenever any field changes, so
+/// a viewer attaching mid-session is handed the current windows rather than a history.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WindowInfo {
+    /// Stable for the window's lifetime, never reused within a session.
+    pub id: u64,
+    /// `xdg_toplevel.title`; empty until the app sets one.
+    pub title: String,
+    /// `xdg_toplevel.app_id`, which by convention is the `.desktop` file's basename. Empty
+    /// until the app sets one — the client falls back to a letter tile.
+    pub app_id: String,
+    /// Holds keyboard focus. At most one window in a list has this set.
+    pub focused: bool,
 }
 
 #[cfg(test)]
