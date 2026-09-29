@@ -39,5 +39,13 @@ W.launch = (command) =>
 W.windowAction = (action) =>
   sendControl({ Window: action }, { type: "session_window", action });
 
+// The bar's Back, Android-style: the keyboard goes first if it is up; otherwise the
+// compositor decides between dismissing (Escape) and the app's own back (Alt+Left).
+W.back = () => {
+  const osk = document.getElementById("wado-osk");
+  if (osk && document.activeElement === osk) { W.oskClose(); return; }
+  W.windowAction("back");
+};
+
 // Focus a window by its id from the window list (W.windows) — the bottom bar's tap.
 W.focusWindow = (id) => W.windowAction({ focus: { id } });

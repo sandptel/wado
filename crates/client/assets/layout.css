@@ -339,3 +339,9 @@ label.barbtn.off { color: var(--base03); pointer-events: none; }
   /* Wider than the button it hangs off, so it must not be clipped by the bar's own rounding. */
   white-space: nowrap;
 }
+
+/* The three-button bar (ui/bar.rs): a little wider apart than the old row of nine, since each is
+ * now pressed often. The More sheet wraps into a grid instead of one long row. */
+.barbtn.nav { min-width: 52px; }
+#wado-bar { gap: 14px; }
+.barsheet { flex-wrap: wrap; width: min(272px, 80vw); justify-content: center; left: 0; transform: none; }

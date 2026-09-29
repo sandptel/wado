@@ -191,6 +191,10 @@ pub fn run(ui: Ui) {
                     let on = msg.get("on").and_then(|v| v.as_bool()).unwrap_or(false);
                     live.osk_on.set(on);
                 }
+                "text_wanted" => {
+                    let on = msg.get("on").and_then(|v| v.as_bool()).unwrap_or(false);
+                    live.text_wanted.set(on);
+                }
                 "phase" => {
                     // Monotonic: a late stray message must not walk the indicator backwards.
                     let n = num("stage").unwrap_or(0.0) as u8;

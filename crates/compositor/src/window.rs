@@ -70,6 +70,9 @@ impl Wado {
         if action == WindowAction::CycleFocus {
             return self.cycle_focus();
         }
+        if action == WindowAction::Back {
+            return self.back();
+        }
         if let WindowAction::Focus { id } = action {
             match self.window_by_id(id) {
                 Some(w) => self.focus_window(&w),
@@ -98,7 +101,9 @@ impl Wado {
                     t.send_close();
                 }
             }
-            WindowAction::CycleFocus | WindowAction::Focus { .. } => unreachable!("handled above"),
+            WindowAction::CycleFocus | WindowAction::Focus { .. } | WindowAction::Back => {
+                unreachable!("handled above")
+            }
         }
     }
 
@@ -161,6 +166,37 @@ impl Wado {
         });
         toplevel.send_pending_configure();
         self.space.map_element(window.clone(), geo.loc, true);
+    }
+
+    /// Android's Back, for desktop apps: undo the top-most thing. A popup or a dialog is
+    /// dismissed with Escape, which every toolkit honours for both; with neither, Alt+Left is
+    /// the near-universal "go back" (browser history, parent folder, previous settings page).
+    fn back(&mut self) {
+        const ESC: u32 = 1;
+        const LEFT_ALT: u32 = 56;
+        const LEFT: u32 = 105;
+        let Some(window) = self.focused_window() else {
+            tracing::warn!("back ignored — nothing is focused");
+            return;
+        };
+        let Some(toplevel) = window.toplevel() else {
+            return;
+        };
+        let popup_open = smithay::desktop::PopupManager::popups_for_surface(toplevel.wl_surface())
+            .next()
+            .is_some();
+        let dialog = toplevel.parent().is_some();
+        if popup_open || dialog {
+            tracing::debug!(popup_open, dialog, "back → Escape");
+            self.key(ESC, true);
+            self.key(ESC, false);
+        } else {
+            tracing::debug!("back → Alt+Left");
+            self.key(LEFT_ALT, true);
+            self.key(LEFT, true);
+            self.key(LEFT, false);
+            self.key(LEFT_ALT, false);
+        }
     }
 
     /// Send `window` to the bottom of the stack and focus whatever is now on top.
