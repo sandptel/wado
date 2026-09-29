@@ -3,9 +3,11 @@
 //! `wado-compositor` crate; this crate drives it only through the typed command/frame
 //! boundary (see [`website::start`]).
 
+pub mod a11y;
 pub mod apps;
 pub mod error;
 pub mod ice;
+pub mod menu_sheet;
 pub mod nat;
 pub mod panic_log;
 pub mod pty;

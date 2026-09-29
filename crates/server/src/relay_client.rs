@@ -28,7 +28,7 @@ use futures_util::{FutureExt, SinkExt, StreamExt};
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message as WsMsg;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use webrtc::api::interceptor_registry::register_default_interceptors;
 use webrtc::api::media_engine::{MIME_TYPE_H264, MediaEngine};
 use webrtc::api::{API, APIBuilder};
@@ -83,6 +83,8 @@ struct RelayCtx {
     /// The session's windows, forwarded as `RelayMsg::Windows`. Latest-value-wins state, the
     /// same shape as `text_input`.
     windows: tokio::sync::watch::Receiver<Vec<wado_protocol::WindowInfo>>,
+    /// The menu open on the focused window, read into a sheet for the phone (M-P S7).
+    menu: tokio::sync::watch::Receiver<Option<wado_compositor::hit::MenuSpot>>,
     /// Bitrate actually written to the video track over the last stretch, in kbps. Forwarded to
     /// the viewer — see [`wado_protocol::RelayMsg::SentKbps`] for why it has to be.
     sent_kbps: tokio::sync::watch::Receiver<u32>,
@@ -105,6 +107,9 @@ struct RelayCtx {
     /// offer's *candidate count* as a device fingerprint, and on 2026-09-14 the absence of this
     /// cost three wrong hypotheses about which daemon was poisoned. It is one string.
     peer: Arc<Mutex<String>>,
+    /// The accessibility-tree client that answers `TargetsRequest` — see [`crate::a11y`].
+    /// Shared, because each question runs as its own task.
+    a11y: Arc<crate::a11y::A11y>,
 }
 
 /// Now, in unix milliseconds.
@@ -123,6 +128,7 @@ pub fn start(
     text_input: tokio::sync::watch::Receiver<bool>,
     shedding: tokio::sync::watch::Receiver<u32>,
     windows: tokio::sync::watch::Receiver<Vec<wado_protocol::WindowInfo>>,
+    menu: tokio::sync::watch::Receiver<Option<wado_compositor::hit::MenuSpot>>,
     frame_rx: mpsc::Receiver<FrameMsg>,
     relay_url: String,
     remote_id: String,
@@ -143,8 +149,8 @@ pub fn start(
             };
             rt.block_on(async move {
                 if let Err(e) = run(
-                    cmd_tx, input_tx, timings, text_input, shedding, windows, frame_rx, relay_url,
-                    remote_id, log_bus,
+                    cmd_tx, input_tx, timings, text_input, shedding, windows, menu, frame_rx,
+                    relay_url, remote_id, log_bus,
                 )
                 .await
                 {
@@ -162,6 +168,7 @@ async fn run(
     text_input: tokio::sync::watch::Receiver<bool>,
     shedding: tokio::sync::watch::Receiver<u32>,
     windows: tokio::sync::watch::Receiver<Vec<wado_protocol::WindowInfo>>,
+    menu: tokio::sync::watch::Receiver<Option<wado_compositor::hit::MenuSpot>>,
     mut frame_rx: mpsc::Receiver<FrameMsg>,
     relay_url: String,
     remote_id: String,
@@ -368,6 +375,7 @@ async fn run(
         text_input,
         shedding,
         windows,
+        menu,
         sent_kbps,
         queue_us,
         active_pc: Arc::new(Mutex::new(None)),
@@ -376,6 +384,7 @@ async fn run(
         last_relay_msg: Arc::new(AtomicU64::new(now_ms())),
         session_started: Arc::new(AtomicBool::new(false)),
         peer: Arc::new(Mutex::new("<none>".to_string())),
+        a11y: Arc::new(crate::a11y::A11y::default()),
         relay_url,
         remote_id,
         timings,
@@ -583,6 +592,31 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             while rx.changed().await.is_ok() {
                 let windows = rx.borrow_and_update().clone();
                 if send_relay(&out_tx_w, &RelayMsg::Windows { windows })
+                    .await
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        })
+    };
+
+    // The open menu, as a sheet. Same shape as `windows_task`, plus the tree read in between:
+    // each popup is read once, and a popup that closes before its read finishes is simply
+    // superseded by the `None` that follows.
+    let menu_task = {
+        let mut rx = ctx.menu.clone();
+        let out_tx_m = out_tx.clone();
+        let a11y = Arc::clone(&ctx.a11y);
+        tokio::spawn(async move {
+            rx.mark_changed();
+            while rx.changed().await.is_ok() {
+                let spot = rx.borrow_and_update().clone();
+                let menu = match &spot {
+                    Some(spot) => Some(crate::menu_sheet::read(&a11y, spot).await),
+                    None => None,
+                };
+                if send_relay(&out_tx_m, &RelayMsg::Menu { menu })
                     .await
                     .is_err()
                 {
@@ -995,6 +1029,46 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     .ok();
             }
 
+            // A task, not inline: the answer can take tens of milliseconds of D-Bus, and this
+            // loop also carries the SDP and ICE of a connecting viewer.
+            RelayMsg::TargetsRequest { seq, x, y, r } => {
+                let cmd_tx = ctx.cmd_tx.clone();
+                let a11y = Arc::clone(&ctx.a11y);
+                let out_tx = out_tx.clone();
+                tokio::spawn(async move {
+                    let targets = crate::a11y::tap_targets(&cmd_tx, &a11y, x, y, r).await;
+                    send_relay(&out_tx, &RelayMsg::Targets { seq, targets })
+                        .await
+                        .ok();
+                });
+            }
+
+            // A row of the menu sheet. Re-read afterwards: a submenu item changes the menu in
+            // place (GTK slides the submenu into the same popover), which the compositor does
+            // not see as a new popup.
+            RelayMsg::MenuActivate { id } => {
+                let menu = ctx.menu.clone();
+                let a11y = Arc::clone(&ctx.a11y);
+                let out_tx = out_tx.clone();
+                tokio::spawn(async move {
+                    let spot = menu.borrow().clone();
+                    let Some(spot) = spot else {
+                        return;
+                    };
+                    let ok = crate::menu_sheet::activate(&a11y, &spot, &id).await;
+                    debug!(ok, "menu item activated");
+                    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                    // Bound first: a borrow guard in an `if let` would live across the await.
+                    let spot = menu.borrow().clone();
+                    if let Some(spot) = spot {
+                        let sheet = crate::menu_sheet::read(&a11y, &spot).await;
+                        send_relay(&out_tx, &RelayMsg::Menu { menu: Some(sheet) })
+                            .await
+                            .ok();
+                    }
+                });
+            }
+
             RelayMsg::SessionWindow { action } => {
                 let _ = ctx.cmd_tx.send(CompositorCommand::Window(action));
                 send_relay(&out_tx, &RelayMsg::SessionWindowed).await.ok();
@@ -1047,6 +1121,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     shedding_task.abort();
     sent_kbps_task.abort();
     windows_task.abort();
+    menu_task.abort();
     write_task.abort();
     Ok(())
 }

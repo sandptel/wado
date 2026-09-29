@@ -221,6 +221,31 @@ pub enum RelayMsg {
     SessionLaunched,
     /// A window action was accepted.
     SessionWindowed,
+    /// Which actionable elements lie within `r` of the point — asked on touch-down so the
+    /// answer is usually back before the finger lifts. `x`, `y` normalized to the output; `r`
+    /// as a fraction of the output's width. `seq` pairs the answer with the question.
+    TargetsRequest {
+        seq: u32,
+        x: f64,
+        y: f64,
+        r: f64,
+    },
+    /// The answer to [`RelayMsg::TargetsRequest`]. `None`: the app under the point exposes no
+    /// accessibility tree (or there was no window), so the client must fall back to looking at
+    /// pixels. `Some(vec![])`: it does, and nothing actionable is near.
+    Targets {
+        seq: u32,
+        targets: Option<Vec<crate::Target>>,
+    },
+    /// The menu open on the focused window, or `None` once it has closed — state, sent on
+    /// every change. See [`crate::MenuSheet`].
+    Menu {
+        menu: Option<crate::MenuSheet>,
+    },
+    /// Activate a row of the menu sheet (client → server): [`crate::MenuItem::id`].
+    MenuActivate {
+        id: String,
+    },
     /// The session's windows, in strip order. Sent whenever any window's id, title, app_id or
     /// focus changes, and once when a viewer attaches — see [`crate::WindowInfo`].
     Windows {
@@ -442,6 +467,25 @@ mod wire_tests {
                 action: crate::WindowAction::Focus { id: 7 }
             }
         ));
+    }
+
+    #[test]
+    fn precision_messages_parse_as_the_client_sends_them() {
+        // js/targets.js and js/menu_sheet.js build these by hand.
+        let ask: RelayMsg =
+            serde_json::from_str(r#"{"type":"targets_request","seq":3,"x":0.5,"y":0.25,"r":0.06}"#)
+                .unwrap();
+        assert!(matches!(ask, RelayMsg::TargetsRequest { seq: 3, .. }));
+        let pick: RelayMsg =
+            serde_json::from_str(r#"{"type":"menu_activate","id":":1.2/org/x/1"}"#).unwrap();
+        assert!(matches!(pick, RelayMsg::MenuActivate { id } if id == ":1.2/org/x/1"));
+        // The server's "no tree" answer must reach the client as null, not as a missing key.
+        let none = serde_json::to_value(RelayMsg::Targets {
+            seq: 1,
+            targets: None,
+        })
+        .unwrap();
+        assert!(none["targets"].is_null() && none.get("targets").is_some());
     }
 
     #[test]

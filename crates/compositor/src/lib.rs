@@ -33,6 +33,7 @@ pub mod glow;
 pub mod grabs;
 pub mod handlers;
 pub mod headless;
+pub mod hit;
 pub mod input;
 pub mod pacing;
 pub mod placement;
@@ -94,6 +95,8 @@ pub struct CompositorHandles {
     pub shedding: tokio::sync::watch::Receiver<u32>,
     /// The window list — see [`window_list`]. Latest-value-wins state, like `text_input`.
     pub windows: tokio::sync::watch::Receiver<Vec<wado_protocol::WindowInfo>>,
+    /// The menu open on the focused window — see [`hit::MenuSpot`]. State, like `windows`.
+    pub menu: tokio::sync::watch::Receiver<Option<hit::MenuSpot>>,
 }
 
 /// Build the compositor: create the event loop, display, and [`Wado`] state, claim the
@@ -181,6 +184,7 @@ pub fn build(
     let text_input = state.text_input_tx.subscribe();
     let shedding = state.shedding_tx.subscribe();
     let windows = state.windows_tx.subscribe();
+    let menu = state.menu_tx.subscribe();
     Ok((
         event_loop,
         state,
@@ -191,6 +195,7 @@ pub fn build(
             text_input,
             shedding,
             windows,
+            menu,
         },
     ))
 }
