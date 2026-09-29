@@ -25,7 +25,10 @@ use wado_compositor::{
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_logging();
 
-    eprintln!("[view_compositor] resolution={}x{}  fps={}", WIDTH, HEIGHT, FPS);
+    eprintln!(
+        "[view_compositor] resolution={}x{}  fps={}",
+        WIDTH, HEIGHT, FPS
+    );
     eprintln!("[view_compositor] recording to captures/wado.h264 (inspect with ffplay)");
     eprintln!();
 

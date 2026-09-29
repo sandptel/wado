@@ -16,6 +16,7 @@
 //! is 8. ponytail: the upgrade path is a matching `PointerFocusTarget`, needed only if wado ever
 //! wants layer-shell or a real cursor to take pointer focus distinctly from a surface.
 
+use smithay::backend::input::KeyState;
 use smithay::{
     desktop::PopupKind,
     input::{
@@ -26,7 +27,6 @@ use smithay::{
     utils::{IsAlive, Serial},
     wayland::seat::WaylandFocus,
 };
-use smithay::backend::input::KeyState;
 
 use crate::Wado;
 
@@ -88,7 +88,13 @@ impl WaylandFocus for KeyboardFocusTarget {
 /// keyboard protocol is concerned, and a popup that has focus receives key events exactly as a
 /// toplevel does. The enum exists for the *grab*, not to change what a key press means.
 impl KeyboardTarget<Wado> for KeyboardFocusTarget {
-    fn enter(&self, seat: &Seat<Wado>, data: &mut Wado, keys: Vec<KeysymHandle<'_>>, serial: Serial) {
+    fn enter(
+        &self,
+        seat: &Seat<Wado>,
+        data: &mut Wado,
+        keys: Vec<KeysymHandle<'_>>,
+        serial: Serial,
+    ) {
         KeyboardTarget::enter(&surface_of(self), seat, data, keys, serial)
     }
     fn leave(&self, seat: &Seat<Wado>, data: &mut Wado, serial: Serial) {

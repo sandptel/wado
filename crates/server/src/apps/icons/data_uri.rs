@@ -64,9 +64,11 @@ mod tests {
         fs::write(&small, b"\x89PNG").unwrap();
 
         assert_eq!(encode(&big), None, "a huge icon must not ride in the list");
-        assert!(encode(&small)
-            .unwrap()
-            .starts_with("data:image/png;base64,"));
+        assert!(
+            encode(&small)
+                .unwrap()
+                .starts_with("data:image/png;base64,")
+        );
         let _ = fs::remove_dir_all(&dir);
     }
     #[test]

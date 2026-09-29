@@ -68,13 +68,22 @@ pub fn resolve() -> (&'static str, &'static str, String) {
         .copied()
         .unwrap_or(LANES[0]);
     let ice = if name == "connection" { "" } else { ICE_NOISE };
-    let filter = [BASE, extra, ice].iter().filter(|s| !s.is_empty()).cloned().collect::<Vec<_>>().join(",");
+    let filter = [BASE, extra, ice]
+        .iter()
+        .filter(|s| !s.is_empty())
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(",");
     (name, what, filter)
 }
 
 /// Every lane name, for an error message.
 pub fn names() -> String {
-    LANES.iter().map(|(n, _, _)| *n).collect::<Vec<_>>().join(", ")
+    LANES
+        .iter()
+        .map(|(n, _, _)| *n)
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 #[cfg(test)]

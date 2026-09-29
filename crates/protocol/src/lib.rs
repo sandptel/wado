@@ -326,10 +326,16 @@ impl SessionConfig {
         // H.264 4:2:0 subsamples chroma by two in both directions, so an odd dimension has no
         // valid chroma plane. Encoders report this as an internal error several layers down.
         if self.width < 160 || self.width > 7680 || self.width % 2 != 0 {
-            return Err(format!("width {} is out of range (160-7680, even)", self.width));
+            return Err(format!(
+                "width {} is out of range (160-7680, even)",
+                self.width
+            ));
         }
         if self.height < 120 || self.height > 4320 || self.height % 2 != 0 {
-            return Err(format!("height {} is out of range (120-4320, even)", self.height));
+            return Err(format!(
+                "height {} is out of range (120-4320, even)",
+                self.height
+            ));
         }
         if self.fps < 1 || self.fps > 240 {
             return Err(format!("fps {} is out of range (1-240)", self.fps));
@@ -339,7 +345,9 @@ impl SessionConfig {
         }
         if let Quality::Custom { bitrate_kbps } = self.quality {
             if !(100..=200_000).contains(&bitrate_kbps) {
-                return Err(format!("bitrate {bitrate_kbps} kbps is out of range (100-200000)"));
+                return Err(format!(
+                    "bitrate {bitrate_kbps} kbps is out of range (100-200000)"
+                ));
             }
         }
         Ok(())
@@ -354,10 +362,16 @@ mod config_validation_tests {
         SessionConfig {
             isolate_apps: true,
             x_server: false,
-            width: 1280, height: 720, fps: 60, scale: 1.0,
+            width: 1280,
+            height: 720,
+            fps: 60,
+            scale: 1.0,
             quality: Quality::Balanced,
-            preset: None, keyframe_interval: None,
-            input: Default::default(), window: Default::default(), encoder: Default::default(),
+            preset: None,
+            keyframe_interval: None,
+            input: Default::default(),
+            window: Default::default(),
+            encoder: Default::default(),
         }
     }
 
@@ -410,7 +424,9 @@ mod config_validation_tests {
         let mut c = ok();
         c.quality = Quality::Custom { bitrate_kbps: 0 };
         assert!(c.validate().is_err());
-        c.quality = Quality::Custom { bitrate_kbps: 5_000_000 };
+        c.quality = Quality::Custom {
+            bitrate_kbps: 5_000_000,
+        };
         assert!(c.validate().is_err());
     }
 }
@@ -601,11 +617,23 @@ mod input_tests {
         let ev: InputEvent =
             serde_json::from_str(r#"{"t":"gamepad_button","code":304,"pressed":true}"#).unwrap();
         // 304 == 0x130 == BTN_A.
-        assert!(matches!(ev, InputEvent::GamepadButton { code: 0x130, pressed: true }));
+        assert!(matches!(
+            ev,
+            InputEvent::GamepadButton {
+                code: 0x130,
+                pressed: true
+            }
+        ));
 
         let ev: InputEvent =
             serde_json::from_str(r#"{"t":"gamepad_axis","code":1,"value":-32768}"#).unwrap();
-        assert!(matches!(ev, InputEvent::GamepadAxis { code: 1, value: -32768 }));
+        assert!(matches!(
+            ev,
+            InputEvent::GamepadAxis {
+                code: 1,
+                value: -32768
+            }
+        ));
     }
 
     /// Axis values span the full signed 16-bit stick range in both directions; a `u16` or a
@@ -615,7 +643,10 @@ mod input_tests {
         for v in [-32768i32, -1, 0, 32767] {
             let json = format!(r#"{{"t":"gamepad_axis","code":0,"value":{v}}}"#);
             let ev: InputEvent = serde_json::from_str(&json).expect(&json);
-            assert!(matches!(ev, InputEvent::GamepadAxis { value, .. } if value == v), "{json}");
+            assert!(
+                matches!(ev, InputEvent::GamepadAxis { value, .. } if value == v),
+                "{json}"
+            );
         }
     }
 }

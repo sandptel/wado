@@ -1,5 +1,7 @@
 use smithay::{
-    desktop::{PopupKind, PopupManager, Space, Window, find_popup_root_surface, get_popup_toplevel_coords},
+    desktop::{
+        PopupKind, PopupManager, Space, Window, find_popup_root_surface, get_popup_toplevel_coords,
+    },
     input::{
         Seat,
         pointer::{Focus, GrabStartData as PointerGrabStartData},
@@ -42,7 +44,12 @@ impl XdgShellHandler for Wado {
         let _ = self.popups.track_popup(PopupKind::Xdg(surface));
     }
 
-    fn reposition_request(&mut self, surface: PopupSurface, positioner: PositionerState, token: u32) {
+    fn reposition_request(
+        &mut self,
+        surface: PopupSurface,
+        positioner: PositionerState,
+        token: u32,
+    ) {
         surface.with_pending_state(|state| {
             let geometry = positioner.get_geometry();
             state.geometry = geometry;
@@ -70,11 +77,19 @@ impl XdgShellHandler for Wado {
         // mouse) or a touch contact. wado drives touch, so the touch path is the live one.
         if let Some(start_data) = check_grab(&seat, wl_surface, serial) {
             let pointer = seat.get_pointer().unwrap();
-            let grab = MoveSurfaceGrab { start_data, window, initial_window_location };
+            let grab = MoveSurfaceGrab {
+                start_data,
+                window,
+                initial_window_location,
+            };
             pointer.set_grab(self, grab, serial, Focus::Clear);
         } else if let Some(start_data) = check_grab_touch(&seat, wl_surface, serial) {
             let touch = seat.get_touch().unwrap();
-            let grab = TouchMoveSurfaceGrab { start_data, window, initial_window_location };
+            let grab = TouchMoveSurfaceGrab {
+                start_data,
+                window,
+                initial_window_location,
+            };
             touch.set_grab(self, grab, serial);
         }
     }
@@ -115,7 +130,8 @@ impl XdgShellHandler for Wado {
                 state.states.set(xdg_toplevel::State::Resizing);
             });
             surface.send_pending_configure();
-            let grab = TouchResizeSurfaceGrab::start(start_data, window, edges.into(), initial_rect);
+            let grab =
+                TouchResizeSurfaceGrab::start(start_data, window, edges.into(), initial_rect);
             touch.set_grab(self, grab, serial);
         }
     }

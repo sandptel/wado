@@ -36,7 +36,11 @@ pub fn render(ui: Ui) -> Element {
     // for when someone says the suggestion looks wrong.
     let (way, other_way) = {
         let d = crate::res::fit::orientation(sw, sh);
-        if d == "portrait" { ("portrait", "landscape") } else { ("landscape", "portrait") }
+        if d == "portrait" {
+            ("portrait", "landscape")
+        } else {
+            ("landscape", "portrait")
+        }
     };
     let other_same = format!("Other shapes, {way} — each says what it costs here");
     let other_turned = format!("Other shapes, {other_way} — turned the other way round");

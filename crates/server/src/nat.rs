@@ -27,7 +27,7 @@ use std::time::Duration;
 use tokio::net::UdpSocket;
 use tracing::{debug, info, warn};
 use webrtc::stun::agent::TransactionId;
-use webrtc::stun::message::{Getter as _, Message, BINDING_REQUEST};
+use webrtc::stun::message::{BINDING_REQUEST, Getter as _, Message};
 use webrtc::stun::xoraddr::XorMappedAddress;
 
 /// How long one STUN round trip may take. A server that is going to answer answers in

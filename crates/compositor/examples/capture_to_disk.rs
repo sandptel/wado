@@ -19,9 +19,9 @@ use std::{
 
 use smithay::reexports::{calloop::EventLoop, wayland_server::Display};
 use wado_compositor::{
+    Wado,
     conf::{OutputConfig, SinkTarget, WadoConfig},
     headless::{self, FPS, HEIGHT, WIDTH},
-    Wado,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -29,9 +29,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ts = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
     let h264_path = format!("captures/wado_{}.h264", ts);
 
-    eprintln!("[capture_to_disk] resolution={}x{}  fps={}", WIDTH, HEIGHT, FPS);
+    eprintln!(
+        "[capture_to_disk] resolution={}x{}  fps={}",
+        WIDTH, HEIGHT, FPS
+    );
     eprintln!("[capture_to_disk] H.264 output : {}", h264_path);
-    eprintln!("[capture_to_disk] PPM snapshots: captures/snap_{}_<n>.ppm (every 5 s)", ts);
+    eprintln!(
+        "[capture_to_disk] PPM snapshots: captures/snap_{}_<n>.ppm (every 5 s)",
+        ts
+    );
     eprintln!("[capture_to_disk] Ctrl-C to stop");
     eprintln!();
 
@@ -48,7 +54,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..WadoConfig::default()
     };
     headless::init_headless(&mut state, &config)?;
-    eprintln!("[capture_to_disk] compositor ready, socket: {:?}", state.socket_name);
+    eprintln!(
+        "[capture_to_disk] compositor ready, socket: {:?}",
+        state.socket_name
+    );
 
     unsafe { std::env::set_var("WAYLAND_DISPLAY", &state.socket_name) };
     std::process::Command::new("weston-terminal").spawn().ok();
@@ -93,4 +102,3 @@ fn save_ppm(abgr: &[u8], width: usize, height: usize, path: &str) {
     let _ = f.write_all(&rgb);
     eprintln!("[snap] saved {path}");
 }
-

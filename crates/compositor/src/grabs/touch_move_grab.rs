@@ -24,7 +24,10 @@ impl TouchGrab<Wado> for TouchMoveSurfaceGrab {
         &mut self,
         data: &mut Wado,
         handle: &mut TouchInnerHandle<'_, Wado>,
-        _focus: Option<(<Wado as smithay::input::SeatHandler>::TouchFocus, Point<f64, Logical>)>,
+        _focus: Option<(
+            <Wado as smithay::input::SeatHandler>::TouchFocus,
+            Point<f64, Logical>,
+        )>,
         event: &DownEvent,
         seq: Serial,
     ) {
@@ -33,7 +36,13 @@ impl TouchGrab<Wado> for TouchMoveSurfaceGrab {
         handle.down(data, None, event, seq);
     }
 
-    fn up(&mut self, data: &mut Wado, handle: &mut TouchInnerHandle<'_, Wado>, event: &UpEvent, seq: Serial) {
+    fn up(
+        &mut self,
+        data: &mut Wado,
+        handle: &mut TouchInnerHandle<'_, Wado>,
+        event: &UpEvent,
+        seq: Serial,
+    ) {
         handle.up(data, event, seq);
         // End the move once the contact that started it lifts.
         if event.slot == self.start_data.slot {
@@ -45,7 +54,10 @@ impl TouchGrab<Wado> for TouchMoveSurfaceGrab {
         &mut self,
         data: &mut Wado,
         handle: &mut TouchInnerHandle<'_, Wado>,
-        _focus: Option<(<Wado as smithay::input::SeatHandler>::TouchFocus, Point<f64, Logical>)>,
+        _focus: Option<(
+            <Wado as smithay::input::SeatHandler>::TouchFocus,
+            Point<f64, Logical>,
+        )>,
         event: &MotionEvent,
         seq: Serial,
     ) {
@@ -57,7 +69,8 @@ impl TouchGrab<Wado> for TouchMoveSurfaceGrab {
 
         let delta = event.location - self.start_data.location;
         let new_location = self.initial_window_location.to_f64() + delta;
-        data.space.map_element(self.window.clone(), new_location.to_i32_round(), true);
+        data.space
+            .map_element(self.window.clone(), new_location.to_i32_round(), true);
     }
 
     fn frame(&mut self, data: &mut Wado, handle: &mut TouchInnerHandle<'_, Wado>, seq: Serial) {
@@ -69,7 +82,13 @@ impl TouchGrab<Wado> for TouchMoveSurfaceGrab {
         handle.unset_grab(self, data);
     }
 
-    fn shape(&mut self, data: &mut Wado, handle: &mut TouchInnerHandle<'_, Wado>, event: &ShapeEvent, seq: Serial) {
+    fn shape(
+        &mut self,
+        data: &mut Wado,
+        handle: &mut TouchInnerHandle<'_, Wado>,
+        event: &ShapeEvent,
+        seq: Serial,
+    ) {
         handle.shape(data, event, seq)
     }
 

@@ -12,7 +12,7 @@ use std::{fs, time::Instant};
 use wado_compositor::{
     conf::Preset,
     encode::x264enc::X264Encoder,
-    sink::{file::FileSink, FrameSink},
+    sink::{FrameSink, file::FileSink},
 };
 
 const WIDTH: u32 = 1280;
@@ -39,13 +39,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("[FAIL] encoder.headers() returned empty — broken encoder init");
         std::process::exit(1);
     }
-    eprintln!("[2/5] headers           OK  ({} bytes — SPS+PPS)", headers.len());
+    eprintln!(
+        "[2/5] headers           OK  ({} bytes — SPS+PPS)",
+        headers.len()
+    );
 
     // ── Step 3: open output file ──────────────────────────────────────────────
     fs::create_dir_all("captures")?;
     let out_path = "captures/pipeline_check.h264";
-    let mut sink = FileSink::create(out_path)
-        .inspect_err(|e| eprintln!("[FAIL] FileSink::create: {e}"))?;
+    let mut sink =
+        FileSink::create(out_path).inspect_err(|e| eprintln!("[FAIL] FileSink::create: {e}"))?;
     sink.send(&headers);
     eprintln!("[3/5] FileSink          OK  ({})", out_path);
 
@@ -79,7 +82,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             None => {
                 skipped += 1;
-                eprintln!("    frame {:3}  skipped (encoder returned None — may be normal for B-frame delay)", i);
+                eprintln!(
+                    "    frame {:3}  skipped (encoder returned None — may be normal for B-frame delay)",
+                    i
+                );
             }
         }
     }
@@ -89,14 +95,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("[5/5] results:");
     eprintln!("  encoded / total   : {} / {}", encoded, FRAMES);
     if skipped > 0 {
-        eprintln!("  skipped           : {}  (zero_latency=true so this should be 0)", skipped);
+        eprintln!(
+            "  skipped           : {}  (zero_latency=true so this should be 0)",
+            skipped
+        );
     }
     if encoded > 0 {
         let mean = sum_ms / encoded as f64;
-        eprintln!("  encode latency    : min={:.2}ms  mean={:.2}ms  max={:.2}ms", min_ms, mean, max_ms);
-        eprintln!("  encode-only FPS   : {:.1}  (headroom before 60fps budget is exhausted)", 1000.0 / mean);
+        eprintln!(
+            "  encode latency    : min={:.2}ms  mean={:.2}ms  max={:.2}ms",
+            min_ms, mean, max_ms
+        );
+        eprintln!(
+            "  encode-only FPS   : {:.1}  (headroom before 60fps budget is exhausted)",
+            1000.0 / mean
+        );
     }
-    eprintln!("  output size       : {:.1} KB", total_bytes as f64 / 1024.0);
+    eprintln!(
+        "  output size       : {:.1} KB",
+        total_bytes as f64 / 1024.0
+    );
     eprintln!();
     eprintln!("[pipeline_check] to verify visually:");
     eprintln!("  ffplay -f h264 {}", out_path);
@@ -120,7 +138,7 @@ fn make_test_pattern(width: u32, height: u32, frame: u32) -> Vec<u8> {
             let sat = 0.4 + 0.6 * row as f32 / h as f32;
             let (r, g, b) = hsv_to_rgb(hue, sat, 1.0);
             // Fourcc::Abgr8888 on LE = [R,G,B,A] in memory (GL_RGBA order)
-            data[base]     = r;
+            data[base] = r;
             data[base + 1] = g;
             data[base + 2] = b;
             data[base + 3] = 255; // A

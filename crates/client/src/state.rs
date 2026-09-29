@@ -9,7 +9,7 @@
 //! every holder sees the same state.
 
 use dioxus::prelude::*;
-use wado_protocol::{AppEntry, logfmt::LogLine};
+use wado_protocol::{logfmt::LogLine, AppEntry};
 
 /// Default server the client talks to. Editable in the UI; the dev server typically runs the
 /// client on a different port and reaches the wado server here over CORS.

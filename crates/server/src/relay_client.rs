@@ -34,11 +34,11 @@ use webrtc::api::media_engine::{MIME_TYPE_H264, MediaEngine};
 use webrtc::api::{API, APIBuilder};
 use webrtc::data_channel::RTCDataChannel;
 use webrtc::data_channel::data_channel_message::DataChannelMessage;
+use webrtc::ice_transport::ice_connection_state::RTCIceConnectionState;
 use webrtc::interceptor::registry::Registry;
 use webrtc::media::Sample;
 use webrtc::peer_connection::RTCPeerConnection;
 use webrtc::peer_connection::configuration::RTCConfiguration;
-use webrtc::ice_transport::ice_connection_state::RTCIceConnectionState;
 use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 use webrtc::rtcp::payload_feedbacks::full_intra_request::FullIntraRequest;
@@ -124,15 +124,22 @@ pub fn start(
     std::thread::Builder::new()
         .name("wado-relay-client".into())
         .spawn(move || {
-            let rt = match tokio::runtime::Builder::new_multi_thread().enable_all().build() {
+            let rt = match tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+            {
                 Ok(rt) => rt,
-                Err(e) => { error!("relay client: failed to build tokio runtime: {e}"); return; }
+                Err(e) => {
+                    error!("relay client: failed to build tokio runtime: {e}");
+                    return;
+                }
             };
             rt.block_on(async move {
-                if let Err(e) =
-                    run(cmd_tx, input_tx, timings, text_input, shedding, frame_rx, relay_url, remote_id,
-                        log_bus)
-                    .await
+                if let Err(e) = run(
+                    cmd_tx, input_tx, timings, text_input, shedding, frame_rx, relay_url,
+                    remote_id, log_bus,
+                )
+                .await
                 {
                     error!("relay client exited with error: {e}");
                 }
@@ -289,7 +296,9 @@ async fn run(
                 if took > budget {
                     pump.record_over_budget();
                     slow += 1;
-                    if took > worst { worst = took; }
+                    if took > worst {
+                        worst = took;
+                    }
                     // Same once-per-60 cadence as the drop counter, so the two lines pair up.
                     if slow % 60 == 0 {
                         warn!(
@@ -381,7 +390,9 @@ async fn run(
         // server again**: the exact signature of the relay panic on 2026-09-12, one layer down.
         // Treated as a lost connection, which is what the reconnect loop below already knows
         // how to survive.
-        let attempt = AssertUnwindSafe(connect_and_serve(&ctx)).catch_unwind().await;
+        let attempt = AssertUnwindSafe(connect_and_serve(&ctx))
+            .catch_unwind()
+            .await;
         let attempt = match attempt {
             Ok(r) => r,
             Err(_) => {
@@ -435,32 +446,47 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
 
     // ── 2. Register ──────────────────────────────────────────────────────────
     let display_name = std::env::var("HOSTNAME").ok();
-    send_relay(&out_tx, &RelayMsg::Register {
-        remote_id: ctx.remote_id.clone(),
-        display_name,
-    }).await?;
+    send_relay(
+        &out_tx,
+        &RelayMsg::Register {
+            remote_id: ctx.remote_id.clone(),
+            display_name,
+        },
+    )
+    .await?;
 
     match ws_stream.next().await {
         Some(Ok(WsMsg::Text(t))) => match serde_json::from_str::<RelayMsg>(&t) {
             Ok(RelayMsg::Registered { remote_id }) => {
-                info!("relay client: registered — Remote ID {}", display_remote_id(&remote_id));
+                info!(
+                    "relay client: registered — Remote ID {}",
+                    display_remote_id(&remote_id)
+                );
             }
             Ok(RelayMsg::Error { message }) => {
                 write_task.abort();
-                return Err(crate::WadoError::Other(format!("relay rejected registration: {message}")));
+                return Err(crate::WadoError::Other(format!(
+                    "relay rejected registration: {message}"
+                )));
             }
             Ok(other) => {
                 write_task.abort();
-                return Err(crate::WadoError::Other(format!("unexpected relay response: {other:?}")));
+                return Err(crate::WadoError::Other(format!(
+                    "unexpected relay response: {other:?}"
+                )));
             }
             Err(e) => {
                 write_task.abort();
-                return Err(crate::WadoError::Other(format!("bad relay response JSON: {e}")));
+                return Err(crate::WadoError::Other(format!(
+                    "bad relay response JSON: {e}"
+                )));
             }
         },
         _ => {
             write_task.abort();
-            return Err(crate::WadoError::Other("relay closed before Registered".into()));
+            return Err(crate::WadoError::Other(
+                "relay closed before Registered".into(),
+            ));
         }
     }
 
@@ -544,7 +570,10 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             Ok(WsMsg::Ping(_)) | Ok(WsMsg::Pong(_)) => continue,
             Ok(WsMsg::Close(_)) => break,
             Ok(_) => continue,
-            Err(e) => { warn!("relay client: WS error: {e}"); break; }
+            Err(e) => {
+                warn!("relay client: WS error: {e}");
+                break;
+            }
         };
 
         // Liveness for `viewer_watchdog`. Bumped on every frame, including ones we do not
@@ -565,15 +594,23 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 // wedged" — which cost a debugging cycle here on 2026-09-13, when a probe sent
                 // the wrong shape for `Quality` and simply hung.
                 warn!("relay client: bad JSON from relay: {e}");
-                send_relay(&out_tx, &RelayMsg::SessionError {
-                    message: format!("this daemon could not understand that message: {e}"),
-                }).await.ok();
+                send_relay(
+                    &out_tx,
+                    &RelayMsg::SessionError {
+                        message: format!("this daemon could not understand that message: {e}"),
+                    },
+                )
+                .await
+                .ok();
                 continue;
             }
         };
 
         match msg {
-            RelayMsg::PeerConnected { room_id, client_addr } => {
+            RelayMsg::PeerConnected {
+                room_id,
+                client_addr,
+            } => {
                 // Remembered, not just logged: every WebRTC line below is tagged with it.
                 let short: String = room_id.chars().take(8).collect();
                 *ctx.peer.lock().unwrap_or_else(|e| e.into_inner()) =
@@ -593,7 +630,11 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 // open, each abandoned viewer holds four of the 101 pinned UDP ports until the
                 // next offer happens to replace it.
                 let _ = ctx.cmd_tx.send(CompositorCommand::ViewerAttached(false));
-                let dead = ctx.active_pc.lock().unwrap_or_else(|e| e.into_inner()).take();
+                let dead = ctx
+                    .active_pc
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .take();
                 if let Some(pc) = dead {
                     tokio::spawn(async move {
                         if let Err(e) = pc.close().await {
@@ -611,9 +652,14 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             RelayMsg::SessionStart { config } => {
                 if let Err(why) = config.validate() {
                     warn!("relay client: refusing an invalid session config: {why}");
-                    send_relay(&out_tx, &RelayMsg::SessionError {
-                        message: format!("that configuration cannot work: {why}"),
-                    }).await.ok();
+                    send_relay(
+                        &out_tx,
+                        &RelayMsg::SessionError {
+                            message: format!("that configuration cannot work: {why}"),
+                        },
+                    )
+                    .await
+                    .ok();
                     continue;
                 }
                 // A session already running is not an error, it is a choice. Telling the viewer
@@ -622,7 +668,9 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 // reach. See `RelayMsg::SessionAlive`.
                 if let Some(info) = live_session(&ctx).await {
                     info!("relay client: a session is already running — offering rejoin or drop");
-                    send_relay(&out_tx, &RelayMsg::SessionAlive { info }).await.ok();
+                    send_relay(&out_tx, &RelayMsg::SessionAlive { info })
+                        .await
+                        .ok();
                     continue;
                 }
                 ctx.session_started.store(true, Ordering::SeqCst);
@@ -630,28 +678,54 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 // completes ICE must still be reaped, and it has never been connected.
                 ctx.last_connected.store(now_ms(), Ordering::Relaxed);
                 let (reply_tx, reply_rx) = oneshot::channel();
-                if ctx.cmd_tx.send(CompositorCommand::Start { config, reply: reply_tx }).is_err() {
-                    send_relay(&out_tx, &RelayMsg::SessionError {
-                        message: "compositor unavailable".into(),
-                    }).await.ok();
+                if ctx
+                    .cmd_tx
+                    .send(CompositorCommand::Start {
+                        config,
+                        reply: reply_tx,
+                    })
+                    .is_err()
+                {
+                    send_relay(
+                        &out_tx,
+                        &RelayMsg::SessionError {
+                            message: "compositor unavailable".into(),
+                        },
+                    )
+                    .await
+                    .ok();
                     continue;
                 }
                 match tokio::time::timeout(Duration::from_secs(5), reply_rx).await {
                     Ok(Ok(Ok(info))) => {
-                        send_relay(&out_tx, &RelayMsg::SessionStarted { info }).await.ok();
+                        send_relay(&out_tx, &RelayMsg::SessionStarted { info })
+                            .await
+                            .ok();
                     }
                     Ok(Ok(Err(msg))) => {
-                        send_relay(&out_tx, &RelayMsg::SessionError { message: msg }).await.ok();
+                        send_relay(&out_tx, &RelayMsg::SessionError { message: msg })
+                            .await
+                            .ok();
                     }
                     Ok(Err(_)) => {
-                        send_relay(&out_tx, &RelayMsg::SessionError {
-                            message: "compositor dropped reply".into(),
-                        }).await.ok();
+                        send_relay(
+                            &out_tx,
+                            &RelayMsg::SessionError {
+                                message: "compositor dropped reply".into(),
+                            },
+                        )
+                        .await
+                        .ok();
                     }
                     Err(_) => {
-                        send_relay(&out_tx, &RelayMsg::SessionError {
-                            message: "session start timed out".into(),
-                        }).await.ok();
+                        send_relay(
+                            &out_tx,
+                            &RelayMsg::SessionError {
+                                message: "session start timed out".into(),
+                            },
+                        )
+                        .await
+                        .ok();
                     }
                 }
             }
@@ -667,15 +741,22 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                         // viewer's media path actually comes up — the rejoin message itself only
                         // means the button was pressed.
                         info!("relay client: viewer rejoined the running session");
-                        send_relay(&out_tx, &RelayMsg::SessionStarted { info }).await.ok();
+                        send_relay(&out_tx, &RelayMsg::SessionStarted { info })
+                            .await
+                            .ok();
                     }
                     None => {
                         // The window between being offered the choice and taking it is real: the
                         // viewer watchdog stops idle sessions, so the thing being joined can be
                         // gone by the time the button is pressed.
-                        send_relay(&out_tx, &RelayMsg::SessionError {
-                            message: "the session ended before you could rejoin it".into(),
-                        }).await.ok();
+                        send_relay(
+                            &out_tx,
+                            &RelayMsg::SessionError {
+                                message: "the session ended before you could rejoin it".into(),
+                            },
+                        )
+                        .await
+                        .ok();
                     }
                 }
             }
@@ -686,19 +767,36 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 // one of them is a check the other silently does not have.
                 if let Err(why) = config.validate() {
                     warn!("relay client: refusing an invalid reconfigure: {why}");
-                    send_relay(&out_tx, &RelayMsg::SessionError {
-                        message: format!("that configuration cannot work: {why}"),
-                    }).await.ok();
+                    send_relay(
+                        &out_tx,
+                        &RelayMsg::SessionError {
+                            message: format!("that configuration cannot work: {why}"),
+                        },
+                    )
+                    .await
+                    .ok();
                     continue;
                 }
                 // No `session_started` reply and no renegotiation — see
                 // `RelayMsg::SessionReconfigure`. The viewer keeps the peer connection it has;
                 // the picture changes shape at the forced IDR.
                 let (reply_tx, reply_rx) = oneshot::channel();
-                if ctx.cmd_tx.send(CompositorCommand::Reconfigure { config, reply: reply_tx }).is_err() {
-                    send_relay(&out_tx, &RelayMsg::SessionError {
-                        message: "compositor unavailable".into(),
-                    }).await.ok();
+                if ctx
+                    .cmd_tx
+                    .send(CompositorCommand::Reconfigure {
+                        config,
+                        reply: reply_tx,
+                    })
+                    .is_err()
+                {
+                    send_relay(
+                        &out_tx,
+                        &RelayMsg::SessionError {
+                            message: "compositor unavailable".into(),
+                        },
+                    )
+                    .await
+                    .ok();
                     continue;
                 }
                 // The same bound every other compositor round-trip here uses: rebuilding an
@@ -706,20 +804,34 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 // socket waiting for an answer that is not coming.
                 match tokio::time::timeout(Duration::from_secs(5), reply_rx).await {
                     Ok(Ok(Ok(info))) => {
-                        send_relay(&out_tx, &RelayMsg::SessionReconfigured { info }).await.ok();
+                        send_relay(&out_tx, &RelayMsg::SessionReconfigured { info })
+                            .await
+                            .ok();
                     }
                     Ok(Ok(Err(msg))) => {
-                        send_relay(&out_tx, &RelayMsg::SessionError { message: msg }).await.ok();
+                        send_relay(&out_tx, &RelayMsg::SessionError { message: msg })
+                            .await
+                            .ok();
                     }
                     Ok(Err(_)) => {
-                        send_relay(&out_tx, &RelayMsg::SessionError {
-                            message: "compositor dropped reply".into(),
-                        }).await.ok();
+                        send_relay(
+                            &out_tx,
+                            &RelayMsg::SessionError {
+                                message: "compositor dropped reply".into(),
+                            },
+                        )
+                        .await
+                        .ok();
                     }
                     Err(_) => {
-                        send_relay(&out_tx, &RelayMsg::SessionError {
-                            message: "reconfigure timed out".into(),
-                        }).await.ok();
+                        send_relay(
+                            &out_tx,
+                            &RelayMsg::SessionError {
+                                message: "reconfigure timed out".into(),
+                            },
+                        )
+                        .await
+                        .ok();
                     }
                 }
             }
@@ -754,9 +866,14 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 // the application was starting. It then waited for a window that was never
                 // coming, with the only evidence in a log it cannot see.
                 if live_session(&ctx).await.is_none() {
-                    send_relay(&out_tx, &RelayMsg::SessionError {
-                        message: "there is no session to launch into — start one first".into(),
-                    }).await.ok();
+                    send_relay(
+                        &out_tx,
+                        &RelayMsg::SessionError {
+                            message: "there is no session to launch into — start one first".into(),
+                        },
+                    )
+                    .await
+                    .ok();
                     continue;
                 }
                 let _ = ctx.cmd_tx.send(CompositorCommand::Launch { command });
@@ -780,7 +897,9 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                         let out_tx = out_tx.clone();
                         tokio::spawn(async move {
                             while let Some(data) = rx.recv().await {
-                                if send_relay(&out_tx, &RelayMsg::PtyOutput { data }).await.is_err()
+                                if send_relay(&out_tx, &RelayMsg::PtyOutput { data })
+                                    .await
+                                    .is_err()
                                 {
                                     break;
                                 }
@@ -797,12 +916,17 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     }
                     Err(e) => {
                         warn!("pty open failed: {e}");
-                        send_relay(&out_tx, &RelayMsg::PtyOutput {
-                            data: format!("wado: could not start a shell: {e}\r\n"),
-                        })
+                        send_relay(
+                            &out_tx,
+                            &RelayMsg::PtyOutput {
+                                data: format!("wado: could not start a shell: {e}\r\n"),
+                            },
+                        )
                         .await
                         .ok();
-                        send_relay(&out_tx, &RelayMsg::PtyExit { code: None }).await.ok();
+                        send_relay(&out_tx, &RelayMsg::PtyExit { code: None })
+                            .await
+                            .ok();
                     }
                 }
             }
@@ -829,7 +953,9 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
 
             RelayMsg::TimingRequest => {
                 let timings = *ctx.timings.borrow();
-                send_relay(&out_tx, &RelayMsg::Timing { timings }).await.ok();
+                send_relay(&out_tx, &RelayMsg::Timing { timings })
+                    .await
+                    .ok();
             }
 
             RelayMsg::SessionWindow { action } => {
@@ -837,20 +963,27 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 send_relay(&out_tx, &RelayMsg::SessionWindowed).await.ok();
             }
 
-            RelayMsg::SdpOffer { sdp } => {
-                match handle_sdp_offer(ctx, sdp, out_tx.clone()).await {
-                    Ok(()) => {}
-                    Err(e) => {
-                        error!("relay client: SdpOffer handling failed: {e}");
-                        send_relay(&out_tx, &RelayMsg::SessionError {
+            RelayMsg::SdpOffer { sdp } => match handle_sdp_offer(ctx, sdp, out_tx.clone()).await {
+                Ok(()) => {}
+                Err(e) => {
+                    error!("relay client: SdpOffer handling failed: {e}");
+                    send_relay(
+                        &out_tx,
+                        &RelayMsg::SessionError {
                             message: format!("WebRTC setup failed: {e}"),
-                        }).await.ok();
-                    }
+                        },
+                    )
+                    .await
+                    .ok();
                 }
-            }
+            },
 
             RelayMsg::IceCandidate { candidate } => {
-                let pc = ctx.active_pc.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                let pc = ctx
+                    .active_pc
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clone();
                 if let Some(pc) = pc {
                     if let Ok(cand) = serde_json::from_str(&candidate) {
                         let _ = pc.add_ice_candidate(cand).await;
@@ -862,7 +995,9 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 info!("browser: {line}");
             }
 
-            RelayMsg::Ping => { send_relay(&out_tx, &RelayMsg::Pong).await.ok(); }
+            RelayMsg::Ping => {
+                send_relay(&out_tx, &RelayMsg::Pong).await.ok();
+            }
 
             other => {
                 warn!("relay client: unexpected message: {other:?}");
@@ -926,7 +1061,11 @@ fn candidate_types(sdp: &str) -> String {
         .collect();
     types.sort_unstable();
     types.dedup();
-    if types.is_empty() { "none".to_string() } else { types.join(",") }
+    if types.is_empty() {
+        "none".to_string()
+    } else {
+        types.join(",")
+    }
 }
 
 async fn handle_sdp_offer(
@@ -972,13 +1111,19 @@ async fn handle_sdp_offer(
         pc.on_data_channel(Box::new(move |dc: Arc<RTCDataChannel>| {
             let input_tx = input_tx.clone();
             Box::pin(async move {
-                if dc.label() != INPUT_CHANNEL { return; }
-                dc.on_open(Box::new(|| Box::pin(async { info!("relay client: input data channel open") })));
+                if dc.label() != INPUT_CHANNEL {
+                    return;
+                }
+                dc.on_open(Box::new(|| {
+                    Box::pin(async { info!("relay client: input data channel open") })
+                }));
                 dc.on_message(Box::new(move |msg: DataChannelMessage| {
                     let input_tx = input_tx.clone();
                     Box::pin(async move {
                         match serde_json::from_slice::<InputEvent>(&msg.data) {
-                            Ok(ev) => { let _ = input_tx.send(ev); }
+                            Ok(ev) => {
+                                let _ = input_tx.send(ev);
+                            }
                             Err(e) => warn!("relay client: bad input event: {e}"),
                         }
                     })
@@ -1172,10 +1317,16 @@ async fn handle_sdp_offer(
 /// "did a session survive my disconnect?" — which is the entire question here.
 async fn live_session(ctx: &RelayCtx) -> Option<wado_protocol::SessionInfo> {
     let (tx, rx) = oneshot::channel();
-    ctx.cmd_tx.send(CompositorCommand::Status { reply: tx }).ok()?;
+    ctx.cmd_tx
+        .send(CompositorCommand::Status { reply: tx })
+        .ok()?;
     // Bounded like every other compositor round-trip here: a wedged render loop must not hold the
     // relay socket open waiting for an answer that is not coming.
-    tokio::time::timeout(Duration::from_secs(2), rx).await.ok()?.ok().flatten()
+    tokio::time::timeout(Duration::from_secs(2), rx)
+        .await
+        .ok()?
+        .ok()
+        .flatten()
 }
 
 fn build_webrtc_api() -> crate::Result<API> {
@@ -1195,7 +1346,9 @@ fn build_webrtc_api() -> crate::Result<API> {
 
 async fn send_relay(tx: &mpsc::Sender<String>, msg: &RelayMsg) -> crate::Result<()> {
     let text = serde_json::to_string(msg)?;
-    tx.send(text).await.map_err(|_| crate::WadoError::Other("relay out channel closed".into()))
+    tx.send(text)
+        .await
+        .map_err(|_| crate::WadoError::Other("relay out channel closed".into()))
 }
 
 /// Non-fallible version for fire-and-forget (log lines, pongs).
@@ -1357,4 +1510,3 @@ mod watchdog_tests {
         assert!(!should_reap(GRACE * 2, GRACE - 1, false));
     }
 }
-

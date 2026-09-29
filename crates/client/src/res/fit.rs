@@ -62,7 +62,11 @@ pub fn aspect(w: u32, h: u32) -> String {
 }
 
 fn gcd(a: u32, b: u32) -> u32 {
-    if b == 0 { a.max(1) } else { gcd(b, a % b) }
+    if b == 0 {
+        a.max(1)
+    } else {
+        gcd(b, a % b)
+    }
 }
 
 /// Which way round a mode is, in the word a person would use.
@@ -156,7 +160,7 @@ mod tests {
         assert_eq!(aspect(2400, 1080), "20:9");
         assert_eq!(aspect(1024, 768), "4:3");
         assert_eq!(aspect(2560, 1080), "64:27"); // the honest reduction of 21:9
-        // An iPhone 14 panel reduces to 213:71 — useless, so it is described against 9.
+                                                 // An iPhone 14 panel reduces to 213:71 — useless, so it is described against 9.
         assert_eq!(aspect(2556, 1179), "19.5:9");
     }
 

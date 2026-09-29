@@ -57,9 +57,7 @@ pub enum CompositorCommand {
     /// A query rather than a push: the client asks when it opens the drawer and after it
     /// launches something, which is exactly when the answer can have changed and someone is
     /// looking. A periodic push would run for every viewer whether or not the drawer is open.
-    RunningApps {
-        reply: oneshot::Sender<Vec<String>>,
-    },
+    RunningApps { reply: oneshot::Sender<Vec<String>> },
     /// Make the next encoded frame a forced IDR keyframe. Sent when a viewer
     /// connects or the browser requests one via RTCP PLI/FIR.
     ForceKeyframe,
@@ -134,9 +132,7 @@ pub fn handle_command(state: &mut Wado, cmd: CompositorCommand, frame_tx: &mpsc:
         CompositorCommand::ViewerAttached(attached) => {
             headless::set_viewer_attached(state, attached)
         }
-        CompositorCommand::ViewerVisible(visible) => {
-            headless::set_viewer_visible(state, visible)
-        }
+        CompositorCommand::ViewerVisible(visible) => headless::set_viewer_visible(state, visible),
         CompositorCommand::ViewerStrain(strained) => {
             if state.viewer_strained != strained {
                 tracing::info!(strained, "viewer reported a change in decoder strain");
@@ -160,8 +156,8 @@ pub fn handle_command(state: &mut Wado, cmd: CompositorCommand, frame_tx: &mpsc:
 /// thing at start and another on a change.
 fn reconfigure(state: &mut Wado, config: &SessionConfig) -> Result<SessionInfo, String> {
     let encoder = crate::conf::to_encoder_config(config);
-    let report = headless::reconfigure_session(state, &encoder, config.scale)
-        .map_err(|e| e.to_string())?;
+    let report =
+        headless::reconfigure_session(state, &encoder, config.scale).map_err(|e| e.to_string())?;
     // The behaviour settings are re-applied too: they are part of "the session as configured",
     // and a reconfigure that silently kept the old keyboard repeat rate would be a surprise.
     if let Some(keyboard) = state.seat.get_keyboard() {
@@ -222,5 +218,7 @@ fn start(
     state.placement = config.window.placement;
     state.focus_follows_pointer = config.input.focus_follows_pointer;
     state.encoder_report = Some(encoder_report.clone());
-    Ok(SessionInfo { encoder: encoder_report })
+    Ok(SessionInfo {
+        encoder: encoder_report,
+    })
 }

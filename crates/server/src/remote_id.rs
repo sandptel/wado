@@ -30,14 +30,22 @@ pub fn resolve() -> String {
     if let Ok(saved) = fs::read_to_string(&path) {
         let id = normalize_remote_id(saved.trim());
         if !id.is_empty() {
-            info!("Remote ID {} (from {})", display_remote_id(&id), path.display());
+            info!(
+                "Remote ID {} (from {})",
+                display_remote_id(&id),
+                path.display()
+            );
             return id;
         }
     }
 
     let id = generate();
     match persist(&path, &id) {
-        Ok(()) => info!("Remote ID {} (generated, saved to {})", display_remote_id(&id), path.display()),
+        Ok(()) => info!(
+            "Remote ID {} (generated, saved to {})",
+            display_remote_id(&id),
+            path.display()
+        ),
         Err(e) => warn!(
             "Remote ID {} (generated; could NOT save to {}: {e} — a new ID will be generated next run)",
             display_remote_id(&id),
@@ -50,7 +58,9 @@ pub fn resolve() -> String {
 /// 9 random digits. The first digit may be 0 — the ID is a string token, not a number.
 fn generate() -> String {
     let mut rng = rand::thread_rng();
-    (0..9).map(|_| char::from(b'0' + rng.gen_range(0..10u8))).collect()
+    (0..9)
+        .map(|_| char::from(b'0' + rng.gen_range(0..10u8)))
+        .collect()
 }
 
 fn persist(path: &PathBuf, id: &str) -> std::io::Result<()> {
@@ -66,7 +76,9 @@ fn id_file_path() -> PathBuf {
         .map(PathBuf::from)
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or_else(|| {
-            let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
+            let home = std::env::var_os("HOME")
+                .map(PathBuf::from)
+                .unwrap_or_default();
             home.join(".config")
         });
     base.join("wado").join("remote_id")

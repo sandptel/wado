@@ -75,7 +75,13 @@ pub fn create_drm_device(node: &str) -> crate::Result<DeviceRef> {
         CString::new(node).map_err(|e| CompositorError::Encoder(format!("bad node path: {e}")))?;
     let mut dev: *mut AVBufferRef = ptr::null_mut();
     let ret = unsafe {
-        av_hwdevice_ctx_create(&mut dev, AVHWDeviceType::DRM, cnode.as_ptr(), ptr::null_mut(), 0)
+        av_hwdevice_ctx_create(
+            &mut dev,
+            AVHWDeviceType::DRM,
+            cnode.as_ptr(),
+            ptr::null_mut(),
+            0,
+        )
     };
     if ret < 0 || dev.is_null() {
         return Err(CompositorError::Encoder(format!(
@@ -89,9 +95,7 @@ pub fn create_drm_device(node: &str) -> crate::Result<DeviceRef> {
 /// DRM-PRIME map directly into VAAPI surfaces with no copy.
 pub fn derive_vaapi_device(drm: &DeviceRef) -> crate::Result<DeviceRef> {
     let mut dev: *mut AVBufferRef = ptr::null_mut();
-    let ret = unsafe {
-        av_hwdevice_ctx_create_derived(&mut dev, AVHWDeviceType::VAAPI, drm.0, 0)
-    };
+    let ret = unsafe { av_hwdevice_ctx_create_derived(&mut dev, AVHWDeviceType::VAAPI, drm.0, 0) };
     if ret < 0 || dev.is_null() {
         return Err(CompositorError::Encoder(format!(
             "av_hwdevice_ctx_create_derived(VAAPI from DRM) failed: {ret}"
@@ -111,7 +115,9 @@ pub fn create_drm_prime_frames(
 ) -> crate::Result<FramesRef> {
     let frames = unsafe { av_hwframe_ctx_alloc(device.0) };
     if frames.is_null() {
-        return Err(CompositorError::Encoder("av_hwframe_ctx_alloc(DRM) failed".into()));
+        return Err(CompositorError::Encoder(
+            "av_hwframe_ctx_alloc(DRM) failed".into(),
+        ));
     }
     unsafe {
         let ctx = (*frames).data as *mut AVHWFramesContext;
@@ -140,7 +146,9 @@ pub fn create_nv12_frames(
 ) -> crate::Result<FramesRef> {
     let frames = unsafe { av_hwframe_ctx_alloc(device.0) };
     if frames.is_null() {
-        return Err(CompositorError::Encoder("av_hwframe_ctx_alloc failed".into()));
+        return Err(CompositorError::Encoder(
+            "av_hwframe_ctx_alloc failed".into(),
+        ));
     }
     // `AVBufferRef::data` points at the `AVHWFramesContext` we configure before init.
     unsafe {

@@ -41,8 +41,8 @@ use smithay::reexports::wayland_protocols::wp::text_input::zv3::server::{
     zwp_text_input_v3::{self, ZwpTextInputV3},
 };
 use smithay::reexports::wayland_server::{
-    protocol::wl_surface::WlSurface, Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch,
-    New, Resource,
+    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
+    protocol::wl_surface::WlSurface,
 };
 
 use crate::Wado;

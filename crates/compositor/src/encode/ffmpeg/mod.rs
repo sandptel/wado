@@ -48,7 +48,10 @@ pub(super) const AVERROR_EOF: i32 = -0x20464F45;
 /// How the encoder gets its NV12 VAAPI surfaces.
 enum Feed {
     /// CPU upload: we own the NV12 VAAPI pool and copy into it each frame.
-    Cpu { _device: DeviceRef, frames: FramesRef },
+    Cpu {
+        _device: DeviceRef,
+        frames: FramesRef,
+    },
     /// Zero-copy: a DRM device + a VPP filtergraph map+convert the dmabuf on the GPU. The
     /// derived VAAPI device and DRM frames pool are kept alive here.
     Dma {
@@ -88,7 +91,10 @@ impl FfmpegVaapiEncoder {
         let ctx = unsafe { open_h264_vaapi(w, h, fps, bitrate_kbps, keyframe_interval, frames.0)? };
         Ok(Self {
             ctx,
-            feed: Feed::Cpu { _device: device, frames },
+            feed: Feed::Cpu {
+                _device: device,
+                frames,
+            },
             width: width as usize,
             height: height as usize,
             pts: 0,
@@ -117,7 +123,8 @@ impl FfmpegVaapiEncoder {
 
         // Bind the encoder to the graph's NV12 VAAPI output frames context.
         let out_frames = graph.output_frames_ctx()?;
-        let ctx = unsafe { open_h264_vaapi(w, h, fps, bitrate_kbps, keyframe_interval, out_frames) };
+        let ctx =
+            unsafe { open_h264_vaapi(w, h, fps, bitrate_kbps, keyframe_interval, out_frames) };
         unsafe {
             let mut f = out_frames;
             av_buffer_unref(&mut f); // the codec ctx took its own ref
@@ -126,7 +133,12 @@ impl FfmpegVaapiEncoder {
 
         Ok(Self {
             ctx,
-            feed: Feed::Dma { _drm: drm, _vaapi: vaapi, drm_frames, graph },
+            feed: Feed::Dma {
+                _drm: drm,
+                _vaapi: vaapi,
+                drm_frames,
+                graph,
+            },
             width: width as usize,
             height: height as usize,
             pts: 0,
@@ -137,7 +149,9 @@ impl FfmpegVaapiEncoder {
     /// CPU-upload feed: RGBA → NV12 (CPU) → upload to a VAAPI surface → encode.
     fn encode_cpu(&mut self, rgba: &[u8]) -> crate::Result<Option<Vec<u8>>> {
         let Feed::Cpu { frames, .. } = &self.feed else {
-            return Err(CompositorError::Encoder("encode_cpu on a non-CPU feed".into()));
+            return Err(CompositorError::Encoder(
+                "encode_cpu on a non-CPU feed".into(),
+            ));
         };
         let frames_ptr = frames.0;
         let w = self.width;
@@ -154,11 +168,15 @@ impl FfmpegVaapiEncoder {
             (*sw).height = h as i32;
             if av_frame_get_buffer(sw, 32) < 0 {
                 free_frame(sw);
-                return Err(CompositorError::Encoder("av_frame_get_buffer(sw) failed".into()));
+                return Err(CompositorError::Encoder(
+                    "av_frame_get_buffer(sw) failed".into(),
+                ));
             }
             if av_frame_make_writable(sw) < 0 {
                 free_frame(sw);
-                return Err(CompositorError::Encoder("av_frame_make_writable failed".into()));
+                return Err(CompositorError::Encoder(
+                    "av_frame_make_writable failed".into(),
+                ));
             }
             for row in 0..h {
                 let dst = (*sw).data[0].add(row * (*sw).linesize[0] as usize);
@@ -178,12 +196,16 @@ impl FfmpegVaapiEncoder {
             if av_hwframe_get_buffer(frames_ptr, hw, 0) < 0 {
                 free_frame(sw);
                 free_frame(hw);
-                return Err(CompositorError::Encoder("av_hwframe_get_buffer failed".into()));
+                return Err(CompositorError::Encoder(
+                    "av_hwframe_get_buffer failed".into(),
+                ));
             }
             if av_hwframe_transfer_data(hw, sw, 0) < 0 {
                 free_frame(sw);
                 free_frame(hw);
-                return Err(CompositorError::Encoder("av_hwframe_transfer_data failed".into()));
+                return Err(CompositorError::Encoder(
+                    "av_hwframe_transfer_data failed".into(),
+                ));
             }
             free_frame(sw);
             self.send_and_drain(hw)
@@ -195,7 +217,9 @@ impl FfmpegVaapiEncoder {
         // Build the input frame, then push it through the graph to get an NV12 VAAPI frame.
         let in_frame = {
             let Feed::Dma { drm_frames, .. } = &self.feed else {
-                return Err(CompositorError::Encoder("encode_dma on a non-DMA feed".into()));
+                return Err(CompositorError::Encoder(
+                    "encode_dma on a non-DMA feed".into(),
+                ));
             };
             dmabuf_import::drm_prime_frame(dmabuf, drm_frames)?
         };
@@ -224,7 +248,9 @@ impl FfmpegVaapiEncoder {
             let send = avcodec_send_frame(self.ctx, hw);
             free_frame(hw);
             if send < 0 {
-                return Err(CompositorError::Encoder(format!("avcodec_send_frame failed: {send}")));
+                return Err(CompositorError::Encoder(format!(
+                    "avcodec_send_frame failed: {send}"
+                )));
             }
 
             let mut out = Vec::new();
@@ -294,17 +320,27 @@ unsafe fn open_h264_vaapi(
         let name = CString::new("h264_vaapi").unwrap();
         let codec = avcodec_find_encoder_by_name(name.as_ptr());
         if codec.is_null() {
-            return Err(CompositorError::Encoder("h264_vaapi encoder not found".into()));
+            return Err(CompositorError::Encoder(
+                "h264_vaapi encoder not found".into(),
+            ));
         }
         let ctx = avcodec_alloc_context3(codec);
         if ctx.is_null() {
-            return Err(CompositorError::Encoder("avcodec_alloc_context3 failed".into()));
+            return Err(CompositorError::Encoder(
+                "avcodec_alloc_context3 failed".into(),
+            ));
         }
 
         (*ctx).width = w;
         (*ctx).height = h;
-        (*ctx).time_base = AVRational { num: 1, den: fps.max(1) as i32 };
-        (*ctx).framerate = AVRational { num: fps.max(1) as i32, den: 1 };
+        (*ctx).time_base = AVRational {
+            num: 1,
+            den: fps.max(1) as i32,
+        };
+        (*ctx).framerate = AVRational {
+            num: fps.max(1) as i32,
+            den: 1,
+        };
         (*ctx).pix_fmt = AVPixelFormat::VAAPI;
         (*ctx).max_b_frames = 0; // invariant #7: no reordering latency
         (*ctx).gop_size = keyframe_interval.max(1) as i32;
@@ -346,7 +382,9 @@ unsafe fn open_h264_vaapi(
         if ret < 0 {
             let mut c = ctx;
             avcodec_free_context(&mut c);
-            return Err(CompositorError::Encoder(format!("avcodec_open2(h264_vaapi) failed: {ret}")));
+            return Err(CompositorError::Encoder(format!(
+                "avcodec_open2(h264_vaapi) failed: {ret}"
+            )));
         }
         Ok(ctx)
     }

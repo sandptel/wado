@@ -4,7 +4,10 @@
 //! grab — only the grab-trait plumbing and the end condition (the initiating contact
 //! lifting, rather than a button release) differ.
 
-use crate::{Wado, grabs::resize_grab::{ResizeEdge, ResizeSurfaceState}};
+use crate::{
+    Wado,
+    grabs::resize_grab::{ResizeEdge, ResizeSurfaceState},
+};
 use smithay::{
     desktop::Window,
     input::touch::{
@@ -32,7 +35,10 @@ impl TouchResizeSurfaceGrab {
         initial_window_rect: Rectangle<i32, Logical>,
     ) -> Self {
         ResizeSurfaceState::with(window.toplevel().unwrap().wl_surface(), |state| {
-            *state = ResizeSurfaceState::Resizing { edges, initial_rect: initial_window_rect };
+            *state = ResizeSurfaceState::Resizing {
+                edges,
+                initial_rect: initial_window_rect,
+            };
         });
 
         Self {
@@ -75,8 +81,16 @@ impl TouchResizeSurfaceGrab {
 
         let min_width = min_size.w.max(1);
         let min_height = min_size.h.max(1);
-        let max_width = if max_size.w == 0 { i32::MAX } else { max_size.w };
-        let max_height = if max_size.h == 0 { i32::MAX } else { max_size.h };
+        let max_width = if max_size.w == 0 {
+            i32::MAX
+        } else {
+            max_size.w
+        };
+        let max_height = if max_size.h == 0 {
+            i32::MAX
+        } else {
+            max_size.h
+        };
 
         self.last_window_size = Size::from((
             new_window_width.max(min_width).min(max_width),
@@ -114,14 +128,23 @@ impl TouchGrab<Wado> for TouchResizeSurfaceGrab {
         &mut self,
         data: &mut Wado,
         handle: &mut TouchInnerHandle<'_, Wado>,
-        _focus: Option<(<Wado as smithay::input::SeatHandler>::TouchFocus, Point<f64, Logical>)>,
+        _focus: Option<(
+            <Wado as smithay::input::SeatHandler>::TouchFocus,
+            Point<f64, Logical>,
+        )>,
         event: &DownEvent,
         seq: Serial,
     ) {
         handle.down(data, None, event, seq);
     }
 
-    fn up(&mut self, data: &mut Wado, handle: &mut TouchInnerHandle<'_, Wado>, event: &UpEvent, seq: Serial) {
+    fn up(
+        &mut self,
+        data: &mut Wado,
+        handle: &mut TouchInnerHandle<'_, Wado>,
+        event: &UpEvent,
+        seq: Serial,
+    ) {
         handle.up(data, event, seq);
         if event.slot == self.start_data.slot {
             self.finish();
@@ -133,7 +156,10 @@ impl TouchGrab<Wado> for TouchResizeSurfaceGrab {
         &mut self,
         data: &mut Wado,
         handle: &mut TouchInnerHandle<'_, Wado>,
-        _focus: Option<(<Wado as smithay::input::SeatHandler>::TouchFocus, Point<f64, Logical>)>,
+        _focus: Option<(
+            <Wado as smithay::input::SeatHandler>::TouchFocus,
+            Point<f64, Logical>,
+        )>,
         event: &MotionEvent,
         seq: Serial,
     ) {
@@ -154,7 +180,13 @@ impl TouchGrab<Wado> for TouchResizeSurfaceGrab {
         handle.unset_grab(self, data);
     }
 
-    fn shape(&mut self, data: &mut Wado, handle: &mut TouchInnerHandle<'_, Wado>, event: &ShapeEvent, seq: Serial) {
+    fn shape(
+        &mut self,
+        data: &mut Wado,
+        handle: &mut TouchInnerHandle<'_, Wado>,
+        event: &ShapeEvent,
+        seq: Serial,
+    ) {
         handle.shape(data, event, seq)
     }
 

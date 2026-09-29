@@ -73,7 +73,10 @@ fn turn() -> Option<RTCIceServer> {
     }
     // Said out loud, because a TURN server that is configured but unusable looks exactly like no
     // TURN at all: ICE simply never produces a `relay` candidate and the answer looks normal.
-    if let Some(bad) = urls.iter().find(|u| !u.starts_with("turn:") && !u.starts_with("turns:")) {
+    if let Some(bad) = urls
+        .iter()
+        .find(|u| !u.starts_with("turn:") && !u.starts_with("turns:"))
+    {
         tracing::error!(
             "WADO_TURN_URL entry {bad:?} is not a turn: or turns: URL — webrtc-rs will reject it \
              and this daemon will fall back to STUN only, which cannot connect two peers that \
@@ -131,9 +134,17 @@ mod tests {
         assert_eq!(servers().len(), STUN.len());
 
         unsafe { std::env::set_var("WADO_TURN_URL", "stun:example.org:3478") };
-        assert!(turn().is_none(), "a stun: URL in the TURN slot is refused, not passed through");
+        assert!(
+            turn().is_none(),
+            "a stun: URL in the TURN slot is refused, not passed through"
+        );
 
-        unsafe { std::env::set_var("WADO_TURN_URL", "turn:example.org:3478,turns:example.org:5349") };
+        unsafe {
+            std::env::set_var(
+                "WADO_TURN_URL",
+                "turn:example.org:3478,turns:example.org:5349",
+            )
+        };
         let t = turn().expect("both schemes accepted");
         assert_eq!(t.urls.len(), 2, "comma-separated entries are split");
         assert_eq!(servers().len(), STUN.len() + 1);
@@ -145,7 +156,9 @@ mod tests {
 /// The STUN servers as bare `host:port`, for anything that speaks STUN itself rather than
 /// handing the list to webrtc-rs — see [`crate::nat`].
 pub fn stun_hosts() -> Vec<String> {
-    STUN.iter().map(|u| u.trim_start_matches("stun:").to_owned()).collect()
+    STUN.iter()
+        .map(|u| u.trim_start_matches("stun:").to_owned())
+        .collect()
 }
 
 /// True when an SDP carries a server-reflexive candidate.
@@ -154,5 +167,6 @@ pub fn stun_hosts() -> Vec<String> {
 /// degraded connection, it is a connection that cannot happen from another network, and it is
 /// the single most likely reason a phone hangs on "starting session…".
 pub fn has_reflexive(sdp: &str) -> bool {
-    sdp.lines().any(|l| l.contains("typ srflx") || l.contains("typ relay"))
+    sdp.lines()
+        .any(|l| l.contains("typ srflx") || l.contains("typ relay"))
 }

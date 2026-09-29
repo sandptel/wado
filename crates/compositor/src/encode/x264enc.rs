@@ -115,9 +115,18 @@ impl X264Encoder {
             w as i32,
             h as i32,
             &[
-                Plane { stride: w as i32, data: y },
-                Plane { stride: (w / 2) as i32, data: u },
-                Plane { stride: (w / 2) as i32, data: v },
+                Plane {
+                    stride: w as i32,
+                    data: y,
+                },
+                Plane {
+                    stride: (w / 2) as i32,
+                    data: u,
+                },
+                Plane {
+                    stride: (w / 2) as i32,
+                    data: v,
+                },
             ],
         );
 
@@ -203,7 +212,7 @@ fn rgba_to_i420(rgba: &[u8], width: usize, height: usize) -> Vec<u8> {
     for row in 0..height {
         for col in 0..width {
             let base = (row * width + col) * 4;
-            let r = rgba[base]     as i32;
+            let r = rgba[base] as i32;
             let g = rgba[base + 1] as i32;
             let b = rgba[base + 2] as i32;
             out[row * width + col] = (((66 * r + 129 * g + 25 * b + 128) >> 8) + 16) as u8;
@@ -223,7 +232,7 @@ fn rgba_to_i420(rgba: &[u8], width: usize, height: usize) -> Vec<u8> {
             for dr in 0..2usize {
                 for dc in 0..2usize {
                     let base = ((row * 2 + dr) * width + (col * 2 + dc)) * 4;
-                    r_sum += rgba[base]     as i32;
+                    r_sum += rgba[base] as i32;
                     g_sum += rgba[base + 1] as i32;
                     b_sum += rgba[base + 2] as i32;
                 }

@@ -168,9 +168,8 @@ pub fn run(ui: Ui) {
                     live.screen_w.set(num("w").unwrap_or(0.0) as u32);
                     live.screen_h.set(num("h").unwrap_or(0.0) as u32);
                     live.screen_dpr.set(num("dpr").unwrap_or(0.0));
-                    live.screen_phone.set(
-                        msg.get("phone").and_then(|v| v.as_bool()).unwrap_or(false),
-                    );
+                    live.screen_phone
+                        .set(msg.get("phone").and_then(|v| v.as_bool()).unwrap_or(false));
                     live.screen_css.set(string("css"));
                 }
                 "refresh" => live.refresh_hz.set(num("hz").map(|v| v as u32)),
@@ -241,7 +240,8 @@ pub fn run(ui: Ui) {
                 // A question, not a failure — so unlike "startFailed" this does not clear
                 // session_on or throw the log console open. The socket is parked and waiting.
                 "sessionAlive" => {
-                    live.session_alive.set(Some((string("mode"), string("pipeline"))));
+                    live.session_alive
+                        .set(Some((string("mode"), string("pipeline"))));
                 }
                 "sessionAliveCleared" => {
                     live.session_alive.set(None);

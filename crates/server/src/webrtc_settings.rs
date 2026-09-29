@@ -64,7 +64,10 @@ fn udp_port_range() -> (u16, u16) {
              {WEBRTC_UDP_PORT_MAX}. Falling back to slice 0 — if another daemon is using it, \
              both will fail ICE. Raise WEBRTC_UDP_PORT_MAX and the firewall rule instead."
         );
-        return (WEBRTC_UDP_PORT_MIN, WEBRTC_UDP_PORT_MIN + PORTS_PER_INSTANCE - 1);
+        return (
+            WEBRTC_UDP_PORT_MIN,
+            WEBRTC_UDP_PORT_MIN + PORTS_PER_INSTANCE - 1,
+        );
     }
     (min, max)
 }
@@ -87,7 +90,11 @@ pub fn build_setting_engine() -> SettingEngine {
     let (udp_min, udp_max) = udp_port_range();
     // Logged unconditionally, because two daemons silently sharing a range is invisible in
     // either one's log and shows up only as ICE that never completes.
-    tracing::info!(udp_min, udp_max, "WebRTC ICE/media UDP ports {udp_min}-{udp_max}");
+    tracing::info!(
+        udp_min,
+        udp_max,
+        "WebRTC ICE/media UDP ports {udp_min}-{udp_max}"
+    );
     match EphemeralUDP::new(udp_min, udp_max) {
         Ok(udp) => engine.set_udp_network(UDPNetwork::Ephemeral(udp)),
         Err(e) => {

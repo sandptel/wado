@@ -10,7 +10,10 @@ use crate::Wado;
 impl Wado {
     /// A fresh `(serial, time_ms)` pair for one synthesized input event.
     pub(crate) fn input_clock(&self) -> (Serial, u32) {
-        (SERIAL_COUNTER.next_serial(), self.start_time.elapsed().as_millis() as u32)
+        (
+            SERIAL_COUNTER.next_serial(),
+            self.start_time.elapsed().as_millis() as u32,
+        )
     }
 
     /// Map normalized 0..1 client coordinates to a point in the output's logical space.
@@ -28,7 +31,11 @@ impl Wado {
         if let Some((window, _)) = self.space.element_under(loc).map(|(w, l)| (w.clone(), l)) {
             self.space.raise_element(&window, true);
             let keyboard = self.seat.get_keyboard().unwrap();
-            keyboard.set_focus(self, Some(window.toplevel().unwrap().wl_surface().clone()), serial);
+            keyboard.set_focus(
+                self,
+                Some(window.toplevel().unwrap().wl_surface().clone()),
+                serial,
+            );
             self.space.elements().for_each(|w| {
                 w.toplevel().unwrap().send_pending_configure();
             });

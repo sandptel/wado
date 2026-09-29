@@ -93,11 +93,16 @@ impl ServerRegistry {
             .inner
             .iter()
             .filter(|e| e.remote_id == remote_id)
-            .map(|e| (e.registered_at, Instance {
-                instance_id: e.instance_id.clone(),
-                inbox_tx: e.inbox_tx.clone(),
-                display_name: e.display_name.clone(),
-            }))
+            .map(|e| {
+                (
+                    e.registered_at,
+                    Instance {
+                        instance_id: e.instance_id.clone(),
+                        inbox_tx: e.inbox_tx.clone(),
+                        display_name: e.display_name.clone(),
+                    },
+                )
+            })
             .collect();
         found.sort_by_key(|(t, _)| *t);
         found.into_iter().map(|(_, i)| i).collect()

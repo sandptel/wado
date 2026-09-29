@@ -16,9 +16,9 @@ pub mod gamepad;
 pub mod health;
 pub mod launcher;
 pub mod live;
+pub mod rejoin;
 pub mod session;
 pub mod stage;
-pub mod rejoin;
 mod status;
 
 use dioxus::prelude::*;

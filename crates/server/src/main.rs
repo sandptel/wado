@@ -56,8 +56,9 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             log_bus,
         )?;
     } else {
-        let control_addr =
-            std::env::args().nth(1).unwrap_or_else(|| DEFAULT_CONTROL_ADDR.to_string());
+        let control_addr = std::env::args()
+            .nth(1)
+            .unwrap_or_else(|| DEFAULT_CONTROL_ADDR.to_string());
 
         tracing::info!(
             addr = %control_addr,
@@ -72,7 +73,9 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             &control_addr,
             log_bus,
         )?;
-        tracing::info!("wado server idle on http://{control_addr} — connect with the wado-client app");
+        tracing::info!(
+            "wado server idle on http://{control_addr} — connect with the wado-client app"
+        );
     }
 
     // Post-dispatch flush: calloop runs this after EVERY dispatch, so remote input
@@ -110,9 +113,16 @@ fn init_logging() -> LogBus {
     // Said out loud, in the log itself: two logs taken in different lanes are not comparable,
     // and nothing else in the file says which one produced it.
     if overridden {
-        tracing::info!(lane, "run lane {lane} ({what}) — but RUST_LOG is set and overrides it");
+        tracing::info!(
+            lane,
+            "run lane {lane} ({what}) — but RUST_LOG is set and overrides it"
+        );
     } else {
-        tracing::info!(lane, "run lane {lane} — {what}. Others: {}", wado::runlane::names());
+        tracing::info!(
+            lane,
+            "run lane {lane} — {what}. Others: {}",
+            wado::runlane::names()
+        );
     }
     log_bus
 }
