@@ -4,6 +4,14 @@
 
 ### Added
 
+**A phone shell: apps as scrolling columns, and a bar to move between them.** On a phone,
+windows no longer float over each other. Each app is a full-screen column in one horizontal
+strip, like niri. In landscape a column can be half width, so two apps sit side by side: the ❐
+button toggles it. A bar along the bottom shows each open app's icon, with the current one in
+full colour and the others dimmed. Tap an icon to jump to it, or swipe along the bar to move to
+the next column. Dialogs float over their app instead of becoming a column. This is the new
+*Auto* window placement, which picks the strip on phones; *Phone strip* forces it anywhere.
+
 **Touch now behaves like a mouse that understands fingers.** On a phone a finger used to reach
 applications as a raw touchscreen contact, which most desktop apps handle badly: no
 double-click, no right-click, and a drag that selected text instead of scrolling. Gestures are
