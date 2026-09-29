@@ -4,6 +4,23 @@
 
 ### Added
 
+**Small buttons stop being a problem.** wado now asks each app, through its accessibility
+tree, what is under your finger and how big it is. The answer arrives before you lift, so it
+costs no delay. With one button near your finger, the tap **snaps onto it**. With several small
+ones competing (a toolbar, a row of tiny icons), a **3× lens** opens over the spot instead of
+guessing, and your next tap inside it lands exactly. A tap outside closes it without clicking
+anything. A two-finger tap opens the lens anywhere. Apps that don't describe themselves are
+judged from the picture instead.
+
+**App menus open as a phone sheet.** Right-click menus and dropdowns now also appear as a
+bottom sheet of big, readable rows ("Open ›", "Cut", "Copy", "Rename…"). Tapping a row runs that
+menu item directly. *Cancel* closes the app's menu.
+
+**A three-button bar: ⋯ More · ○ Apps · ◁ Back.** *Back* works like Android's: it hides the
+keyboard, closes a menu or dialog, or goes back in the app (browser history, parent folder).
+*More* turns into ⌨ when an app is waiting for typing. Everything else moved into *More*'s
+sheet.
+
 **Apps too wide for a phone column now fit, and stay sharp.** Many desktop apps have a minimum
 width wider than a phone screen, and used to hang off its right edge. In the phone strip such
 an app is now shrunk just enough to fit its column. It is also told to render for that smaller
