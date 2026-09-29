@@ -82,7 +82,7 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/bar.js"),
     "\n",
-    include_str!("js/strip_bar.js"),
+    include_str!("js/switcher.js"),
     "\n",
     include_str!("js/settings.js"),
     "\n",

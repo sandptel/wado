@@ -33,6 +33,12 @@ pub fn apply(ui: Ui) {
         "window.__wado.setTouchMode({});",
         bridge::js(&(s.touch_mode)())
     ));
+    bridge::call(format!(
+        "window.__wado.setSwitcher({}, {}, {});",
+        bridge::js(&(s.dial_orient)()),
+        bridge::js(&(s.dial_pos)()),
+        bridge::js(&(s.dial_count)())
+    ));
     // Same shape as the two above, and for the same reason: it is a browser-side flag the
     // Rust side only stores. It re-reports the screen, so the resolution list follows it.
     bridge::call(format!(
@@ -97,6 +103,41 @@ pub fn render(ui: Ui) -> Element {
             },
             option { value: "pointer", "Gestures (tap, hold for right-click, drag to scroll)" }
             option { value: "touch", "Raw touch (for touch-native apps)" }
+        }
+
+        label { "Window switcher" }
+        select {
+            value: "{(s.dial_orient)()}",
+            onchange: move |e| {
+                s.dial_orient.set(e.value());
+                apply(ui);
+            },
+            option { value: "vertical", "Vertical" }
+            option { value: "horizontal", "Horizontal" }
+        }
+        select {
+            value: "{(s.dial_pos)()}",
+            onchange: move |e| {
+                s.dial_pos.set(e.value());
+                apply(ui);
+            },
+            option { value: "bottom-right", "Bottom right" }
+            option { value: "bottom-left", "Bottom left" }
+            option { value: "top-right", "Top right" }
+            option { value: "top-left", "Top left" }
+            option { value: "right", "Right edge" }
+            option { value: "left", "Left edge" }
+            option { value: "bottom", "Bottom edge" }
+            option { value: "top", "Top edge" }
+        }
+        select {
+            value: "{(s.dial_count)()}",
+            onchange: move |e| {
+                s.dial_count.set(e.value());
+                apply(ui);
+            },
+            option { value: "3", "3 apps visible" }
+            option { value: "5", "5 apps visible" }
         }
     }
 }

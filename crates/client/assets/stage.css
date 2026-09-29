@@ -366,24 +366,55 @@
   overflow: hidden; overflow-wrap: anywhere;
 }
 
-/* The phone shell's bottom bar (js/strip_bar.js). Hidden until it has windows to show on a
- * touch device. 48px: a thumb's minimum target, and the whole row is the swipe surface. */
-#wado-strip-mount {
-  display: none;
-  flex: 0 0 48px;
-  align-items: center; justify-content: center; gap: 10px;
-  padding: 0 12px;
-  background: #111;
-  touch-action: none;
-  overflow-x: auto;
+/* The window switcher dial (js/switcher.js). The mount spans the picture and takes no input;
+ * only the pill does. Anchors keep clear of the control bar (bottom centre, ~56px tall). */
+#wado-dial-mount { position: absolute; inset: 0; pointer-events: none; z-index: 8; display: none; }
+#wado-dial-mount.on { display: block; }
+.dial {
+  --dial-edge: 12px;
+  --dial-lift: calc(72px + env(safe-area-inset-bottom));
+  position: absolute;
+  pointer-events: auto;
+  touch-action: none; user-select: none; -webkit-user-select: none;
+  background: color-mix(in srgb, #000 55%, transparent);
+  backdrop-filter: blur(8px);
+  border-radius: 30px;
 }
-#wado-strip-mount.on { display: flex; }
-.stripicon {
-  flex: 0 0 36px; height: 36px;
-  border: 0; border-radius: 8px; padding: 3px;
-  background: #2a2a2a; color: #ddd; font-weight: 600;
-  /* Unfocused windows are tinted back, so the focused one reads at a glance. */
-  filter: grayscale(0.7) brightness(0.6);
+.dial.vertical   { width: 58px; height: var(--dial-len); }
+.dial.horizontal { height: 58px; width: var(--dial-len); }
+.dial.at-bottom-right { right: var(--dial-edge); bottom: var(--dial-lift); }
+.dial.at-bottom-left  { left: var(--dial-edge);  bottom: var(--dial-lift); }
+.dial.at-top-right    { right: var(--dial-edge); top: var(--dial-edge); }
+.dial.at-top-left     { left: var(--dial-edge);  top: var(--dial-edge); }
+.dial.at-right  { right: var(--dial-edge); top: 50%; translate: 0 -50%; }
+.dial.at-left   { left: var(--dial-edge);  top: 50%; translate: 0 -50%; }
+.dial.at-bottom { left: 50%; bottom: var(--dial-lift); translate: -50% 0; }
+.dial.at-top    { left: 50%; top: var(--dial-edge);   translate: -50% 0; }
+/* Every icon sits at the pill's centre; switcher.js translates and scales it into its slot. */
+.dialicon {
+  position: absolute; left: 50%; top: 50%;
+  width: 44px; height: 44px; margin: -22px 0 0 -22px;
+  border-radius: 12px; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  background: #2a2a2a; color: #eee; font: 600 18px/1 system-ui, sans-serif;
+  filter: grayscale(0.6) brightness(0.7);
+  will-change: transform, opacity;
 }
-.stripicon.focused { filter: none; background: #3a3a3a; box-shadow: 0 0 0 2px var(--base0D); }
-.stripicon img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+.dialicon.centre { filter: none; box-shadow: 0 0 0 2px var(--base0D), 0 2px 10px #0008; z-index: 1; }
+.dialicon img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+/* The centred window's name, shown while dragging — the dial's answer to "where am I". It sits
+ * on the side facing the screen centre, so a corner dial never pushes it off the edge. */
+.dialtitle {
+  position: absolute; top: 50%; right: calc(100% + 8px); translate: 0 -50%;
+  max-width: 50vw; padding: 6px 10px; border-radius: 8px;
+  background: #1c1c1e; color: #fff; font: 600 14px/1.2 system-ui, sans-serif;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  opacity: 0; transition: opacity 120ms; pointer-events: none;
+}
+.dial.at-left .dialtitle, .dial.at-bottom-left .dialtitle, .dial.at-top-left .dialtitle {
+  right: auto; left: calc(100% + 8px);
+}
+.dial.horizontal .dialtitle { top: auto; bottom: calc(100% + 8px); right: auto; left: 50%; translate: -50% 0; }
+.dial.horizontal.at-top .dialtitle, .dial.horizontal.at-top-left .dialtitle,
+.dial.horizontal.at-top-right .dialtitle { bottom: auto; top: calc(100% + 8px); }
+.dial.dragging .dialtitle { opacity: 1; }

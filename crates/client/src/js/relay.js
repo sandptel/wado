@@ -352,7 +352,7 @@ W.relayOn("session_error", (msg) => {
   if (W._relayResuming) {
     W._relayResuming = false;
     W.sessionOn = false;
-    W.stripBar.clear();
+    W.dial.clear();
     markWatching(false);
     emit({ type: "sessionOff" });
     if (!W._relayWanted || !W._relayConfig) {
@@ -384,7 +384,7 @@ W.relayOn("session_stopped", () => {
   }
   if (W.sessionOn) {
     W.sessionOn = false;
-    W.stripBar.clear();
+    W.dial.clear();
     markWatching(false);
     emit({ type: "sessionOff" });
     stagebar("Session stopped.");
@@ -436,7 +436,7 @@ W.relayOn("pty_exit", () => W.ptyExited());
 W.relayOn("timing", (msg) => { W._lastTiming = msg.timings || null; });
 
 W.relayOn("apps_list", (msg) => {
-  // Kept here too: the bottom bar joins window app_ids against it for icons (strip_bar.js).
+  // Kept here too: the switcher dial joins window app_ids against it for icons (switcher.js).
   W.appsList = msg.apps || [];
   if (W.onWindows) W.onWindows(W.windows);
   emit({ type: "apps", apps: W.appsList });
