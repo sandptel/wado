@@ -10,6 +10,8 @@
 //!   - `POST /session/control` — a JSON `SessionControl`: launch a command into the running session.
 //!   - `POST /offer`         — WebRTC SDP offer → answer (JSON).
 //!   - `GET  /events`        — live tracing logs as Server-Sent Events.
+//!   - `GET  /timing`        — per-stage render timings (`StageTimings`, JSON).
+//!   - `GET  /`              — plain-text hint that this server is API-only.
 //!   - `OPTIONS *`           — CORS preflight (204).
 //!
 //! wado boots into this server only — no EGL, no encoder, no render loop — so an
