@@ -89,23 +89,8 @@ pub fn render(ui: Ui) -> Element {
                             },
                             "⛶"
                         }
-                        // Half/full column width in landscape; maximize outside the strip.
-                        button {
-                            class: "barbtn",
-                            title: "Half / full width",
-                            "aria-label": "Half or full width",
-                            disabled: !on,
-                            onclick: move |_| bridge::call("window.__wado.windowAction(\"maximize\");".to_string()),
-                            "◧"
-                        }
-                        button {
-                            class: "barbtn",
-                            title: "Close app",
-                            "aria-label": "Close app",
-                            disabled: !on,
-                            onclick: move |_| bridge::call("window.__wado.windowAction(\"close\");".to_string()),
-                            "✕"
-                        }
+                        // Close / maximize / minimize moved to a long-press on the app's own
+                        // icon in the switcher dial (js/switcher.js), which names the app.
                         button {
                             class: "barbtn",
                             title: "Console (shell and log)",

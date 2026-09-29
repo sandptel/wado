@@ -117,6 +117,8 @@ pub struct Settings {
     pub dial_orient: Signal<String>,
     pub dial_pos: Signal<String>,
     pub dial_count: Signal<String>,
+    /// What long-pressing an app on the dial does to it: `close`, `maximize` or `minimize`.
+    pub dial_hold: Signal<String>,
 
     // ── appearance ──────────────────────────────────────────────────────────────
     /// Bundled base16 scheme name; ignored while `theme_custom` parses.
@@ -193,6 +195,7 @@ impl Settings {
             dial_orient: use_signal(|| "vertical".to_string()),
             dial_pos: use_signal(|| "bottom-right".to_string()),
             dial_count: use_signal(|| "3".to_string()),
+            dial_hold: use_signal(|| "close".to_string()),
 
             pad_on: use_signal(|| false),
             // Keys, not pad: the uinput device needs the daemon's user in the `uinput` group,
