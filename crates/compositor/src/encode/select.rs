@@ -71,3 +71,35 @@ pub fn tiers_for(backend: EncoderBackend, gbm_available: bool) -> Vec<Tier> {
     }
     tiers
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ladder_per_backend() {
+        use EncoderBackend::*;
+        use Tier::*;
+        assert_eq!(tiers_for(Auto, true), [VaapiDma, VaapiCpu, X264]);
+        assert_eq!(tiers_for(Auto, false), [VaapiCpu, X264]);
+        // Hardware must never fall through to software.
+        assert_eq!(tiers_for(Hardware, true), [VaapiDma, VaapiCpu]);
+        assert_eq!(tiers_for(Hardware, false), [VaapiCpu]);
+        assert_eq!(tiers_for(Software, true), [X264]);
+    }
+
+    #[test]
+    fn downgrade_walks_the_ladder_once() {
+        assert_eq!(Tier::VaapiDma.next(), Some(Tier::VaapiCpu));
+        assert_eq!(Tier::VaapiCpu.next(), Some(Tier::X264));
+        assert_eq!(Tier::X264.next(), None);
+    }
+
+    #[test]
+    fn only_x264_reports_software() {
+        // Invariant #5: the software fallback must be visible to the user.
+        assert_eq!(Tier::X264.report().mode, EncoderMode::Software);
+        assert_eq!(Tier::VaapiDma.report().mode, EncoderMode::Hardware);
+        assert_eq!(Tier::VaapiCpu.report().mode, EncoderMode::Hardware);
+    }
+}
