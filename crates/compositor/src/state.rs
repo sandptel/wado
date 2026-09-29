@@ -224,6 +224,9 @@ pub struct Wado {
     /// The session's own D-Bus daemon, when it is isolated and one could be started. Killed
     /// with the session — see [`crate::session_env::bus`].
     pub app_bus: Option<crate::session_env::bus::SessionBus>,
+    /// The session's accessibility bus and registry, alongside `app_bus` — see
+    /// [`crate::session_env::a11y`].
+    pub app_a11y: Option<crate::session_env::a11y::A11yBus>,
     /// The session's own X server, when it was asked for and could be started. Killed with the
     /// session — see [`crate::session_env::xwayland`].
     pub app_x: Option<crate::session_env::xwayland::XServer>,
@@ -450,6 +453,7 @@ impl Wado {
             // anything.
             app_env: crate::session_env::AppEnv::Host { x: None },
             app_bus: None,
+            app_a11y: None,
             app_x: None,
             session_active: false,
             window_move: None,

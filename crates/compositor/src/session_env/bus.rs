@@ -49,8 +49,18 @@ pub struct SessionBus {
 /// `None` is not fatal and not silent: the session still runs and applications still launch,
 /// they just share the host's bus as they did before. The log line is how that is noticed.
 pub fn start() -> Option<SessionBus> {
+    daemon(
+        &["--session"],
+        "private D-Bus session bus for this wado session",
+    )
+}
+
+/// Start a `dbus-daemon` with `args` (plus address printing), and read its address. Shared
+/// with [`super::a11y`], whose accessibility bus is the same daemon with another config.
+pub(super) fn daemon(args: &[&str], what: &str) -> Option<SessionBus> {
     let mut child = match Command::new("dbus-daemon")
-        .args(["--session", "--print-address", "--nofork"])
+        .args(args)
+        .args(["--print-address", "--nofork"])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -81,7 +91,7 @@ pub fn start() -> Option<SessionBus> {
     match rx.recv_timeout(ADDRESS_TIMEOUT) {
         Ok(Some(line)) if !line.trim().is_empty() => {
             let address = line.trim().to_string();
-            info!(pid = child.id(), %address, "private D-Bus session bus for this wado session");
+            info!(pid = child.id(), %address, "{what}");
             Some(SessionBus { child, address })
         }
         other => {

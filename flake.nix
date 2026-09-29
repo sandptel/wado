@@ -82,7 +82,8 @@
               for bin in wado wado-relay; do
                 wrapProgram $out/bin/$bin \
                   --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath runtimeLibs}" \
-                  --set-default LIBVA_DRIVERS_PATH "${pkgs.mesa}/lib/dri"
+                  --set-default LIBVA_DRIVERS_PATH "${pkgs.mesa}/lib/dri" \
+                  --set-default WADO_ATSPI "${pkgs.at-spi2-core}"
               done
             '';
 
@@ -238,6 +239,11 @@
             # Pointing libva at the shell's OWN mesa keeps the two in lockstep by
             # construction, so a NixOS rebuild that moves the system driver can't break us.
             LIBVA_DRIVERS_PATH = "${pkgs.mesa}/lib/dri";
+
+            # at-spi2-core's prefix: each session runs its own accessibility bus and registry
+            # from it (crates/compositor/src/session_env/a11y.rs). Its binaries live in
+            # libexec, never on PATH, so the daemon cannot find them any other way.
+            WADO_ATSPI = "${pkgs.at-spi2-core}";
 
             LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
             PROTOC = "${pkgs.protobuf}/bin/protoc";
