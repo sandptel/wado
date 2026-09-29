@@ -41,6 +41,12 @@ impl Wado {
             fit::advertise_bounds(toplevel, geo.size);
         }
 
+        if self.placement == Placement::Strip && Self::is_strip_column(&window) {
+            // Columns are sized and placed by the strip alone; the commit-time placement below
+            // would drag them back onto the output.
+            return self.strip_insert(window);
+        }
+
         match self.placement {
             Placement::Maximized => {
                 if let Some(geo) = output_geo {
@@ -60,7 +66,8 @@ impl Wado {
             Placement::TopLeft => {
                 self.space.map_element(window.clone(), (0, 0), false);
             }
-            Placement::Center | Placement::Cascade => {
+            // Strip reaches here only for dialogs, which float centred.
+            Placement::Center | Placement::Cascade | Placement::Strip => {
                 // Map provisionally; reposition once the size is known (first commit).
                 self.space.map_element(window.clone(), (0, 0), false);
             }
@@ -105,7 +112,7 @@ impl Wado {
         let size = fit::fit(&window, output_geo.size);
 
         let loc: Point<i32, Logical> = match self.placement {
-            Placement::Center => {
+            Placement::Center | Placement::Strip => {
                 let x = output_geo.loc.x + (output_geo.size.w - size.w).max(0) / 2;
                 let y = output_geo.loc.y + (output_geo.size.h - size.h).max(0) / 2;
                 (x, y).into()

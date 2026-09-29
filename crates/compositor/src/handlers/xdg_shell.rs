@@ -60,6 +60,11 @@ impl XdgShellHandler for Wado {
     }
 
     fn move_request(&mut self, surface: ToplevelSurface, seat: wl_seat::WlSeat, serial: Serial) {
+        // Columns do not float — see `crate::strip`. A dialog could, but it is centred on
+        // purpose and dragging it off a phone-sized screen is not worth offering.
+        if self.placement == wado_protocol::Placement::Strip {
+            return;
+        }
         let seat = Seat::from_resource(&seat).unwrap();
         let wl_surface = surface.wl_surface();
 
@@ -101,6 +106,9 @@ impl XdgShellHandler for Wado {
         serial: Serial,
         edges: xdg_toplevel::ResizeEdge,
     ) {
+        if self.placement == wado_protocol::Placement::Strip {
+            return;
+        }
         let seat = Seat::from_resource(&seat).unwrap();
         let wl_surface = surface.wl_surface();
 

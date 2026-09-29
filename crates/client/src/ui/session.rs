@@ -255,6 +255,8 @@ pub fn render(ui: Ui) -> Element {
         select {
             value: "{(s.placement)()}", disabled: on,
             onchange: move |e| s.placement.set(e.value()),
+            option { value: "auto", "Auto (phone strip on phones)" }
+            option { value: "strip", "Phone strip (scrolling columns)" }
             option { value: "center", "Center" }
             option { value: "top_left", "Top-left" }
             option { value: "cascade", "Cascade" }

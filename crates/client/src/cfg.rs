@@ -47,6 +47,10 @@ pub fn build(ui: Ui) -> SessionConfig {
         "top_left" => Placement::TopLeft,
         "cascade" => Placement::Cascade,
         "maximized" => Placement::Maximized,
+        "strip" => Placement::Strip,
+        "center" => Placement::Center,
+        // "auto": the phone shell on a phone, a desktop everywhere else.
+        _ if (ui.live.screen_phone)() => Placement::Strip,
         _ => Placement::Center,
     };
     let backend = match (s.encoder_backend)().as_str() {

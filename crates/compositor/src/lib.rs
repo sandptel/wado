@@ -40,6 +40,7 @@ pub mod proc;
 pub mod session_env;
 pub mod sink;
 pub mod state;
+pub mod strip;
 pub mod timing;
 mod window;
 pub mod window_list;
