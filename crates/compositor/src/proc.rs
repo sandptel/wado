@@ -267,6 +267,7 @@ mod tests {
             &format!("env > {}", out.display()),
             &AppEnv::Isolated {
                 bus: Some("unix:path=/tmp/wado-test-bus".to_string()),
+                a11y: None,
                 x: None,
             },
         )

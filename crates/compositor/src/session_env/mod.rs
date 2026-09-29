@@ -11,6 +11,7 @@
 //! ([`bus`]), a `DISPLAY` that is not the host's, and — for applications that can only speak
 //! X11 — a `DISPLAY` that is the session's own ([`xwayland`]).
 
+pub mod a11y;
 pub mod bus;
 pub mod xwayland;
 
@@ -33,6 +34,8 @@ pub enum AppEnv {
         /// The private bus, when there is one. `None` means `dbus-daemon` could not be
         /// started and only the `DISPLAY` half of the isolation is in force.
         bus: Option<String>,
+        /// The session's accessibility bus — see [`a11y`]. `None`: no tree for this session.
+        a11y: Option<String>,
         /// The session's own X server, when it has one. Without it `DISPLAY` is removed and
         /// an X11-only application cannot run at all — see [`xwayland`].
         x: Option<String>,
@@ -45,7 +48,7 @@ pub fn apply(cmd: &mut Command, env: &AppEnv) {
         // The host's `DISPLAY` stays as it was when there is no session X server: an X11 app
         // opening on the host desktop is wrong, but it is what "not isolated" means.
         AppEnv::Host { x } => (&None, x),
-        AppEnv::Isolated { bus, x } => (bus, x),
+        AppEnv::Isolated { bus, x, .. } => (bus, x),
     };
 
     if let Some(display) = x {
@@ -64,6 +67,17 @@ pub fn apply(cmd: &mut Command, env: &AppEnv) {
     // unless the session has an X server of its own, which is the branch above.
     if x.is_none() {
         cmd.env_remove("DISPLAY");
+    }
+
+    if let AppEnv::Isolated {
+        a11y: Some(address),
+        ..
+    } = env
+    {
+        cmd.env("AT_SPI_BUS_ADDRESS", address);
+        // Qt publishes its tree only when a screen reader is announced, which on this bus
+        // nothing ever does. GTK needs no such switch.
+        cmd.env("QT_LINUX_ACCESSIBILITY_ALWAYS_ON", "1");
     }
 
     if let Some(address) = bus {

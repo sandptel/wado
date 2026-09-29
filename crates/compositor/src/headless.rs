@@ -735,6 +735,9 @@ pub fn stop_session(state: &mut Wado) {
     }
     // After the applications, never before: killing the bus first would take the socket out
     // from under processes that are still shutting down.
+    if let Some(a11y) = state.app_a11y.take() {
+        crate::session_env::a11y::terminate(a11y);
+    }
     if let Some(bus) = state.app_bus.take() {
         crate::session_env::bus::terminate(bus);
     }
