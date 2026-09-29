@@ -4,6 +4,13 @@
 
 ### Added
 
+**Apps too wide for a phone column now fit, and stay sharp.** Many desktop apps have a minimum
+width wider than a phone screen, and used to hang off its right edge. In the phone strip such
+an app is now shrunk just enough to fit its column. It is also told to render for that smaller
+size, so the result is crisp rather than a blurry resample. Touches land where you see them.
+The switcher dial also moves the real windows now: while you drag it, the apps slide side by
+side with a gap between them and bounce into place with it.
+
 **A phone shell: apps as scrolling columns, and a bar to move between them.** On a phone,
 windows no longer float over each other. Each app is a full-screen column in one horizontal
 strip, like niri. In landscape a column can be half width, so two apps sit side by side: the ❐
