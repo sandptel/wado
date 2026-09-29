@@ -49,6 +49,7 @@ pub struct Saved {
     pub scroll_speed: Option<f64>,
     pub orientation: Option<String>,
     pub natural_scroll: Option<bool>,
+    pub touch_mode: Option<String>,
 
     pub pad_on: Option<bool>,
     pub pad_mode: Option<String>,
@@ -104,6 +105,7 @@ pub fn snapshot(ui: Ui) -> Saved {
         scroll_speed: Some((s.scroll_speed)()),
         orientation: Some((s.orientation)()),
         natural_scroll: Some((s.natural_scroll)()),
+        touch_mode: Some((s.touch_mode)()),
 
         pad_on: Some((s.pad_on)()),
         pad_mode: Some((s.pad_mode)()),
@@ -175,6 +177,7 @@ pub fn restore(ui: Ui, saved: Saved) {
     }
     put!(orientation);
     put!(natural_scroll);
+    put!(touch_mode);
     put!(pad_on);
     put!(pad_mode);
     put!(pad_scale);

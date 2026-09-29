@@ -4,6 +4,16 @@
 
 ### Added
 
+**Touch now behaves like a mouse that understands fingers.** On a phone a finger used to reach
+applications as a raw touchscreen contact, which most desktop apps handle badly: no
+double-click, no right-click, and a drag that selected text instead of scrolling. Gestures are
+now translated. A **tap** is a click. A **double-tap** is a real double-click: the second tap is
+snapped onto the first so fingertip wobble doesn't break it. **Hold** for a right-click (hold
+and drag still moves a window). **One finger scrolls**, with the app's own momentum on release.
+**Two fingers** either pinch-zoom or, if you keep them apart and move the first one, press and
+drag to select text or drag files. Apps built for touch can be switched back under Settings →
+*Touch → Raw touch*.
+
 **Every aspect ratio, and a straight answer about each one.** The resolution picker now has
 two groups. *Recommended* is derived from your own screen — five rungs from 540p to 1440p, all
 of them exactly your panel's shape. Below it is every standard mode there is: 16:9, 16:10, 3:2,
