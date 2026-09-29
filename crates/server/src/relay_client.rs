@@ -83,6 +83,9 @@ struct RelayCtx {
     /// Bitrate actually written to the video track over the last stretch, in kbps. Forwarded to
     /// the viewer — see [`wado_protocol::RelayMsg::SentKbps`] for why it has to be.
     sent_kbps: tokio::sync::watch::Receiver<u32>,
+    /// Smoothed time (microseconds) encoded frames wait before the pump takes them — the
+    /// `queue_ms` leg of `TimingRequest`. Only the pump knows it; the compositor reports zero.
+    queue_us: Arc<AtomicU64>,
     /// Unix-millis of the last moment a viewer's peer connection was seen `Connected`. See
     /// [`viewer_watchdog`] — this, not relay silence, is how long there has been no viewer.
     last_connected: Arc<AtomicU64>,
@@ -173,8 +176,10 @@ async fn run(
     // What actually leaves this process, measured at the track. Published for the viewer, which
     // otherwise sees only what arrived and must guess which end lost the difference.
     let (sent_kbps_tx, sent_kbps) = tokio::sync::watch::channel(0u32);
+    let queue_us = Arc::new(AtomicU64::new(0));
     {
         let track_pump = Arc::clone(&track);
+        let queue_us = Arc::clone(&queue_us);
         tokio::spawn(async move {
             // The frame channel is two slots deep, so a write_sample that takes longer than
             // two frame times is enough to start dropping. Whether it does is the difference
@@ -204,11 +209,16 @@ async fn run(
                 let bytes = frame.data.len();
                 let key = is_keyframe(&frame.data);
                 // How long the frame sat between the compositor letting go and the pump
-                // picking it up. Relay mode has no /timing endpoint, so this leg — the one
-                // the compositor explicitly cannot see — was measured and then thrown away.
-                // It is also the leg that grows first when the pump falls behind, which
-                // makes it an early warning rather than a post-mortem.
+                // picking it up — the leg the compositor explicitly cannot see. It is also
+                // the leg that grows first when the pump falls behind, which makes it an
+                // early warning rather than a post-mortem.
                 let waited = frame.queued_at.elapsed();
+                // EWMA, 1/8 weight on the newest sample — same as the direct-mode pump.
+                let prev = queue_us.load(Ordering::Relaxed);
+                queue_us.store(
+                    (prev * 7 + waited.as_micros() as u64) / 8,
+                    Ordering::Relaxed,
+                );
                 if waited > worst_wait {
                     worst_wait = waited;
                 }
@@ -258,9 +268,8 @@ async fn run(
                     key_bytes_max = 0;
                     p_bytes_total = 0;
                 }
-                // Relay mode has no /timing endpoint yet, so the queue stamp is unused
-                // here — the duration still matters (real elapsed time keeps the RTP clock
-                // on wall clock; see ChannelSink).
+                // The duration matters: real elapsed time keeps the RTP clock on wall
+                // clock; see ChannelSink.
                 let sample = Sample {
                     data: Bytes::from(frame.data),
                     duration: frame.duration,
@@ -354,6 +363,7 @@ async fn run(
         text_input,
         shedding,
         sent_kbps,
+        queue_us,
         active_pc: Arc::new(Mutex::new(None)),
         generation: Arc::new(AtomicU64::new(0)),
         last_connected: Arc::new(AtomicU64::new(now_ms())),
@@ -952,7 +962,8 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             }
 
             RelayMsg::TimingRequest => {
-                let timings = *ctx.timings.borrow();
+                let mut timings = *ctx.timings.borrow();
+                timings.queue_ms = ctx.queue_us.load(Ordering::Relaxed) as f64 / 1e3;
                 send_relay(&out_tx, &RelayMsg::Timing { timings })
                     .await
                     .ok();
