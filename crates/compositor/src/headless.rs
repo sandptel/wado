@@ -1090,7 +1090,14 @@ fn render_tick(state: &mut Wado) -> crate::Result<()> {
             let focused = state
                 .focused_window()
                 .filter(|w| !crate::fullscreen::is_fullscreen(w))
-                .and_then(|w| state.space.element_geometry(&w))
+                .and_then(|w| {
+                    // A shrunk strip column is drawn smaller than the space thinks it is.
+                    let f = state.window_scale(&w);
+                    state.space.element_geometry(&w).map(|mut g| {
+                        g.size = g.size.to_f64().upscale(f).to_i32_round();
+                        g
+                    })
+                })
                 .map(|mut geo| {
                     geo.loc -= state
                         .space
@@ -1100,6 +1107,15 @@ fn render_tick(state: &mut Wado) -> crate::Result<()> {
                     geo
                 });
             let glow = state.glow.elements(focused, state.output_scale as f64);
+            // Some strip column is drawn smaller than its app (S3): compose by hand so each
+            // window gets its own scale. Otherwise the untouched `space::render_output` path.
+            let output_scale = state.output_scale as f64;
+            let scaled = (state.placement == wado_protocol::Placement::Strip
+                && state.strip.iter().any(|c| c.scale < 1.0))
+            .then(|| {
+                let og = state.space.output_geometry(&output).unwrap_or_default();
+                crate::scaled::placed(state, og)
+            });
 
             let renderer = state.renderer.as_mut().unwrap();
             let capture = state.capture.as_mut().unwrap();
@@ -1108,6 +1124,13 @@ fn render_tick(state: &mut Wado) -> crate::Result<()> {
             let bg = [0.1, 0.1, 0.1, 1.0];
 
             let mut render = |r: &mut GlesRenderer, fb: &mut GlesTarget<'_>| -> crate::Result<()> {
+                if let Some(placed) = &scaled {
+                    let elements = crate::scaled::elements(r, placed, &glow, output_scale);
+                    damage_tracker
+                        .render_output(r, fb, 0, &elements, bg)
+                        .map_err(renderer_err("render_output (scaled)"))?;
+                    return Ok(());
+                }
                 // The second parameter is the *custom* element type, which is now the focus ring
                 // rather than the empty slice this used to pass.
                 smithay::desktop::space::render_output::<_, SolidColorRenderElement, _, _>(
