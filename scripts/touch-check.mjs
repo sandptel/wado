@@ -127,12 +127,21 @@ run("two fingers spreading is a pinch, not a drag", (e) => {
   assert(buttons(e.sent).length === 0, "no button held");
 });
 
-run("hold then drag moves the window", (e) => {
+run("hold then drag picks the item up, not the window", (e) => {
   e.down(1, 100, 100); e.advance(520);
   e.move(1, 150, 150); e.up(1, 150, 150);
+  const b = buttons(e.sent);
+  assert(b.length === 2 && b.every((m) => m.button === "left"), `got ${JSON.stringify(b)}`);
+  assert(b[0].pressed && near(b[0].x, 0.1), "pressed where the hold began");
+  assert(!b[1].pressed && near(b[1].x, 0.15), "released where the finger lifted");
+  assert(!e.sent.some((m) => m.t === "window_drag"), "no window move");
+});
+
+run("move mode still moves windows", (e) => {
+  e.W.moveMode = true;
+  e.down(1, 100, 100); e.move(1, 150, 150); e.up(1, 150, 150);
   const d = e.sent.filter((m) => m.t === "window_drag").map((m) => m.phase);
   assert(d[0] === "down" && d.at(-1) === "up", `window drag, got ${d}`);
-  assert(buttons(e.sent).length === 0, "no right click after a move");
 });
 
 run("raw mode: two fingers still scroll through the shared helper", (e) => {
