@@ -48,7 +48,11 @@ pub fn drm_prime_frame(dmabuf: &Dmabuf, drm_frames: &FramesRef) -> crate::Result
     // One object (the single dmabuf), one layer, `num_planes` planes (RGBA = 1).
     let mut desc: Box<AVDRMFrameDescriptor> = Box::new(unsafe { std::mem::zeroed() });
     desc.nb_objects = 1;
-    desc.objects[0] = AVDRMObjectDescriptor { fd, size: 0, format_modifier: modifier };
+    desc.objects[0] = AVDRMObjectDescriptor {
+        fd,
+        size: 0,
+        format_modifier: modifier,
+    };
     desc.nb_layers = 1;
     let mut layer: AVDRMLayerDescriptor = unsafe { std::mem::zeroed() };
     layer.format = fourcc;
@@ -64,7 +68,9 @@ pub fn drm_prime_frame(dmabuf: &Dmabuf, drm_frames: &FramesRef) -> crate::Result
 
     let frame = unsafe { av_frame_alloc() };
     if frame.is_null() {
-        return Err(CompositorError::Encoder("av_frame_alloc(drm_prime) failed".into()));
+        return Err(CompositorError::Encoder(
+            "av_frame_alloc(drm_prime) failed".into(),
+        ));
     }
 
     let desc_ptr = Box::into_raw(desc);
@@ -84,7 +90,9 @@ pub fn drm_prime_frame(dmabuf: &Dmabuf, drm_frames: &FramesRef) -> crate::Result
             let mut f = frame;
             av_frame_free(&mut f);
         }
-        return Err(CompositorError::Encoder("av_buffer_create(descriptor) failed".into()));
+        return Err(CompositorError::Encoder(
+            "av_buffer_create(descriptor) failed".into(),
+        ));
     }
 
     unsafe {

@@ -215,7 +215,13 @@ impl Gamepad {
     /// A failed write is logged once per event and otherwise ignored: the only realistic cause
     /// is the device having gone away, and there is nothing useful to do about it mid-game.
     fn emit(&mut self, kind: u16, code: u16, value: i32) {
-        let ev = InputEventRaw { sec: 0, usec: 0, kind, code, value };
+        let ev = InputEventRaw {
+            sec: 0,
+            usec: 0,
+            kind,
+            code,
+            value,
+        };
         // Safety: `ev` is a live `#[repr(C)]` value borrowed for the duration of the write.
         let bytes = unsafe {
             std::slice::from_raw_parts(

@@ -18,7 +18,10 @@ fn main() {
     tracing_subscriber::fmt().with_env_filter("info").init();
 
     println!("render node: {:?}", first_render_node());
-    println!("vaapi_available() (cached probe): {}", probe::vaapi_available());
+    println!(
+        "vaapi_available() (cached probe): {}",
+        probe::vaapi_available()
+    );
 
     let node = match first_render_node() {
         Some(n) => n,

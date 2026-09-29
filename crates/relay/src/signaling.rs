@@ -37,7 +37,7 @@ use futures_util::{SinkExt, StreamExt};
 use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
-use wado_protocol::relay::{RelayMsg, display_remote_id, normalize_remote_id};
+use wado_protocol::relay::{display_remote_id, normalize_remote_id, RelayMsg};
 
 use crate::AppState;
 
@@ -70,9 +70,10 @@ async fn register_loop(socket: WebSocket, addr: SocketAddr, state: AppState) {
     };
 
     let (remote_id, display_name) = match serde_json::from_str::<RelayMsg>(&first) {
-        Ok(RelayMsg::Register { remote_id, display_name }) => {
-            (normalize_remote_id(&remote_id), display_name)
-        }
+        Ok(RelayMsg::Register {
+            remote_id,
+            display_name,
+        }) => (normalize_remote_id(&remote_id), display_name),
         Ok(other) => {
             warn!(%addr, ?other, "register: expected Register, got something else");
             send_error(&mut ws_tx, "expected Register as first message").await;
@@ -96,7 +97,10 @@ async fn register_loop(socket: WebSocket, addr: SocketAddr, state: AppState) {
     // with the first. The instance id minted here is this registration's identity for as long
     // as its socket lives, and is what rooms are keyed by.
     let (inbox_tx, mut inbox_rx) = mpsc::channel::<String>(128);
-    let instance_id = state.registry.insert(remote_id.clone(), display_name.clone(), addr, inbox_tx);
+    let instance_id =
+        state
+            .registry
+            .insert(remote_id.clone(), display_name.clone(), addr, inbox_tx);
     let pool_size = state.registry.instances_for(&remote_id).len();
 
     info!(
@@ -109,7 +113,9 @@ async fn register_loop(socket: WebSocket, addr: SocketAddr, state: AppState) {
     );
 
     // ── 3. Send Registered ack ───────────────────────────────────────────────
-    let ack = match serde_json::to_string(&RelayMsg::Registered { remote_id: remote_id.clone() }) {
+    let ack = match serde_json::to_string(&RelayMsg::Registered {
+        remote_id: remote_id.clone(),
+    }) {
         Ok(s) => s,
         Err(_) => return,
     };
@@ -141,7 +147,11 @@ async fn register_loop(socket: WebSocket, addr: SocketAddr, state: AppState) {
                 );
                 // Forward verbatim to *this daemon's* client. Keyed by instance: with a pool,
                 // a Remote ID no longer identifies one conversation.
-                if !state.rooms.forward_to_client(&instance_id, text.to_string()).await {
+                if !state
+                    .rooms
+                    .forward_to_client(&instance_id, text.to_string())
+                    .await
+                {
                     // No client in the room yet — message is dropped (e.g. server
                     // sent a session event before a client connected).
                     debug!(remote_id = %display_remote_id(&remote_id), "no client in room, dropping message");
@@ -245,14 +255,24 @@ async fn join_loop(
     // programs. When that daemon is busy the device gets a *different* one rather than taking
     // it — which is what stops two devices evicting each other forever.
     let claim = |i: &crate::registry::Instance| {
-        state.rooms.claim(&i.instance_id, &remote_id, room_id.clone(), addr, client_inbox_tx.clone())
+        state.rooms.claim(
+            &i.instance_id,
+            &remote_id,
+            room_id.clone(),
+            addr,
+            client_inbox_tx.clone(),
+        )
     };
     let chosen = wanted_instance
         .as_deref()
         .and_then(|w| pool.iter().find(|i| i.instance_id == w))
         .filter(|i| claim(i))
         .map(|i| (i.clone(), "reclaimed"))
-        .or_else(|| pool.iter().find(|i| claim(i)).map(|i| (i.clone(), "assigned")));
+        .or_else(|| {
+            pool.iter()
+                .find(|i| claim(i))
+                .map(|i| (i.clone(), "assigned"))
+        });
 
     let (instance, assignment) = match chosen {
         Some(pair) => pair,
@@ -287,8 +307,12 @@ async fn join_loop(
     let instance_id = instance.instance_id.clone();
     let server_inbox_tx = instance.inbox_tx.clone();
     let display_name = instance.display_name.clone();
-    let pool_busy =
-        state.rooms.busy_among(&pool.iter().map(|i| i.instance_id.clone()).collect::<Vec<_>>());
+    let pool_busy = state.rooms.busy_among(
+        &pool
+            .iter()
+            .map(|i| i.instance_id.clone())
+            .collect::<Vec<_>>(),
+    );
 
     info!(
         remote_id = %display_remote_id(&remote_id),
@@ -364,7 +388,9 @@ async fn join_loop(
         tick.tick().await; // the first tick is immediate; the socket is fresh
         loop {
             tick.tick().await;
-            let Ok(text) = serde_json::to_string(&RelayMsg::Ping) else { break };
+            let Ok(text) = serde_json::to_string(&RelayMsg::Ping) else {
+                break;
+            };
             if ping_tx.send(text).await.is_err() {
                 break; // room gone — nothing to keep alive
             }
@@ -426,8 +452,9 @@ async fn join_loop(
     // teardown. A cell handoff, a screen lock, a tunnel hiccup — each one killed the windows and
     // every application the session had launched, before the 45 s grace period downstream could
     // look at it even once. A viewer going away is not a request to stop.
-    if let Ok(text) = serde_json::to_string(&RelayMsg::PeerDisconnected { room_id: room_id.clone() })
-    {
+    if let Ok(text) = serde_json::to_string(&RelayMsg::PeerDisconnected {
+        room_id: room_id.clone(),
+    }) {
         let _ = server_inbox_tx.send(text).await;
     }
     info!(
@@ -445,17 +472,18 @@ async fn send_error(
     ws_tx: &mut futures_util::stream::SplitSink<WebSocket, Message>,
     message: &str,
 ) {
-    let msg = serde_json::to_string(&RelayMsg::Error { message: message.to_string() })
-        .unwrap_or_else(|_| r#"{"type":"error","message":"internal"}"#.to_string());
+    let msg = serde_json::to_string(&RelayMsg::Error {
+        message: message.to_string(),
+    })
+    .unwrap_or_else(|_| r#"{"type":"error","message":"internal"}"#.to_string());
     let _ = ws_tx.send(Message::Text(msg)).await;
 }
 
-async fn send_deny(
-    ws_tx: &mut futures_util::stream::SplitSink<WebSocket, Message>,
-    reason: &str,
-) {
-    let msg = serde_json::to_string(&RelayMsg::JoinDenied { reason: reason.to_string() })
-        .unwrap_or_else(|_| r#"{"type":"join_denied","reason":"internal"}"#.to_string());
+async fn send_deny(ws_tx: &mut futures_util::stream::SplitSink<WebSocket, Message>, reason: &str) {
+    let msg = serde_json::to_string(&RelayMsg::JoinDenied {
+        reason: reason.to_string(),
+    })
+    .unwrap_or_else(|_| r#"{"type":"join_denied","reason":"internal"}"#.to_string());
     let _ = ws_tx.send(Message::Text(msg)).await;
 }
 
@@ -484,7 +512,10 @@ mod tests {
         // The exact shape that panicked: 119 ASCII bytes, then a 3-byte char occupying bytes
         // 119..122 — so the old `&text[..120]` cut straight through it.
         let s = format!("{}●tail", "a".repeat(119));
-        assert!(!s.is_char_boundary(120), "test no longer reproduces the original panic");
+        assert!(
+            !s.is_char_boundary(120),
+            "test no longer reproduces the original panic"
+        );
         assert_eq!(head(&s).chars().count(), 120);
         assert!(head(&s).ends_with('●'));
         // Shorter than the cap, empty, and all-multibyte all pass through unharmed.

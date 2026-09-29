@@ -65,7 +65,10 @@ pub fn apply(ui: Ui) {
     let mut live = ui.live;
     let config = cfg::build(ui);
     live.status.set("applying…".to_string());
-    bridge::call(format!("window.__wado.reconfigure({});", bridge::js(&config)));
+    bridge::call(format!(
+        "window.__wado.reconfigure({});",
+        bridge::js(&config)
+    ));
 }
 
 pub fn stop(ui: Ui) {

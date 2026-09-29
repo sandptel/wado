@@ -122,7 +122,14 @@ pub struct Congestion {
 
 impl Default for Congestion {
     fn default() -> Self {
-        Self { divisor: 1, tick: 0, last_dropped: 0, clean: 0, strain: 0, patience: RECOVER_WINDOWS }
+        Self {
+            divisor: 1,
+            tick: 0,
+            last_dropped: 0,
+            clean: 0,
+            strain: 0,
+            patience: RECOVER_WINDOWS,
+        }
     }
 }
 
@@ -157,7 +164,10 @@ impl Congestion {
     /// giving recovery a fresh start is the combination that is wrong in neither direction.
     pub fn reattach(&mut self) {
         let divisor = self.divisor;
-        *self = Self { divisor, ..Self::default() };
+        *self = Self {
+            divisor,
+            ..Self::default()
+        };
     }
 
     pub fn divisor(&self) -> u32 {
@@ -175,7 +185,14 @@ impl Congestion {
             let delta = dropped_total.saturating_sub(self.last_dropped);
             self.last_dropped = dropped_total;
             self.tick = 0;
-            let next = decide(delta, strained, self.divisor, self.clean, self.strain, self.patience);
+            let next = decide(
+                delta,
+                strained,
+                self.divisor,
+                self.clean,
+                self.strain,
+                self.patience,
+            );
             if next.divisor != self.divisor {
                 tracing::info!(
                     from = self.divisor,
@@ -243,7 +260,13 @@ fn decide(
             };
         }
         // Held, and recovery credit is not accrued: a strained viewer must never climb back.
-        return Decision { divisor, clean: 0, strain, patience, reason: Reason::Strain };
+        return Decision {
+            divisor,
+            clean: 0,
+            strain,
+            patience,
+            reason: Reason::Strain,
+        };
     }
     if divisor > 1 && clean + 1 >= patience {
         // One step back toward full rate, and the counter restarts — so climbing from 4 to 1
@@ -256,7 +279,13 @@ fn decide(
             reason: Reason::Recover,
         };
     }
-    Decision { divisor, clean: clean + 1, strain: 0, patience, reason: Reason::Recover }
+    Decision {
+        divisor,
+        clean: clean + 1,
+        strain: 0,
+        patience,
+        reason: Reason::Recover,
+    }
 }
 
 #[cfg(test)]
@@ -273,9 +302,16 @@ mod tests {
             c.should_render(0, true);
         }
         let shed = c.divisor();
-        assert!(shed > 1, "the setup must actually have shed something, got {shed}");
+        assert!(
+            shed > 1,
+            "the setup must actually have shed something, got {shed}"
+        );
         c.reattach();
-        assert_eq!(c.divisor(), shed, "a reconnect must keep the rate the decoder earned");
+        assert_eq!(
+            c.divisor(),
+            shed,
+            "a reconnect must keep the rate the decoder earned"
+        );
     }
 
     #[test]
@@ -294,7 +330,10 @@ mod tests {
         for _ in 0..(WINDOW_TICKS * (RECOVER_WINDOWS + 1)) {
             c.should_render(0, false);
         }
-        assert!(c.divisor() < shed, "recovery should be possible again after a reattach");
+        assert!(
+            c.divisor() < shed,
+            "recovery should be possible again after a reattach"
+        );
     }
 
     #[test]
@@ -326,7 +365,10 @@ mod tests {
     fn a_clean_link_never_sheds() {
         let mut c = Congestion::default();
         for i in 0..(WINDOW_TICKS * 10) {
-            assert!(c.should_render(0, false), "tick {i} was shed on a link with no drops");
+            assert!(
+                c.should_render(0, false),
+                "tick {i} was shed on a link with no drops"
+            );
         }
         assert_eq!(c.divisor(), 1);
     }
@@ -374,7 +416,9 @@ mod tests {
             c.should_render(5, false);
         }
         assert_eq!(c.divisor(), 2);
-        let rendered = (0..WINDOW_TICKS).filter(|_| c.should_render(5, false)).count();
+        let rendered = (0..WINDOW_TICKS)
+            .filter(|_| c.should_render(5, false))
+            .count();
         assert_eq!(rendered as u32, WINDOW_TICKS / 2);
     }
 
@@ -395,7 +439,11 @@ mod tests {
         for _ in 0..(WINDOW_TICKS * RECOVER_WINDOWS) {
             c.should_render(100, false);
         }
-        assert_eq!(c.divisor(), 1, "a static counter was misread as ongoing congestion");
+        assert_eq!(
+            c.divisor(),
+            1,
+            "a static counter was misread as ongoing congestion"
+        );
     }
 
     // ── The viewer's decoder ──────────────────────────────────────────────────────────────
@@ -410,7 +458,11 @@ mod tests {
         d = strainy(1, 0, d.strain, RECOVER_WINDOWS);
         assert_eq!((d.divisor, d.strain), (1, 2));
         d = strainy(1, 0, d.strain, RECOVER_WINDOWS);
-        assert_eq!((d.divisor, d.strain), (2, 0), "the third strained window steps down");
+        assert_eq!(
+            (d.divisor, d.strain),
+            (2, 0),
+            "the third strained window steps down"
+        );
     }
 
     #[test]
@@ -434,7 +486,11 @@ mod tests {
         for _ in 0..(WINDOW_TICKS * STRAIN_WINDOWS) {
             c.should_render(0, true);
         }
-        assert_eq!(c.divisor(), 2, "three strained windows should have stepped down once");
+        assert_eq!(
+            c.divisor(),
+            2,
+            "three strained windows should have stepped down once"
+        );
         // Patience has grown to RECOVER_WINDOWS * PATIENCE_FACTOR by now, so the old
         // three-window wait is no longer enough — that is the point.
         for _ in 0..(WINDOW_TICKS * RECOVER_WINDOWS * PATIENCE_FACTOR) {
@@ -454,7 +510,10 @@ mod tests {
         assert_eq!(a.patience, RECOVER_WINDOWS * PATIENCE_FACTOR);
         let b = strainy(2, 0, STRAIN_WINDOWS - 1, a.patience);
         assert_eq!(b.divisor, 4);
-        assert_eq!(b.patience, RECOVER_WINDOWS * PATIENCE_FACTOR * PATIENCE_FACTOR);
+        assert_eq!(
+            b.patience,
+            RECOVER_WINDOWS * PATIENCE_FACTOR * PATIENCE_FACTOR
+        );
         // Bounded, or a long session would eventually never recover at all.
         let mut p = b.patience;
         for _ in 0..10 {

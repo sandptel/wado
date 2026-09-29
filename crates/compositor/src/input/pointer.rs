@@ -31,12 +31,23 @@ impl Wado {
         let (serial, time) = self.input_clock();
         let under = self.surface_under(loc);
         let pointer = self.seat.get_pointer().unwrap();
-        pointer.motion(self, under.clone(), &MotionEvent { location: loc, serial, time });
+        pointer.motion(
+            self,
+            under.clone(),
+            &MotionEvent {
+                location: loc,
+                serial,
+                time,
+            },
+        );
         pointer.frame(self);
 
         if self.focus_follows_pointer {
             if let Some((surface, _)) = under {
-                self.seat.get_keyboard().unwrap().set_focus(self, Some(surface), serial);
+                self.seat
+                    .get_keyboard()
+                    .unwrap()
+                    .set_focus(self, Some(surface), serial);
             }
         }
     }
@@ -57,12 +68,24 @@ impl Wado {
             PointerButton::Middle => BTN_MIDDLE,
             PointerButton::Right => BTN_RIGHT,
         };
-        let state = if pressed { ButtonState::Pressed } else { ButtonState::Released };
+        let state = if pressed {
+            ButtonState::Pressed
+        } else {
+            ButtonState::Released
+        };
 
         let under = self.surface_under(loc);
         let pointer = self.seat.get_pointer().unwrap();
         if locked.is_none() {
-            pointer.motion(self, under, &MotionEvent { location: loc, serial, time });
+            pointer.motion(
+                self,
+                under,
+                &MotionEvent {
+                    location: loc,
+                    serial,
+                    time,
+                },
+            );
         }
 
         if state == ButtonState::Pressed && !pointer.is_grabbed() {
@@ -86,7 +109,15 @@ impl Wado {
             }
         }
 
-        pointer.button(self, &ButtonEvent { button: code, state, serial, time });
+        pointer.button(
+            self,
+            &ButtonEvent {
+                button: code,
+                state,
+                serial,
+                time,
+            },
+        );
         pointer.frame(self);
     }
 
@@ -112,7 +143,15 @@ impl Wado {
         // Focus the surface under the scroll point (no cursor) so the axis lands on it — but
         // not while the pointer is locked, where moving it is the one thing forbidden.
         if locked.is_none() {
-            pointer.motion(self, under, &MotionEvent { location: loc, serial, time });
+            pointer.motion(
+                self,
+                under,
+                &MotionEvent {
+                    location: loc,
+                    serial,
+                    time,
+                },
+            );
             pointer.frame(self);
         }
 

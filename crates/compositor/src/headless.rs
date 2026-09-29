@@ -13,12 +13,12 @@ use smithay::{
     },
     desktop::utils::OutputPresentationFeedback,
     output::{Mode, Output, PhysicalProperties, Subpixel},
-    reexports::wayland_protocols::xdg::shell::server::xdg_toplevel,
-    reexports::wayland_server::backend::GlobalId,
     reexports::calloop::timer::{TimeoutAction, Timer},
     reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback,
-    wayland::presentation::{PresentationFeedbackCachedState, Refresh},
+    reexports::wayland_protocols::xdg::shell::server::xdg_toplevel,
+    reexports::wayland_server::backend::GlobalId,
     utils::{Buffer, Size, Transform},
+    wayland::presentation::{PresentationFeedbackCachedState, Refresh},
 };
 
 use tracing::{debug, info, warn};
@@ -26,9 +26,8 @@ use tracing::{debug, info, warn};
 use wado_protocol::EncoderReport;
 
 use crate::{
-    Wado, CompositorError,
+    CompositorError, Wado,
     capture::{CaptureTarget, DmaTarget, MemTarget, gpu, gpu::Gbm},
-    pacing::TickStats,
     conf::{EncoderConfig, SinkTarget, WadoConfig},
     encode::{
         encoder::VideoEncoder,
@@ -36,6 +35,7 @@ use crate::{
         select::{Tier, tiers_for},
         x264enc::X264Encoder,
     },
+    pacing::TickStats,
     sink::{FrameSink, file::FileSink},
 };
 
@@ -224,10 +224,13 @@ pub fn start_session(
     Ok(encoder_report)
 }
 
-
 /// A scale that cannot divide by zero. A zero or negative value is a bug, not a preference.
 fn clamp_scale(scale: f32) -> f32 {
-    if scale.is_finite() { scale.clamp(1.0, 4.0) } else { 1.0 }
+    if scale.is_finite() {
+        scale.clamp(1.0, 4.0)
+    } else {
+        1.0
+    }
 }
 
 /// Build the session's `Output`, map it into the space, and return it with its global and a
@@ -262,7 +265,11 @@ fn build_output(
     // encoded pixel size, but the logical area clients lay out in shrinks by this factor, so
     // everything is drawn proportionally larger. Clamped because a zero or negative scale is
     // a divide-by-zero in the logical geometry, not a preference.
-    let scale = if scale.is_finite() { scale.clamp(1.0, 4.0) } else { 1.0 };
+    let scale = if scale.is_finite() {
+        scale.clamp(1.0, 4.0)
+    } else {
+        1.0
+    };
     // Two audiences, two answers, which is exactly what `Scale::Custom` is for.
     //
     // `wl_output.scale` is an integer event, so a client that speaks only that has to be
@@ -297,7 +304,11 @@ fn build_output(
     // would otherwise keep drawing for the old scale forever.
     let n = push_fractional_scale(state, scale);
     if n > 0 {
-        tracing::debug!(surfaces = n, scale, "pushed fractional scale to existing surfaces");
+        tracing::debug!(
+            surfaces = n,
+            scale,
+            "pushed fractional scale to existing surfaces"
+        );
     }
 
     let damage_tracker = OutputDamageTracker::from_output(&output);
@@ -315,52 +326,52 @@ fn install_render_timer(state: &mut Wado, fps: u32) -> crate::Result<()> {
     let mut pacing = TickStats::new(fps);
     let token = state
         .loop_handle
-        .insert_source(
-            Timer::immediate(),
-            move |deadline, _, state: &mut Wado| {
-                pacing.tick();
-                // Guard the render path: a panic here must tear down only the session,
-                // not abort the process (and the server with it). Only Rust unwinding
-                // panics are caught — a native segfault in EGL/GLES/x264 still aborts.
-                match std::panic::catch_unwind(AssertUnwindSafe(|| render_tick(state))) {
-                    Ok(Ok(())) => {}
-                    // Transient per-frame failure: log and keep the timer alive so
-                    // the pipeline can recover on the next tick.
-                    Ok(Err(e)) => tracing::warn!("render tick failed: {e}"),
-                    Err(_) => {
-                        tracing::error!("compositor panicked during render — stopping session");
-                        // We're inside this timer's own callback: take the token so
-                        // stop_session won't `remove()` the source we're about to drop
-                        // via the return value below (avoids a double-remove).
-                        let _ = state.render_timer_token.take();
-                        stop_session(state);
-                        return TimeoutAction::Drop;
-                    }
+        .insert_source(Timer::immediate(), move |deadline, _, state: &mut Wado| {
+            pacing.tick();
+            // Guard the render path: a panic here must tear down only the session,
+            // not abort the process (and the server with it). Only Rust unwinding
+            // panics are caught — a native segfault in EGL/GLES/x264 still aborts.
+            match std::panic::catch_unwind(AssertUnwindSafe(|| render_tick(state))) {
+                Ok(Ok(())) => {}
+                // Transient per-frame failure: log and keep the timer alive so
+                // the pipeline can recover on the next tick.
+                Ok(Err(e)) => tracing::warn!("render tick failed: {e}"),
+                Err(_) => {
+                    tracing::error!("compositor panicked during render — stopping session");
+                    // We're inside this timer's own callback: take the token so
+                    // stop_session won't `remove()` the source we're about to drop
+                    // via the return value below (avoids a double-remove).
+                    let _ = state.render_timer_token.take();
+                    stop_session(state);
+                    return TimeoutAction::Drop;
                 }
-                // Pace the next tick WITHOUT accumulating lateness. `deadline` is the
-                // instant this tick was *scheduled* for, not now, so the naive
-                // `deadline + frame_period` permanently falls behind wall clock as soon
-                // as one tick overruns its budget: every later deadline is already in
-                // the past, the timer is always ready, calloop never idles, and remote
-                // input/Wayland/control sources starve behind a busy render loop. It is
-                // a latching failure — it never recovers on its own.
-                //
-                // On time: keep the original phase, so pacing stays drift-free.
-                // Behind: drop the missed frames and re-phase from now, which restores
-                // the idle gap other event sources need.
-                // ponytail: drops late frames rather than rendering them; fine for a live
-                // stream where only the newest frame matters. Revisit only if we ever need
-                // a recorded, gap-free capture.
-                let next = deadline + frame_period;
-                let now = Instant::now();
-                TimeoutAction::ToInstant(if next <= now { now + frame_period } else { next })
-            },
-        )
+            }
+            // Pace the next tick WITHOUT accumulating lateness. `deadline` is the
+            // instant this tick was *scheduled* for, not now, so the naive
+            // `deadline + frame_period` permanently falls behind wall clock as soon
+            // as one tick overruns its budget: every later deadline is already in
+            // the past, the timer is always ready, calloop never idles, and remote
+            // input/Wayland/control sources starve behind a busy render loop. It is
+            // a latching failure — it never recovers on its own.
+            //
+            // On time: keep the original phase, so pacing stays drift-free.
+            // Behind: drop the missed frames and re-phase from now, which restores
+            // the idle gap other event sources need.
+            // ponytail: drops late frames rather than rendering them; fine for a live
+            // stream where only the newest frame matters. Revisit only if we ever need
+            // a recorded, gap-free capture.
+            let next = deadline + frame_period;
+            let now = Instant::now();
+            TimeoutAction::ToInstant(if next <= now {
+                now + frame_period
+            } else {
+                next
+            })
+        })
         .map_err(|e| CompositorError::Other(format!("insert render timer: {e}")))?;
     state.render_timer_token = Some(token);
     Ok(())
 }
-
 
 /// Change the shape of a **running** session — resolution, aspect ratio, frame rate, bitrate —
 /// without stopping it.
@@ -390,7 +401,9 @@ pub fn reconfigure_session(
     scale: f32,
 ) -> crate::Result<EncoderReport> {
     if !state.session_active {
-        return Err(CompositorError::Other("no active session to reconfigure".into()));
+        return Err(CompositorError::Other(
+            "no active session to reconfigure".into(),
+        ));
     }
     let before = state.encoder_config.clone();
     let started = Instant::now();
@@ -444,7 +457,11 @@ pub fn reconfigure_session(
     state.current_tier = Some(tier);
     state.encoder_config = Some(ec.clone());
 
-    let moved = if shape_changed { refit_windows(state) } else { 0 };
+    let moved = if shape_changed {
+        refit_windows(state)
+    } else {
+        0
+    };
 
     install_render_timer(state, ec.fps)?;
 
@@ -496,7 +513,10 @@ const GLOBAL_RETIRE: Duration = Duration::from_secs(5);
 ///
 /// So: `disable_global` stops new binds and sends `global_remove` immediately, and the object
 /// itself lives on until a timer fires. Clients get their round trip.
-fn retire_output_global(state: &mut Wado, id: smithay::reexports::wayland_server::backend::GlobalId) {
+fn retire_output_global(
+    state: &mut Wado,
+    id: smithay::reexports::wayland_server::backend::GlobalId,
+) {
     state.display_handle.disable_global::<Wado>(id.clone());
     let res = state.loop_handle.insert_source(
         Timer::from_duration(GLOBAL_RETIRE),
@@ -568,7 +588,10 @@ fn refit_windows(state: &mut Wado) -> usize {
     // is, so the bound depends on the size it was just asked to take. Clamping the top-left to
     // the screen alone — which is what this used to do — leaves a too-wide window hanging off
     // the right edge with no way to drag it back.
-    let strays: Vec<(smithay::desktop::Window, smithay::utils::Point<i32, smithay::utils::Logical>)> = windows
+    let strays: Vec<(
+        smithay::desktop::Window,
+        smithay::utils::Point<i32, smithay::utils::Logical>,
+    )> = windows
         .iter()
         .filter_map(|w| {
             let loc = state.space.element_location(w)?;
@@ -663,9 +686,16 @@ fn with_ime_flag(command: &str) -> String {
     }
     let program = command.split_whitespace().next().unwrap_or_default();
     let program = program.rsplit('/').next().unwrap_or(program);
-    if !["chromium", "chrome", "google-chrome", "brave", "vivaldi", "microsoft-edge"]
-        .iter()
-        .any(|p| program.contains(p))
+    if ![
+        "chromium",
+        "chrome",
+        "google-chrome",
+        "brave",
+        "vivaldi",
+        "microsoft-edge",
+    ]
+    .iter()
+    .any(|p| program.contains(p))
     {
         return command.to_string();
     }
@@ -788,10 +818,8 @@ fn build_tier(
     ec: &EncoderConfig,
     buf_size: Size<i32, Buffer>,
 ) -> crate::Result<(Box<dyn VideoEncoder>, Box<dyn CaptureTarget>)> {
-    let node = || {
-        first_render_node()
-            .ok_or_else(|| CompositorError::Encoder("no DRM render node".into()))
-    };
+    let node =
+        || first_render_node().ok_or_else(|| CompositorError::Encoder("no DRM render node".into()));
     match tier {
         Tier::X264 => {
             let enc = X264Encoder::new(
@@ -841,8 +869,12 @@ fn build_pipeline(
     gbm: &Option<Gbm>,
     ec: &EncoderConfig,
     buf_size: Size<i32, Buffer>,
-) -> crate::Result<(Box<dyn VideoEncoder>, Box<dyn CaptureTarget>, wado_protocol::EncoderReport, Tier)>
-{
+) -> crate::Result<(
+    Box<dyn VideoEncoder>,
+    Box<dyn CaptureTarget>,
+    wado_protocol::EncoderReport,
+    Tier,
+)> {
     let mut last_err = None;
     for tier in tiers_for(ec.backend, gbm.is_some()) {
         match build_tier(tier, renderer, gbm, ec, buf_size) {
@@ -860,10 +892,16 @@ fn build_pipeline(
 /// (downgrade-once, repeated until a tier works or the ladder is exhausted). Forces an IDR
 /// so the new encoder's stream starts clean. The render loop keeps running throughout.
 fn downgrade_pipeline(state: &mut Wado) {
-    let Some(cur) = state.current_tier else { return };
-    let Some(ec) = state.encoder_config.clone() else { return };
+    let Some(cur) = state.current_tier else {
+        return;
+    };
+    let Some(ec) = state.encoder_config.clone() else {
+        return;
+    };
     let buf_size: Size<i32, Buffer> = (ec.width as i32, ec.height as i32).into();
-    let Some(renderer) = state.renderer.as_mut() else { return };
+    let Some(renderer) = state.renderer.as_mut() else {
+        return;
+    };
 
     let mut next = cur.next();
     while let Some(tier) = next {
@@ -1010,66 +1048,84 @@ fn render_tick(state: &mut Wado) -> crate::Result<()> {
     let render_this_tick = pipeline_ready
         && state.viewer_attached
         && state.viewer_visible
-        && state.congestion.should_render(dropped_total, state.viewer_strained);
+        && state
+            .congestion
+            .should_render(dropped_total, state.viewer_strained);
     // On change only — it is state the viewer latches, and the divisor changes at most once per
     // decision window anyway.
     state.shedding_tx.send_if_modified(|cur| {
         let now = state.congestion.divisor();
-        if *cur == now { false } else { *cur = now; true }
+        if *cur == now {
+            false
+        } else {
+            *cur = now;
+            true
+        }
     });
 
     // The block yields the encode result plus how long each stage took, so neither
     // duration needs a dummy initial value.
-    let (result, capture_dur, encode_dur): (crate::Result<Option<Vec<u8>>>, Duration, Duration) = if !render_this_tick {
-        (Ok(None), Duration::ZERO, Duration::ZERO)
-    } else {
-        // Built before the renderer is borrowed, because working out which window is focused
-        // reads the seat and the space and this closure holds `&mut` on neighbouring fields.
-        // Output-relative: `render_output` offsets space elements by the output's own origin
-        // and custom elements are expected to arrive already in that frame.
-        // No ring on a fullscreen window: it owns the output, so a border drawn over its edges
-        // is a border drawn into the picture, and there is nothing beside it to distinguish it
-        // from anyway — which is the only thing the ring is for.
-        let focused = state
-            .focused_window()
-            .filter(|w| !crate::fullscreen::is_fullscreen(w))
-            .and_then(|w| state.space.element_geometry(&w))
-            .map(|mut geo| {
-                geo.loc -= state
-                    .space
-                    .output_geometry(&output)
-                    .map(|o| o.loc)
-                    .unwrap_or_default();
-                geo
-            });
-        let glow = state.glow.elements(focused, state.output_scale as f64);
+    let (result, capture_dur, encode_dur): (crate::Result<Option<Vec<u8>>>, Duration, Duration) =
+        if !render_this_tick {
+            (Ok(None), Duration::ZERO, Duration::ZERO)
+        } else {
+            // Built before the renderer is borrowed, because working out which window is focused
+            // reads the seat and the space and this closure holds `&mut` on neighbouring fields.
+            // Output-relative: `render_output` offsets space elements by the output's own origin
+            // and custom elements are expected to arrive already in that frame.
+            // No ring on a fullscreen window: it owns the output, so a border drawn over its edges
+            // is a border drawn into the picture, and there is nothing beside it to distinguish it
+            // from anyway — which is the only thing the ring is for.
+            let focused = state
+                .focused_window()
+                .filter(|w| !crate::fullscreen::is_fullscreen(w))
+                .and_then(|w| state.space.element_geometry(&w))
+                .map(|mut geo| {
+                    geo.loc -= state
+                        .space
+                        .output_geometry(&output)
+                        .map(|o| o.loc)
+                        .unwrap_or_default();
+                    geo
+                });
+            let glow = state.glow.elements(focused, state.output_scale as f64);
 
-        let renderer = state.renderer.as_mut().unwrap();
-        let capture = state.capture.as_mut().unwrap();
-        let damage_tracker = state.damage_tracker.as_mut().unwrap();
-        let space = &state.space;
-        let bg = [0.1, 0.1, 0.1, 1.0];
+            let renderer = state.renderer.as_mut().unwrap();
+            let capture = state.capture.as_mut().unwrap();
+            let damage_tracker = state.damage_tracker.as_mut().unwrap();
+            let space = &state.space;
+            let bg = [0.1, 0.1, 0.1, 1.0];
 
-        let mut render = |r: &mut GlesRenderer, fb: &mut GlesTarget<'_>| -> crate::Result<()> {
-            // The second parameter is the *custom* element type, which is now the focus ring
-            // rather than the empty slice this used to pass.
-            smithay::desktop::space::render_output::<_, SolidColorRenderElement, _, _>(&output, r, fb, 1.0, 0, [space], &glow, damage_tracker, bg)
-            .map_err(renderer_err("render_output"))?;
-            Ok(())
-        };
+            let mut render = |r: &mut GlesRenderer, fb: &mut GlesTarget<'_>| -> crate::Result<()> {
+                // The second parameter is the *custom* element type, which is now the focus ring
+                // rather than the empty slice this used to pass.
+                smithay::desktop::space::render_output::<_, SolidColorRenderElement, _, _>(
+                    &output,
+                    r,
+                    fb,
+                    1.0,
+                    0,
+                    [space],
+                    &glow,
+                    damage_tracker,
+                    bg,
+                )
+                .map_err(renderer_err("render_output"))?;
+                Ok(())
+            };
 
-        // Timed separately so the client's breakdown can say WHICH stage costs the time:
-        // a slow capture points at the GL/readback path, a slow encode at the encoder tier.
-        match capture.capture(renderer, &mut render) {
-            Ok(frame) => {
-                let captured = tick_start.elapsed();
-                let encode_start = Instant::now();
-                let out = state.encoder.as_mut().unwrap().submit(frame);
-                (out, captured, encode_start.elapsed())
+            // Timed separately so the client's breakdown can say WHICH stage costs the time:
+            // a slow capture points at the GL/readback path, a slow encode at the encoder tier.
+            match capture.capture(renderer, &mut render) {
+                Ok(frame) => {
+                    let captured = tick_start.elapsed();
+                    let encode_start = Instant::now();
+                    let out = state.encoder.as_mut().unwrap().submit(frame);
+                    (out, captured, encode_start.elapsed())
+                }
+                Err(e) => (Err(e), tick_start.elapsed(), Duration::ZERO),
             }
-            Err(e) => (Err(e), tick_start.elapsed(), Duration::ZERO),
-        }
-    };
+        };
 
     // Presentation feedback is answered from this, so it has to say whether the composite
     // actually reached the pipeline — not whether the encoder emitted a NAL this tick (it
@@ -1086,7 +1142,10 @@ fn render_tick(state: &mut Wado) -> crate::Result<()> {
         // Robustness: a runtime encode failure downgrades the pipeline one tier instead of
         // failing every frame. The render loop continues; the next tick uses the new tier.
         Err(e) => {
-            warn!("encode failed on tier {:?}: {e} — downgrading", state.current_tier);
+            warn!(
+                "encode failed on tier {:?}: {e} — downgrading",
+                state.current_tier
+            );
             downgrade_pipeline(state);
         }
     }
@@ -1151,7 +1210,12 @@ fn render_tick(state: &mut Wado) -> crate::Result<()> {
             .current_mode()
             .map(|m| Refresh::fixed(Duration::from_secs_f64(1000.0 / m.refresh as f64)))
             .unwrap_or(Refresh::Unknown);
-        feedback.presented(state.clock.now(), refresh, state.frame_seq, wp_presentation_feedback::Kind::empty());
+        feedback.presented(
+            state.clock.now(),
+            refresh,
+            state.frame_seq,
+            wp_presentation_feedback::Kind::empty(),
+        );
     }
     // Not `+= 1` on the presented branch only: the sequence counts composites, and a client
     // seeing a gap is being told the truth about a frame it never got. A shed tick is not a
@@ -1207,7 +1271,10 @@ mod tests {
         let at120 = bits_per_pixel(&cfg(120));
         assert!((at60 / at120 - 2.0).abs() < 1e-9, "{at60} vs {at120}");
         // The value that matters: this config at 120 is near the 0.016 starvation figure.
-        assert!(at120 < 0.05 && at120 > 0.01, "unexpected magnitude: {at120}");
+        assert!(
+            at120 < 0.05 && at120 > 0.01,
+            "unexpected magnitude: {at120}"
+        );
         // No panic and no NaN on a degenerate config.
         assert_eq!(bits_per_pixel(&cfg(0)), 0.0);
     }
@@ -1240,6 +1307,9 @@ mod ime_flag_tests {
     /// must not turn an unrelated command into a Chromium launch.
     #[test]
     fn only_the_program_name_is_matched() {
-        assert_eq!(with_ime_flag("foot -e ./chrome-notes.sh"), "foot -e ./chrome-notes.sh");
+        assert_eq!(
+            with_ime_flag("foot -e ./chrome-notes.sh"),
+            "foot -e ./chrome-notes.sh"
+        );
     }
 }

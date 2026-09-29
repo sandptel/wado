@@ -68,8 +68,8 @@ use webrtc::track::track_local::TrackLocal;
 use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
 
 use logbus::LogBus;
-use wado_compositor::{CommandSender, CompositorCommand, FrameMsg, InputEvent, InputSender};
 use tokio::sync::watch;
+use wado_compositor::{CommandSender, CompositorCommand, FrameMsg, InputEvent, InputSender};
 use wado_protocol::{INPUT_CHANNEL, MOTION_CHANNEL, SessionInfo, StageTimings};
 
 /// Bounded so encoded frames never pile up behind a slow/absent network.
@@ -138,7 +138,10 @@ pub fn start(
     std::thread::Builder::new()
         .name("wado-website".into())
         .spawn(move || {
-            let rt = match tokio::runtime::Builder::new_multi_thread().enable_all().build() {
+            let rt = match tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+            {
                 Ok(rt) => rt,
                 Err(e) => {
                     error!("failed to build tokio runtime: {e}");
@@ -146,8 +149,7 @@ pub fn start(
                 }
             };
             rt.block_on(async move {
-                if let Err(e) =
-                    run_server(addr, frame_rx, cmd_tx, input_tx, timings, log_bus).await
+                if let Err(e) = run_server(addr, frame_rx, cmd_tx, input_tx, timings, log_bus).await
                 {
                     error!("control server exited: {e}");
                 }
@@ -182,7 +184,10 @@ async fn run_server(
 
     // One shared, persistent H.264 track fed by whichever session is running.
     let track = Arc::new(TrackLocalStaticSample::new(
-        RTCRtpCodecCapability { mime_type: MIME_TYPE_H264.to_owned(), ..Default::default() },
+        RTCRtpCodecCapability {
+            mime_type: MIME_TYPE_H264.to_owned(),
+            ..Default::default()
+        },
         "video".to_owned(),
         "wado".to_owned(),
     ));
@@ -277,8 +282,13 @@ async fn handle_conn(mut stream: TcpStream, ctx: Arc<ServerCtx>) -> crate::Resul
             break pos;
         }
         if buf.len() > 64 * 1024 {
-            write_response(&mut stream, "431 Request Header Fields Too Large", "text/plain", b"")
-                .await?;
+            write_response(
+                &mut stream,
+                "431 Request Header Fields Too Large",
+                "text/plain",
+                b"",
+            )
+            .await?;
             return Ok(());
         }
     };
@@ -303,8 +313,13 @@ async fn handle_conn(mut stream: TcpStream, ctx: Arc<ServerCtx>) -> crate::Resul
         }
     }
     if content_length > MAX_BODY_BYTES {
-        write_response(&mut stream, "413 Payload Too Large", "text/plain", b"body too large")
-            .await?;
+        write_response(
+            &mut stream,
+            "413 Payload Too Large",
+            "text/plain",
+            b"body too large",
+        )
+        .await?;
         return Ok(());
     }
 
@@ -390,8 +405,13 @@ async fn handle_conn(mut stream: TcpStream, ctx: Arc<ServerCtx>) -> crate::Resul
         // routes here and four more relay messages, so the verb moved into the body.
         ("POST", "/session/control") => match serde_json::from_slice::<SessionControl>(&body) {
             Ok(SessionControl::Launch { command }) if command.trim().is_empty() => {
-                write_response(&mut stream, "400 Bad Request", "text/plain", b"empty command")
-                    .await?
+                write_response(
+                    &mut stream,
+                    "400 Bad Request",
+                    "text/plain",
+                    b"empty command",
+                )
+                .await?
             }
             Ok(SessionControl::Launch { command }) => {
                 let _ = ctx.cmd_tx.send(CompositorCommand::Launch { command });
@@ -415,8 +435,13 @@ async fn handle_conn(mut stream: TcpStream, ctx: Arc<ServerCtx>) -> crate::Resul
                 }
                 Err(e) => {
                     error!("offer handling failed: {e}");
-                    write_response(&mut stream, "500 Internal Server Error", "text/plain", b"offer failed")
-                        .await?
+                    write_response(
+                        &mut stream,
+                        "500 Internal Server Error",
+                        "text/plain",
+                        b"offer failed",
+                    )
+                    .await?
                 }
             }
         }
@@ -435,7 +460,10 @@ async fn handle_session_start(
     let config = serde_json::from_slice(body).map_err(|e| format!("bad config: {e}"))?;
     let (reply_tx, reply_rx) = oneshot::channel();
     ctx.cmd_tx
-        .send(CompositorCommand::Start { config, reply: reply_tx })
+        .send(CompositorCommand::Start {
+            config,
+            reply: reply_tx,
+        })
         .map_err(|_| "compositor unavailable".to_string())?;
     match tokio::time::timeout(START_REPLY_TIMEOUT, reply_rx).await {
         Ok(Ok(result)) => result,
@@ -453,10 +481,14 @@ async fn handle_offer(ctx: &ServerCtx, offer_json: &str) -> crate::Result<String
     // STUN so ICE can discover server-reflexive candidates, enabling cross-NAT connections
     // when direct mode is port-forwarded. For pure localhost/LAN use, host candidates still
     // work without it. See `crate::ice` for why the list has three entries and not one.
-    let pc = Arc::new(ctx.api.new_peer_connection(RTCConfiguration {
-        ice_servers: crate::ice::servers(),
-        ..Default::default()
-    }).await?);
+    let pc = Arc::new(
+        ctx.api
+            .new_peer_connection(RTCConfiguration {
+                ice_servers: crate::ice::servers(),
+                ..Default::default()
+            })
+            .await?,
+    );
 
     let rtp_sender = pc
         .add_track(Arc::clone(&ctx.track) as Arc<dyn TrackLocal + Send + Sync>)
@@ -575,7 +607,10 @@ async fn handle_offer(ctx: &ServerCtx, offer_json: &str) -> crate::Result<String
         .await
         .is_err()
     {
-        tracing::warn!("ICE gathering still running after {:?} — answering with what we have", crate::ice::GATHER_WAIT);
+        tracing::warn!(
+            "ICE gathering still running after {:?} — answering with what we have",
+            crate::ice::GATHER_WAIT
+        );
     }
 
     let local = pc
@@ -596,7 +631,9 @@ async fn serve_sse(mut stream: TcpStream, log_bus: &LogBus) -> crate::Result<()>
 
     // Backfill recent history so a freshly opened panel isn't empty.
     for line in log_bus.backfill() {
-        stream.write_all(format!("data: {line}\n\n").as_bytes()).await?;
+        stream
+            .write_all(format!("data: {line}\n\n").as_bytes())
+            .await?;
     }
     stream.flush().await?;
 

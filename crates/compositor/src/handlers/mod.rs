@@ -16,9 +16,7 @@ use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::Serial;
 use smithay::wayland::compositor::with_states;
-use smithay::wayland::fractional_scale::{
-    FractionalScaleHandler, with_fractional_scale,
-};
+use smithay::wayland::fractional_scale::{FractionalScaleHandler, with_fractional_scale};
 use smithay::wayland::output::OutputHandler;
 use smithay::wayland::selection::SelectionHandler;
 use smithay::wayland::selection::data_device::{
@@ -34,7 +32,12 @@ impl SeatHandler for Wado {
         &mut self.seat_state
     }
 
-    fn cursor_image(&mut self, _seat: &Seat<Self>, _image: smithay::input::pointer::CursorImageStatus) {}
+    fn cursor_image(
+        &mut self,
+        _seat: &Seat<Self>,
+        _image: smithay::input::pointer::CursorImageStatus,
+    ) {
+    }
 
     fn focus_changed(&mut self, seat: &Seat<Self>, focused: Option<&WlSurface>) {
         let dh = &self.display_handle;
@@ -95,7 +98,11 @@ impl FractionalScaleHandler for Wado {
     /// which is an integer, and a fractional session is right back to the clipped buffers
     /// this protocol exists to prevent.
     fn new_fractional_scale(&mut self, surface: WlSurface) {
-        let Some(scale) = self.space.outputs().next().map(|o| o.current_scale().fractional_scale())
+        let Some(scale) = self
+            .space
+            .outputs()
+            .next()
+            .map(|o| o.current_scale().fractional_scale())
         else {
             // No output yet: the session has not started. The surface will be told when one
             // appears — see `headless::start_session`, which pushes to every known surface.

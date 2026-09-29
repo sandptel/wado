@@ -11,7 +11,7 @@
 
 use std::time::Duration;
 
-use wado_compositor::{control::CompositorCommand, CommandSender};
+use wado_compositor::{CommandSender, control::CompositorCommand};
 use wado_protocol::AppEntry;
 
 /// How long to wait for the compositor to answer before giving up on the dot.

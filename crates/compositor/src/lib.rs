@@ -21,8 +21,8 @@
 #![allow(irrefutable_let_patterns)]
 
 pub mod capture;
-pub mod congestion;
 pub mod conf;
+pub mod congestion;
 pub mod control;
 pub mod encode;
 pub mod error;
@@ -58,9 +58,9 @@ use tokio::sync::mpsc;
 pub use control::CompositorCommand;
 pub use error::{CompositorError, Result};
 pub use sink::channel::FrameMsg;
-pub use wado_protocol::StageTimings;
 pub use state::Wado;
 pub use wado_protocol::InputEvent;
+pub use wado_protocol::StageTimings;
 
 /// The `Send`able sender for [`CompositorCommand`]s into the calloop loop. Re-exported
 /// (as an alias over the calloop type) so the server can name and use it without
@@ -178,6 +178,12 @@ pub fn build(
     Ok((
         event_loop,
         state,
-        CompositorHandles { commands: cmd_tx, input: input_tx, timings, text_input, shedding },
+        CompositorHandles {
+            commands: cmd_tx,
+            input: input_tx,
+            timings,
+            text_input,
+            shedding,
+        },
     ))
 }

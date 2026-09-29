@@ -11,10 +11,10 @@ use ffmpeg_the_third::ffi::{
     AVBufferRef, AVFilterContext, AVFilterGraph, AVPixelFormat, AVRational, av_buffer_ref,
     av_buffer_unref, av_buffersink_get_frame, av_buffersink_get_hw_frames_ctx,
     av_buffersrc_add_frame_flags, av_buffersrc_parameters_alloc, av_buffersrc_parameters_set,
-    av_frame_alloc, av_frame_free, av_free, av_strdup, avfilter_get_by_name,
-    avfilter_graph_alloc, avfilter_graph_alloc_filter, avfilter_graph_config,
-    avfilter_graph_create_filter, avfilter_graph_free, avfilter_graph_parse_ptr,
-    avfilter_init_str, avfilter_inout_alloc, avfilter_inout_free,
+    av_frame_alloc, av_frame_free, av_free, av_strdup, avfilter_get_by_name, avfilter_graph_alloc,
+    avfilter_graph_alloc_filter, avfilter_graph_config, avfilter_graph_create_filter,
+    avfilter_graph_free, avfilter_graph_parse_ptr, avfilter_init_str, avfilter_inout_alloc,
+    avfilter_inout_free,
 };
 
 use super::hwcontext::FramesRef;
@@ -42,15 +42,23 @@ impl FilterGraph {
         unsafe {
             let graph = avfilter_graph_alloc();
             if graph.is_null() {
-                return Err(CompositorError::Encoder("avfilter_graph_alloc failed".into()));
+                return Err(CompositorError::Encoder(
+                    "avfilter_graph_alloc failed".into(),
+                ));
             }
             // Hold in `this` so any early `return Err` frees the graph via Drop.
-            let mut this = FilterGraph { graph, src: ptr::null_mut(), sink: ptr::null_mut() };
+            let mut this = FilterGraph {
+                graph,
+                src: ptr::null_mut(),
+                sink: ptr::null_mut(),
+            };
 
             let buffersrc = avfilter_get_by_name(c"buffer".as_ptr());
             let buffersink = avfilter_get_by_name(c"buffersink".as_ptr());
             if buffersrc.is_null() || buffersink.is_null() {
-                return Err(CompositorError::Encoder("buffer/buffersink filter missing".into()));
+                return Err(CompositorError::Encoder(
+                    "buffer/buffersink filter missing".into(),
+                ));
             }
 
             // ── buffersrc (DRM-PRIME input) ───────────────────────────────────────
@@ -62,22 +70,31 @@ impl FilterGraph {
             }
             let par = av_buffersrc_parameters_alloc();
             if par.is_null() {
-                return Err(CompositorError::Encoder("buffersrc_parameters_alloc failed".into()));
+                return Err(CompositorError::Encoder(
+                    "buffersrc_parameters_alloc failed".into(),
+                ));
             }
             (*par).format = AVPixelFormat::DRM_PRIME.0;
             (*par).width = width;
             (*par).height = height;
-            (*par).time_base = AVRational { num: 1, den: fps.max(1) as i32 };
+            (*par).time_base = AVRational {
+                num: 1,
+                den: fps.max(1) as i32,
+            };
             (*par).hw_frames_ctx = av_buffer_ref(drm_frames.0);
             let ret = av_buffersrc_parameters_set(this.src, par);
             av_buffer_unref(&mut (*par).hw_frames_ctx);
             av_free(par as *mut _);
             if ret < 0 {
-                return Err(CompositorError::Encoder(format!("buffersrc_parameters_set: {ret}")));
+                return Err(CompositorError::Encoder(format!(
+                    "buffersrc_parameters_set: {ret}"
+                )));
             }
             let ret = avfilter_init_str(this.src, ptr::null());
             if ret < 0 {
-                return Err(CompositorError::Encoder(format!("buffersrc init failed: {ret}")));
+                return Err(CompositorError::Encoder(format!(
+                    "buffersrc init failed: {ret}"
+                )));
             }
 
             // ── buffersink ────────────────────────────────────────────────────────
@@ -90,7 +107,9 @@ impl FilterGraph {
                 graph,
             );
             if ret < 0 {
-                return Err(CompositorError::Encoder(format!("create buffersink failed: {ret}")));
+                return Err(CompositorError::Encoder(format!(
+                    "create buffersink failed: {ret}"
+                )));
             }
 
             // ── parse the middle chain and link in→[hwmap,scale_vaapi]→out ────────
@@ -128,12 +147,16 @@ impl FilterGraph {
             avfilter_inout_free(&mut inputs_p);
             avfilter_inout_free(&mut outputs_p);
             if ret < 0 {
-                return Err(CompositorError::Encoder(format!("graph_parse_ptr failed: {ret}")));
+                return Err(CompositorError::Encoder(format!(
+                    "graph_parse_ptr failed: {ret}"
+                )));
             }
 
             let ret = avfilter_graph_config(graph, ptr::null_mut());
             if ret < 0 {
-                return Err(CompositorError::Encoder(format!("graph_config failed: {ret}")));
+                return Err(CompositorError::Encoder(format!(
+                    "graph_config failed: {ret}"
+                )));
             }
 
             Ok(this)
@@ -145,7 +168,9 @@ impl FilterGraph {
     pub fn output_frames_ctx(&self) -> crate::Result<*mut AVBufferRef> {
         let f = unsafe { av_buffersink_get_hw_frames_ctx(self.sink) };
         if f.is_null() {
-            return Err(CompositorError::Encoder("buffersink has no hw_frames_ctx".into()));
+            return Err(CompositorError::Encoder(
+                "buffersink has no hw_frames_ctx".into(),
+            ));
         }
         Ok(unsafe { av_buffer_ref(f) })
     }
@@ -163,12 +188,16 @@ impl FilterGraph {
             let mut f = in_frame;
             av_frame_free(&mut f);
             if ret < 0 {
-                return Err(CompositorError::Encoder(format!("buffersrc_add_frame: {ret}")));
+                return Err(CompositorError::Encoder(format!(
+                    "buffersrc_add_frame: {ret}"
+                )));
             }
 
             let out = av_frame_alloc();
             if out.is_null() {
-                return Err(CompositorError::Encoder("av_frame_alloc(vpp out) failed".into()));
+                return Err(CompositorError::Encoder(
+                    "av_frame_alloc(vpp out) failed".into(),
+                ));
             }
             let ret = av_buffersink_get_frame(self.sink, out);
             if ret == 0 {
@@ -179,7 +208,9 @@ impl FilterGraph {
                 if ret == AVERROR_EAGAIN || ret == AVERROR_EOF {
                     Ok(None)
                 } else {
-                    Err(CompositorError::Encoder(format!("buffersink_get_frame: {ret}")))
+                    Err(CompositorError::Encoder(format!(
+                        "buffersink_get_frame: {ret}"
+                    )))
                 }
             }
         }

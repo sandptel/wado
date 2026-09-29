@@ -25,12 +25,29 @@ impl Wado {
                 let focus = self.surface_under(loc);
                 // Tap-to-focus: raise the touched window and give it keyboard focus.
                 self.focus_window_at(loc, serial);
-                touch.down(self, focus, &DownEvent { slot, location: loc, serial, time });
+                touch.down(
+                    self,
+                    focus,
+                    &DownEvent {
+                        slot,
+                        location: loc,
+                        serial,
+                        time,
+                    },
+                );
                 touch.frame(self);
             }
             TouchPhase::Motion => {
                 let focus = self.surface_under(loc);
-                touch.motion(self, focus, &MotionEvent { slot, location: loc, time });
+                touch.motion(
+                    self,
+                    focus,
+                    &MotionEvent {
+                        slot,
+                        location: loc,
+                        time,
+                    },
+                );
                 touch.frame(self);
             }
             TouchPhase::Up => {

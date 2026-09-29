@@ -8,7 +8,9 @@ pub struct FileSink {
 
 impl FileSink {
     pub fn create(path: impl AsRef<Path>) -> std::io::Result<Self> {
-        Ok(Self { file: File::create(path)? })
+        Ok(Self {
+            file: File::create(path)?,
+        })
     }
 }
 

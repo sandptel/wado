@@ -42,7 +42,10 @@ impl Wado {
     fn window_of(&self, surface: &ToplevelSurface) -> Option<Window> {
         self.space
             .elements()
-            .find(|w| w.toplevel().is_some_and(|t| t.wl_surface() == surface.wl_surface()))
+            .find(|w| {
+                w.toplevel()
+                    .is_some_and(|t| t.wl_surface() == surface.wl_surface())
+            })
             .cloned()
     }
 

@@ -33,7 +33,10 @@ pub struct LogBus {
 impl LogBus {
     pub fn new() -> Self {
         let (tx, _) = broadcast::channel(BROADCAST_CAPACITY);
-        Self { tx, ring: Arc::new(Mutex::new(VecDeque::with_capacity(RING_CAPACITY))) }
+        Self {
+            tx,
+            ring: Arc::new(Mutex::new(VecDeque::with_capacity(RING_CAPACITY))),
+        }
     }
 
     /// Subscribe to live log lines (new lines only).
@@ -107,6 +110,14 @@ impl Visit for LineVisitor {
 
 /// UTC `HH:MM:SS` without pulling in a date/time crate.
 fn hms() -> String {
-    let secs = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
-    format!("{:02}:{:02}:{:02}", (secs / 3600) % 24, (secs / 60) % 60, secs % 60)
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    format!(
+        "{:02}:{:02}:{:02}",
+        (secs / 3600) % 24,
+        (secs / 60) % 60,
+        secs % 60
+    )
 }

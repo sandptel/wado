@@ -58,7 +58,9 @@ pub fn start() -> Option<SessionBus> {
     {
         Ok(child) => child,
         Err(e) => {
-            warn!("no private D-Bus session ({e}) — apps share the host's bus and may open windows on the host desktop");
+            warn!(
+                "no private D-Bus session ({e}) — apps share the host's bus and may open windows on the host desktop"
+            );
             return None;
         }
     };

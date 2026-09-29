@@ -32,15 +32,27 @@ impl Wado {
             InputEvent::CancelTouch { .. } => self.touch_cancel(),
             InputEvent::PointerMotion { x, y } => self.pointer_motion(x, y),
             InputEvent::PointerRelative { dx, dy } => self.pointer_relative(dx, dy),
-            InputEvent::Button { x, y, button, pressed } => {
-                self.pointer_button(x, y, button, pressed)
-            }
-            InputEvent::Scroll { x, y, dx, dy, source, stop } => {
-                self.pointer_scroll(x, y, dx, dy, source, stop)
-            }
-            InputEvent::Pinch { phase, x, y, scale, rotation } => {
-                self.pinch(phase, x, y, scale, rotation)
-            }
+            InputEvent::Button {
+                x,
+                y,
+                button,
+                pressed,
+            } => self.pointer_button(x, y, button, pressed),
+            InputEvent::Scroll {
+                x,
+                y,
+                dx,
+                dy,
+                source,
+                stop,
+            } => self.pointer_scroll(x, y, dx, dy, source, stop),
+            InputEvent::Pinch {
+                phase,
+                x,
+                y,
+                scale,
+                rotation,
+            } => self.pinch(phase, x, y, scale, rotation),
             InputEvent::WindowDrag { phase, x, y } => self.window_drag(phase, x, y),
             InputEvent::GamepadButton { code, pressed } => {
                 // Discrete and human-paced, so it can be logged at info: this is the one

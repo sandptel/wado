@@ -18,4 +18,4 @@ pub mod fit;
 pub mod scale;
 
 pub use device::{default_value, options};
-pub use scale::{SCALES, default_scale};
+pub use scale::{default_scale, SCALES};

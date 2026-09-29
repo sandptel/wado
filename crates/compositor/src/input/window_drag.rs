@@ -16,12 +16,20 @@ impl Wado {
         match phase {
             TouchPhase::Down => {
                 let (serial, _) = self.input_clock();
-                if let Some((window, _)) = self.space.element_under(loc).map(|(w, l)| (w.clone(), l)) {
+                if let Some((window, _)) =
+                    self.space.element_under(loc).map(|(w, l)| (w.clone(), l))
+                {
                     self.space.raise_element(&window, true);
                     self.focus_window_at(loc, serial);
-                    let start_win =
-                        self.space.element_location(&window).unwrap_or_else(|| (0, 0).into());
-                    self.window_move = Some(WindowMove { window, start_ptr: loc, start_win });
+                    let start_win = self
+                        .space
+                        .element_location(&window)
+                        .unwrap_or_else(|| (0, 0).into());
+                    self.window_move = Some(WindowMove {
+                        window,
+                        start_ptr: loc,
+                        start_win,
+                    });
                 }
             }
             TouchPhase::Motion => {

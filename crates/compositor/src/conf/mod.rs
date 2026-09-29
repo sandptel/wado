@@ -142,7 +142,11 @@ pub fn to_encoder_config(config: &SessionConfig) -> EncoderConfig {
         fps,
         bitrate_kbps,
         keyframe_interval: config.keyframe_interval.unwrap_or(default_kf),
-        preset: config.preset.as_deref().map(parse_preset).unwrap_or(default_preset),
+        preset: config
+            .preset
+            .as_deref()
+            .map(parse_preset)
+            .unwrap_or(default_preset),
         backend: config.encoder.backend,
     }
 }

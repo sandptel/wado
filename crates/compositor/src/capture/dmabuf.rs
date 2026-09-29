@@ -47,7 +47,10 @@ impl DmaTarget {
             Fourcc::Abgr8888,
             vec![Modifier::Linear],
         );
-        Ok(Self { swapchain, current: None })
+        Ok(Self {
+            swapchain,
+            current: None,
+        })
     }
 }
 

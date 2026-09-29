@@ -77,7 +77,10 @@ impl RoomStore {
 
     /// How many of `instances` are occupied. For the occupancy the client is shown.
     pub fn busy_among(&self, instances: &[String]) -> usize {
-        instances.iter().filter(|i| self.inner.contains_key(*i)).count()
+        instances
+            .iter()
+            .filter(|i| self.inner.contains_key(*i))
+            .count()
     }
 
     /// Drop the room for an instance whatever it holds (the daemon itself went away).
@@ -91,7 +94,8 @@ impl RoomStore {
     /// unconditional remove there would delete the room belonging to the connection that
     /// replaced it — leaving the newcomer with an open socket and nothing routed to it.
     pub fn remove_if(&self, instance_id: &str, room_id: &str) {
-        self.inner.remove_if(instance_id, |_, room| room.room_id == room_id);
+        self.inner
+            .remove_if(instance_id, |_, room| room.room_id == room_id);
     }
 
     /// Forward a JSON message to the client paired with `instance_id`.
@@ -100,7 +104,10 @@ impl RoomStore {
         // Cloned out of the map before the await: holding a DashMap reference across an await
         // point holds that shard's lock, and every other room on the shard blocks behind one
         // slow client's socket.
-        let tx = self.inner.get(instance_id).map(|room| room.client_inbox_tx.clone());
+        let tx = self
+            .inner
+            .get(instance_id)
+            .map(|room| room.client_inbox_tx.clone());
         match tx {
             Some(tx) => tx.send(msg).await.is_ok(),
             None => false,

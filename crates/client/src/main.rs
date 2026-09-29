@@ -65,7 +65,11 @@ fn App() -> Element {
         let offered = device
             .iter()
             .map(|(v, _)| v.clone())
-            .chain(res::catalog::options(w, h, &exclude).into_iter().map(|(v, _)| v))
+            .chain(
+                res::catalog::options(w, h, &exclude)
+                    .into_iter()
+                    .map(|(v, _)| v),
+            )
             .chain(["custom".into()]);
         if !offered.into_iter().any(|v| v == current) {
             if let Some(d) = res::default_value(w, h) {
