@@ -141,5 +141,9 @@ pub fn render(ui: Ui) -> Element {
         {super::console::render(ui)}
         // Same reason as the console: over the picture, never a sibling that steals its height.
         {super::drawer::render(ui)}
+        // The phone shell's bottom bar (`js/strip_bar.js`), a JS-owned mount like the pad's.
+        // A *sibling* of the picture, on purpose: it takes its height from the video instead of
+        // covering the bottom of the app, where apps put their own controls.
+        div { id: "wado-strip-mount" }
     }
 }

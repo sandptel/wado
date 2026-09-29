@@ -36,6 +36,7 @@ mod tests {
             icon: None,
             running: false,
             hidden: false,
+            app_ids: Vec::new(),
         }
     }
 

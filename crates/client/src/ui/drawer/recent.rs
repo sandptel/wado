@@ -22,6 +22,7 @@ pub fn entries(commands: &[String], apps: &[AppEntry]) -> Vec<AppEntry> {
                     // matched against is the one that did not contain it.
                     running: false,
                     hidden: false,
+                    app_ids: Vec::new(),
                 })
         })
         .collect()
@@ -39,6 +40,7 @@ mod tests {
             icon: Some("data:image/png;base64,AAAA".into()),
             running: true,
             hidden: false,
+            app_ids: Vec::new(),
         }];
         let got = entries(&["nautilus".into(), "htop -d 5".into()], &apps);
         // Order is the caller's: most recent first, and resolution must not reorder it.
