@@ -30,6 +30,8 @@ pub struct DesktopEntry {
     /// among them are the ones someone reaches a launcher *for* when the pretty list does
     /// not have what they want.
     pub no_display: bool,
+    /// `StartupWMClass=`, the app_id Electron and X11 apps report instead of the file id.
+    pub wm_class: Option<String>,
 }
 
 /// Strip the `Exec=` field codes a launcher is expected to substitute.
@@ -68,6 +70,7 @@ pub fn parse_entry(text: &str) -> Option<DesktopEntry> {
     let mut icon = None;
     let mut is_application = false;
     let mut no_display = false;
+    let mut wm_class = None;
 
     // Only the `[Desktop Entry]` group counts; later groups are per-action overrides that
     // would otherwise overwrite the real Exec with an action's variant of it.
@@ -93,6 +96,7 @@ pub fn parse_entry(text: &str) -> Option<DesktopEntry> {
             // helper stubs. Hidden means "deleted" per the spec. Both are carried, not
             // obeyed: see the field's docs.
             ("NoDisplay" | "Hidden", "true") => no_display = true,
+            ("StartupWMClass", v) => wm_class = Some(v.to_string()),
             _ => {}
         }
     }
@@ -103,6 +107,7 @@ pub fn parse_entry(text: &str) -> Option<DesktopEntry> {
         exec,
         icon,
         no_display,
+        wm_class,
     })
 }
 
@@ -133,6 +138,7 @@ mod tests {
                 // The name, not a resolved file: resolution happens a layer up.
                 icon: Some("folder".into()),
                 no_display: false,
+                wm_class: None,
             }
         );
     }

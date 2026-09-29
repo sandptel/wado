@@ -44,4 +44,10 @@ pub struct AppEntry {
     /// the one place they are wanted.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub hidden: bool,
+    /// The `xdg_toplevel.app_id`s this entry's windows report: the desktop file id without
+    /// `.desktop` (the convention GTK/Qt follow) and `StartupWMClass=` when set (what Electron
+    /// and X11 apps report). The client joins the window list against this to draw the bottom
+    /// bar's icons; no icon travels in the window list itself.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub app_ids: Vec<String>,
 }

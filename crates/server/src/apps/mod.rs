@@ -82,6 +82,8 @@ pub fn discover() -> Vec<AppEntry> {
                 // The one step that touches the disk beyond reading the entry itself, and the
                 // reason it is here rather than in the parser.
                 let icon = entry.icon.as_deref().and_then(icons::resolve);
+                let mut app_ids = vec![id.trim_end_matches(".desktop").to_string()];
+                app_ids.extend(entry.wm_class);
                 by_id.insert(
                     id,
                     AppEntry {
@@ -92,6 +94,7 @@ pub fn discover() -> Vec<AppEntry> {
                         // cannot know it.
                         running: false,
                         hidden: entry.no_display,
+                        app_ids,
                     },
                 );
             }
