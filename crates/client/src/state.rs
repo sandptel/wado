@@ -112,6 +112,11 @@ pub struct Settings {
     /// What a finger is to the session: `pointer` (gestures translated to clicks, scrolls and
     /// drags — `js/input_tap.js`) or `touch` (raw `wl_touch` — `js/input_touch.js`).
     pub touch_mode: Signal<String>,
+    /// The window switcher dial (`js/switcher.js`): `vertical`/`horizontal`, its anchor
+    /// (`bottom-right`, `left`, `top`, …) and how many windows show at once (`3`/`5`).
+    pub dial_orient: Signal<String>,
+    pub dial_pos: Signal<String>,
+    pub dial_count: Signal<String>,
 
     // ── appearance ──────────────────────────────────────────────────────────────
     /// Bundled base16 scheme name; ignored while `theme_custom` parses.
@@ -185,6 +190,9 @@ impl Settings {
             orientation: use_signal(|| "auto".to_string()),
             natural_scroll: use_signal(|| false),
             touch_mode: use_signal(|| "pointer".to_string()),
+            dial_orient: use_signal(|| "vertical".to_string()),
+            dial_pos: use_signal(|| "bottom-right".to_string()),
+            dial_count: use_signal(|| "3".to_string()),
 
             pad_on: use_signal(|| false),
             // Keys, not pad: the uinput device needs the daemon's user in the `uinput` group,

@@ -135,15 +135,14 @@ pub fn render(ui: Ui) -> Element {
         // the thing a later diff is entitled to move. After the video, so the controls paint
         // over the picture rather than under it.
         div { id: "wado-pad-mount" }
+        // The window switcher dial (`js/switcher.js`), JS-owned for the same reason as the pad:
+        // it repaints every animation frame while it moves. Floats over the picture.
+        div { id: "wado-dial-mount" }
         }
         // Over the picture, not under it: as a sibling below the video it took height off
         // the stream and letterboxed it.
         {super::console::render(ui)}
         // Same reason as the console: over the picture, never a sibling that steals its height.
         {super::drawer::render(ui)}
-        // The phone shell's bottom bar (`js/strip_bar.js`), a JS-owned mount like the pad's.
-        // A *sibling* of the picture, on purpose: it takes its height from the video instead of
-        // covering the bottom of the app, where apps put their own controls.
-        div { id: "wado-strip-mount" }
     }
 }
