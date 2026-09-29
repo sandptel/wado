@@ -10,11 +10,22 @@
 //! means, so the strip reuses it instead of adding a verb. Dialogs (a toplevel with a parent)
 //! are not columns: they float, centred, through the ordinary placement path.
 //!
-//! Decided in the Decision Log, `2026-09-29` (phone UX track, S2).
+//! **Apps that will not fit a column (S3).** A desktop app's minimum size is often wider than a
+//! phone column (360 logical px at scale 2), and a client may refuse a configure it cannot
+//! honour. Such a column gets a factor `f < 1`: the app is configured at `column / f` in its
+//! own logical pixels, told the preferred scale `session scale × f` so its buffer has exactly
+//! the pixels the column shows (crisp, not resampled), drawn at `× f` (see [`crate::scaled`]),
+//! and touched through `÷ f` (`Wado::map_point`). It is one mechanism, not the two steps the
+//! plan first described: a lower scale for one window necessarily means drawing it smaller.
+//!
+//! Decided in the Decision Log, `2026-09-29` (phone UX track, S2 and S3).
 
 use smithay::desktop::Window;
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::utils::{IsAlive, Size};
+use smithay::wayland::compositor::with_states;
+use smithay::wayland::fractional_scale::with_fractional_scale;
+use smithay::wayland::shell::xdg::SurfaceCachedState;
 
 use crate::Wado;
 
@@ -22,11 +33,49 @@ use crate::Wado;
 /// shows only mid-slide — which is when it is needed, to tell where one window ends.
 pub const GAP: i32 = 24;
 
+/// The smallest factor a column is shrunk to. Below half size a desktop UI stops being usable
+/// on a phone at all; the lens (S4) is the answer there, not a smaller picture.
+pub const MIN_SCALE: f64 = 0.5;
+
+/// The factor that makes an app fit a `col`-sized column, given what it has told us: its
+/// declared minimum size, and — for apps that declare none — the size it actually committed
+/// after being asked for `asked`. Only ever shrinks: an app that fits at a factor keeps it,
+/// rather than oscillating as it redraws.
+///
+/// ponytail: monotone per window; growing back when an app's minimum shrinks is the upgrade
+/// path if an app ever needs it.
+pub fn fit_scale(
+    col: (i32, i32),
+    min: (i32, i32),
+    committed: (i32, i32),
+    asked: (i32, i32),
+    current: f64,
+) -> f64 {
+    let mut f = current;
+    let need = |col: i32, size: i32| f64::from(col) / f64::from(size);
+    if min.0 > col.0 {
+        f = f.min(need(col.0, min.0));
+    }
+    if min.1 > col.1 {
+        f = f.min(need(col.1, min.1));
+    }
+    // Refused: bigger than it was asked to be, by more than rounding.
+    if committed.0 > asked.0 + 1 {
+        f = f.min(current * need(asked.0, committed.0));
+    }
+    if committed.1 > asked.1 + 1 {
+        f = f.min(current * need(asked.1, committed.1));
+    }
+    f.clamp(MIN_SCALE, 1.0)
+}
+
 /// One column of the strip.
 pub struct Column {
     pub window: Window,
     /// Half the output wide instead of all of it. Only honoured in landscape.
     pub half: bool,
+    /// Drawn at this factor of its own size — see the module docs. 1.0 for an app that fits.
+    pub scale: f64,
     /// Just inserted and not yet focused. Focus waits for the initial configure: at insert
     /// time the client has not made its first commit, and xdg-shell forbids configuring it yet.
     pub fresh: bool,
@@ -106,6 +155,7 @@ impl Wado {
             Column {
                 window,
                 half: false,
+                scale: 1.0,
                 fresh: true,
             },
         );
@@ -115,6 +165,95 @@ impl Wado {
     /// Post-dispatch upkeep: focus columns that have just been configured, and drop columns
     /// whose client is gone. Cheap enough to run every dispatch, which is where it runs —
     /// there is no toplevel-destroyed handler to hang it on.
+    /// Each column's on-screen width: the output's, or half of it for a half column in
+    /// landscape. Fullscreen is always the whole width.
+    fn strip_widths(&self, out: Size<i32, smithay::utils::Logical>) -> Vec<i32> {
+        let landscape = out.w > out.h;
+        self.strip
+            .iter()
+            .map(|c| {
+                let full = crate::fullscreen::is_fullscreen(&c.window);
+                if landscape && c.half && !full {
+                    out.w / 2
+                } else {
+                    out.w
+                }
+            })
+            .collect()
+    }
+
+    /// Shrink any column whose app will not fit it (S3), and re-lay the row if one changed.
+    fn strip_refit(&mut self) {
+        let Some(geo) = self
+            .space
+            .outputs()
+            .next()
+            .and_then(|o| self.space.output_geometry(o))
+        else {
+            return;
+        };
+        let widths = self.strip_widths(geo.size);
+        let session_scale = f64::from(self.output_scale);
+        let mut changed = false;
+        for (c, w) in self.strip.iter_mut().zip(widths) {
+            let Some(t) = c.window.toplevel() else {
+                continue;
+            };
+            if crate::fullscreen::is_fullscreen(&c.window) || !t.is_initial_configure_sent() {
+                continue;
+            }
+            let col = (w, geo.size.h);
+            let asked = (
+                (f64::from(col.0) / c.scale).round() as i32,
+                (f64::from(col.1) / c.scale).round() as i32,
+            );
+            let min = with_states(t.wl_surface(), |s| {
+                s.cached_state
+                    .get::<SurfaceCachedState>()
+                    .current()
+                    .min_size
+            });
+            // A refusal only counts once the app has acked what we last asked; before that its
+            // committed size answers an older configure.
+            let acked = with_states(t.wl_surface(), |s| {
+                s.data_map
+                    .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                    .and_then(|d| d.lock().ok()?.last_acked.as_ref().map(|c| c.state.size))
+            }) == Some(Some(Size::from(asked)));
+            let geo_size = c.window.geometry().size;
+            let committed = if acked {
+                (geo_size.w, geo_size.h)
+            } else {
+                (0, 0)
+            };
+            let f = fit_scale(col, (min.w, min.h), committed, asked, c.scale);
+            if (f - c.scale).abs() > 1e-3 {
+                tracing::info!(
+                    app_min = ?(min.w, min.h), committed = ?committed, column = ?col,
+                    from = c.scale, to = f,
+                    "strip: app does not fit its column — drawing it smaller"
+                );
+                c.scale = f;
+                // Crisp rather than resampled: its buffer then has the column's own pixels.
+                with_states(t.wl_surface(), |s| {
+                    with_fractional_scale(s, |fs| fs.set_preferred_scale(session_scale * f))
+                });
+                changed = true;
+            }
+        }
+        if changed {
+            self.strip_relayout();
+        }
+    }
+
+    /// A column's draw factor; 1.0 for anything that is not a shrunk column.
+    pub fn window_scale(&self, window: &smithay::desktop::Window) -> f64 {
+        self.strip
+            .iter()
+            .find(|c| &c.window == window)
+            .map_or(1.0, |c| c.scale)
+    }
+
     pub fn strip_tick(&mut self) {
         let ready = self.strip.iter_mut().find(|c| {
             c.fresh
@@ -128,6 +267,7 @@ impl Wado {
             self.focus_window(&w); // scrolls to it via the focus hook
         }
         self.strip_prune();
+        self.strip_refit();
     }
 
     fn strip_prune(&mut self) {
@@ -179,19 +319,7 @@ impl Wado {
         {
             self.strip_focused = i;
         }
-        let landscape = geo.size.w > geo.size.h;
-        let widths: Vec<i32> = self
-            .strip
-            .iter()
-            .map(|c| {
-                let full = crate::fullscreen::is_fullscreen(&c.window);
-                if landscape && c.half && !full {
-                    geo.size.w / 2
-                } else {
-                    geo.size.w
-                }
-            })
-            .collect();
+        let widths = self.strip_widths(geo.size);
         let (xs, offset) = layout(&widths, self.strip_focused, self.strip_offset, geo.size.w);
         // The dial's view wins while it is held or springing; focus-following resumes from
         // wherever it leaves the row, which is the focused column once it has settled.
@@ -208,7 +336,12 @@ impl Wado {
             // Fullscreen already owns its size (see `crate::fullscreen`); only its place on
             // the row is the strip's business.
             if !crate::fullscreen::is_fullscreen(&c.window) {
-                let size = Size::from((*w, geo.size.h));
+                // In the app's own logical pixels: a column drawn at `× scale` must be asked
+                // for `÷ scale` to fill it.
+                let size = Size::from((
+                    (f64::from(*w) / c.scale).round() as i32,
+                    (f64::from(geo.size.h) / c.scale).round() as i32,
+                ));
                 toplevel.with_pending_state(|s| {
                     s.size = Some(size);
                     // Maximized, so apps drop the shadows and rounded corners of a floating
@@ -229,7 +362,43 @@ impl Wado {
 
 #[cfg(test)]
 mod tests {
-    use super::{GAP, layout};
+    use super::{GAP, MIN_SCALE, fit_scale, layout};
+
+    #[test]
+    fn an_app_that_fits_is_left_alone() {
+        assert_eq!(
+            fit_scale((360, 700), (200, 300), (360, 700), (360, 700), 1.0),
+            1.0
+        );
+    }
+
+    #[test]
+    fn a_declared_minimum_wider_than_the_column_shrinks_it() {
+        // nautilus-like: min 380 wide in a 360 column.
+        let f = fit_scale((360, 700), (380, 0), (0, 0), (360, 700), 1.0);
+        assert!((f - 360.0 / 380.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_refusal_without_a_declared_minimum_shrinks_it_too() {
+        // Asked for 360, drew 480: needs 0.75 to fit.
+        let f = fit_scale((360, 700), (0, 0), (480, 700), (360, 700), 1.0);
+        assert!((f - 0.75).abs() < 1e-9);
+        // Already at 0.75 and asked 480, it drew 480: fits, stays.
+        assert_eq!(
+            fit_scale((360, 700), (0, 0), (480, 700), (480, 933), 0.75),
+            0.75
+        );
+    }
+
+    #[test]
+    fn never_below_the_floor_and_never_grows() {
+        assert_eq!(
+            fit_scale((360, 700), (2000, 0), (0, 0), (360, 700), 1.0),
+            MIN_SCALE
+        );
+        assert_eq!(fit_scale((360, 700), (0, 0), (0, 0), (360, 700), 0.8), 0.8);
+    }
 
     #[test]
     fn full_columns_scroll_one_screen_per_column() {

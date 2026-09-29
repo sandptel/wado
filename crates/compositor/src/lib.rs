@@ -37,6 +37,7 @@ pub mod input;
 pub mod pacing;
 pub mod placement;
 pub mod proc;
+pub mod scaled;
 pub mod session_env;
 pub mod sink;
 pub mod state;
