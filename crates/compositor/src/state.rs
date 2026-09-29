@@ -131,6 +131,12 @@ pub struct Wado {
     /// Stable per-window ids for that list. Never reused within a process.
     pub window_ids: std::collections::HashMap<Window, u64>,
     pub next_window_id: u64,
+    /// `Placement::Strip`'s columns, in row order — see [`crate::strip`]. Empty otherwise.
+    pub strip: Vec<crate::strip::Column>,
+    /// Index into `strip` of the column the viewport keeps on screen.
+    pub strip_focused: usize,
+    /// Viewport offset along the row, in logical pixels.
+    pub strip_offset: i32,
     /// Per-surface content-type change log. Cleared on session stop.
     pub content_type_log: crate::handlers::content_type::ContentTypeLog,
     /// `CLOCK_MONOTONIC`, read for presentation timestamps. `start_time.elapsed()` is *not*
@@ -313,6 +319,9 @@ impl Wado {
     /// republishing the window list, whose inputs change on every kind of dispatch.
     pub fn after_dispatch(&mut self) {
         self.flush_clients();
+        if self.placement == Placement::Strip {
+            self.strip_tick();
+        }
         self.publish_windows();
     }
 
@@ -406,6 +415,9 @@ impl Wado {
             windows_tx: tokio::sync::watch::channel(Vec::new()).0,
             window_ids: std::collections::HashMap::new(),
             next_window_id: 0,
+            strip: Vec::new(),
+            strip_focused: 0,
+            strip_offset: 0,
             clock,
             frame_seq: 0,
             presentation_logged: false,

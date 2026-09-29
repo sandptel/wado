@@ -48,6 +48,9 @@ impl Wado {
             }
         }
         self.configure_all();
+        if self.placement == wado_protocol::Placement::Strip {
+            self.strip_follow_focus(window);
+        }
     }
 
     /// Flush pending state to every mapped toplevel.
@@ -78,8 +81,16 @@ impl Wado {
             tracing::warn!(?action, "window action ignored — nothing is focused");
             return;
         };
+        let strip = self.placement == wado_protocol::Placement::Strip;
         match action {
+            // In the strip a column is always maximized; "fill the screen or not" becomes its
+            // width. See `crate::strip`.
+            WindowAction::Maximize if strip => self.strip_toggle_width(&window),
             WindowAction::Maximize => self.toggle_maximize(&window),
+            // Nothing to lower in a row of columns; the bar is how you leave one.
+            WindowAction::Minimize if strip => {
+                tracing::debug!("minimize ignored in the strip")
+            }
             WindowAction::Minimize => self.lower(&window),
             WindowAction::Close => {
                 if let Some(t) = window.toplevel() {

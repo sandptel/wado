@@ -555,6 +555,9 @@ pub enum Placement {
     Cascade,
     /// Size the window to the output and map at (0,0).
     Maximized,
+    /// The phone shell: every toplevel is a column of one horizontal, scrolling strip, and the
+    /// output shows the focused one. Dialogs float, centred. See `wado_compositor::strip`.
+    Strip,
 }
 
 /// Live-log wire format shared by the server's log bus (which formats lines) and

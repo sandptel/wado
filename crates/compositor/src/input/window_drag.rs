@@ -10,6 +10,10 @@ use crate::{Wado, state::WindowMove};
 impl Wado {
     /// Drive the interactive window move for one `WindowDrag` event.
     pub(crate) fn window_drag(&mut self, phase: TouchPhase, x: f64, y: f64) {
+        // Columns do not float; moving between them is the bar's job.
+        if self.placement == wado_protocol::Placement::Strip {
+            return;
+        }
         let Some(loc) = self.map_point(x, y) else {
             return;
         };

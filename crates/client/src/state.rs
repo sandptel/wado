@@ -160,7 +160,7 @@ impl Settings {
             quality: use_signal(|| "balanced".to_string()),
             bitrate: use_signal(|| 4000),
             encoder_backend: use_signal(|| "auto".to_string()),
-            placement: use_signal(|| "center".to_string()),
+            placement: use_signal(|| "auto".to_string()),
             focus_follows: use_signal(|| false),
             repeat_rate: use_signal(|| 25),
             repeat_delay: use_signal(|| 200),

@@ -46,9 +46,16 @@ impl Wado {
                 })
             })
             .collect();
-        // Map order, which ids follow. `space.elements()` is stacking order and every raise
-        // reshuffles it; a bar whose icons jump on each tap is unusable.
-        list.sort_by_key(|w| w.id);
+        // Strip order when there is a strip (its dialogs after), map order otherwise — ids
+        // follow map order. Never `space.elements()` order: that is stacking, every raise
+        // reshuffles it, and a bar whose icons jump on each tap is unusable.
+        let column = |id: u64| {
+            self.strip
+                .iter()
+                .position(|c| self.window_ids.get(&c.window) == Some(&id))
+                .unwrap_or(usize::MAX)
+        };
+        list.sort_by_key(|w| (column(w.id), w.id));
         self.windows_tx.send_if_modified(|cur| {
             if *cur == list {
                 return false;

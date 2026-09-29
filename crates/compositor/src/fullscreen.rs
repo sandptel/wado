@@ -54,6 +54,15 @@ impl Wado {
     /// Always granted when there is an output: a compositor is allowed to refuse, but refusing
     /// here would mean a game that asks once at startup never gets a second chance.
     pub(crate) fn set_fullscreen(&mut self, surface: &ToplevelSurface, on: bool) {
+        self.set_fullscreen_state(surface, on);
+        // The restore below maps the window where it was as a floating window; in the strip
+        // its place is its column, so the row is laid out again either way.
+        if self.placement == wado_protocol::Placement::Strip {
+            self.strip_relayout();
+        }
+    }
+
+    fn set_fullscreen_state(&mut self, surface: &ToplevelSurface, on: bool) {
         let Some(window) = self.window_of(surface) else {
             tracing::warn!("fullscreen request for an unmapped toplevel — ignored");
             return;

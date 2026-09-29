@@ -560,6 +560,17 @@ fn refit_windows(state: &mut Wado) -> usize {
     let Some(geo) = state.space.output_geometry(&output) else {
         return 0;
     };
+    // The strip owns every column's size and place, and its off-screen columns are exactly
+    // what the stray clamp below would drag back onto the output.
+    if state.placement == wado_protocol::Placement::Strip {
+        for w in state.space.elements() {
+            if let Some(t) = w.toplevel() {
+                crate::fit::advertise_bounds(t, geo.size);
+            }
+        }
+        state.strip_relayout();
+        return 0;
+    }
 
     let windows: Vec<_> = state.space.elements().cloned().collect();
     for window in &windows {
