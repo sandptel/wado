@@ -1,224 +1,185 @@
-//! The control bar: actions that need to be reachable mid-session without opening settings.
+//! The control bar: three buttons, Android-style — **⋯ More · ○ Apps · ◁ Back**, left to
+//! right, so Back sits under a right thumb and the least reachable slot holds the adaptive one.
 //!
-//! It floats over the video and fades when idle (see `js/bar.js`), because everything on it
-//! replaces something a desktop does with a keyboard shortcut — and a shortcut that costs
-//! open-panel → tap → dismiss is not a shortcut.
+//! Back is what gets pressed constantly (see `WindowAction::Back`); Apps is "home"; switching
+//! apps is the dial's job. Everything else is occasional and lives in More's sheet. More adapts
+//! to the one moment it is worth a slot: an app wants typing and the keyboard is down, so it
+//! becomes ⌨. Decided 2026-09-29 with the user; see the Decision Log.
 //!
-//! On desktop the settings panel is always docked, so the ⚙ is hidden there by CSS rather
-//! than by a branch here; the bar itself stays, since fullscreen is useful on both.
+//! It floats over the video and fades when idle (see `js/bar.js`).
 
 use dioxus::prelude::*;
 
 use crate::{bridge, cfg, state::Ui, ui::gamepad};
-
-/// The window actions, in the order they sit on the bar: the two that change a window's size
-/// first, then the destructive one, then the one that moves on. `close` is deliberately not
-/// adjacent to `cycle` — a mis-tap between "next window" and "close this window" is the one
-/// mistake here that cannot be undone.
-const WINDOW_ACTIONS: &[(&str, &str, &str)] = &[
-    ("maximize", "❐", "Maximize / restore"),
-    ("minimize", "—", "Send to back"),
-    ("close", "✕", "Close window"),
-    ("cycle_focus", "⇄", "Next window"),
-];
 
 pub fn render(ui: Ui) -> Element {
     let mut live = ui.live;
     let mut set = ui.set;
     let open = (live.sheet_open)();
     let panel = (set.panel_open)();
-    let wins = (live.win_open)();
+    let more = (live.win_open)();
     let pad = (set.pad_on)();
+    let on = (live.session_on)();
+    // More turns into the keyboard only when that is certainly what is wanted next.
+    let type_now = on && (live.text_wanted)() && !(live.osk_on)();
 
     rsx! {
         // No `idle` class here: the bar starts visible and js/bar.js fades it on a timer.
-        // Rendering it hidden would make it undiscoverable on first load.
         div { id: "wado-bar",
-            button {
-                class: "barbtn settings-only",
-                title: "Settings",
-                "aria-label": "Settings",
-                onclick: move |_| live.sheet_open.set(!open),
-                "⚙"
-            }
-            // Desktop counterpart of the ⚙: below the breakpoint the panel is a sheet the
-            // scrim already dismisses, so this is hidden there rather than duplicating it.
-            button {
-                class: "barbtn docked-only",
-                title: if panel { "Hide settings panel" } else { "Show settings panel" },
-                "aria-label": if panel { "Hide settings panel" } else { "Show settings panel" },
-                onclick: move |_| set.panel_open.set(!panel),
-                if panel { "⟨" } else { "⟩" }
-            }
-            // The app drawer. Beside the window actions because it is the same kind of thing:
-            // something you do to the running session, and pointless without one.
-            button {
-                class: "barbtn",
-                title: "Apps",
-                "aria-label": "Apps",
-                disabled: !(live.session_on)(),
-                onclick: move |_| {
-                    let open = !(live.drawer_open)();
-                    live.drawer_open.set(open);
-                    // Re-ask on every open. The list carries which applications are running,
-                    // and that is only true at the moment it is answered — a dot from two
-                    // minutes ago is worse than no dot. Cheap: the scan is a few milliseconds
-                    // of directory reads and one round trip to the compositor.
-                    if open {
-                        bridge::call("window.__wado.requestApps();".to_string());
-                    }
-                },
-                "⊞"
-            }
-            // The four window actions, behind one button.
-            //
-            // They were flat on the bar and that made eleven buttons in a row, which is more
-            // than fits comfortably across a phone held in landscape — the orientation the
-            // session is now always in. Grouping costs one tap on the four rarest things here
-            // (a window is maximized once and then used) and buys back three slots for the
-            // ones pressed mid-game. Nothing is removed.
             div { class: "bargroup",
-                button {
-                    class: if wins { "barbtn active" } else { "barbtn" },
-                    title: "Window actions",
-                    "aria-label": "Window actions",
-                    "aria-expanded": "{wins}",
-                    disabled: !(live.session_on)(),
-                    onclick: move |_| live.win_open.set(!wins),
-                    "⊟"
+                if type_now {
+                    // A `label`, not a `button`: Android raises the soft keyboard only for a
+                    // focus inside the user gesture, and label activation focuses its `for`
+                    // target natively. See `js/osk.js`.
+                    label {
+                        r#for: "wado-osk",
+                        class: "barbtn nav",
+                        title: "Keyboard",
+                        "aria-label": "Keyboard",
+                        "⌨"
+                    }
+                } else {
+                    button {
+                        class: if more { "barbtn nav active" } else { "barbtn nav" },
+                        title: "More",
+                        "aria-label": "More",
+                        "aria-expanded": "{more}",
+                        onclick: move |_| live.win_open.set(!more),
+                        "⋯"
+                    }
                 }
-                if wins {
-                    div { class: "barpop",
-                        for (action, glyph, title) in WINDOW_ACTIONS {
-                            button {
-                                key: "{action}",
-                                class: "barbtn",
-                                title: "{title}",
-                                "aria-label": "{title}",
-                                disabled: !(live.session_on)(),
-                                onclick: move |_| {
-                                    bridge::call(format!(
-                                        "window.__wado.windowAction({});", bridge::js(action)
-                                    ));
-                                    // Closed after acting. The popup covers the video it is
-                                    // acting on, so leaving it up hides the result of the tap
-                                    // that opened it — and "next window" is the one action
-                                    // here you genuinely cannot judge without seeing it.
-                                    live.win_open.set(false);
-                                },
-                                "{glyph}"
-                            }
+                if more {
+                    div { class: "barpop barsheet",
+                        // Closes after any pick: the sheet covers the video it acts on.
+                        onclick: move |_| live.win_open.set(false),
+                        label {
+                            r#for: "wado-osk",
+                            class: if !on { "barbtn off" }
+                                   else if (live.osk_on)() { "barbtn active" }
+                                   else { "barbtn" },
+                            title: "Keyboard",
+                            "aria-label": "Keyboard",
+                            "⌨"
+                        }
+                        button {
+                            class: "barbtn settings-only",
+                            title: "Settings",
+                            "aria-label": "Settings",
+                            onclick: move |_| live.sheet_open.set(!open),
+                            "⚙"
+                        }
+                        button {
+                            class: "barbtn docked-only",
+                            title: if panel { "Hide settings panel" } else { "Show settings panel" },
+                            "aria-label": "Settings panel",
+                            onclick: move |_| set.panel_open.set(!panel),
+                            if panel { "⟨" } else { "⟩" }
+                        }
+                        button {
+                            class: "barbtn",
+                            title: "Fullscreen",
+                            "aria-label": "Fullscreen",
+                            onclick: move |_| {
+                                // The session's own dimensions, so the orientation lock matches
+                                // the output rather than however the phone is held.
+                                let c = cfg::build(ui);
+                                bridge::call(format!(
+                                    "window.__wado.toggleFullscreen({}, {});", c.width, c.height
+                                ));
+                            },
+                            "⛶"
+                        }
+                        // Half/full column width in landscape; maximize outside the strip.
+                        button {
+                            class: "barbtn",
+                            title: "Half / full width",
+                            "aria-label": "Half or full width",
+                            disabled: !on,
+                            onclick: move |_| bridge::call("window.__wado.windowAction(\"maximize\");".to_string()),
+                            "◧"
+                        }
+                        button {
+                            class: "barbtn",
+                            title: "Close app",
+                            "aria-label": "Close app",
+                            disabled: !on,
+                            onclick: move |_| bridge::call("window.__wado.windowAction(\"close\");".to_string()),
+                            "✕"
+                        }
+                        button {
+                            class: "barbtn",
+                            title: "Console (shell and log)",
+                            "aria-label": "Console",
+                            disabled: !on,
+                            onclick: move |_| {
+                                let open = !(live.console_open)();
+                                live.console_open.set(open);
+                                // Revealing the terminal is what makes it re-measure (and
+                                // starts the shell the first time).
+                                if open && (live.console_tab)() == "shell" {
+                                    bridge::call("window.__wado.ptyShow();".to_string());
+                                }
+                            },
+                            "❯_"
+                        }
+                        button {
+                            class: if pad { "barbtn active" } else { "barbtn" },
+                            title: "On-screen gamepad",
+                            "aria-label": "On-screen gamepad",
+                            "aria-pressed": "{pad}",
+                            disabled: !on,
+                            onclick: move |_| {
+                                let mut set = set;
+                                set.pad_on.set(!pad);
+                                gamepad::apply(ui);
+                            },
+                            "🎮"
+                        }
+                        // Pointer lock. No `onclick`: `js/input_lock.js` catches the click on
+                        // this id in the capture phase, inside the gesture it needs.
+                        button {
+                            id: "wado-lock",
+                            class: if (live.pointer_lock)() { "barbtn active" } else { "barbtn" },
+                            title: "Take the mouse (for games) — Escape releases it",
+                            "aria-label": "Take the mouse",
+                            "aria-pressed": "{(live.pointer_lock)()}",
+                            disabled: !on,
+                            "🎯"
+                        }
+                        // A fresh peer connection; the session survives.
+                        button {
+                            class: "barbtn",
+                            title: "Resync video (rebuilds the connection, keeps the session)",
+                            "aria-label": "Resync video",
+                            disabled: !on,
+                            onclick: move |_| bridge::call("window.__wado.resync();".to_string()),
+                            "⟳"
                         }
                     }
                 }
             }
-
-            // One button for the console — shell and log together. Two buttons for two
-            // panels would be two rows of chrome over a phone screen that has none to give.
-            // Beside the window actions because it is the same kind of thing: something you
-            // do to the running session, and pointless without one.
             button {
-                class: "barbtn",
-                title: "Console (shell and log)",
-                "aria-label": "Console",
-                disabled: !(live.session_on)(),
+                class: "barbtn nav",
+                title: "Apps",
+                "aria-label": "Apps",
+                disabled: !on,
                 onclick: move |_| {
-                    let open = !(live.console_open)();
-                    live.console_open.set(open);
-                    // Focus follows the reveal, but only for the shell: opening a command
-                    // line and then having to tap it is a step too many on a phone. On the
-                    // log tab a focused input would raise the keyboard over what you opened
-                    // the panel to read.
-                    // The terminal is hidden with CSS, so revealing it is what tells the
-                    // emulator to re-measure — a terminal sized while display:none is 1x1.
-                    // This is also what starts the shell the first time.
-                    if open && (live.console_tab)() == "shell" {
-                        bridge::call("window.__wado.ptyShow();".to_string());
+                    let open = !(live.drawer_open)();
+                    live.drawer_open.set(open);
+                    // Re-asked on every open: the list says which apps are running *now*.
+                    if open {
+                        bridge::call("window.__wado.requestApps();".to_string());
                     }
                 },
-                "❯_"
+                "○"
             }
-
-            // A phone has no keys. Focusing a hidden input is what raises the soft keyboard;
-            // `zwp_text_input_v3` cannot do this job because smithay drops every text-input
-            // request with no input-method client bound. See `js/osk.js`.
-            //
-            // A `label`, not a `button`, and that is the whole fix: Android raises the soft
-            // keyboard only for a focus that happens *inside* the user gesture, and
-            // `bridge::call` is `spawn(async { eval().await })` — by the time `focus()` ran the
-            // gesture was over, so the old button could never work on a phone however correct
-            // the rest of it was. Label activation focuses its `for` target natively, in the
-            // gesture, with no JS in the path at all.
-            label {
-                r#for: "wado-osk",
-                class: if !(live.session_on)() { "barbtn off" }
-                       else if (live.osk_on)() { "barbtn active" }
-                       else { "barbtn" },
-                title: "Keyboard",
-                "aria-label": "Keyboard",
-                "⌨"
-            }
-
-            // Pointer lock, for games. No `onclick`: `js/input_lock.js` listens for the click
-            // on this id in the capture phase, because `requestPointerLock` needs the user
-            // gesture and a Dioxus handler's `bridge::call` is an async eval that arrives after
-            // it. The state comes back from `pointerlockchange`, which is also what turns this
-            // off when the browser drops the lock on Escape.
             button {
-                id: "wado-lock",
-                class: if (live.pointer_lock)() { "barbtn active" } else { "barbtn" },
-                title: "Take the mouse (for games) — Escape releases it",
-                "aria-label": "Take the mouse",
-                "aria-pressed": "{(live.pointer_lock)()}",
-                disabled: !(live.session_on)(),
-                "🎯"
-            }
-
-            // The on-screen gamepad. Beside pointer lock because it is the same kind of
-            // decision — both are "this is a game now, change what my fingers mean" — and a
-            // plain toggle rather than a menu because what it *does* when it is on is six
-            // settings away in the panel, and nobody needs those mid-match.
-            button {
-                class: if pad { "barbtn active" } else { "barbtn" },
-                title: "On-screen gamepad",
-                "aria-label": "On-screen gamepad",
-                "aria-pressed": "{pad}",
-                disabled: !(live.session_on)(),
-                onclick: move |_| {
-                    let mut set = set;
-                    set.pad_on.set(!pad);
-                    gamepad::apply(ui);
-                },
-                "🎮"
-            }
-
-            // A fresh peer connection, which is the only thing that resets the browser's
-            // playout buffer after a network hitch has permanently inflated it. The compositor
-            // session survives — windows, apps and the shell are not tied to the connection.
-            button {
-                class: "barbtn",
-                title: "Resync video (rebuilds the connection, keeps the session)",
-                "aria-label": "Resync video",
-                disabled: !(live.session_on)(),
-                onclick: move |_| bridge::call("window.__wado.resync();".to_string()),
-                "⟳"
-            }
-
-            span { class: "barsep" }
-
-            button {
-                class: "barbtn",
-                title: "Fullscreen",
-                "aria-label": "Fullscreen",
-                onclick: move |_| {
-                    // The session's own dimensions, so the orientation lock matches the
-                    // output rather than whichever way the phone happens to be held.
-                    let c = cfg::build(ui);
-                    bridge::call(format!(
-                        "window.__wado.toggleFullscreen({}, {});", c.width, c.height
-                    ));
-                },
-                "⛶"
+                class: "barbtn nav",
+                title: "Back",
+                "aria-label": "Back",
+                disabled: !on,
+                onclick: move |_| bridge::call("window.__wado.back();".to_string()),
+                "◁"
             }
         }
     }

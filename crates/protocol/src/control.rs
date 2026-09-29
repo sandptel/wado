@@ -51,6 +51,11 @@ pub enum WindowAction {
     /// An id that no longer exists is a logged no-op: the list the viewer tapped can be a
     /// moment older than the window it names.
     Focus { id: u64 },
+    /// The phone's Back button. The compositor picks what "back" means from what is on
+    /// screen: Escape when a menu/popup is open or a dialog is in front (dismiss it), otherwise
+    /// Alt+Left (the app's own back — browsers, file managers, settings panels). Hiding the
+    /// soft keyboard, the first thing Back does, never reaches here: the client does it.
+    Back,
 }
 
 /// One toplevel, as the viewer sees it in the window list.
@@ -86,6 +91,7 @@ mod tests {
 
         for (json, expected) in [
             (r#"{"Window":"maximize"}"#, WindowAction::Maximize),
+            (r#"{"Window":"back"}"#, WindowAction::Back),
             (r#"{"Window":"minimize"}"#, WindowAction::Minimize),
             (r#"{"Window":"close"}"#, WindowAction::Close),
             (r#"{"Window":"cycle_focus"}"#, WindowAction::CycleFocus),

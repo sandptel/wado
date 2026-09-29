@@ -112,6 +112,9 @@ let autoOpened = false;
 // whole point of the protocol work: tapping a text field in an app now raises the phone's
 // keyboard, instead of that being a second thing the viewer has to remember to do.
 W.textInput = (active) => {
+  // Also told to the bar, whose More button turns into ⌨ while an app wants typing and the
+  // keyboard is down (dismissed with Back, say) — the one moment it is worth a slot.
+  emit({ type: "text_wanted", on: !!active });
   if (active) {
     if (el && document.activeElement === el) return;   // already up; do not steal focus again
     autoOpened = true;

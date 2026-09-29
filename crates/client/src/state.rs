@@ -241,9 +241,12 @@ pub struct Live {
     /// settings sheet already covering the video is never what someone wanted.
     pub sheet_open: Signal<bool>,
 
-    /// Whether the bar's window-action group is expanded. Not persisted — a popup that is
-    /// open on load is chrome nobody asked for, and it is one tap to reopen.
+    /// Whether the bar's More sheet is open. Not persisted — a popup that is open on load is
+    /// chrome nobody asked for, and it is one tap to reopen.
     pub win_open: Signal<bool>,
+    /// The focused app wants text input (`zwp_text_input_v3`). With the keyboard down, the
+    /// bar's More button becomes ⌨.
+    pub text_wanted: Signal<bool>,
     /// Whether the on-screen pad is being laid out rather than played. Live, not a setting:
     /// an edit mode that survived a reload would be a pad whose buttons silently do nothing.
     pub pad_edit: Signal<bool>,
@@ -352,6 +355,7 @@ impl Live {
             console_tab: use_signal(|| "shell".to_string()),
             sheet_open: use_signal(|| false),
             win_open: use_signal(|| false),
+            text_wanted: use_signal(|| false),
             pad_edit: use_signal(|| false),
             encoder_mode: use_signal(String::new),
             encoder_pipeline: use_signal(String::new),
