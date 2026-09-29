@@ -18,6 +18,10 @@ use smithay::utils::{IsAlive, Size};
 
 use crate::Wado;
 
+/// Logical pixels between neighbouring columns. At rest only one column is on screen, so this
+/// shows only mid-slide — which is when it is needed, to tell where one window ends.
+pub const GAP: i32 = 24;
+
 /// One column of the strip.
 pub struct Column {
     pub window: Window,
@@ -36,9 +40,9 @@ pub fn layout(widths: &[i32], focused: usize, offset: i32, view_w: i32) -> (Vec<
     let mut x = 0;
     for w in widths {
         xs.push(x);
-        x += w;
+        x += w + GAP;
     }
-    let total = x;
+    let total = (x - GAP).max(0);
     let mut offset = offset;
     if let (Some(left), Some(w)) = (xs.get(focused), widths.get(focused)) {
         let right = left + w;
@@ -53,7 +57,38 @@ pub fn layout(widths: &[i32], focused: usize, offset: i32, view_w: i32) -> (Vec<
     (xs, offset)
 }
 
+/// The viewport offset for a fractional column position — the switcher dial's view. Linear
+/// between column starts, and continued past either end at the neighbouring step, so the dial's
+/// rubber-band shows as the row pulling away from the edge.
+pub fn view_offset(xs: &[i32], widths: &[i32], pos: f64) -> i32 {
+    let (Some(&last_x), Some(&last_w)) = (xs.last(), widths.last()) else {
+        return 0;
+    };
+    let n = xs.len();
+    let i = pos.floor();
+    let x_at = |k: f64| -> f64 {
+        if k < 0.0 {
+            k * f64::from(widths[0] + GAP)
+        } else if k as usize >= n {
+            f64::from(last_x) + (k - (n - 1) as f64) * f64::from(last_w + GAP)
+        } else {
+            f64::from(xs[k as usize])
+        }
+    };
+    let (a, b) = (x_at(i), x_at(i + 1.0));
+    (a + (b - a) * (pos - i)).round() as i32
+}
+
 impl Wado {
+    /// The switcher dial is driving the viewport (`Some`), or hands it back (`None`).
+    pub(crate) fn strip_view(&mut self, pos: Option<f64>) {
+        if self.placement != wado_protocol::Placement::Strip {
+            return;
+        }
+        self.strip_view = pos.filter(|p| p.is_finite());
+        self.strip_relayout();
+    }
+
     /// Whether a new toplevel becomes a column (true) or floats as a dialog (false).
     pub(crate) fn is_strip_column(window: &Window) -> bool {
         window.toplevel().is_some_and(|t| t.parent().is_none())
@@ -158,6 +193,12 @@ impl Wado {
             })
             .collect();
         let (xs, offset) = layout(&widths, self.strip_focused, self.strip_offset, geo.size.w);
+        // The dial's view wins while it is held or springing; focus-following resumes from
+        // wherever it leaves the row, which is the focused column once it has settled.
+        let offset = match self.strip_view {
+            Some(pos) => view_offset(&xs, &widths, pos),
+            None => offset,
+        };
         self.strip_offset = offset;
 
         for ((c, x), w) in self.strip.iter().zip(&xs).zip(&widths) {
@@ -188,23 +229,39 @@ impl Wado {
 
 #[cfg(test)]
 mod tests {
-    use super::layout;
+    use super::{GAP, layout};
 
     #[test]
     fn full_columns_scroll_one_screen_per_column() {
         let (xs, off) = layout(&[400, 400, 400], 2, 0, 400);
-        assert_eq!(xs, [0, 400, 800]);
-        assert_eq!(off, 800);
+        assert_eq!(xs, [0, 400 + GAP, 800 + 2 * GAP]);
+        assert_eq!(off, 800 + 2 * GAP);
         // Back to the first: the viewport follows left too.
         assert_eq!(layout(&[400, 400, 400], 0, 800, 400).1, 0);
     }
 
     #[test]
     fn a_visible_column_does_not_scroll() {
-        // Two halves on screen; focusing the right one keeps the view where it is.
-        assert_eq!(layout(&[400, 400, 800], 1, 0, 800).1, 0);
+        // Two halves (with the gap) on a view wide enough for both: no scroll.
+        assert_eq!(layout(&[400, 400, 800], 1, 0, 800 + GAP).1, 0);
         // The third needs the view to move so its right edge is on screen.
-        assert_eq!(layout(&[400, 400, 800], 2, 0, 800).1, 800);
+        assert_eq!(layout(&[400, 400, 800], 2, 0, 800).1, 800 + 2 * GAP);
+    }
+
+    #[test]
+    fn the_dial_view_is_linear_between_columns_and_runs_past_the_ends() {
+        use super::view_offset;
+        let (xs, w) = (vec![0, 400 + GAP], vec![400, 400]);
+        assert_eq!(view_offset(&xs, &w, 0.0), 0);
+        assert_eq!(view_offset(&xs, &w, 1.0), 400 + GAP);
+        assert_eq!(view_offset(&xs, &w, 0.5), (400 + GAP) / 2);
+        assert!(
+            view_offset(&xs, &w, -0.25) < 0,
+            "rubber-band before the first"
+        );
+        assert!(view_offset(&xs, &w, 1.25) > 400 + GAP, "and after the last");
+        // Settling on a column lands exactly where focus-following would put it: no jump.
+        assert_eq!(view_offset(&xs, &w, 1.0), layout(&w, 1, 0, 400).1);
     }
 
     #[test]

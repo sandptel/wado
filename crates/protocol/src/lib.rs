@@ -129,6 +129,15 @@ pub enum InputEvent {
     /// window under the `Down` point follows subsequent `Motion`s until `Up`. Handled
     /// entirely by the compositor; never forwarded to the application.
     WindowDrag { phase: TouchPhase, x: f64, y: f64 },
+    /// Drive the phone strip's viewport directly while the switcher dial moves.
+    ///
+    /// `pos` is a column index, fractional mid-slide and possibly past either end while the
+    /// dial rubber-bands; the compositor shows the row at exactly that point, gaps and
+    /// neighbours included. `None` hands the viewport back to focus-following — sent once the
+    /// dial has settled on the column it focused, so the handover does not move anything.
+    /// Handled entirely by the compositor; never forwarded to an application. Ignored outside
+    /// `Placement::Strip`.
+    StripView { pos: Option<f64> },
     /// A two-finger pinch/rotate, delivered as `zwp_pointer_gestures_v1` pinch events.
     ///
     /// Rides the same two-contact gesture the client uses for scrolling, so one gesture can
