@@ -16,6 +16,11 @@ const LENS_CSS = 190;   // diameter on screen
 const LENS_ZOOM = 3;
 const LENS_IDLE_MS = 5000;
 
+// The "Lens" tile: off, an unsure tap clicks instead of magnifying. The two-finger tap still
+// opens the lens on purpose.
+W.lensAuto = true;
+W.setLensAuto = (on) => { W.lensAuto = !!on; };
+
 W.lens = {
   el: null,
   raf: null,

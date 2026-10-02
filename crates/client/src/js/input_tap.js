@@ -218,13 +218,13 @@ W.touchp = {
       const k = W.targets.content(video);
       if (targets === null) {
         // No tree for this app: judge the pixels instead.
-        if (W.lens && W.lens.dense(cx, cy)) W.lens.open(cx, cy);
+        if (W.lensAuto && W.lens && W.lens.dense(cx, cy)) W.lens.open(cx, cy);
         else clickAt(n, "left");
         return;
       }
       const size = (t) => ({ w: t.w * (k ? k.w : 1), h: t.h * (k ? k.h : 1) });
       const d = W.decideTap(n, targets, size);
-      if (d.kind === "lens" && W.lens) W.lens.open(cx, cy);
+      if (d.kind === "lens" && W.lens && W.lensAuto) W.lens.open(cx, cy);
       else clickAt(d.at || n, "left");
     });
   },

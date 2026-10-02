@@ -1,7 +1,7 @@
 //! wado web client — a Dioxus (WASM) app that runs in the browser.
 //!
-//! A config panel (connection / session / live / appearance / debug), Start-Stop, a live
-//! WebRTC video stage, and a log panel fed by the server's `/events` SSE stream.
+//! A landing page to pick a host and start, a live WebRTC video stage, and a control centre
+//! sheet for everything else.
 //!
 //! The split, and why: UI state, rendering and config-building are native Dioxus; everything
 //! that can only happen in a browser — fetch, WebRTC, `<video>.srcObject`, SSE, storage,
@@ -12,6 +12,7 @@ mod bridge;
 mod cfg;
 mod debug;
 mod persist;
+mod profile;
 mod res;
 mod state;
 mod theme;
@@ -103,32 +104,21 @@ fn App() -> Element {
     rsx! {
         document::Stylesheet { href: asset!("/assets/base.css") }
         document::Stylesheet { href: asset!("/assets/layout.css") }
+        document::Stylesheet { href: asset!("/assets/cc.css") }
+        document::Stylesheet { href: asset!("/assets/landing.css") }
         document::Stylesheet { href: asset!("/assets/stage.css") }
         document::Stylesheet { href: asset!("/assets/gamepad.css") }
 
-        // `sheet` on the shell is what the layout breakpoint reads to decide whether the
-        // panel is docked beside the video or slid over it. One markup tree, two
-        // presentations — the alternative is two panels to keep in sync.
-        div {
-            class: "app",
-            "data-sheet": if (ui.live.sheet_open)() { "open" } else { "shut" },
-            // Read only above the breakpoint, where the panel is a docked column. Below it
-            // the panel is a sheet and `data-sheet` governs, so this attribute is inert.
-            "data-panel": if (ui.set.panel_open)() { "open" } else { "shut" },
-            // Dismiss-on-tap-away. Present only below the breakpoint (CSS), where the
-            // panel covers the video and the bar's toggle is underneath it.
-            div {
-                id: "scrim",
-                onclick: move |_| {
-                    let mut live = ui.live;
-                    live.sheet_open.set(false);
-                },
-            }
-            aside { id: "panel", {ui::panel(ui)} }
+        // The stage is the whole screen, always. Everything else floats over it and never
+        // takes space from the picture — the control centre included (Decision Log 2026-10-02).
+        div { class: if (ui.live.cc_open)() { "app cc-open" } else { "app" },
             main { id: "stage",
                 {ui::stage::render(ui)}
-                {ui::bar::render(ui)}
+                {ui::dock::render(ui)}
             }
+            {ui::landing::render(ui)}
+            {ui::toast::render(ui)}
+            {ui::cc::render(ui)}
         }
     }
 }

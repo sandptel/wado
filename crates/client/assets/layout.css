@@ -1,119 +1,67 @@
-/* The shell: the two columns and the settings panel inside the left one.
+/* The shell: a full-screen stage with everything else floating over it.
  *
- * Desktop-only for now — the responsive sheet is M-C2. Kept in its own file so that work is
- * confined to this stylesheet. */
+ * Nothing here takes space from the picture (Decision Log 2026-10-02). The video's own box is
+ * #stage-video, which the overlays position against — see stage.css. */
 
-.app {
-  display: flex;
-  /* dvh, not vh: on mobile the URL bar collapses and 100vh overshoots the viewport by ~60px.
-   * Harmless on desktop, so there is no reason to wait for the mobile pass to use it. */
-  height: 100dvh;
-  overflow: hidden;
-}
-
-#panel {
-  width: 320px;
-  flex: 0 0 320px;
-  padding: 16px;
-  box-sizing: border-box;
-  background: var(--base01);
-  border-right: 1px solid var(--base02);
-  overflow-y: auto;
-}
-
-/* A column: the picture takes what is left, the shell and log panels sit under it at their
- * own heights. The picture's own box is #stage-video, which is what the overlays position
- * against — the stage itself must not be, or an absolutely positioned video would paint over
- * the panels below it. */
-#stage { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
+.app { position: relative; height: 100dvh; overflow: hidden; }
+#stage { position: absolute; inset: 0; display: flex; flex-direction: column; }
 #stage-video { flex: 1; min-height: 0; position: relative; }
 
-.brand { margin-bottom: 4px; }
+/* ── the dock ──────────────────────────────────────────────────────────────────────────── */
 
-/* ── settings groups ─────────────────────────────────────────────────────────────────── */
-
-.group { margin-top: 12px; border-top: 1px solid var(--base02); padding-top: 8px; }
-.group.flat { border-top: 0; padding-top: 0; }
-.group > summary {
-  cursor: pointer; font-size: 13px; color: var(--base04); user-select: none;
-  list-style-position: outside;
-}
-.group > summary:hover { color: var(--base06); }
-.group .note { margin: 4px 0 0; }
-
-/* Expand/collapse. Animating grid-template-rows is the one way to transition to content
- * height without hard-coding one, and it stays off the main thread's layout path for the
- * subtree because the child is the thing being clipped, not re-laid-out. */
-.group-body {
-  display: grid;
-  grid-template-rows: 1fr;
-  transition: grid-template-rows var(--dur) var(--ease);
-}
-.group:not([open]) .group-body { grid-template-rows: 0fr; }
-.group-body > * { overflow: hidden; min-height: 0; }
-
-/* A nested disclosure for the knobs most people never touch. */
-.sub { margin-top: 12px; border-top: 1px dashed var(--base02); padding-top: 8px; }
-.sub > summary { cursor: pointer; font-size: 12px; color: var(--base03); user-select: none; }
-.sub > summary:hover { color: var(--base04); }
-
-.row { display: flex; gap: 8px; }
-.row > * { flex: 1; }
-
-.debug-items { margin-top: 8px; padding-left: 4px; border-left: 2px solid var(--base02); }
-
-.btns { margin-top: 16px; display: flex; gap: 8px; }
-.btns > button { flex: 1; }
-
-#status { font-size: 12px; color: var(--base0B); margin-top: 12px; min-height: 1em; }
-
-/* ── the control bar ──────────────────────────────────────────────────────────────────── */
-
-/* Floats over the video, bottom-centre so it is thumb-reachable on a phone. Fades when idle
- * (js/bar.js) rather than staying put: everything on it replaces a keyboard shortcut, so it
- * has to be reachable always and visible rarely. */
+/* Bottom-centre, thumb-reachable. Fades when idle (js/bar.js): everything on it replaces a
+ * keyboard shortcut, so it has to be reachable always and visible rarely. */
 #wado-bar {
   position: absolute;
   left: 50%;
-  bottom: calc(12px + env(safe-area-inset-bottom));
-  transform: translateX(-50%);
+  bottom: calc(14px + env(safe-area-inset-bottom));
+  translate: -50% 0;
   display: flex;
-  gap: 4px;
-  padding: 4px;
-  border-radius: calc(var(--r) + 4px);
-  background: color-mix(in srgb, var(--base01) 88%, transparent);
-  border: 1px solid var(--base02);
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--s1), transparent 12%);
+  border: 1px solid color-mix(in oklab, var(--line), transparent 30%);
   z-index: 10;
-  transition: opacity var(--dur) var(--ease);
+  transition: opacity var(--dur) var(--ease), translate var(--dur-sheet) var(--spring);
 }
 #wado-bar.idle { opacity: 0; }
-/* Never fade out from under a finger or a keyboard focus. */
 #wado-bar:hover, #wado-bar:focus-within { opacity: 1; }
-
-label.barbtn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--r);
-  cursor: pointer;
-  font-weight: 600;
-}
-/* No session to type into: looks and behaves like a disabled button. */
-label.barbtn.off { color: var(--base03); pointer-events: none; }
+#wado-bar.hidden { translate: -50% 140%; opacity: 0; pointer-events: none; }
 
 .barbtn {
-  background: transparent;
-  color: var(--base05);
-  font-size: 16px;
-  line-height: 1;
+  display: inline-grid;
+  place-items: center;
   min-width: 44px;
   min-height: 44px;
-  padding: 0;
+  border-radius: 999px;
+  color: var(--text);
+  cursor: pointer;
 }
-.barbtn:hover { color: var(--base06); background: var(--base02); }
-/* A toggle that is currently on — today only the keyboard button. Reads as pressed rather
- * than merely hovered, because on a touch screen there is no hover to compare against. */
-.barbtn.active { color: var(--base00); background: var(--base0D); }
+.barbtn:hover { background: var(--s2); color: var(--bright); }
+.barbtn.active { background: var(--accent); color: var(--on-accent); }
+.barbtn.nav { min-width: 54px; }
+.barbtn.home { min-width: 62px; }
+.homering { width: 20px; height: 20px; border-radius: 50%; border: 2.2px solid currentColor; }
+
+/* The LED: the one status always on screen. Software encoding is orange and cannot be turned
+ * off (invariant #5). */
+.barbtn.more { position: relative; }
+.barbtn.more::after {
+  content: ""; position: absolute; top: 9px; right: 13px; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--good); box-shadow: 0 0 0 2px var(--s1);
+}
+.barbtn.led-warn::after { background: var(--base0A); }
+.barbtn.led-bad::after { background: var(--bad); }
+.barbtn.led-sw::after { background: var(--warn); animation: breathe 2.4s ease-in-out infinite; }
+@keyframes breathe { 50% { opacity: .35; } }
+
+/* Blur only where it is cheap. On a phone the GPU that would draw it is the one decoding the
+ * video. ponytail: a pointer media query; a measured device-drop switch is the upgrade. */
+@media (hover: hover) and (pointer: fine) {
+  #wado-bar { backdrop-filter: blur(18px) saturate(1.4); }
+}
 
 /* The on-screen keyboard's input.
  *
@@ -138,172 +86,30 @@ label.barbtn.off { color: var(--base03); pointer-events: none; }
   z-index: 0;
 }
 
-/* ── the sheet ────────────────────────────────────────────────────────────────────────── */
 
-/* Above the breakpoint the panel is docked and the scrim and ⚙ have no job. */
-#scrim { display: none; }
-.settings-only { display: none; }
+/* ── toasts ────────────────────────────────────────────────────────────────────────────── */
 
-/* Collapsed docked panel. Width rather than display, so the stage reflows smoothly instead
- * of snapping — and the video keeps its aspect either way because the panel is a sibling
- * column, not something layered over it. */
-.app[data-panel="shut"] > #panel {
-  flex-basis: 0;
-  width: 0;
-  padding-left: 0; padding-right: 0;
-  border-right: 0;
-  overflow: hidden;
-}
-.app > #panel {
-  transition: flex-basis var(--dur) var(--ease), width var(--dur) var(--ease),
-              padding var(--dur) var(--ease);
-}
-@media (prefers-reduced-motion: reduce) { .app > #panel { transition: none; } }
-
-@media (max-width: 719px) {
-  /* The sheet has the scrim and the ⚙; a collapse arrow would be a third way to do the
-   * same thing, and the panel is not a column down here for it to collapse. */
-  .docked-only { display: none; }
-  /* A panel collapsed on desktop must not follow you down to the sheet layout, where the
-   * only way back would be a control that is hidden. */
-  .app[data-panel="shut"] > #panel {
-    flex-basis: auto; width: auto; overflow-y: auto;
-    padding-left: 16px; padding-right: 16px;
-  }
-
-  /* The panel stops being a column and becomes a sheet over the video. Same markup — the
-   * alternative is a second panel to keep in sync with every new setting. */
-  #panel {
-    position: fixed;
-    left: 0; right: 0; bottom: 0;
-    width: auto;
-    flex: none;
-    max-height: 82dvh;
-    border-right: 0;
-    border-top: 1px solid var(--base02);
-    border-radius: 14px 14px 0 0;
-    padding-bottom: calc(16px + env(safe-area-inset-bottom));
-    /* translateY, not height or display: it stays on the compositor thread, so the sheet
-     * animating in never competes with video decode. */
-    transform: translateY(100%);
-    transition: transform 220ms var(--ease);
-    z-index: 30;
-    overscroll-behavior: contain; /* scrolling the sheet must not scroll the page behind it */
-  }
-  .app[data-sheet="open"] #panel { transform: translateY(0); }
-
-  /* A grab handle. Purely a signifier — dragging is not implemented, and a handle that
-   * merely says "this came from the bottom edge" is most of the value. */
-  #panel::before {
-    content: "";
-    display: block;
-    width: 36px; height: 4px;
-    margin: -4px auto 10px;
-    border-radius: 2px;
-    background: var(--base02);
-  }
-
-  #scrim {
-    display: block;
-    position: fixed;
-    inset: 0;
-    background: color-mix(in srgb, var(--base00) 55%, transparent);
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 220ms var(--ease);
-    z-index: 20;
-  }
-  .app[data-sheet="open"] #scrim { opacity: 1; pointer-events: auto; }
-
-  .settings-only { display: block; }
-
-  /* Touch targets. 44px is the floor below which a control is genuinely hard to hit. */
-  select, textarea, input[type=text], input[type=number] { min-height: 44px; font-size: 16px; }
-  button { min-height: 44px; }
-  label.check { min-height: 44px; }
-  label.check input[type=checkbox] { width: 22px; height: 22px; }
-
-  /* The log panel is a debugging surface; on a phone it must not eat the video. */
-  /* The console sets its own height in dvh; nothing to override here. */
-}
-
-/* Separates the window actions from the view controls (settings, fullscreen). They act on
- * different things — one on the session, one on this browser — and a mis-tap between them
- * should take deliberate aim. */
-.barsep { width: 1px; align-self: stretch; margin: 6px 2px; background: var(--base02); }
-
-/* ── launcher ─────────────────────────────────────────────────────────────────────────── */
-
-.applist {
-  list-style: none;
-  margin: 6px 0 0;
-  padding: 0;
-  border: 1px solid var(--base02);
-  border-radius: var(--r);
-  overflow: hidden;
-}
-.approw {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 1px;
-  width: 100%;
-  padding: 7px 10px;
-  border-radius: 0;
-  background: var(--base01);
-  color: var(--base05);
-  font-weight: 400;
-  text-align: left;
-  /* Each row is a fresh mount as the filter narrows, so the fade reads as "these are the
-   * matches now" rather than as rows silently swapping underneath the cursor. */
-  animation: row-in 120ms var(--ease);
-}
-.approw:hover { background: var(--base02); color: var(--base06); }
-.applist li + li .approw { border-top: 1px solid var(--base02); }
-.appname { font-size: 13px; }
-.appexec { font-size: 11px; color: var(--base03); font-family: var(--mono); }
-@keyframes row-in { from { opacity: 0; } }
-
-/* ── Connection status: the four hops to video ──────────────────────────────
- * A stalled connection has four unrelated causes and they used to look identical.
- * Colour carries the state, but the label and the per-stage hint carry it too —
- * base16 08/0B are not distinguishable to every reader. */
-.stages { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; }
-.stages li {
-  display: grid; grid-template-columns: 14px auto 1fr; align-items: baseline;
-  gap: 8px; font-size: 13px;
-}
-.stages .dot {
-  width: 9px; height: 9px; border-radius: 50%; align-self: center;
-  background: var(--base02); box-shadow: 0 0 0 1px var(--base03) inset;
-}
-.stages .name { color: var(--base04); }
-.stages .hint { color: var(--base03); font-size: 12px; }
-.stages .done .dot { background: var(--base0B); box-shadow: none; }
-.stages .done .name { color: var(--base06); }
-/* The in-flight stage pulses so a stall is visibly a stall, not a finished state. */
-.stages .active .dot { background: var(--base0A); box-shadow: none; animation: pulse 1.2s infinite; }
-.stages .active .name { color: var(--base0A); }
-.stages .failed .dot { background: var(--base08); box-shadow: none; }
-.stages .failed .name { color: var(--base08); }
-@keyframes pulse { 50% { opacity: 0.3; } }
-@media (prefers-reduced-motion: reduce) { .stages .active .dot { animation: none; } }
-
-.connerr {
-  margin: 8px 0 0; padding: 7px 9px; border-radius: var(--r);
-  background: var(--base01); border-left: 3px solid var(--base08);
-  color: var(--base05); font-size: 12px; line-height: 1.45;
-}
-.connok { margin: 8px 0 0; color: var(--base0B); font-size: 12px; }
+.toasts { position: fixed; left: 50%; top: calc(14px + env(safe-area-inset-top)); translate: -50% 0;
+  z-index: 70; display: grid; gap: 8px; width: min(440px, calc(100% - 32px)); pointer-events: none; }
+.toast { display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; border-radius: var(--r2);
+  background: var(--s1); border: 1px solid var(--line); color: var(--bright); font-size: 13px;
+  box-shadow: 0 10px 30px rgb(0 0 0 / .35); }
+.toast.warn { border-color: color-mix(in oklab, var(--warn), transparent 40%); }
+.toast.warn svg { color: var(--warn); }
+.toast.bad svg { color: var(--bad); }
+/* Shows, then gets out of the way. The LED and the hero chip carry it afterwards. */
+.toast.fade { animation: toast 7s var(--spring) both; }
+@keyframes toast { 0% { opacity: 0; translate: 0 -12px; } 6%, 85% { opacity: 1; translate: 0 0; } 100% { opacity: 0; translate: 0 -12px; visibility: hidden; } }
 
 /* The already-running-session choice. Centred over the stage because it blocks: until it is
    answered the socket is parked and there is no picture behind it to obscure. */
 .rejoinprompt {
-  position: absolute;
+  /* Fixed and above the landing: the question comes before a session, while the landing is up. */
+  position: fixed;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  z-index: 6;
+  z-index: 60;
   max-width: min(30rem, calc(100% - 2rem));
   padding: 1.1rem 1.25rem;
   border: 1px solid var(--base02);
@@ -321,27 +127,6 @@ label.barbtn.off { color: var(--base03); pointer-events: none; }
 .rejoinbtns button { flex: 1 1 10rem; padding: 0.6rem 0.9rem; }
 .rejoinbtns .danger { border-color: var(--base08); color: var(--base08); }
 
-/* A bar button that opens a row of related actions above it — today the four window actions.
- * Absolute and bottom-anchored so the bar itself never changes width when it opens: a bar that
- * grows under your thumb moves every other button out from under it. */
-.bargroup { position: relative; display: inline-flex; }
-.barpop {
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  gap: 4px;
-  padding: 4px;
-  border-radius: calc(var(--r) + 4px);
-  background: color-mix(in srgb, var(--base01) 94%, transparent);
-  border: 1px solid var(--base02);
-  /* Wider than the button it hangs off, so it must not be clipped by the bar's own rounding. */
-  white-space: nowrap;
-}
-
-/* The three-button bar (ui/bar.rs): a little wider apart than the old row of nine, since each is
- * now pressed often. The More sheet wraps into a grid instead of one long row. */
-.barbtn.nav { min-width: 52px; }
-#wado-bar { gap: 14px; }
-.barsheet { flex-wrap: wrap; width: min(272px, 80vw); justify-content: center; left: 0; transform: none; }
+.rejoinbtns button { min-height: 44px; border-radius: var(--r2); background: var(--s2); color: var(--bright); font-weight: 600; }
+.rejoinbtns .primary { background: var(--accent); color: var(--on-accent); }
+.rejoinbtns .danger { background: none; border: 1px solid var(--bad); color: var(--bad); }

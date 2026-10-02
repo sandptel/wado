@@ -1,0 +1,251 @@
+/* The control centre: one sheet over the stage (ui/cc).
+ *
+ * A bottom sheet on a phone, a card on the right on a desktop — the same markup, a media query
+ * apart. It never takes space from the picture; the stage behind only dims. */
+
+.ccscrim { position: fixed; inset: 0; z-index: 45; background: color-mix(in oklab, #000, transparent 55%);
+  opacity: 0; pointer-events: none; transition: opacity var(--dur-sheet) var(--spring); }
+.ccscrim.open { opacity: 1; pointer-events: auto; }
+
+#cc {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+  height: min(88dvh, 860px);
+  display: flex; flex-direction: column;
+  background: var(--s0);
+  border-top: 1px solid var(--line);
+  border-radius: var(--r4) var(--r4) 0 0;
+  translate: 0 102%;
+  /* `visibility` follows the slide out, so a closed sheet is not tabbable or read aloud. */
+  visibility: hidden;
+  transition: translate var(--dur-sheet) var(--spring), visibility 0s linear var(--dur-sheet);
+  overscroll-behavior: contain;
+  box-shadow: 0 -20px 60px rgb(0 0 0 / .35);
+}
+#cc.open { translate: 0 0; visibility: visible; transition: translate var(--dur-sheet) var(--spring), visibility 0s; }
+
+@media (min-width: 720px) {
+  #cc { left: auto; top: 14px; right: 14px; bottom: 14px; height: auto; width: 400px;
+    border: 1px solid var(--line); border-radius: var(--r4); translate: calc(100% + 30px) 0; }
+  #cc .grab { display: none; }
+  .ccscrim { background: transparent; }
+}
+@media (hover: hover) and (pointer: fine) {
+  #cc { background: color-mix(in oklab, var(--s0), transparent 8%); backdrop-filter: blur(24px) saturate(1.3); }
+}
+
+.grab { flex: none; width: 100%; height: 22px; display: grid; place-items: center; cursor: pointer; }
+.grab::before { content: ""; width: 38px; height: 5px; border-radius: 3px; background: var(--s3); }
+
+.pages { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.page { position: absolute; inset: 0; overflow-y: auto; padding: 6px 16px calc(24px + env(safe-area-inset-bottom));
+  display: flex; flex-direction: column; gap: 12px; scrollbar-width: none;
+  transition: translate var(--dur-sheet) var(--spring), opacity var(--dur) var(--ease); }
+.page.behind { translate: -24% 0; opacity: 0; pointer-events: none; }
+.page.pushed { background: var(--s0); animation: push var(--dur-sheet) var(--spring) both; }
+@keyframes push { from { translate: 100% 0; } }
+
+/* Staggered entrance when the sheet opens: the root's blocks rise in order. */
+#cc.open .page:not(.pushed) > * { animation: rise .5s var(--spring) both; }
+#cc.open .page:not(.pushed) > :nth-child(2) { animation-delay: 40ms; }
+#cc.open .page:not(.pushed) > :nth-child(3) { animation-delay: 80ms; }
+#cc.open .page:not(.pushed) > :nth-child(4) { animation-delay: 110ms; }
+#cc.open .page:not(.pushed) > :nth-child(n+5) { animation-delay: 140ms; }
+@keyframes rise { from { opacity: 0; translate: 0 14px; } }
+
+.phead { display: flex; align-items: center; gap: 4px; margin: 0 -8px 2px; position: sticky; top: -6px;
+  background: var(--s0); padding-block: 4px; z-index: 1; }
+.phead button { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; }
+.phead button:hover { background: var(--s2); }
+.phead h3 { margin: 0; font: 700 20px var(--display); color: var(--bright); letter-spacing: -.01em; }
+
+/* ── hero ──────────────────────────────────────────────────────────────────────────────── */
+
+.hero { border-radius: var(--r3); padding: 16px; display: grid; gap: 12px; border: 1px solid var(--line);
+  background:
+    linear-gradient(135deg, color-mix(in oklab, var(--accent), transparent 80%), color-mix(in oklab, var(--base0E), transparent 88%)),
+    var(--s1); }
+.herotop { display: flex; align-items: center; gap: 12px; }
+.herotop > div { min-width: 0; }
+.avatar { width: 42px; height: 42px; border-radius: var(--r2); display: grid; place-items: center; flex: none;
+  background: var(--accent); color: var(--on-accent); }
+.hero h2 { margin: 0; font: 700 19px/1.1 var(--display); color: var(--bright); letter-spacing: -.01em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hero .sub { font: 12px var(--mono); color: var(--dim); }
+.verdict { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px;
+  border-radius: 999px; font-size: 12px; font-weight: 600; --tone: var(--dim);
+  background: color-mix(in oklab, var(--tone), transparent 84%); color: var(--tone); }
+.verdict.ok { --tone: var(--good); } .verdict.warn { --tone: var(--base0A); } .verdict.bad { --tone: var(--bad); }
+.verdict::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.verdict.ok::before, .verdict.warn::before, .verdict.bad::before { animation: breathe 2.4s ease-in-out infinite; }
+.swchip { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; border-radius: var(--r1); font-size: 12px;
+  background: color-mix(in oklab, var(--warn), transparent 84%); color: var(--bright); }
+.swchip svg { color: var(--warn); width: 16px; height: 16px; }
+.meters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.meter { background: color-mix(in oklab, var(--s0), transparent 35%); border-radius: var(--r2); padding: 8px 10px 6px; min-width: 0; }
+.meter .k { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+.meter .v { font: 600 17px/1.1 var(--display); color: var(--bright); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.meter .v small { font: 500 10px var(--body); color: var(--dim); margin-left: 2px; }
+.meter svg { display: block; width: 100%; height: 22px; margin-top: 4px; overflow: visible; }
+.meter .area { fill: color-mix(in oklab, var(--hue), transparent 82%); stroke: none; }
+.meter .line { fill: none; stroke: var(--hue); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.meter circle { fill: var(--hue); }
+.herofix { margin: 0; font-size: 12px; color: var(--text); }
+.hops { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.hop { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); padding-top: 8px; position: relative; }
+.hop::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px; border-radius: 2px; background: var(--s3);
+  transition: background var(--dur) var(--ease); }
+.hop.done::before { background: var(--good); }
+
+/* ── quick tiles ───────────────────────────────────────────────────────────────────────── */
+
+.tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.tile { display: flex; align-items: center; gap: 10px; min-height: 62px; padding: 8px 12px 8px 8px; border-radius: var(--r3);
+  background: var(--s2); text-align: left; cursor: pointer; user-select: none; -webkit-user-select: none;
+  -webkit-touch-callout: none; min-width: 0;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease), border-radius 360ms var(--spring), scale 120ms var(--ease); }
+.tile:active { scale: .96; }
+.tile .ic { width: 42px; height: 42px; flex: none; border-radius: var(--r2); display: grid; place-items: center; background: var(--s3);
+  transition: background var(--dur) var(--ease), border-radius 360ms var(--spring); }
+.tile .tl { min-width: 0; }
+.tile b { display: block; font-weight: 600; font-size: 13px; color: var(--bright); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile small { display: block; font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile.on { background: var(--accent); color: var(--on-accent); border-radius: calc(var(--r3) + 8px); }
+.tile.on b, .tile.on small { color: var(--on-accent); }
+.tile.on .ic { background: color-mix(in oklab, var(--on-accent), transparent 84%); border-radius: 50%; }
+.tile.off { opacity: .45; pointer-events: none; }
+
+.sect { display: flex; justify-content: space-between; align-items: center; margin: 4px 4px -4px;
+  font: 600 11px var(--body); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+.sect button { color: var(--accent); letter-spacing: .04em; text-transform: none; font-size: 13px; min-height: 32px; }
+
+/* ── settings list ─────────────────────────────────────────────────────────────────────── */
+
+.list { border-radius: var(--r3); background: var(--s1); overflow: hidden; }
+.navrow { width: 100%; display: flex; align-items: center; gap: 14px; padding: 12px 14px; text-align: left; min-height: 60px; }
+.navrow:hover { background: var(--s2); }
+.navrow + .navrow { border-top: 1px solid color-mix(in oklab, var(--line), transparent 40%); }
+.navrow > svg:last-child { margin-left: auto; color: var(--dim); }
+.disc { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; flex: none; --hue: var(--accent);
+  color: var(--hue); background: color-mix(in oklab, var(--hue), transparent 84%); }
+.navtext { min-width: 0; }
+.navtext b { display: block; font-weight: 600; color: var(--bright); }
+.navtext small { display: block; font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+/* ── page building blocks ──────────────────────────────────────────────────────────────── */
+
+.card { border-radius: var(--r3); background: var(--s1); padding: 14px; display: grid; gap: 10px; }
+.card.alertcard { background: color-mix(in oklab, var(--bad), var(--s1) 85%); border: 1px solid color-mix(in oklab, var(--bad), transparent 60%); }
+.card.alertcard b { color: var(--bad); }
+.card p { margin: 0; }
+details.card > summary { cursor: pointer; font-weight: 600; color: var(--bright); list-style-position: inside; }
+.cardhead { font-weight: 600; color: var(--bright); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.why { font-size: 12px; color: var(--dim); }
+.why.host { color: var(--base0A); }
+.why.ok { color: var(--good); }
+.why.bad { color: var(--bad); }
+.row { display: flex; gap: 8px; }
+.row > * { flex: 1; min-width: 0; }
+.field { display: grid; gap: 4px; }
+.field > span { font-size: 12px; color: var(--dim); }
+.field > small { font-size: 11px; color: var(--dim); }
+
+.whenbadge { font: 600 9.5px var(--body); letter-spacing: .08em; text-transform: uppercase; padding: 3px 7px; border-radius: 999px; margin-left: 2px; }
+.whenbadge.apply { color: var(--accent); background: color-mix(in oklab, var(--accent), transparent 86%); }
+.whenbadge.restart { color: var(--base0A); background: color-mix(in oklab, var(--base0A), transparent 86%); }
+.whenbadge.host { color: var(--base0E); background: color-mix(in oklab, var(--base0E), transparent 86%); }
+
+/* Segmented control. Equal widths, so the knob is placed by --i / --n alone. */
+.seg { position: relative; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; padding: 4px; border-radius: var(--r2); background: var(--s0); }
+.seg .knob { position: absolute; top: 4px; bottom: 4px; left: calc(4px + (100% - 8px) / var(--n) * var(--i)); width: calc((100% - 8px) / var(--n));
+  border-radius: calc(var(--r2) - 4px); background: var(--accent); transition: left 420ms var(--spring); }
+.seg.none .knob { opacity: 0; }
+.seg button { position: relative; z-index: 1; min-height: 40px; border-radius: calc(var(--r2) - 4px); font-weight: 600; font-size: 13px;
+  color: var(--dim); transition: color var(--dur) var(--ease); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 4px; }
+.seg button.on { color: var(--on-accent); }
+
+/* Switch row. */
+.switchrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-height: 48px; }
+.swtext { flex: 1; min-width: 0; }
+.swtext b { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; color: var(--bright); font-weight: 600; }
+.swtext small { display: block; font-size: 12px; color: var(--dim); }
+.sw { width: 52px; height: 32px; border-radius: 999px; background: var(--s3); position: relative; flex: none; transition: background var(--dur) var(--ease); }
+.sw::after { content: ""; position: absolute; top: 8px; left: 8px; width: 16px; height: 16px; border-radius: 50%; background: var(--dim);
+  transition: left 340ms var(--pop), top 340ms var(--pop), width 340ms var(--pop), height 340ms var(--pop), background var(--dur); }
+.sw.on { background: var(--accent); }
+.sw.on::after { left: 24px; top: 4px; width: 24px; height: 24px; background: var(--on-accent); }
+.switchrow .infotext { flex-basis: 100%; }
+
+/* ⓘ and the text it unfolds. Grid rows animate to content height without measuring it. */
+.infobtn { width: 32px; height: 32px; border-radius: 50%; display: inline-grid; place-items: center; color: var(--dim); flex: none; }
+.infobtn svg { width: 17px; height: 17px; }
+.infobtn.on { color: var(--accent); background: color-mix(in oklab, var(--accent), transparent 88%); }
+.infotext { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--dur-sheet) var(--spring); flex-basis: 100%; }
+.infotext.open { grid-template-rows: 1fr; }
+.infotext > p { overflow: hidden; min-height: 0; margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--text); }
+.infotext.open > p { padding: 4px 0 2px; }
+.cardhead .infotext { font-weight: 400; }
+/* Folded, it must not hold a wrapped row of its own open. */
+.infotext:not(.open) { position: absolute; visibility: hidden; }
+
+/* Thick slider: a native range input, so keyboard and screen reader come for free. */
+.slide { position: relative; height: 52px; border-radius: var(--r2); background: var(--s2); overflow: hidden; }
+.slide input[type=range] { -webkit-appearance: none; appearance: none; position: absolute; inset: 0; width: 100%; height: 100%; margin: 0;
+  background: transparent; cursor: ew-resize; }
+.slide input[type=range]::-webkit-slider-runnable-track { height: 100%; background: transparent; }
+.slide input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 6px; height: 52px; border-radius: 3px; background: var(--accent);
+  box-shadow: -2000px 0 0 2000px color-mix(in oklab, var(--accent), transparent 62%); }
+.slide input[type=range]::-moz-range-track { height: 100%; background: transparent; }
+.slide input[type=range]::-moz-range-progress { height: 100%; background: color-mix(in oklab, var(--accent), transparent 62%); }
+.slide input[type=range]::-moz-range-thumb { width: 6px; height: 52px; border: 0; border-radius: 3px; background: var(--accent); }
+.slidelab, .slideval { position: absolute; top: 50%; translate: 0 -50%; pointer-events: none; font-weight: 600; color: var(--bright); }
+.slidelab { left: 16px; }
+.slideval { right: 16px; font: 600 12px var(--mono); }
+
+/* Resolution chips, each drawn at its own aspect. */
+.shapes { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; margin-inline: -14px; padding-inline: 14px; }
+.shape { flex: none; display: grid; justify-items: center; align-content: start; gap: 6px; padding: 10px 8px; min-width: 80px;
+  border-radius: var(--r2); background: var(--s0); border: 1.5px solid transparent; transition: border-color var(--dur) var(--ease); }
+.shape.on { border-color: var(--accent); }
+.shape i { display: block; border: 1.5px solid var(--dim); border-radius: 3px; }
+.shape i.exact { border-style: solid; border-color: var(--good); }
+.shape i.dotsbox { width: 34px; height: 22px; border-style: dashed; }
+.shape.on i { border-color: var(--accent); background: color-mix(in oklab, var(--accent), transparent 80%); }
+.shape b { font: 600 11px var(--mono); color: var(--bright); }
+.shape small { font-size: 10px; color: var(--dim); max-width: 88px; text-align: center; }
+
+/* Dial anchor picker: a 3×3 of where the dial can sit. */
+.anchors { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; aspect-ratio: 16 / 10; max-width: 100%; }
+.anchor { border-radius: var(--r1); background: var(--s0); font-size: 18px; color: var(--dim); }
+.anchor.on { background: var(--accent); color: var(--on-accent); }
+.anchor-mid { border-radius: var(--r1); border: 1.5px dashed var(--line); }
+
+/* Appearance gallery. */
+.themes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.theme { border-radius: var(--r3); padding: 8px; display: grid; gap: 8px; text-align: left; border: 2px solid transparent;
+  transition: border-color var(--dur) var(--ease), scale 120ms var(--ease); }
+.theme.on { border-color: var(--accent); }
+.theme .pv { position: relative; height: 54px; border-radius: var(--r2); overflow: hidden; display: block; }
+.theme .pv i { position: absolute; border-radius: 6px; }
+.theme .strip { display: grid; grid-template-columns: repeat(8, 1fr); height: 10px; border-radius: 4px; overflow: hidden; }
+.theme b { font-size: 12px; font-weight: 600; padding-inline: 2px; }
+.accents { display: flex; gap: 10px; flex-wrap: wrap; }
+.accent { width: 36px; height: 36px; border-radius: 50%; background: var(--hue); box-shadow: inset 0 0 0 3px var(--s1);
+  border: 2px solid transparent; transition: border-color var(--dur), scale 200ms var(--pop); }
+.accent.on { border-color: var(--hue); scale: 1.08; }
+
+/* Tile editor rows. */
+.editrow { display: flex; align-items: center; gap: 10px; min-height: 48px; }
+.editrow b { flex: 1; font-weight: 600; color: var(--bright); }
+.editrow button { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: var(--dim); }
+.editrow button:hover { background: var(--s2); color: var(--bright); }
+
+.confirm { display: grid; gap: 10px; padding: 12px; border-radius: var(--r2); background: color-mix(in oklab, var(--base0A), var(--s1) 86%); }
+
+/* The Apply bar: only while something is pending. */
+.applybar { flex: none; display: flex; align-items: center; gap: 10px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line); background: var(--s1); animation: rise 360ms var(--spring) both; }
+.applybar span { font-weight: 600; color: var(--bright); }
+.applybar small { color: var(--dim); font-size: 12px; flex: 1; }
+.applybar .btn { width: auto; min-height: 42px; }

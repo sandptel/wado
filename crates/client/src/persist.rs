@@ -61,7 +61,14 @@ pub struct Saved {
     pub pad_inset_x: Option<f64>,
     pub pad_inset_y: Option<f64>,
 
-    pub panel_open: Option<bool>,
+    pub radius: Option<String>,
+    pub motion: Option<String>,
+    pub accent: Option<String>,
+    pub tiles: Option<Vec<String>>,
+    pub profiles: Option<Vec<crate::profile::Profile>>,
+    pub profile: Option<usize>,
+    pub keep_awake: Option<bool>,
+    pub lens_auto: Option<bool>,
     pub theme: Option<String>,
     pub theme_custom: Option<String>,
 
@@ -77,6 +84,8 @@ pub fn snapshot(ui: Ui) -> Saved {
     let s = ui.set;
     let flags = s.debug.read().clone();
     let recent = s.recent.read().clone();
+    let tiles = s.tiles.read().clone();
+    let profiles = s.profiles.read().clone();
     Saved {
         conn_mode: Some((s.conn_mode)()),
         server_addr: Some((s.server_addr)()),
@@ -120,7 +129,14 @@ pub fn snapshot(ui: Ui) -> Saved {
         pad_inset_x: Some((s.pad_inset_x)()),
         pad_inset_y: Some((s.pad_inset_y)()),
 
-        panel_open: Some((s.panel_open)()),
+        radius: Some((s.radius)()),
+        motion: Some((s.motion)()),
+        accent: Some((s.accent)()),
+        tiles: Some(tiles),
+        profiles: Some(profiles),
+        profile: Some((s.profile)()),
+        keep_awake: Some((s.keep_awake)()),
+        lens_auto: Some((s.lens_auto)()),
         theme: Some((s.theme)()),
         theme_custom: Some((s.theme_custom)()),
 
@@ -193,7 +209,14 @@ pub fn restore(ui: Ui, saved: Saved) {
     put!(pad_opacity);
     put!(pad_inset_x);
     put!(pad_inset_y);
-    put!(panel_open);
+    put!(radius);
+    put!(motion);
+    put!(accent);
+    put!(tiles);
+    put!(profiles);
+    put!(profile);
+    put!(keep_awake);
+    put!(lens_auto);
     put!(theme);
     put!(theme_custom);
     put!(debug_master);

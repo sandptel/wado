@@ -120,13 +120,21 @@ pub struct Settings {
 
     // ── appearance ──────────────────────────────────────────────────────────────
     /// Bundled base16 scheme name; ignored while `theme_custom` parses.
-    /// Whether the docked desktop panel is showing. Only meaningful above the layout
-    /// breakpoint — below it the panel is a sheet and `Live::sheet_open` governs instead.
-    ///
-    /// Lives here rather than in `Live` because it is persisted, and persistence reads this
-    /// struct. Persisted unlike `sheet_open`, for a reason: a sheet covering the video on
-    /// load is never what anyone wanted, but someone who collapsed the panel means it.
-    pub panel_open: Signal<bool>,
+    /// Corner style (`sharp` / `round` / `pill`), motion level (`full` / `reduced` / `off`)
+    /// and which base16 slot is the accent (`"0D"`). See `js/theme.js`.
+    pub radius: Signal<String>,
+    pub motion: Signal<String>,
+    pub accent: Signal<String>,
+    // ── control centre ──────────────────────────────────────────────────────────
+    /// Quick tiles, in order, by id — see [`crate::ui::cc::tiles::pool`].
+    pub tiles: Signal<Vec<String>>,
+    /// Saved hosts, and which one is selected. See [`crate::profile`].
+    pub profiles: Signal<Vec<crate::profile::Profile>>,
+    pub profile: Signal<usize>,
+    /// Hold a screen wake lock while a session runs.
+    pub keep_awake: Signal<bool>,
+    /// An ambiguous tap opens the lens rather than clicking.
+    pub lens_auto: Signal<bool>,
 
     pub theme: Signal<String>,
     /// Raw text of a pasted base16 scheme. Kept verbatim so the box still shows what was
@@ -204,7 +212,14 @@ impl Settings {
             pad_inset_x: use_signal(|| 0.0),
             pad_inset_y: use_signal(|| 0.0),
 
-            panel_open: use_signal(|| true),
+            radius: use_signal(|| "round".to_string()),
+            motion: use_signal(|| "full".to_string()),
+            accent: use_signal(|| "0D".to_string()),
+            tiles: use_signal(crate::ui::cc::tiles::pool::defaults),
+            profiles: use_signal(Vec::new),
+            profile: use_signal(|| 0),
+            keep_awake: use_signal(|| true),
+            lens_auto: use_signal(|| true),
             theme: use_signal(|| "default-dark".to_string()),
             theme_custom: use_signal(String::new),
 
@@ -242,14 +257,15 @@ pub struct Live {
     pub console_open: Signal<bool>,
     pub console_tab: Signal<String>,
 
-    /// Whether the settings sheet is up. Only meaningful below the layout breakpoint — above
-    /// it the panel is docked and this is ignored. Not persisted: reopening a page with the
-    /// settings sheet already covering the video is never what someone wanted.
-    pub sheet_open: Signal<bool>,
-
-    /// Whether the bar's More sheet is open. Not persisted — a popup that is open on load is
-    /// chrome nobody asked for, and it is one tap to reopen.
-    pub win_open: Signal<bool>,
+    /// The control centre: whether it is up, which page it shows, and whether the tiles are
+    /// being edited. Not persisted — a sheet covering the video on load is never wanted.
+    pub cc_open: Signal<bool>,
+    pub cc_page: Signal<crate::ui::pages::Page>,
+    /// The session config as last started or applied (JSON), so the Apply bar can say what is
+    /// pending. Empty with no session.
+    pub applied: Signal<String>,
+    /// Recent readings for the hero's sparklines, oldest first.
+    pub spark: Signal<Spark>,
     /// The focused app wants text input (`zwp_text_input_v3`). With the keyboard down, the
     /// bar's More button becomes ⌨.
     pub text_wanted: Signal<bool>,
@@ -362,8 +378,10 @@ impl Live {
             logs: use_signal(Vec::new),
             console_open: use_signal(|| false),
             console_tab: use_signal(|| "shell".to_string()),
-            sheet_open: use_signal(|| false),
-            win_open: use_signal(|| false),
+            cc_open: use_signal(|| false),
+            cc_page: use_signal(Default::default),
+            applied: use_signal(String::new),
+            spark: use_signal(Spark::default),
             text_wanted: use_signal(|| false),
             pad_edit: use_signal(|| false),
             encoder_mode: use_signal(String::new),
@@ -402,6 +420,26 @@ impl Live {
         self.encoder_mode.set(String::new());
         self.encoder_pipeline.set(String::new());
         self.health.set(Health::default());
+        self.spark.set(Spark::default());
+    }
+}
+
+/// Sparkline history: frames per second, ping, and received kbps.
+#[derive(Clone, Default, PartialEq, Debug)]
+pub struct Spark {
+    pub fps: Vec<f64>,
+    pub ping: Vec<f64>,
+    pub kbps: Vec<f64>,
+}
+
+impl Spark {
+    pub const LEN: usize = 40;
+
+    pub fn push(v: &mut Vec<f64>, x: f64) {
+        v.push(x);
+        if v.len() > Self::LEN {
+            v.remove(0);
+        }
     }
 }
 

@@ -1,9 +1,8 @@
 //! The stage: the video and everything drawn around it.
 //!
-//! One rule governs this file. The software-encoding banner and the pipeline badge are **not**
-//! debug views and are never gated by the debug master switch — invariant #5 requires the end
-//! user to be told when the server fell back to software encoding, and a warning you can
-//! switch off is not a warning. The fps/ping/latency readouts *are* debug views and go through
+//! One rule governs this file. The pipeline badge is **not** a debug view and is never gated by
+//! the debug master switch. The software-encoding warning itself (invariant #5) lives in the
+//! dock LED, the start toast and the control centre's hero — none of which can be switched off. The fps/ping/latency readouts *are* debug views and go through
 //! [`crate::debug::on`].
 
 use dioxus::prelude::*;
@@ -25,8 +24,6 @@ pub fn render(ui: Ui) -> Element {
     let live = ui.live;
     let on = (live.session_on)();
 
-    // Invariant #5: unconditional while software encoding is active.
-    let sw_encoding = on && (live.encoder_mode)() == "software";
     let (badge_label, badge_class) = badge(&(live.encoder_pipeline)());
     let show_badge = on && !badge_label.is_empty();
 
@@ -73,9 +70,6 @@ pub fn render(ui: Ui) -> Element {
         // above its non-positioned siblings — so without this wrapper the video covered the
         // log and shell panels entirely. They rendered; they were simply behind it.
         div { id: "stage-video",
-        if sw_encoding {
-            div { class: "swbanner", "⚠ Software encoding — higher CPU use and latency" }
-        }
         // Over the picture, because it is blocking: the connection is parked until it is
         // answered, and there is nothing behind it to look at yet.
         {super::rejoin::render(ui)}

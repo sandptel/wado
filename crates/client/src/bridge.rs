@@ -8,6 +8,7 @@
 use dioxus::prelude::*;
 use wado_protocol::logfmt;
 
+use crate::state::Spark;
 use crate::{
     persist,
     state::{Health, Ui, MAX_LOG_LINES},
@@ -24,6 +25,9 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/storage.js"),
     "\n",
+    "W.SCHEME_LIST = ",
+    include_str!("schemes.json"),
+    ";\n",
     include_str!("js/theme.js"),
     "\n",
     include_str!("js/logs.js"),
@@ -229,10 +233,22 @@ pub fn run(ui: Ui) {
                         have_kbps: num("haveKbps"),
                         got_kbps: num("gotKbps"),
                     });
+                    if let Some(k) = num("gotKbps") {
+                        Spark::push(&mut live.spark.write().kbps, k);
+                    }
                 }
                 "stats" => {
                     live.fps.set(num("fps"));
                     live.ping.set(num("ping"));
+                    {
+                        let mut sp = live.spark.write();
+                        if let Some(f) = num("fps") {
+                            Spark::push(&mut sp.fps, f);
+                        }
+                        if let Some(p) = num("ping") {
+                            Spark::push(&mut sp.ping, p);
+                        }
+                    }
                     live.jbuf.set(num("jbuf"));
                     if let Some(p) = num("decodeDropPct") {
                         live.decode_drop_pct.set(p);
@@ -312,12 +328,20 @@ pub fn run(ui: Ui) {
                 // connected session"*.
                 "sessionOn" => {
                     live.session_on.set(true);
+                    // A rejoined session's shape is not known here; these settings are the best
+                    // stand-in, and they are what Apply would compare against anyway.
+                    // ponytail: ask the daemon for the running config if this ever misleads.
+                    if (live.applied)().is_empty() {
+                        live.applied
+                            .set(serde_json::to_string(&crate::cfg::build(ui)).unwrap_or_default());
+                    }
                 }
                 // The other direction, which had the same hole: a session stopped by the daemon —
                 // the watchdog reaping it, or another viewer dropping it — left Stop enabled over
                 // nothing.
                 "sessionOff" => {
                     live.session_on.set(false);
+                    live.applied.set(String::new());
                     live.clear_telemetry();
                 }
                 "encoder" => {
