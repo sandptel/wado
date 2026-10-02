@@ -117,6 +117,8 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/notify.js"),
     "\n",
+    include_str!("js/capture.js"),
+    "\n",
     include_str!("js/lifecycle.js"),
 );
 
@@ -335,13 +337,21 @@ pub fn run(ui: Ui) {
                     notes.insert(0, note);
                     notes.truncate(crate::state::MAX_NOTES);
                 }
+                "recording" => live
+                    .recording
+                    .set(msg.get("on").and_then(|v| v.as_bool()).unwrap_or(false)),
+                "captureNote" => live.note.set(string("text")),
                 "notificationClosed" => {
                     let id = num("id").unwrap_or(0.0) as u32;
                     live.notes.write().retain(|n| n.id != id);
                 }
                 "clipboardSent" => {
                     let err = string("error");
-                    live.config_note.set(err);
+                    live.note.set(if err.is_empty() {
+                        "Phone clipboard sent to the session.".into()
+                    } else {
+                        err
+                    });
                 }
                 "gesture" => crate::ui::gesture::run(ui, &string("action")),
                 "shellMods" => {

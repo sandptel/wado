@@ -234,6 +234,30 @@ pub static ALL: &[Tile] = &[
         needs_session: false,
     },
     Tile {
+        id: "screenshot",
+        icon: "camera",
+        label: "Screenshot",
+        on: None,
+        sub: ("Save the picture", ""),
+        act: Act::Run(|ui| {
+            let mut l = ui.live;
+            l.cc_open.set(false);
+            bridge::call("setTimeout(() => window.__wado.screenshot(), 450);".to_string());
+        }),
+        page: None,
+        needs_session: true,
+    },
+    Tile {
+        id: "record",
+        icon: "record",
+        label: "Record",
+        on: Some(|ui| (ui.live.recording)()),
+        sub: ("Save a video", "Recording · tap to stop"),
+        act: Act::Run(|_| bridge::call("window.__wado.recordToggle();".to_string())),
+        page: None,
+        needs_session: true,
+    },
+    Tile {
         id: "resync",
         icon: "refresh",
         label: "Resync",

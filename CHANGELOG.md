@@ -4,6 +4,11 @@
 
 ### Added
 
+**Screenshot and record.** Two tiles save the picture as a PNG, or record a video (WebM, or
+MP4 on Safari), straight onto the device you're viewing on. They capture the stream as
+received, at its full resolution. The daemon does no extra work. While recording, the dock
+shows a red ring.
+
 **Notifications from the desktop's apps reach the phone.** An isolated session used to drop
 them, because its private bus had no notification daemon. wado now provides one there, and
 each notification pops up over the picture and stays in a shade in the control centre until

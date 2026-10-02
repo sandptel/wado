@@ -284,6 +284,10 @@ pub struct Live {
     pub clips: Signal<Vec<String>>,
     /// The notification shade, newest first.
     pub notes: Signal<Vec<Note>>,
+    /// The stream is being recorded (`js/capture.js`).
+    pub recording: Signal<bool>,
+    /// A one-line note for a toast — "Screenshot saved", and the like. Each new text shows again.
+    pub note: Signal<String>,
 
     /// The control centre: whether it is up, which page it shows, and whether the tiles are
     /// being edited. Not persisted — a sheet covering the video on load is never wanted.
@@ -412,6 +416,8 @@ impl Live {
             shell_mods: use_signal(|| (false, false)),
             clips: use_signal(Vec::new),
             notes: use_signal(Vec::new),
+            recording: use_signal(|| false),
+            note: use_signal(String::new),
             cc_open: use_signal(|| false),
             cc_page: use_signal(Default::default),
             applied: use_signal(String::new),

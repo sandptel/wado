@@ -35,7 +35,7 @@ pub fn render(ui: Ui) -> Element {
 
     rsx! {
         // No `idle` class here: the dock starts visible and js/bar.js fades it on a timer.
-        nav { id: "wado-bar", class: if cc { "hidden" } else { "" }, "aria-label": "Session",
+        nav { id: "wado-bar", class: if cc { "hidden" } else if (live.recording)() { "rec" } else { "" }, "aria-label": "Session",
             if type_now {
                 // A `label`, not a `button`: Android raises the soft keyboard only for a focus
                 // inside the user gesture, and label activation focuses its target natively.
