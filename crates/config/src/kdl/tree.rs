@@ -22,7 +22,10 @@ use std::{
 use kdl::{KdlDocument, KdlNode, KdlValue};
 use serde_json::{Map, Value};
 
-use crate::{ConfigError, schema::LIST_NODES};
+use crate::{
+    ConfigError,
+    schema::{KEYED_NODES, LIST_NODES},
+};
 
 /// An include chain deeper than this is a cycle in practice.
 const MAX_INCLUDE_DEPTH: usize = 8;
@@ -35,6 +38,11 @@ pub struct Spans {
 }
 
 impl Spans {
+    /// Every file read, in order.
+    pub fn files(&self) -> Vec<PathBuf> {
+        self.files.iter().map(|(f, _)| f.clone()).collect()
+    }
+
     fn file(&mut self, path: &Path, src: &str) -> usize {
         self.files.push((path.to_path_buf(), src.to_string()));
         self.files.len() - 1
@@ -134,6 +142,12 @@ fn nodes(
         } else {
             format!("{prefix}.{name}")
         };
+
+        if KEYED_NODES.contains(&name) {
+            keyed(path, src, file, node, &key, out, spans, depth)?;
+            continue;
+        }
+
         let value = node_value(path, src, file, node, &key, spans, depth)?;
 
         if LIST_NODES.contains(&name) {
@@ -223,6 +237,57 @@ fn node_value(
     Ok(Value::Object(obj))
 }
 
+/// `device "id" { … }` → `device.id = { … }`, merged with any earlier block for the same id.
+#[allow(clippy::too_many_arguments)]
+fn keyed(
+    path: &Path,
+    src: &str,
+    file: usize,
+    node: &KdlNode,
+    key: &str,
+    out: &mut Map<String, Value>,
+    spans: &mut Spans,
+    depth: usize,
+) -> Result<(), ConfigError> {
+    let name = node.name().value();
+    let err = |m: String| ConfigError::at(path.into(), src, node.span().offset(), m);
+    let mut entries = node.entries().iter();
+    let Some(KdlValue::String(id)) = entries
+        .next()
+        .filter(|e| e.name().is_none())
+        .map(|e| e.value())
+    else {
+        return Err(err(format!("`{name}` needs a name: {name} \"…\" {{ … }}")));
+    };
+    let key = format!("{key}.{id}");
+    let mut obj = Map::new();
+    for e in entries {
+        let Some(k) = e.name() else {
+            return Err(err(format!("`{name}` takes one name, then a block")));
+        };
+        obj.insert(k.value().to_string(), scalar(e.value()));
+    }
+    if let Some(children) = node.children() {
+        nodes(
+            path,
+            src,
+            file,
+            children.nodes(),
+            &mut obj,
+            &key,
+            spans,
+            depth,
+        )?;
+    }
+    spans.at.insert(key, (file, node.span().offset()));
+    let slot = out.entry(name).or_insert_with(|| Value::Object(Map::new()));
+    super::merge::deep(
+        slot,
+        Value::Object(Map::from_iter([(id.clone(), Value::Object(obj))])),
+    );
+    Ok(())
+}
+
 fn include(
     from: &Path,
     node: &KdlNode,
@@ -264,8 +329,6 @@ fn scalar(v: &KdlValue) -> Value {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn include_reads_in_place_and_later_wins() {
         let dir = std::env::temp_dir().join(format!("wado-cfg-{}", std::process::id()));
@@ -286,6 +349,17 @@ mod tests {
         assert_eq!(c.stream.max_bitrate, Some(9000));
         assert_eq!(c.session.autostart, ["a", "b"]);
         std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn device_blocks_are_keyed_and_merge_by_id() {
+        let c = crate::kdl::parse(
+            "device \"k1\" { name \"Pixel\"; }\ndevice \"k2\" { prefs \"{}\"; }\ndevice \"k1\" { prefs \"{\\\"a\\\":1}\"; }",
+        )
+        .unwrap();
+        assert_eq!(c.device.len(), 2);
+        assert_eq!(c.device["k1"].name.as_deref(), Some("Pixel"));
+        assert_eq!(c.device["k1"].prefs.as_deref(), Some("{\"a\":1}"));
     }
 
     #[test]

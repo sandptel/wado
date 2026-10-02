@@ -50,6 +50,9 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/seat.js"),
     "\n",
+    // After `seat.js`, for the same reason: it wraps the `__up` handler, and `saveSettings`.
+    include_str!("js/config.js"),
+    "\n",
     include_str!("js/input_core.js"),
     "\n",
     include_str!("js/input_units.js"),
@@ -250,6 +253,33 @@ pub fn run(ui: Ui) {
                     );
                     live.dropped
                         .set(msg.get("dropped").and_then(|v| v.as_u64()));
+                }
+                "hostConfig" => {
+                    let state: wado_protocol::ConfigState = msg
+                        .get("state")
+                        .and_then(|v| serde_json::from_value(v.clone()).ok())
+                        .unwrap_or_default();
+                    // The device's saved settings win over this browser's, once per link-up:
+                    // they are what this device last chose, wherever it chose them.
+                    if !(live.host_seen)() {
+                        if let Some(saved) = state
+                            .prefs
+                            .as_deref()
+                            .and_then(|p| serde_json::from_str::<persist::Saved>(p).ok())
+                        {
+                            persist::restore(ui, saved);
+                            crate::debug::apply(ui);
+                            crate::ui::live::apply(ui);
+                            crate::ui::gamepad::apply(ui);
+                            crate::theme::apply(&(ui.set.theme)(), &(ui.set.theme_custom)());
+                        }
+                        live.host_seen.set(true);
+                    }
+                    live.host.set(state);
+                }
+                "configRejected" => {
+                    let m = msg.get("message").and_then(|v| v.as_str()).unwrap_or("");
+                    live.config_note.set(m.to_string());
                 }
                 "apps" => {
                     live.apps.set(

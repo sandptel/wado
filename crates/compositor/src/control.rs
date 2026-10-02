@@ -244,7 +244,9 @@ fn start(
 /// server so direct and relay mode cannot disagree about it.
 fn host_limited(config: &SessionConfig) -> SessionConfig {
     let mut config = config.clone();
-    for note in wado_config::limits::clamp(&mut config, &wado_config::live::current().stream) {
+    let host = wado_config::live::current();
+    wado_config::limits::pin_input(&mut config, &host.input);
+    for note in wado_config::limits::clamp(&mut config, &host.stream) {
         tracing::info!("session config: {note}");
     }
     config

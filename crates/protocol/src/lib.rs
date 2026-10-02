@@ -7,6 +7,7 @@
 //! both the host (server) and the `wasm32` (web client) targets.
 
 pub mod apps;
+pub mod config;
 pub mod control;
 pub mod menu;
 pub mod relay;
@@ -18,6 +19,7 @@ use serde::{Deserialize, Serialize};
 /// HTTP endpoints the client talks to on the server. Shared as constants so the
 /// two sides cannot disagree on a path.
 pub use apps::AppEntry;
+pub use config::{ConfigState, HostLimits, PinnedInput};
 pub use control::{SessionControl, WindowAction, WindowInfo};
 pub use menu::{MenuItem, MenuSheet};
 pub use targets::Target;

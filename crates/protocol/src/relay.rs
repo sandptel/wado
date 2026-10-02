@@ -372,6 +372,36 @@ pub enum RelayMsg {
         code: Option<i32>,
     },
 
+    // ── Daemon config (see `wado-config`) ──────────────────────────────────
+    /// Client → server: send me [`RelayMsg::ConfigState`]. Needs no session.
+    ConfigGet,
+    /// Server → client: the config as this viewer sees it. Sent on request, and again to the
+    /// viewer whenever the file reloads.
+    ConfigState {
+        state: crate::ConfigState,
+    },
+    /// Client → server: set one config key (`stream.max-fps`) in `ui.kdl`. `value` is text read
+    /// as KDL would read it — `90`, `true`, `wss://…` — and empty unsets the key. Privileged
+    /// keys need the owner device and `confirmed` (an on-screen yes).
+    ///
+    /// ponytail: a string rather than a typed value, because the schema already types it on load
+    /// and the write is checked by exactly that load.
+    ConfigSet {
+        key: String,
+        value: String,
+        #[serde(default)]
+        confirmed: bool,
+    },
+    /// Client → server: save this device's settings blob in `ui.kdl`.
+    ConfigSetPrefs {
+        prefs: String,
+    },
+    /// Server → client: a `ConfigSet` was refused, and why.
+    ConfigRejected {
+        key: String,
+        message: String,
+    },
+
     /// Ask for the server's per-stage render timings.
     ///
     /// Relay mode has no HTTP path, so `GET /timing` needs a message counterpart the same way

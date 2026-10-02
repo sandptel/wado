@@ -223,6 +223,12 @@ pub struct Live {
     /// gate the persist effect fires on mount with the defaults still in place and writes
     /// them over the saved blob, so nothing would ever survive a reload.
     pub loaded: Signal<bool>,
+    /// The daemon's config as this viewer sees it — limits, pins, owner, reload errors.
+    pub host: Signal<wado_protocol::ConfigState>,
+    /// The device's saved settings came back from the daemon on this page load.
+    pub host_seen: Signal<bool>,
+    /// The last config edit the daemon refused, and why.
+    pub config_note: Signal<String>,
     pub session_on: Signal<bool>,
     pub status: Signal<String>,
     pub stagebar: Signal<String>,
@@ -347,6 +353,9 @@ impl Live {
     pub fn new() -> Self {
         Self {
             loaded: use_signal(|| false),
+            host: use_signal(Default::default),
+            host_seen: use_signal(|| false),
+            config_note: use_signal(String::new),
             session_on: use_signal(|| false),
             status: use_signal(|| "idle".to_string()),
             stagebar: use_signal(|| "No session.".to_string()),

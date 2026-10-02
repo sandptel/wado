@@ -129,6 +129,9 @@ struct RelayCtx {
     checking: Arc<Mutex<std::collections::HashSet<String>>>,
     /// Rooms a takeover check approved. Their `PeerConnected` is let in without asking twice.
     approved: Arc<Mutex<std::collections::HashSet<String>>>,
+    /// The device key and name of the viewer in `room` — what its config edits and saved
+    /// settings are filed under (see [`crate::config::link`]).
+    viewer: Arc<Mutex<(String, String)>>,
     /// The accessibility-tree client that answers `TargetsRequest` — see [`crate::a11y`].
     /// Shared, because each question runs as its own task.
     a11y: Arc<crate::a11y::A11y>,
@@ -411,6 +414,7 @@ async fn run(
         gate: crate::gate::Gate::default(),
         checking: Arc::default(),
         approved: Arc::default(),
+        viewer: Arc::default(),
         a11y: Arc::new(crate::a11y::A11y::default()),
         relay_url,
         remote_id,
@@ -658,6 +662,28 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
         })
     };
 
+    // The config as this viewer sees it, again after every reload — so a limit changed in
+    // config.kdl, or a broken save, reaches the control centre without a refresh.
+    let config_task = {
+        let mut rx = crate::config::status();
+        let out_tx_c = out_tx.clone();
+        let viewer = Arc::clone(&ctx.viewer);
+        let gate = ctx.gate.clone();
+        tokio::spawn(async move {
+            while rx.changed().await.is_ok() {
+                rx.borrow_and_update();
+                let key = viewer.lock().unwrap_or_else(|e| e.into_inner()).0.clone();
+                let state = crate::config::link::state_for(&key, &gate);
+                if send_relay(&out_tx_c, &RelayMsg::ConfigState { state })
+                    .await
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        })
+    };
+
     // The open menu, as a sheet. Same shape as `windows_task`, plus the tree read in between:
     // each popup is read once, and a popup that closes before its read finishes is simply
     // superseded by the `None` that follows.
@@ -760,6 +786,8 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 *ctx.peer.lock().unwrap_or_else(|e| e.into_inner()) =
                     format!("{client_addr} room={short}");
                 *ctx.room.lock().unwrap_or_else(|e| e.into_inner()) = room_id.clone();
+                *ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()) =
+                    (client_key.clone(), client_name.clone());
                 ctx.viewer_ok.store(!relay_gates, Ordering::SeqCst);
                 info!(room_id = %room_id, client = %client_addr, device = %client_name, "relay client: peer connected");
                 if relay_gates {
@@ -1138,6 +1166,48 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 send_relay(&out_tx, &RelayMsg::SessionLaunched).await.ok();
             }
 
+            RelayMsg::ConfigGet => {
+                let key = ctx
+                    .viewer
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .0
+                    .clone();
+                let state = crate::config::link::state_for(&key, &ctx.gate);
+                send_relay(&out_tx, &RelayMsg::ConfigState { state })
+                    .await
+                    .ok();
+            }
+
+            RelayMsg::ConfigSet {
+                key,
+                value,
+                confirmed,
+            } => {
+                let (device, _) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                let result = if ctx.viewer_ok.load(Ordering::SeqCst) {
+                    crate::config::link::set(&device, &ctx.gate, &key, &value, confirmed)
+                } else {
+                    Err("this device has not been approved yet".into())
+                };
+                // Success needs no reply of its own: the reload it caused is pushed by
+                // `config_task` like any other.
+                if let Err(message) = result {
+                    send_relay(&out_tx, &RelayMsg::ConfigRejected { key, message })
+                        .await
+                        .ok();
+                }
+            }
+
+            RelayMsg::ConfigSetPrefs { prefs } => {
+                let (device, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                if ctx.viewer_ok.load(Ordering::SeqCst) {
+                    if let Err(e) = crate::config::link::set_prefs(&device, &name, &prefs) {
+                        warn!("could not save device settings: {e}");
+                    }
+                }
+            }
+
             RelayMsg::AppsRequest => {
                 let mut apps = crate::apps::discover();
                 crate::apps::running::mark(&mut apps, &ctx.cmd_tx).await;
@@ -1310,6 +1380,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     shedding_task.abort();
     sent_kbps_task.abort();
     windows_task.abort();
+    config_task.abort();
     menu_task.abort();
     write_task.abort();
     Ok(())

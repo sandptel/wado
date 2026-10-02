@@ -99,22 +99,27 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 /// A broken file does not stop the daemon: it says where the error is and runs on built-in
 /// defaults plus env, which is exactly what it ran on before config.kdl existed.
 fn load_config() -> std::sync::Arc<wado_config::Config> {
-    match wado_config::load_or_init() {
-        Ok((cfg, env)) => {
+    let files = match wado_config::load_or_init() {
+        Ok(l) => {
             tracing::info!(file = %wado_config::paths::config_file().display(), "config loaded");
-            if !env.is_empty() {
-                tracing::info!("config overridden by environment: {}", env.join(", "));
+            if !l.env.is_empty() {
+                tracing::info!("config overridden by environment: {}", l.env.join(", "));
             }
-            wado_config::live::install(cfg);
+            wado_config::live::install(l.config);
+            l.files
         }
         Err(e) => {
             tracing::error!("config not loaded, using built-in defaults: {e}");
             let mut cfg = wado_config::Config::default();
             wado_config::env::overlay(&mut cfg);
             wado_config::live::install(cfg);
+            vec![wado_config::paths::config_file()]
         }
-    }
-    wado_config::live::current()
+    };
+    let boot = wado_config::live::current();
+    wado::config::watch::start(std::sync::Arc::clone(&boot), files);
+    wado::config::socket::start();
+    boot
 }
 
 /// What the client's log panel sees. Deliberately **not** the string above: the panel is a

@@ -19,3 +19,10 @@ pub fn config_dir() -> PathBuf {
 pub fn config_file() -> PathBuf {
     config_dir().join("config.kdl")
 }
+
+/// The file wado writes on the client's behalf. Never hand-edited; see [`crate::ui_file`].
+pub const UI_FILE: &str = "ui.kdl";
+
+pub fn ui_file() -> PathBuf {
+    config_dir().join(UI_FILE)
+}
