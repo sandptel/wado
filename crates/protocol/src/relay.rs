@@ -394,6 +394,16 @@ pub enum RelayMsg {
         hosts: Vec<String>,
     },
 
+    // ── Clipboard, as text ─────────────────────────────────────────────────
+    /// Client → server: make this the session's clipboard.
+    ClipboardSet {
+        text: String,
+    },
+    /// Server → client: an app in the session copied this.
+    Clipboard {
+        text: String,
+    },
+
     // ── Daemon config (see `wado-config`) ──────────────────────────────────
     /// Client → server: send me [`RelayMsg::ConfigState`]. Needs no session.
     ConfigGet,

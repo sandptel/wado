@@ -68,6 +68,10 @@ pub struct Wado {
     pub output_manager_state: OutputManagerState,
     pub seat_state: SeatState<Wado>,
     pub data_device_state: DataDeviceState,
+    /// Clipboard access for clients with no surface — `wl-copy`, clipboard managers. Without
+    /// it they map a window and wait for keyboard focus that an empty session never gives.
+    pub ext_data_control_state: smithay::wayland::selection::ext_data_control::DataControlState,
+    pub wlr_data_control_state: smithay::wayland::selection::wlr_data_control::DataControlState,
     /// wp-fractional-scale-v1. Without it `wl_output.scale` is the only channel and it is an
     /// integer, so a client asked for 1.5 is told 2, draws at 2x, and is composited as 1.5x —
     /// its buffer overhangs its own area and elements are visibly clipped.
@@ -128,6 +132,8 @@ pub struct Wado {
     pub shedding_tx: tokio::sync::watch::Sender<u32>,
     /// The window list for the viewer's bottom bar — see [`crate::window_list`].
     pub windows_tx: tokio::sync::watch::Sender<Vec<wado_protocol::WindowInfo>>,
+    /// The session's clipboard text, whenever an app copies — see [`crate::clipboard`].
+    pub clipboard_tx: tokio::sync::watch::Sender<String>,
     /// The menu open on the focused window, for the S7 menu sheet — see [`crate::hit`].
     pub menu_tx: tokio::sync::watch::Sender<Option<crate::hit::MenuSpot>>,
     /// Stable per-window ids for that list. Never reused within a process.
@@ -352,6 +358,19 @@ impl Wado {
         let popups = PopupManager::default();
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&dh);
         let data_device_state = DataDeviceState::new::<Self>(&dh);
+        // Every client may: the session is one user's, and isolation is per session, not per app.
+        let ext_data_control_state =
+            smithay::wayland::selection::ext_data_control::DataControlState::new::<Self, _>(
+                &dh,
+                None,
+                |_| true,
+            );
+        let wlr_data_control_state =
+            smithay::wayland::selection::wlr_data_control::DataControlState::new::<Self, _>(
+                &dh,
+                None,
+                |_| true,
+            );
         // Advertised unconditionally: a client decides how to draw when it binds, long
         // before a session sets a scale, and a global that appears later is one most
         // toolkits will never look for again.
@@ -409,6 +428,8 @@ impl Wado {
             output_manager_state,
             seat_state,
             data_device_state,
+            ext_data_control_state,
+            wlr_data_control_state,
             fractional_scale_state,
             pointer_gestures_state,
             dmabuf_state,
@@ -424,6 +445,7 @@ impl Wado {
             text_input_tx: tokio::sync::watch::channel(false).0,
             shedding_tx: tokio::sync::watch::channel(1).0,
             windows_tx: tokio::sync::watch::channel(Vec::new()).0,
+            clipboard_tx: tokio::sync::watch::channel(String::new()).0,
             menu_tx: tokio::sync::watch::channel(None).0,
             window_ids: std::collections::HashMap::new(),
             next_window_id: 0,

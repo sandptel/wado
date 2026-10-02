@@ -211,6 +211,16 @@ pub static ALL: &[Tile] = &[
         needs_session: false,
     },
     Tile {
+        id: "clipboard",
+        icon: "clip",
+        label: "Paste here",
+        on: None,
+        sub: ("Phone clipboard → session", ""),
+        act: Act::Run(|_| bridge::call("window.__wado.clipboardFromPhone();".to_string())),
+        page: None,
+        needs_session: true,
+    },
+    Tile {
         id: "resync",
         icon: "refresh",
         label: "Resync",

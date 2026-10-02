@@ -64,6 +64,8 @@ pub enum CompositorCommand {
         y: f64,
         reply: oneshot::Sender<Option<crate::hit::HitWindow>>,
     },
+    /// Make `text` the session's clipboard (the viewer pasted or copied on its side).
+    SetClipboard { text: String },
     /// Make the next encoded frame a forced IDR keyframe. Sent when a viewer
     /// connects or the browser requests one via RTCP PLI/FIR.
     ForceKeyframe,
@@ -138,6 +140,7 @@ pub fn handle_command(state: &mut Wado, cmd: CompositorCommand, frame_tx: &mpsc:
             let _ = reply.send(state.hit_window(x, y));
         }
         CompositorCommand::ForceKeyframe => headless::force_keyframe(state),
+        CompositorCommand::SetClipboard { text } => state.set_clipboard(text),
         CompositorCommand::ViewerAttached(attached) => {
             headless::set_viewer_attached(state, attached)
         }

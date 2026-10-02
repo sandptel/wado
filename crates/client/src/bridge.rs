@@ -113,6 +113,8 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/pty.js"),
     "\n",
+    include_str!("js/clipboard.js"),
+    "\n",
     include_str!("js/lifecycle.js"),
 );
 
@@ -311,6 +313,17 @@ pub fn run(ui: Ui) {
                 "shellActive" => {
                     live.shell_active.set(num("id").unwrap_or(0.0) as u32);
                     live.console_tab.set("shell".to_string());
+                }
+                "clipboard" => {
+                    let text = string("text");
+                    let mut clips = live.clips.write();
+                    clips.retain(|c| *c != text);
+                    clips.insert(0, text);
+                    clips.truncate(crate::state::MAX_CLIPS);
+                }
+                "clipboardSent" => {
+                    let err = string("error");
+                    live.config_note.set(err);
                 }
                 "gesture" => crate::ui::gesture::run(ui, &string("action")),
                 "shellMods" => {

@@ -4,6 +4,13 @@
 
 ### Added
 
+**The clipboard works both ways.** Copy something in an app on the desktop and it lands on
+the phone's clipboard (when the browser allows it), and always in a *Copied in the session*
+list in the control centre, one tap from your clipboard. The **Paste here** tile sends the
+phone's clipboard to the desktop. Text only, up to 1 MB. Clipboard tools such as `wl-copy`,
+`wl-paste` and clipboard managers now work inside the session too (ext and wlr data-control).
+`scripts/clipboard-e2e.mjs` checks both directions in a real session.
+
 **Shortcuts, swipes and window rules.** `binds { Mod+Q "close-window" }` adds keyboard
 shortcuts that the compositor keeps for itself instead of passing to the app: close, maximize,
 minimize, next window, back. `Mod` can be Super, Alt, Ctrl or Ctrl+Alt, because a browser
