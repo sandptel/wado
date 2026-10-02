@@ -30,19 +30,45 @@ W._stream = null;
 /// Attach `stream` (or whatever was last seen) to the stage, if the element is there to take it.
 /// Safe to call at any time, from anywhere, as often as you like.
 W.attachStream = (stream) => {
-  if (stream) W._stream = stream;
+  // Video tracks only. The session's sound rides on the same stream now (server::audio) and is
+  // played by its own <audio> element; left on the <video>, it makes the element "audible",
+  // and an audible element is refused autoplay — which is how the picture once sat paused on a
+  // black frame while every frame was arriving and decoding fine.
+  if (stream) W._stream = new MediaStream(stream.getVideoTracks());
   if (!W._stream) return false;
   const v = document.getElementById("wado-video");
   if (!v) return false;
-  if (v.srcObject === W._stream) return true;
-  v.srcObject = W._stream;
-  // A freshly built element starts paused: `autoplay` covers the first attach, this covers a
-  // re-attach. Muted and playsinline are set on the element, so no user gesture is needed and a
-  // rejection here is only ever a race with another play().
-  if (v.play) { try { const p = v.play(); if (p && p.catch) p.catch(() => {}); } catch (_) {} }
-  if (W.rlog) W.rlog("video: stream attached to the stage");
+  // As properties, not just attributes: a framework-set `muted` attribute is not the live
+  // `muted` state the autoplay policy reads.
+  v.muted = true;
+  v.defaultMuted = true;
+  v.playsInline = true;
+  if (v.srcObject !== W._stream) {
+    v.srcObject = W._stream;
+    if (W.rlog) W.rlog("video: stream attached to the stage");
+  }
+  W.videoPlay();
   return true;
 };
+
+// Play, and if the browser still says no, play on the very next tap anywhere — never leave the
+// picture paused with nothing on screen saying why.
+W.videoPlay = () => {
+  const v = document.getElementById("wado-video");
+  if (!v || !v.srcObject || !v.paused) return;
+  let p;
+  try { p = v.play(); } catch (_) { return; }
+  if (p && p.catch) p.catch((e) => {
+    if (W.rlog) W.rlog("video: play() refused (" + (e && e.name) + ") — will start on the next tap");
+    emit({ type: "captureNote", text: "Tap the screen to start the picture." });
+    const once = () => { document.removeEventListener("pointerdown", once, true); W.videoPlay(); };
+    document.addEventListener("pointerdown", once, true);
+  });
+};
+
+// A session whose picture is paused is a fault, whatever paused it (a tab switch, the OS
+// reclaiming the decoder): checked every two seconds and restarted.
+setInterval(() => { if (W.sessionOn) W.videoPlay(); }, 2000);
 
 /// Session over: forget the stream so a later re-assert cannot resurrect a dead one.
 W.detachStream = () => {
