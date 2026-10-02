@@ -4,12 +4,24 @@
 
 ### Added
 
+**Scan a QR code to connect.** `wado qr` prints the connect link and a terminal QR code.
+`scripts/rig.sh` shows it on every start, and the daemon prints it itself when run in a
+terminal with `server { public-relay "…" }` set. Scanning it on a phone opens wado pointed at
+that computer, and adds it as a new computer if the phone has never seen it.
+
+**Computers & relays** is a new page under Settings. Rename a saved computer, move it to
+another relay, forget it (after a confirmation), and keep a list of relays, so computers on
+different relay networks can live side by side. Forgetting moved off the landing cards, where
+it was a mis-tap away.
+
 **A playback card, Android-style.** Whatever is playing on the computer (Spotify, a browser
 tab, VLC, anything that speaks MPRIS) gets a card on the landing page and at the top of the
 control centre. It shows cover art, title and artist, play/pause, previous and next, a progress
 bar you can drag to seek, and shuffle. A chip shows where the sound is coming out, *This phone*
-or *Computer*, and a tap moves it. Players inside the session are included too. When several
-are open, tap the counter to switch between them. Checked against a real VLC: play/pause and
+or *Computer*, and a tap moves it. Players inside the session are included too. Cover art is shown as it is, unblurred, beside the app's own icon. With no art there's no
+stand-in picture, and with no icon just the app's name. Repeat and a per-app volume slider sit
+with shuffle. Every other player gets a compact row with its own play/pause, and tapping a row
+makes it the main card. Polling speeds up while something plays, so the progress bar keeps step. Checked against a real VLC: play/pause and
 seeking both take effect on it.
 
 **Computers are named after themselves, and you can see whether they're up.** A saved computer

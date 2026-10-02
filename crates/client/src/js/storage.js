@@ -29,13 +29,23 @@ W.loadSettings = () => {
   s.conn_mode = "relay";
   if (relay) s.relay_url = relay;
   if (id) s.remote_id = id;
-  // The selected host card too, or it would still show — and Start would save back — the old one.
-  if (Array.isArray(s.profiles) && s.profiles[s.profile || 0]) {
-    const p = s.profiles[s.profile || 0];
-    p.conn_mode = "relay";
-    if (relay) p.relay_url = relay;
-    if (id) p.remote_id = id;
+  // The computer it names: the saved one with that Remote ID, pointed at this relay — or, for a
+  // computer this device has never seen, a new card (named by its hostname once it answers).
+  const norm = (x) => String(x || "").replace(/\D/g, "");
+  s.profiles = Array.isArray(s.profiles) ? s.profiles : [];
+  let i = id ? s.profiles.findIndex((p) => norm(p.remote_id) === norm(id)) : (s.profile || 0);
+  if (i < 0 || !s.profiles[i]) {
+    s.profiles.push({ name: "", host: "", conn_mode: "relay", relay_url: relay || s.relay_url || "", remote_id: id || "" });
+    i = s.profiles.length - 1;
   }
+  const p = s.profiles[i];
+  p.conn_mode = "relay";
+  if (relay) p.relay_url = relay;
+  if (id) p.remote_id = id;
+  s.profile = i;
+  // Remember the relay among this device's relays.
+  s.relays = Array.isArray(s.relays) ? s.relays : [];
+  if (relay && !s.relays.includes(relay)) s.relays.push(relay);
   try { localStorage.setItem(STORE_KEY, JSON.stringify(s)); } catch (_) {}
   try { history.replaceState(null, "", location.pathname); } catch (_) {}
 })();

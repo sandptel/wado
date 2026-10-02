@@ -17,6 +17,11 @@ pub struct Server {
     /// Which 100-port UDP slice this daemon uses, so pooled daemons never share ports.
     pub udp_slice: u16,
     pub turn: Option<Turn>,
+    /// The relay as a phone reaches it — the public URL, not the local one the daemon dials —
+    /// for the connect link and QR code (`wado qr`). `WADO_PUBLIC_RELAY` wins.
+    pub public_relay: Option<String>,
+    /// Where the web client is served; the connect link opens it.
+    pub client_url: String,
 }
 
 impl Default for Server {
@@ -28,6 +33,8 @@ impl Default for Server {
             remote_id: None,
             udp_slice: 0,
             turn: None,
+            public_relay: None,
+            client_url: "https://sandptel.github.io/wado/".into(),
         }
     }
 }

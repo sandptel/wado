@@ -101,16 +101,6 @@ pub fn render(ui: Ui) -> Element {
                                 onclick: move |_| { profile::select(ui, i); live.cc_page.set(Page::Connection); live.cc_open.set(true); },
                                 Icon { name: "edit" }
                             }
-                            if !selected {
-                                button { class: "iconbtn", "aria-label": "Forget {p.display()}",
-                                    onclick: move |_| {
-                                        s.profiles.write().remove(i);
-                                        let n = s.profiles.read().len();
-                                        if cur >= n { s.profile.set(n.saturating_sub(1)); } else if cur > i { s.profile.set(cur - 1); }
-                                    },
-                                    Icon { name: "x" }
-                                }
-                            }
                         }
                     }
                 }

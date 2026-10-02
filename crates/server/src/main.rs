@@ -41,6 +41,13 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     if let Some(relay_url) = config.server.relay.clone() {
         let remote_id = wado::remote_id::resolve();
+        // In a terminal, show the way in: the connect QR code, every start.
+        {
+            use std::io::IsTerminal;
+            if std::io::stdout().is_terminal() && config.server.public_relay.is_some() {
+                wado::cli::qr::print(None, Some(&remote_id));
+            }
+        }
 
         tracing::info!(
             relay_url = %relay_url,

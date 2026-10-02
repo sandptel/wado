@@ -72,16 +72,30 @@ pub struct Player {
     /// chip shows and moves.
     #[serde(default)]
     pub stream: Option<u32>,
+    /// The app's own icon, as a `data:` URI, when its desktop entry names one.
+    #[serde(default)]
+    pub icon: Option<String>,
+    /// MPRIS `LoopStatus`: `None`, `Track` or `Playlist`; absent when the player has none.
+    #[serde(default)]
+    pub loop_status: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum MediaOp {
     PlayPause,
     Next,
     Previous,
-    SeekTo { ms: u64 },
-    Shuffle { on: bool },
+    SeekTo {
+        ms: u64,
+    },
+    Shuffle {
+        on: bool,
+    },
+    /// `None`, `Track` or `Playlist`.
+    Loop {
+        mode: String,
+    },
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]

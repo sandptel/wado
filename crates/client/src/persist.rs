@@ -66,6 +66,7 @@ pub struct Saved {
     pub accent: Option<String>,
     pub tiles: Option<Vec<String>>,
     pub profiles: Option<Vec<crate::profile::Profile>>,
+    pub relays: Option<Vec<String>>,
     pub profile: Option<usize>,
     pub keep_awake: Option<bool>,
     pub dnd: Option<bool>,
@@ -88,6 +89,7 @@ pub fn snapshot(ui: Ui) -> Saved {
     let recent = s.recent.read().clone();
     let tiles = s.tiles.read().clone();
     let profiles = s.profiles.read().clone();
+    let relays = s.relays.read().clone();
     Saved {
         conn_mode: Some((s.conn_mode)()),
         server_addr: Some((s.server_addr)()),
@@ -136,6 +138,7 @@ pub fn snapshot(ui: Ui) -> Saved {
         accent: Some((s.accent)()),
         tiles: Some(tiles),
         profiles: Some(profiles),
+        relays: Some(relays),
         profile: Some((s.profile)()),
         keep_awake: Some((s.keep_awake)()),
         dnd: Some((s.dnd)()),
@@ -218,6 +221,7 @@ pub fn restore(ui: Ui, saved: Saved) {
     put!(accent);
     put!(tiles);
     put!(profiles);
+    put!(relays);
     put!(profile);
     put!(keep_awake);
     put!(dnd);

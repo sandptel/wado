@@ -248,6 +248,8 @@ say "Remote ID   ${RID:-<none — check the daemon log>}"
 # the cure for a phone still holding a rotated tunnel URL.
 if [ -n "$URL" ] && [ -n "$RID" ]; then
   say "Phone link  https://sandptel.github.io/wado/?relay=$URL&id=$(printf '%s' "$RID" | tr -d '-')"
+  # And as a QR code — scan it and the phone is pointed at this rig, adding it if it is new.
+  "target/release/wado" qr --relay "$URL" --id "$RID" 2>/dev/null | sed 's/^/  /' || true
 fi
 echo
 say "run lane    $LANE   (WADO_RUN=perf|connection|feature|compositor)"

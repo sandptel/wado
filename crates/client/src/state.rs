@@ -145,6 +145,8 @@ pub struct Settings {
     pub tiles: Signal<Vec<String>>,
     /// Saved hosts, and which one is selected. See [`crate::profile`].
     pub profiles: Signal<Vec<crate::profile::Profile>>,
+    /// The relays this device knows, beyond the built-in one — a computer can be on any of them.
+    pub relays: Signal<Vec<String>>,
     pub profile: Signal<usize>,
     /// Hold a screen wake lock while a session runs.
     pub keep_awake: Signal<bool>,
@@ -235,6 +237,7 @@ impl Settings {
             accent: use_signal(|| "0D".to_string()),
             tiles: use_signal(crate::ui::cc::tiles::pool::defaults),
             profiles: use_signal(Vec::new),
+            relays: use_signal(Vec::new),
             profile: use_signal(|| 0),
             keep_awake: use_signal(|| true),
             dnd: use_signal(|| false),
