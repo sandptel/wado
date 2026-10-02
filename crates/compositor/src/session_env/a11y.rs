@@ -38,11 +38,10 @@ impl A11yBus {
 
 /// Start the bus and its registry, or `None` (logged) when at-spi2-core is not available.
 pub fn start() -> Option<A11yBus> {
-    let Some(prefix) = std::env::var_os("WADO_ATSPI") else {
-        warn!("WADO_ATSPI is not set — no accessibility tree; taps stay plain");
+    let Some(prefix) = wado_config::live::current().session.atspi.clone() else {
+        warn!("session.atspi (WADO_ATSPI) is not set — no accessibility tree; taps stay plain");
         return None;
     };
-    let prefix = std::path::PathBuf::from(prefix);
     let conf = prefix.join("share/defaults/at-spi2/accessibility.conf");
     let bus = bus::daemon(
         &["--config-file", &conf.to_string_lossy()],

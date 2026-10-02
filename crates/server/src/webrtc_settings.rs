@@ -51,10 +51,7 @@ const PORTS_PER_INSTANCE: u16 = 100;
 /// A slice that would run past [`WEBRTC_UDP_PORT_MAX`] is refused loudly rather than silently
 /// wrapping onto a sibling's ports — that is the failure this whole function exists to prevent.
 fn udp_port_range() -> (u16, u16) {
-    let slice: u16 = std::env::var("WADO_UDP_SLICE")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(0);
+    let slice = wado_config::live::current().server.udp_slice;
     let min = WEBRTC_UDP_PORT_MIN.saturating_add(slice.saturating_mul(PORTS_PER_INSTANCE));
     let max = min.saturating_add(PORTS_PER_INSTANCE - 1);
     if max > WEBRTC_UDP_PORT_MAX {

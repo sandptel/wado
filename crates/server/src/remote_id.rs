@@ -17,10 +17,13 @@ use wado_protocol::relay::{display_remote_id, normalize_remote_id};
 
 /// Resolve this server's Remote ID (see module docs for the order).
 pub fn resolve() -> String {
-    if let Ok(id) = std::env::var("WADO_REMOTE_ID") {
+    if let Some(id) = wado_config::live::current().server.remote_id.clone() {
         let id = normalize_remote_id(&id);
         if !id.is_empty() {
-            info!("Remote ID {} (from WADO_REMOTE_ID)", display_remote_id(&id));
+            info!(
+                "Remote ID {} (from server.remote-id / WADO_REMOTE_ID)",
+                display_remote_id(&id)
+            );
             return id;
         }
     }
@@ -78,14 +81,5 @@ fn id_file_path() -> PathBuf {
 /// `$XDG_CONFIG_HOME/wado`, falling back to `~/.config/wado`. Shared by every daemon of a pool
 /// on this machine, which is what lets them share one Remote ID and one trust list.
 pub fn config_dir() -> PathBuf {
-    let base = std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .filter(|p| !p.as_os_str().is_empty())
-        .unwrap_or_else(|| {
-            let home = std::env::var_os("HOME")
-                .map(PathBuf::from)
-                .unwrap_or_default();
-            home.join(".config")
-        });
-    base.join("wado")
+    wado_config::paths::config_dir()
 }

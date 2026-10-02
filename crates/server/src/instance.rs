@@ -12,10 +12,12 @@ use std::sync::OnceLock;
 use rand::Rng;
 
 pub fn instance_key() -> String {
-    std::env::var("WADO_INSTANCE")
-        .ok()
-        .filter(|k| !k.trim().is_empty())
-        .unwrap_or_else(|| "1".into())
+    let k = wado_config::live::current()
+        .server
+        .instance
+        .trim()
+        .to_string();
+    if k.is_empty() { "1".into() } else { k }
 }
 
 pub fn boot_id() -> &'static str {

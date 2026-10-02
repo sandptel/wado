@@ -44,6 +44,9 @@ pub enum AppEnv {
 
 /// Apply the environment to a command that is about to be spawned.
 pub fn apply(cmd: &mut Command, env: &AppEnv) {
+    // The config's own variables go first, so the session's isolation below still wins over a
+    // `DISPLAY` someone put in `session { env { } }`.
+    cmd.envs(&wado_config::live::current().session.env);
     let (bus, x) = match env {
         // The host's `DISPLAY` stays as it was when there is no session X server: an X11 app
         // opening on the host desktop is wrong, but it is what "not isolated" means.

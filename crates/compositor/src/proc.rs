@@ -91,25 +91,20 @@ pub fn spawn(command: &str, env: &crate::session_env::AppEnv) -> std::io::Result
 
 /// CPU shares for session applications, relative to the default 100 that wado itself keeps.
 ///
-/// `WADO_APP_CPU_WEIGHT` overrides it; `0` turns the scope off entirely and spawns exactly
-/// as before. The default is deliberately mild — halving an application's share under
+/// `session { app-cpu-weight }` in config.kdl (or `WADO_APP_CPU_WEIGHT`) sets it; `0` turns the
+/// scope off entirely and spawns exactly as before. The default is deliberately mild — halving an application's share under
 /// contention, not starving it — because a browser inside the session is the thing the user
 /// came to use, not background noise.
 ///
-/// ponytail: one env var, no config plumbing and no UI. This is a knob whose *effect* is
-/// unproven — see the note below — and a setting nobody can yet read a number for is worse
-/// than no setting.
+/// No UI: this is a knob whose *effect* is unproven — see the note below — and a setting nobody
+/// can yet read a number for does not belong in front of a phone user.
 fn cpu_weight() -> Option<u32> {
-    let raw =
-        std::env::var("WADO_APP_CPU_WEIGHT").unwrap_or_else(|_| DEFAULT_APP_CPU_WEIGHT.to_string());
-    match raw.trim().parse::<u32>() {
-        Ok(0) => None,
-        Ok(w) => Some(w.clamp(1, 10_000)),
-        Err(_) => Some(DEFAULT_APP_CPU_WEIGHT),
-    }
+    weight(wado_config::live::current().session.app_cpu_weight)
 }
 
-const DEFAULT_APP_CPU_WEIGHT: u32 = 50;
+fn weight(w: u32) -> Option<u32> {
+    (w != 0).then(|| w.clamp(1, 10_000))
+}
 
 /// Whether a transient user scope can actually be created, probed once.
 ///
@@ -200,24 +195,13 @@ mod tests {
         spawn(command, &AppEnv::Host { x: None })
     }
 
-    /// `0` means "spawn exactly as before" and has to survive round-tripping, because it is
-    /// the escape hatch when a scope turns out to be the thing that broke something.
-    /// An unparseable value falls back to the default rather than to unconstrained: a typo
-    /// in an env var should not silently disable a resource limit.
+    /// `0` means "spawn exactly as before" and has to survive, because it is the escape hatch
+    /// when a scope turns out to be the thing that broke something.
     #[test]
-    fn cpu_weight_reads_the_env_and_treats_zero_as_off() {
-        // ponytail: `set_var` is unsafe and this is the only test touching it, so it runs
-        // without a lock. Add one if a second env-reading test ever lands here.
-        unsafe {
-            std::env::set_var("WADO_APP_CPU_WEIGHT", "0");
-            assert_eq!(cpu_weight(), None);
-            std::env::set_var("WADO_APP_CPU_WEIGHT", "25");
-            assert_eq!(cpu_weight(), Some(25));
-            std::env::set_var("WADO_APP_CPU_WEIGHT", "not a number");
-            assert_eq!(cpu_weight(), Some(DEFAULT_APP_CPU_WEIGHT));
-            std::env::remove_var("WADO_APP_CPU_WEIGHT");
-            assert_eq!(cpu_weight(), Some(DEFAULT_APP_CPU_WEIGHT));
-        }
+    fn cpu_weight_treats_zero_as_off_and_clamps() {
+        assert_eq!(weight(0), None);
+        assert_eq!(weight(25), Some(25));
+        assert_eq!(weight(99_999), Some(10_000));
     }
 
     /// The one that would have caught the real bug: `-p=CPUWeight=50` is not valid
@@ -243,7 +227,7 @@ mod tests {
         let _ = std::fs::remove_file(&out);
         assert_eq!(
             weight.trim().parse::<u32>().ok(),
-            Some(DEFAULT_APP_CPU_WEIGHT),
+            Some(wado_config::Config::default().session.app_cpu_weight),
             "app should run in its own scope at the reduced weight, got {weight:?}"
         );
     }

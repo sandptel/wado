@@ -1,0 +1,15 @@
+[package]
+name = "wado-config"
+version = "0.0.3"
+edition = "2024"
+license = "AGPL-3.0-only"
+description = "The wado daemon's configuration: the config.kdl schema, its loader, env overrides and host limits. Plain data — no Smithay, no tokio — so the server, the compositor and the WASM client can all depend on it."
+
+[dependencies]
+wado-protocol = { path = "../protocol" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_path_to_error = "0.1"
+# KDL v2, with a v1 fallback so `true` works as well as `#true` — niri configs are still
+# written both ways and refusing one of them would be pedantry at the user's expense.
+kdl = { version = "6.7", default-features = false, features = ["span", "v1-fallback"] }

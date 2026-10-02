@@ -164,6 +164,7 @@ pub fn handle_command(state: &mut Wado, cmd: CompositorCommand, frame_tx: &mpsc:
 /// reconfigure applies have to come out of the same function, or `Quality::Balanced` means one
 /// thing at start and another on a change.
 fn reconfigure(state: &mut Wado, config: &SessionConfig) -> Result<SessionInfo, String> {
+    let config = &host_limited(config);
     let encoder = crate::conf::to_encoder_config(config);
     let report =
         headless::reconfigure_session(state, &encoder, config.scale).map_err(|e| e.to_string())?;
@@ -190,6 +191,7 @@ fn start(
     if state.session_active {
         return Err("a session is already active".into());
     }
+    let config = &host_limited(config);
     let encoder = crate::conf::to_encoder_config(config);
     let frame_dur = Duration::from_nanos(1_000_000_000 / encoder.fps.max(1) as u64);
     let sink = Box::new(ChannelSink::new(frame_tx.clone(), frame_dur));
@@ -229,7 +231,21 @@ fn start(
     state.placement = config.window.placement;
     state.focus_follows_pointer = config.input.focus_follows_pointer;
     state.encoder_report = Some(encoder_report.clone());
+
+    for command in &wado_config::live::current().session.autostart {
+        headless::launch_command(state, command);
+    }
     Ok(SessionInfo {
         encoder: encoder_report,
     })
+}
+
+/// What the client asked for, inside the host's `stream { }` limits. Here rather than in the
+/// server so direct and relay mode cannot disagree about it.
+fn host_limited(config: &SessionConfig) -> SessionConfig {
+    let mut config = config.clone();
+    for note in wado_config::limits::clamp(&mut config, &wado_config::live::current().stream) {
+        tracing::info!("session config: {note}");
+    }
+    config
 }

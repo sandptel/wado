@@ -5,6 +5,7 @@
 
 pub mod a11y;
 pub mod apps;
+pub mod cli;
 pub mod error;
 pub mod gate;
 pub mod ice;

@@ -44,6 +44,11 @@ impl Pty {
     /// The channel closing is what stops the reader thread: it is the signal that the viewer
     /// has gone.
     pub fn open(cols: u16, rows: u16, out: mpsc::Sender<String>) -> std::io::Result<Self> {
+        if !wado_config::live::current().shells.enabled {
+            return Err(std::io::Error::other(
+                "shells are disabled on this host (shells.enabled)",
+            ));
+        }
         let size = PtySize {
             rows,
             cols,
@@ -55,7 +60,12 @@ impl Pty {
             .map_err(|e| std::io::Error::other(format!("openpty: {e}")))?;
 
         // The user's own shell, as a login shell, so their prompt and aliases are there.
-        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+        let shell = wado_config::live::current()
+            .shells
+            .program
+            .clone()
+            .or_else(|| std::env::var("SHELL").ok())
+            .unwrap_or_else(|| "/bin/sh".to_string());
         let mut cmd = CommandBuilder::new(&shell);
         cmd.arg("-l");
         if let Ok(home) = std::env::var("HOME") {

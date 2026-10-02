@@ -4,6 +4,23 @@
 
 ### Added
 
+**The daemon has a config file: `~/.config/wado/config.kdl`.** It uses KDL, the way niri does.
+The first run writes a fully commented starting file that changes nothing until you edit it.
+The sections are:
+
+- `server`: listen address, relay, pool instance, Remote ID, UDP slice, TURN.
+- `security`: whether the first device is trusted automatically.
+- `stream`: the host's caps on fps, bitrate and resolution, plus a forced encoder.
+- `session`: app CPU weight, accessibility, extra environment for apps, autostart commands.
+- `shells`: turn the console shell off, or choose which shell it runs.
+
+Files can `include` other files, and a later entry wins over an earlier one. **`wado validate
+[file]`** checks a config without starting anything, and names the line and column of any typo
+along with the keys that were expected. The `WADO_*` environment variables still work and
+override the file, and the daemon logs which ones did. A broken file never stops the daemon: it
+logs the error and runs on the built-in defaults. A client that asks for more than the host
+allows is scaled down rather than refused (the aspect ratio is kept, so touch still maps 1:1).
+
 **The relay's handshake is versioned and frozen, so it can be deployed once.** `wado-relay`
 now reads only a small fixed set of handshake messages (`relay_wire`) and forwards everything
 else unread. New features between daemon and client therefore never need a relay update.

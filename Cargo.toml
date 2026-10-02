@@ -1,9 +1,9 @@
 [workspace]
 resolver = "2"
-members = ["crates/server", "crates/compositor", "crates/protocol", "crates/client", "crates/relay"]
+members = ["crates/server", "crates/compositor", "crates/protocol", "crates/client", "crates/relay", "crates/config"]
 # Plain `cargo build` builds the host crates only. The client is WASM-only and is
 # built/served with the `dx` (dioxus-cli) tool, not host cargo.
-default-members = ["crates/server", "crates/compositor", "crates/protocol", "crates/relay"]
+default-members = ["crates/server", "crates/compositor", "crates/protocol", "crates/relay", "crates/config"]
 
 # The daemon is a soft-real-time video pipeline with an 8 ms frame budget at 120 fps, and it
 # is only ever run as a release build (see `scripts/daemon.sh` — a debug build was once
