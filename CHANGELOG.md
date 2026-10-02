@@ -4,6 +4,32 @@
 
 ### Added
 
+**A new client: a landing page, a control centre, and base16 all the way through.** The
+settings column and the ⋯ button grid are gone. In their place:
+
+- **A landing page** before a session. Your saved computers appear as cards, and each one
+  remembers its own connection and the resolution it was last used at. A progress ring shows
+  how far the connection got (relay, daemon, session, video), with one big *Start* button.
+- **A control centre** that slides up from ⋯ on a phone and sits as a card on the right on a
+  desktop. It never shrinks the picture. At the top is the session at a glance: the computer,
+  the stream's shape, a health verdict and three live sparklines (frames, ping, bandwidth).
+  Below that are eight **quick tiles** (keyboard, gamepad, take mouse, fullscreen, move
+  windows, raw touch, lock FPS, natural scroll). Tap a tile to toggle it, or long-press it to
+  open its settings. *Edit tiles* reorders them and adds more: readouts, keep awake, lens,
+  resync.
+- **Settings by subject**: Display & stream, Input & touch, Window switcher, Gamepad,
+  Appearance, Connection, This computer, Diagnostics. Each control says when it takes effect
+  (*on apply*, *next start*, or *set by host*). An **Apply** bar appears only when something is
+  pending. Dropdowns became segmented controls, and resolutions are chips drawn at their real
+  shape. The long explanations are folded behind ⓘ instead of filling the page.
+- **This computer** edits the daemon's `config.kdl` limits from the phone and shows a broken
+  config file's error.
+- **Appearance**: 13 base16 schemes, light ones included (the area behind the video always
+  stays dark). You can also pick the accent colour, the corner style (sharp, round or pill) and
+  the motion level (full, reduced or off). A pasted scheme still works.
+- **Software encoding** is shown by an orange light on the dock, a note when the session
+  starts, and a chip in the control centre, and none of them can be hidden.
+
 **Config edits apply live, and the client can make them.** Save `config.kdl` and the daemon
 reloads it within a second. A file with a mistake is not applied: the daemon keeps running on
 the last good config and tells every connected client exactly where the mistake is (file, line

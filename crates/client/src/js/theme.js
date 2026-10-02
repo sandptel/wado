@@ -8,16 +8,9 @@
 
 // Bundled schemes, base00…base0F in order. All dark: the chrome surrounds a video surface,
 // and a light ground bleeds onto the picture (see the stage backdrop override in stage.css).
-W.SCHEMES = {
-  "default-dark": ["181818","282828","383838","585858","b8b8b8","d8d8d8","e8e8e8","f8f8f8",
-                   "ab4642","dc9656","f7ca88","a1b56c","86c1b9","7cafc2","ba8baf","a16946"],
-  "gruvbox-dark": ["1d2021","3c3836","504945","665c54","bdae93","d5c4a1","ebdbb2","fbf1c7",
-                   "fb4934","fe8019","fabd2f","b8bb26","8ec07c","83a598","d3869b","d65d0e"],
-  "nord":         ["2e3440","3b4252","434c5e","4c566a","d8dee9","e5e9f0","eceff4","8fbcbb",
-                   "bf616a","d08770","ebcb8b","a3be8c","88c0d0","81a1c1","b48ead","5e81ac"],
-  "tomorrow-night":["1d1f21","282a2e","373b41","969896","b4b7b4","c5c8c6","e0e0e0","ffffff",
-                   "cc6666","de935f","f0c674","b5bd68","8abeb7","81a2be","b294bb","a3685a"],
-};
+// `W.SCHEME_LIST` is spliced in ahead of this file from `src/schemes.json` (see bridge.rs) —
+// the one list both this file and the Rust picker read, so they cannot drift.
+W.SCHEMES = Object.fromEntries(W.SCHEME_LIST);
 
 W.DEFAULT_SCHEME = "default-dark";
 
@@ -25,9 +18,25 @@ W.DEFAULT_SCHEME = "default-dark";
 // than half-applied — a partially themed UI is worse than an unchanged one.
 W.applyTheme = (hexes) => {
   if (!Array.isArray(hexes) || hexes.length !== 16) return false;
-  const root = document.documentElement.style;
-  hexes.forEach((h, i) => root.setProperty("--base0" + i.toString(16).toUpperCase(), "#" + h));
+  const root = document.documentElement;
+  hexes.forEach((h, i) => root.style.setProperty("--base0" + i.toString(16).toUpperCase(), "#" + h));
+  // Light or dark ground, by base00's luminance — what native controls and the scrollbar
+  // follow. The stage behind the video stays black either way (stage.css).
+  const n = parseInt(hexes[0], 16);
+  const lum = 0.2126 * (n >> 16) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255);
+  root.dataset.ground = lum > 140 ? "light" : "dark";
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = "#" + hexes[0];
   return true;
+};
+
+// The rest of the look: corner style, motion level and which slot is the accent. Attributes
+// and one variable, so the stylesheets own what each value means.
+W.setLook = (radius, motion, accent) => {
+  const root = document.documentElement;
+  root.dataset.radius = radius || "round";
+  root.dataset.motion = motion || "full";
+  root.style.setProperty("--accent", "var(--base" + (accent || "0D") + ")");
 };
 
 // Called by the Rust picker. `custom` (16 parsed values) wins over `name` when present, which
@@ -41,4 +50,5 @@ W.setTheme = (name, custom) => {
 (() => {
   const s = W.loadSettings();
   W.setTheme(s.theme, s.theme_custom);
+  W.setLook(s.radius, s.motion, s.accent);
 })();

@@ -19,6 +19,9 @@ pub fn start(ui: Ui) {
     live.session_on.set(true);
     live.clear_telemetry();
     live.status.set("starting session…".to_string());
+    live.applied
+        .set(serde_json::to_string(&config).unwrap_or_default());
+    crate::profile::remember(ui);
 
     bridge::call(format!(
         "window.__wado.start({}, {}, {});",
@@ -26,11 +29,6 @@ pub fn start(ui: Ui) {
         bridge::js(&config),
         bridge::js(&relay),
     ));
-}
-
-/// Launch whatever is in the command box.
-pub fn launch(ui: Ui) {
-    launch_command(ui, &(ui.set.command)());
 }
 
 /// Launch one specific command — what a drawer tile does, where there is no box to read.
@@ -65,6 +63,8 @@ pub fn apply(ui: Ui) {
     let mut live = ui.live;
     let config = cfg::build(ui);
     live.status.set("applying…".to_string());
+    live.applied
+        .set(serde_json::to_string(&config).unwrap_or_default());
     bridge::call(format!(
         "window.__wado.reconfigure({});",
         bridge::js(&config)
@@ -75,6 +75,7 @@ pub fn stop(ui: Ui) {
     let mut live = ui.live;
     live.session_on.set(false);
     live.clear_telemetry();
+    live.applied.set(String::new());
     live.status.set("idle".to_string());
     live.stagebar.set("No session.".to_string());
     bridge::call("window.__wado.stopSession();".to_string());

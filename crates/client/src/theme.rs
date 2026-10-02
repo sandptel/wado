@@ -11,8 +11,20 @@
 
 use dioxus::prelude::*;
 
-/// Bundled scheme names, in picker order. Must match the keys in `js/theme.js`.
-pub const SCHEMES: &[&str] = &["default-dark", "gruvbox-dark", "nord", "tomorrow-night"];
+/// The bundled schemes, base00…base0F each — the same file the bridge hands `js/theme.js`.
+pub fn schemes() -> Vec<(String, Vec<String>)> {
+    serde_json::from_str(include_str!("schemes.json")).unwrap_or_default()
+}
+
+/// Push corner style, motion level and accent slot to the bridge.
+pub fn apply_look(radius: &str, motion: &str, accent: &str) {
+    crate::bridge::call(format!(
+        "window.__wado.setLook({}, {}, {});",
+        crate::bridge::js(&radius),
+        crate::bridge::js(&motion),
+        crate::bridge::js(&accent)
+    ));
+}
 
 fn is_hex(b: u8) -> bool {
     b.is_ascii_hexdigit()
@@ -114,6 +126,21 @@ base0D: "83a598"
 base0E: "d3869b"
 base0F: "d65d0e"
 "#;
+
+    #[test]
+    fn bundled_schemes_are_whole() {
+        let all = schemes();
+        assert!(all.len() >= 12);
+        for (name, hexes) in &all {
+            assert_eq!(hexes.len(), 16, "{name}");
+            assert!(
+                hexes
+                    .iter()
+                    .all(|h| h.len() == 6 && h.chars().all(|c| c.is_ascii_hexdigit())),
+                "{name}"
+            );
+        }
+    }
 
     #[test]
     fn parses_yaml_scheme() {

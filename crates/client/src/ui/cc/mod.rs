@@ -1,0 +1,90 @@
+//! The control centre: one sheet for everything that is not the picture.
+//!
+//! It replaces the docked settings column and the ⋯ pop-grid both (Decision Log 2026-10-02).
+//! It floats over the stage and never takes space from it — a bottom sheet on a phone, a card
+//! on the right on a desktop, the same markup for both. The root page is the hero, the tiles,
+//! the shells and the settings list; every other page is pushed over it.
+
+pub mod apply_bar;
+pub mod hero;
+pub mod list;
+pub mod tiles;
+
+use dioxus::prelude::*;
+
+use crate::{
+    actions, bridge,
+    state::Ui,
+    ui::{
+        pages::{self, Page},
+        widgets::Icon,
+    },
+};
+
+pub fn render(ui: Ui) -> Element {
+    let mut live = ui.live;
+    let open = (live.cc_open)();
+    let page = (live.cc_page)();
+    let on = (live.session_on)();
+
+    rsx! {
+        div {
+            class: if open { "ccscrim open" } else { "ccscrim" },
+            onclick: move |_| live.cc_open.set(false),
+        }
+        section {
+            id: "cc",
+            class: if open { "open" } else { "" },
+            "aria-label": "Control centre",
+            "aria-hidden": "{!open}",
+            div { class: "grab", onclick: move |_| live.cc_open.set(false) }
+            div { class: "pages",
+                // The root stays mounted under a pushed page so coming back is instant and keeps
+                // its scroll; the pushed page is mounted only while it is up.
+                div { class: if page == Page::Root { "page" } else { "page behind" },
+                    {hero::render(ui)}
+                    {tiles::render(ui)}
+                    div { class: "sect",
+                        span { "Shells" }
+                        button {
+                            disabled: !on,
+                            onclick: move |_| {
+                                live.console_tab.set("shell".to_string());
+                                live.console_open.set(true);
+                                live.cc_open.set(false);
+                                bridge::call("window.__wado.ptyShow();".to_string());
+                            },
+                            "Open"
+                        }
+                    }
+                    div { class: "sect", span { "Settings" }
+                        button { onclick: move |_| live.cc_page.set(Page::Tiles), "Edit tiles" }
+                    }
+                    {list::render(ui)}
+                    div { class: "actions",
+                        button {
+                            class: "btn", disabled: !on,
+                            onclick: move |_| bridge::call("window.__wado.resync();".to_string()),
+                            Icon { name: "refresh" } "Resync"
+                        }
+                        button {
+                            class: "btn danger", disabled: !on,
+                            onclick: move |_| { live.cc_open.set(false); actions::stop(ui); },
+                            Icon { name: "power" } "End session"
+                        }
+                    }
+                }
+                if page != Page::Root {
+                    div { key: "{page:?}", class: "page pushed",
+                        div { class: "phead",
+                            button { "aria-label": "Back", onclick: move |_| live.cc_page.set(Page::Root), Icon { name: "left" } }
+                            h3 { "{page.title()}" }
+                        }
+                        {pages::render(ui, page)}
+                    }
+                }
+            }
+            {apply_bar::render(ui)}
+        }
+    }
+}

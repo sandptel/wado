@@ -8,8 +8,10 @@
 W.wake = {
   lock: null,
 
+  off: false, // the "Keep awake" tile, off
+
   async acquire() {
-    if (!navigator.wakeLock || W.wake.lock) return;
+    if (W.wake.off || !navigator.wakeLock || W.wake.lock) return;
     try {
       W.wake.lock = await navigator.wakeLock.request("screen");
       W.wake.lock.addEventListener("release", () => { W.wake.lock = null; });
@@ -26,3 +28,9 @@ W.wake = {
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && W.sessionOn) W.wake.acquire();
 });
+
+W.setWake = (on) => {
+  W.wake.off = !on;
+  if (!on) W.wake.release();
+  else if (W.sessionOn) W.wake.acquire();
+};
