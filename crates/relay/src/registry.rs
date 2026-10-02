@@ -18,38 +18,42 @@
 //! On WS disconnect the entry is removed. All access is lock-free via DashMap. Keys are
 //! **normalized** Remote IDs (separators stripped) — callers normalize via
 //! `wado_protocol::relay::normalize_remote_id` before touching the registry.
+//!
+//! Every insert and remove bumps a [`watch`](tokio::sync::watch) counter. A join parked
+//! because its daemon is not here yet waits on that, rather than the client polling.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use dashmap::mapref::entry::Entry;
 use dashmap::DashMap;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, watch};
 use uuid::Uuid;
 
-/// One registered wado-server.
-#[allow(dead_code)]
-pub struct RegisteredServer {
-    /// This registration's identity, minted on insert. Stable for the life of the WS.
-    pub instance_id: String,
-    /// The Remote ID this daemon answers to. Shared with its pool siblings.
+/// What a daemon told the relay about itself in `register`.
+pub struct NewServer {
     pub remote_id: String,
-    /// Human-readable label shown in logs (optional, sent by the server).
-    pub display_name: Option<String>,
-    /// Remote address of the server's WS connection.
-    pub addr: SocketAddr,
-    /// Send a JSON string on this channel to deliver it to the server's WS.
-    pub inbox_tx: mpsc::Sender<String>,
-    pub registered_at: Instant,
-    /// Fresh per daemon process; see [`ServerRegistry::insert`].
+    pub instance_key: String,
     pub boot_id: String,
-    /// Identifies this one WebSocket, so a replaced connection's cleanup cannot remove the
-    /// registration that replaced it.
+    pub display_name: Option<String>,
+    pub addr: SocketAddr,
+    pub inbox_tx: mpsc::Sender<String>,
+    /// How long to hold this daemon's seat for a viewer that drops (its `VIEWER_GRACE`).
+    pub hold: Duration,
+    /// The daemon decides each join (`peer_accept` / `peer_reject`).
+    pub gate: bool,
+}
+
+/// One registered wado-server.
+struct RegisteredServer {
+    remote_id: String,
+    registered_at: Instant,
     conn_id: String,
     /// Dropped with the entry. The connection's loop waits on the other end, so replacing the
     /// entry ends the stale connection at once instead of when its TCP finally dies.
     _kick: oneshot::Sender<()>,
+    info: Instance,
 }
 
 /// What a successful registration hands back to its connection loop.
@@ -64,14 +68,33 @@ pub struct Registration {
 
 /// Registered daemons, keyed by **instance id** — not by Remote ID, because a Remote ID now
 /// names a pool rather than a process.
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct ServerRegistry {
     inner: Arc<DashMap<String, RegisteredServer>>,
+    changed: Arc<watch::Sender<u64>>,
+}
+
+impl Default for ServerRegistry {
+    fn default() -> Self {
+        Self {
+            inner: Arc::default(),
+            changed: Arc::new(watch::channel(0).0),
+        }
+    }
 }
 
 impl ServerRegistry {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// A receiver that wakes on every registration and departure.
+    pub fn watch(&self) -> watch::Receiver<u64> {
+        self.changed.subscribe()
+    }
+
+    fn bump(&self) {
+        self.changed.send_modify(|n| *n += 1);
     }
 
     /// Register a daemon under its (normalized) Remote ID.
@@ -82,33 +105,27 @@ impl ServerRegistry {
     /// it replaces that socket; a different `boot_id` is two daemons configured with one
     /// `WADO_INSTANCE`, and letting the newer win would have them evict each other on every
     /// reconnect (`issues.md` I17). That one is refused and the daemon logs why.
-    #[allow(clippy::too_many_arguments)]
-    pub fn insert(
-        &self,
-        remote_id: String,
-        instance_key: &str,
-        boot_id: String,
-        display_name: Option<String>,
-        addr: SocketAddr,
-        inbox_tx: mpsc::Sender<String>,
-    ) -> Result<Registration, String> {
-        let instance_id = if instance_key.is_empty() {
+    pub fn insert(&self, s: NewServer) -> Result<Registration, String> {
+        let instance_id = if s.instance_key.is_empty() {
             Uuid::new_v4().to_string()
         } else {
-            format!("{remote_id}:{instance_key}")
+            format!("{}:{}", s.remote_id, s.instance_key)
         };
         let conn_id = Uuid::new_v4().to_string();
         let (kick, kicked) = oneshot::channel();
-        let entry = RegisteredServer {
-            instance_id: instance_id.clone(),
-            remote_id,
-            display_name,
-            addr,
-            inbox_tx,
+        let mut entry = RegisteredServer {
+            remote_id: s.remote_id,
             registered_at: Instant::now(),
-            boot_id,
             conn_id: conn_id.clone(),
             _kick: kick,
+            info: Instance {
+                instance_id: instance_id.clone(),
+                inbox_tx: s.inbox_tx,
+                display_name: s.display_name,
+                boot_id: s.boot_id,
+                hold: s.hold,
+                gate: s.gate,
+            },
         };
         let replaced = match self.inner.entry(instance_id.clone()) {
             Entry::Vacant(slot) => {
@@ -116,20 +133,21 @@ impl ServerRegistry {
                 false
             }
             Entry::Occupied(mut slot) => {
-                if entry.boot_id.is_empty() || slot.get().boot_id != entry.boot_id {
+                if entry.info.boot_id.is_empty() || slot.get().info.boot_id != entry.info.boot_id {
                     return Err(format!(
-                        "instance key {instance_key:?} is already registered by another \
-                         running daemon — give each daemon its own WADO_INSTANCE"
+                        "instance key {:?} is already registered by another running daemon — \
+                         give each daemon its own WADO_INSTANCE",
+                        s.instance_key
                     ));
                 }
                 // Keep the pool position: assignment is oldest-first, and a redial is not a
                 // new daemon.
-                let mut entry = entry;
                 entry.registered_at = slot.get().registered_at;
                 slot.insert(entry); // drops the old entry → its `_kick` → old loop ends
                 true
             }
         };
+        self.bump();
         Ok(Registration {
             instance_id,
             conn_id,
@@ -141,9 +159,14 @@ impl ServerRegistry {
     /// Remove a registration on its WS disconnect — **only if** it is still this connection's.
     /// Returns whether it was.
     pub fn remove_if(&self, instance_id: &str, conn_id: &str) -> bool {
-        self.inner
+        let gone = self
+            .inner
             .remove_if(instance_id, |_, e| e.conn_id == conn_id)
-            .is_some()
+            .is_some();
+        if gone {
+            self.bump();
+        }
+        gone
     }
 
     /// Every instance registered for a Remote ID, **oldest registration first**.
@@ -157,31 +180,10 @@ impl ServerRegistry {
             .inner
             .iter()
             .filter(|e| e.remote_id == remote_id)
-            .map(|e| {
-                (
-                    e.registered_at,
-                    Instance {
-                        instance_id: e.instance_id.clone(),
-                        inbox_tx: e.inbox_tx.clone(),
-                        display_name: e.display_name.clone(),
-                        boot_id: e.boot_id.clone(),
-                    },
-                )
-            })
+            .map(|e| (e.registered_at, e.info.clone()))
             .collect();
         found.sort_by_key(|(t, _)| *t);
         found.into_iter().map(|(_, i)| i).collect()
-    }
-
-    /// One instance by its id, if it is still connected.
-    pub fn get(&self, instance_id: &str) -> Option<Instance> {
-        let e = self.inner.get(instance_id)?;
-        Some(Instance {
-            instance_id: e.instance_id.clone(),
-            inbox_tx: e.inbox_tx.clone(),
-            display_name: e.display_name.clone(),
-            boot_id: e.boot_id.clone(),
-        })
     }
 
     pub fn count(&self) -> usize {
@@ -197,23 +199,28 @@ pub struct Instance {
     pub inbox_tx: mpsc::Sender<String>,
     pub display_name: Option<String>,
     pub boot_id: String,
+    pub hold: Duration,
+    pub gate: bool,
 }
 
 #[cfg(test)]
 mod tests {
-    use super::ServerRegistry;
+    use super::{NewServer, ServerRegistry};
+    use std::time::Duration;
     use tokio::sync::mpsc;
 
     fn reg(r: &ServerRegistry, key: &str, boot: &str) -> Result<super::Registration, String> {
         let (tx, _rx) = mpsc::channel(1);
-        r.insert(
-            "528491307".into(),
-            key,
-            boot.into(),
-            None,
-            "127.0.0.1:1".parse().unwrap(),
-            tx,
-        )
+        r.insert(NewServer {
+            remote_id: "528491307".into(),
+            instance_key: key.into(),
+            boot_id: boot.into(),
+            display_name: None,
+            addr: "127.0.0.1:1".parse().unwrap(),
+            inbox_tx: tx,
+            hold: Duration::ZERO,
+            gate: false,
+        })
     }
 
     #[test]
@@ -245,5 +252,14 @@ mod tests {
         let b = reg(&r, "", "").unwrap();
         assert_ne!(a.instance_id, b.instance_id);
         assert_eq!(r.instances_for("528491307").len(), 2);
+    }
+
+    #[test]
+    fn parked_joins_are_woken_by_a_registration() {
+        let r = ServerRegistry::new();
+        let mut w = r.watch();
+        w.borrow_and_update();
+        let _a = reg(&r, "1", "b").unwrap();
+        assert!(w.has_changed().unwrap());
     }
 }

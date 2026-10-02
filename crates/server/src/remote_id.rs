@@ -72,6 +72,12 @@ fn persist(path: &PathBuf, id: &str) -> std::io::Result<()> {
 
 /// `$XDG_CONFIG_HOME/wado/remote_id`, falling back to `~/.config/wado/remote_id`.
 fn id_file_path() -> PathBuf {
+    config_dir().join("remote_id")
+}
+
+/// `$XDG_CONFIG_HOME/wado`, falling back to `~/.config/wado`. Shared by every daemon of a pool
+/// on this machine, which is what lets them share one Remote ID and one trust list.
+pub fn config_dir() -> PathBuf {
     let base = std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .filter(|p| !p.as_os_str().is_empty())
@@ -81,5 +87,5 @@ fn id_file_path() -> PathBuf {
                 .unwrap_or_default();
             home.join(".config")
         });
-    base.join("wado").join("remote_id")
+    base.join("wado")
 }

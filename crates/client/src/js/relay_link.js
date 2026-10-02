@@ -33,6 +33,11 @@
 //   W.relaySendMsg(obj)       send if the socket is open; returns false if it was not.
 //   W.relayUp                 true between join_accepted and the socket closing.
 //   W.relayWs                 the live socket — kept for the callers that still reach for it.
+//   W.relayTakeover()         redial with takeover=1 — only ever on a human tap ("use it here").
+//
+// More synthetic events, for `seat.js`: "__waiting" (the relay parked the join — no daemon yet,
+// or this device's daemon is reconnecting, or it awaits approval), "__occupied" (refused: every
+// daemon is in use, and a takeover is possible), "__taken_over" (another device took the seat).
 
 W.relayUp = false;
 W.relayWs = null;
@@ -42,6 +47,10 @@ W._relayTries = 0;
 W._relayUpAt = 0;           // when the link last reached join_accepted
 W._relayDeniedOccupied = false;   // the last denial was "another viewer holds this session"
 W._relayHandlers = {};      // type -> fn, plus the synthetic "__up" / "__down"
+W._relayTakeover = false;   // the next dial carries takeover=1 — set only by a tap
+W._relayTakenOver = false;  // another device took our seat: stop redialling until a tap
+W._relayRetryAfter = 0;     // rate limited: the relay's own "not before" for the next dial
+W._relayLastMsg = 0;        // when the relay last said anything; see the silence watchdog
 
 // Backoff: quick at first because most reconnects are a blip, capped low enough that a phone
 // coming back from a dead zone is reconnected in seconds rather than on some slow schedule it
@@ -88,13 +97,42 @@ W.rememberInstance = (id, instance) => {
   } catch (_) {} // private mode: stickiness is an optimisation, never a requirement
 };
 
+// This browser's own random id. The relay holds a dropped device's seat for it, and the
+// daemon's trust list remembers approved devices by it — so it is a bearer token: it never
+// leaves this browser except on the join URL. Lost with site data, which costs an approval.
+const CLIENT_KEY = "wado.client";
+W.clientKey = (() => {
+  try {
+    let k = localStorage.getItem(CLIENT_KEY);
+    if (!k) {
+      k = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now());
+      localStorage.setItem(CLIENT_KEY, k);
+    }
+    return k;
+  } catch (_) { return ""; } // private mode: no seat hold, approval every time
+})();
+
+// "Android · Chrome" — what other devices are shown when this one asks to join or takes over.
+W.deviceName = (() => {
+  const ua = navigator.userAgent || "";
+  const os = /iPhone/.test(ua) ? "iPhone" : /iPad/.test(ua) ? "iPad" : /Android/.test(ua) ? "Android"
+    : /Mac OS/.test(ua) ? "Mac" : /Windows/.test(ua) ? "Windows" : /Linux/.test(ua) ? "Linux" : "Device";
+  const br = /Edg\//.test(ua) ? "Edge" : /Firefox\//.test(ua) ? "Firefox" : /Chrome\//.test(ua) ? "Chrome"
+    : /Safari\//.test(ua) ? "Safari" : "browser";
+  return os + " · " + br;
+})();
+
 const toWsUrl = (relayUrl, id) => {
   const base = String(relayUrl).replace(/^https:\/\//, "wss://").replace(/^http:\/\//, "ws://");
   const norm = String(id).replace(/[\s-]/g, "");
   const want = instanceFor(norm);
   return base.replace(/\/+$/, "") + "/join/" + encodeURIComponent(norm) +
-    (want ? "?instance=" + encodeURIComponent(want) : "");
+    "?client=" + encodeURIComponent(W.clientKey) + "&name=" + encodeURIComponent(W.deviceName) +
+    (want ? "&instance=" + encodeURIComponent(want) : "");
 };
+// Has this browser ever been let in on this Remote ID? Decides how a "no computer online" wait
+// is worded: for an ID that has never worked, a typo is likelier than a computer still booting.
+W.knownRemoteId = (id) => !!instanceFor(String(id).replace(/[\s-]/g, ""));
 
 // A uuid is unreadable in a log line and useless on a phone screen; its first block is enough
 // to tell two daemons apart, which is all this is for.
@@ -153,8 +191,12 @@ W.relayDrop = (silent) => {
 
 function scheduleRelink() {
   if (!W._relayTarget || W._relayRetry) return;
+  // Taken over by another device with a deliberate tap: redialling would be this device
+  // reaching to take the seat straight back — the I17 steal-war. A human tap here ends it.
+  if (W._relayTakenOver) return;
   W._relayTries += 1;
-  const ms = linkDelay(W._relayTries);
+  const ms = Math.max(linkDelay(W._relayTries), W._relayRetryAfter);
+  W._relayRetryAfter = 0;
   if (W.rlog) W.rlog("relay link down — retry " + W._relayTries + " in " + ms + " ms");
   W._relayRetry = setTimeout(() => { W._relayRetry = null; openLink(); }, ms);
 }
@@ -164,12 +206,24 @@ function openLink() {
   if (!target) return;
   let ws;
   try {
-    ws = new WebSocket(target.wsUrl);
+    ws = new WebSocket(target.wsUrl + (W._relayTakeover ? "&takeover=1" : ""));
   } catch (_) {
     scheduleRelink();
     return;
   }
   W.relayWs = ws;
+
+  // A link that hears nothing is dead even when the browser has not noticed — a phone that
+  // changed networks can hold a socket open to nowhere for minutes. The relay pings every 15 s,
+  // so 45 s of silence is three missed pings: close it and let the backoff take over.
+  W._relayLastMsg = Date.now();
+  if (W._relaySilence) clearInterval(W._relaySilence);
+  W._relaySilence = setInterval(() => {
+    if (W.relayWs === ws && ws.readyState === WebSocket.OPEN && Date.now() - W._relayLastMsg > 45000) {
+      if (W.rlog) W.rlog("relay link silent for 45 s — reconnecting");
+      try { ws.close(); } catch (_) {}
+    }
+  }, 5000);
 
   ws.onopen = () => {
     // Not "up" yet: the join verdict decides. Connecting to /join/<id> IS the join, so the
@@ -181,12 +235,36 @@ function openLink() {
   ws.onmessage = (ev) => {
     let msg;
     try { msg = JSON.parse(ev.data); } catch (_) { return; }
+    W._relayLastMsg = Date.now();
 
     // Answered here rather than in a handler: the link's own liveness is the link's business,
     // and it must keep working even with no session and nothing registered.
     if (msg.type === "ping") { W.relaySendMsg({ type: "pong" }); return; }
 
+    // Parked, not refused: the socket stays open and `join_accepted` arrives on it when the
+    // reason clears. No redial, no backoff — this is the relay doing the waiting for us.
+    if (msg.type === "waiting") {
+      let why = msg.reason || "waiting for the computer";
+      if (/no computer is online/i.test(why) && W._relayTarget && !W.knownRemoteId(W._relayTarget.id))
+        why = "no computer with this Remote ID is online — check the ID (still waiting)";
+      if (W.relayPhase) W.relayPhase(1, "");
+      if (W.rlog) W.rlog("relay: " + why);
+      status("relay: " + why);
+      fire("__waiting", Object.assign({}, msg, { reason: why }));
+      return;
+    }
+
+    // Another device took this seat with a tap. The relay closes the socket next; `onclose`
+    // sees the flag and does not redial.
+    if (msg.type === "taken_over") {
+      W._relayTakenOver = true;
+      if (W.rlog) W.rlog("this desktop was opened on " + (msg.by || "another device") + " — not reconnecting");
+      fire("__taken_over", msg);
+      return;
+    }
+
     if (msg.type === "join_accepted") {
+      W._relayTakeover = false;
       W.relayUp = true;
       W._relayUpAt = Date.now();
       if (W._relayStage !== undefined) W._relayStage = 2;
@@ -227,6 +305,9 @@ function openLink() {
       return;
     }
     if (msg.type === "join_denied") {
+      W._relayTakeover = false;
+      if (msg.retry_ms) W._relayRetryAfter = msg.retry_ms;
+      if (msg.takeover) fire("__occupied", msg);
       // Retryable, not fatal — but *how* retryable depends on which denial this is, and
       // conflating them produced a live regression on 2026-09-13.
       //
@@ -264,6 +345,7 @@ function openLink() {
   ws.onerror = () => {};
 
   ws.onclose = (ev) => {
+    if (W._relaySilence) { clearInterval(W._relaySilence); W._relaySilence = null; }
     // The backoff resets only for a link that actually held. See LINK_STABLE_MS.
     if (W._relayUpAt && Date.now() - W._relayUpAt >= LINK_STABLE_MS) W._relayTries = 0;
     W._relayUpAt = 0;
@@ -273,6 +355,24 @@ function openLink() {
     scheduleRelink();
   };
 }
+
+// The one way to take a seat from another device: a human tapped "use it here". Redials now,
+// with takeover=1 on this one dial only.
+W.relayTakeover = () => {
+  if (!W._relayTarget) return false;
+  W._relayTakenOver = false;
+  W._relayDeniedOccupied = false;
+  W._relayTakeover = true;
+  W._relayTookOver = true;
+  W._relayTries = 0;
+  if (W._relayRetry) { clearTimeout(W._relayRetry); W._relayRetry = null; }
+  const ws = W.relayWs;
+  W.relayWs = null;
+  W.relayUp = false;
+  if (ws) { try { ws.onclose = null; ws.close(); } catch (_) {} }
+  openLink();
+  return true;
+};
 
 // Dial at load if this browser already knows where to go. The settings blob is the same one the
 // Rust UI writes, so a device that has connected once is connected again before anything is

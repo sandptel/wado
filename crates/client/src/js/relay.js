@@ -38,7 +38,7 @@ W._relayConfig = null;
 // past that there is nothing to rejoin, and a stale crumb would make every later page load ask
 // about a session that has been gone for hours.
 const RESUME_KEY = "wado.watching";
-const RESUME_TTL_MS = 600000;          // matches VIEWER_GRACE in relay_client.rs
+const RESUME_TTL_MS = 1800000;         // matches VIEWER_GRACE in relay_client.rs (30 min)
 
 function markWatching(on) {
   try {
@@ -133,6 +133,12 @@ W.relayConnect = (relayUrl, remoteId, config) => {
   phase(0, "");
   status("relay: connecting to " + relayUrl + "…");
   W.relayDial(relayUrl, remoteId);
+  // Start pressed while another device holds this desktop: that press *is* the "use it here"
+  // tap the steal-war guard waits for, so it takes the seat rather than knocking again.
+  if (W._relayDeniedOccupied || W._relayTakenOver) {
+    W.relayTakeover();
+    return Promise.resolve();
+  }
   // Warm link — the case this whole split exists for. One message down a socket that is already
   // open: no dial, no TLS handshake through the tunnel, no join, no 15 s timer.
   if (W.relayUp) onLinkUp();
@@ -183,6 +189,19 @@ function askForSession() {
 // is deliberate: "ask the daemon for a session" already means "…or tell me about the one that
 // is running", so there is no branch to get wrong.
 function onLinkUp() {
+  // We are here because a human tapped "use it here": the intent is the desktop that was
+  // running on the other device, so ask for that one back, never for a new one.
+  if (W._relayTookOver) {
+    W._relayTookOver = false;
+    W._relayDeniedOccupied = false;
+    W._relayResuming = true;
+    rlog("took the desktop over from the other device — rejoining its session");
+    if (!W._relayWanted || !W._relayConfig) {
+      status("relay: taking over the running session…");
+      W.relaySendMsg({ type: "session_rejoin" });
+      return;
+    }
+  }
   // We are only here because the other viewer's socket went away — we did not reconnect, we
   // displaced somebody. Taking the session back automatically is precisely how two devices
   // trade it every eighteen seconds and neither gets a stable stream (I17), so this is the one

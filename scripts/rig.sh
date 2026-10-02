@@ -158,7 +158,9 @@ else
   fi
   stop_all
 
-setsid nohup ./target/release/wado-relay --log-level "$RELAY_LEVEL" \
+# --trust-proxy: every phone arrives through cloudflared from 127.0.0.1, and the relay's join
+# rate limit is per address — without the flag all of them would share one bucket.
+setsid nohup ./target/release/wado-relay --log-level "$RELAY_LEVEL" --trust-proxy \
   > "$LOGS/relay.log" 2>&1 < /dev/null &
 
 # Poll rather than sleep a fixed amount: the relay is usually up in well under a second, and a

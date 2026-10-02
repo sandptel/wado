@@ -8,6 +8,7 @@
 //! ## Routes
 //! - `WS /register`           — server registration and message inbox.
 //! - `WS /join/:server_id`    — client join + post-handshake message forwarding.
+//!   Query: `instance`, `client`, `name`, `takeover` — all optional; see `join::JoinQuery`.
 //! - `GET /health`            — JSON health check `{ servers, rooms }`.
 
 use std::net::SocketAddr;
@@ -23,7 +24,10 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 mod config;
 mod error;
+mod join;
 mod panic_log;
+mod ratelimit;
+mod register;
 mod registry;
 mod room;
 mod signaling;
@@ -38,6 +42,7 @@ pub struct AppState {
     pub registry: ServerRegistry,
     pub rooms: RoomStore,
     pub config: RelayConfig,
+    pub limiter: ratelimit::JoinLimiter,
 }
 
 #[tokio::main]
@@ -58,11 +63,15 @@ async fn main() -> anyhow::Result<()> {
         registry: ServerRegistry::new(),
         rooms: RoomStore::new(),
         config: cfg.clone(),
+        limiter: ratelimit::JoinLimiter::new(
+            cfg.join_burst,
+            std::time::Duration::from_secs(cfg.join_refill_secs),
+        ),
     };
 
     let app = Router::new()
-        .route("/register", get(signaling::handle_register))
-        .route("/join/:remote_id", get(signaling::handle_join))
+        .route("/register", get(register::handle_register))
+        .route("/join/:remote_id", get(join::handle_join))
         .route("/health", get(health))
         .with_state(state);
 

@@ -100,7 +100,9 @@ const rejoins = (s) => s.sent.filter((m) => m.type === "session_rejoin").length;
   W.relayConnect("https://relay.test", "872-990-894", { width: 1 });
   check("a warm link opens no second socket", sockets.length, before);
   check("…and asks for a session immediately", started(sockets[0]), 1);
-  check("…over wss with the id normalized", sockets[0].url, "wss://relay.test/join/872990894");
+  // The path is the join; the query carries this browser's key and label (seat hold, approval).
+  check("…over wss with the id normalized", sockets[0].url.split("?")[0], "wss://relay.test/join/872990894");
+  check("…carrying the browser's key", /[?&]client=[^&]+/.test(sockets[0].url), true);
 }
 
 // ── 2. The link reconnects on its own, forever ───────────────────────────────
@@ -301,7 +303,8 @@ const rejoins = (s) => s.sent.filter((m) => m.type === "session_rejoin").length;
 {
   // Stale: older than the server grace, so there is nothing left to rejoin.
   const w = makeWorld();
-  w.store.set("wado.watching", JSON.stringify({ t: Date.now() - 700000, scale: 1 }));
+  // Past the 30-minute grace (RESUME_TTL_MS), so nothing is left to rejoin.
+  w.store.set("wado.watching", JSON.stringify({ t: Date.now() - 1900000, scale: 1 }));
   w.W.relayDial("ws://r", "1");
   w.sockets[0].accept();
   // Counting the verbs, not the frames: `rlog` puts a client_log down the socket on every
@@ -581,6 +584,39 @@ const rejoins = (s) => s.sent.filter((m) => m.type === "session_rejoin").length;
   const re = /UNKNOWN_MSG_RE\s*=\s*\/([^/]+)\//.exec(cli)[1];
   check("the daemon still sends the wording the client matches",
     new RegExp(re, "i").test(srv), true);
+}
+
+// ── Seats (2026-10-02): parked joins, takeover, taken-over ──────────────────
+//
+// The relay now waits on the client's behalf: no daemon yet means `waiting` on an open socket,
+// not a refusal to redial against. And a seat moves between devices only on a tap — the device
+// that lost it must not reach straight back for it (I17).
+{
+  const { W, sockets, events } = makeWorld();
+  W.relayDial("ws://r", "1");
+  sockets[0].open();
+  sockets[0].deliver({ type: "waiting", reason: "no computer is online with this Remote ID yet — waiting for it to start" });
+  check("a parked join keeps its one socket and schedules nothing",
+    [sockets.length, W._relayRetry, sockets[0].readyState], [1, null, 1]);
+  check("…and an ID never used here is flagged as a possible typo",
+    events.some((e) => e.includes("check the ID")), true);
+  sockets[0].deliver({ type: "join_accepted", remote_id: "1", room_id: "r", instance_id: "1:1" });
+  check("…and is up the moment the relay pairs it", W.relayUp, true);
+
+  sockets[0].deliver({ type: "taken_over", by: "Pixel" });
+  sockets[0].drop(1000);
+  check("a device whose seat was taken does not redial", [W._relayRetry, sockets.length], [null, 1]);
+
+  W.relayTakeover();
+  check("one tap redials with takeover", /[?&]takeover=1/.test(sockets[1].url), true);
+  sockets[1].accept();
+  check("…and rejoins the desktop it took, never starts a new one",
+    [rejoins(sockets[1]), started(sockets[1])], [1, 0]);
+  check("…and the takeover flag is spent", W._relayTakeover, false);
+  sockets[1].drop();
+  // An ordinary blip after a takeover is an ordinary redial (the URL is built at open time from
+  // the spent flag above, so it carries no takeover).
+  check("…and a later blip still redials", W._relayRetry !== null, true);
 }
 
 console.log(failures ? `\n${failures} failing` : "\nall relay-link checks pass");

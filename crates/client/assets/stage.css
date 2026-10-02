@@ -476,4 +476,7 @@
 .menurow:disabled { opacity: 0.4; }
 .menurow.checked::before { content: "✓"; margin-right: 10px; color: var(--base0D); }
 .menurow[data-more]::after { content: attr(data-more); opacity: 0.6; font-size: 20px; }
+/* A prompt sheet (js/sheet.js): the question above its buttons. */
+.wado-prompt { z-index: 45; }
+.sheettitle { padding: 10px 16px 8px; color: var(--base05); font: 600 16px/1.35 system-ui, sans-serif; }
 .menurow.cancel { justify-content: center; margin-top: 6px; background: var(--base01); font-weight: 600; }
