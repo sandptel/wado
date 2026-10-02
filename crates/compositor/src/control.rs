@@ -192,6 +192,7 @@ fn start(
         return Err("a session is already active".into());
     }
     let config = &host_limited(config);
+    crate::session_env::set_dark(config.dark);
     let encoder = crate::conf::to_encoder_config(config);
     let frame_dur = Duration::from_nanos(1_000_000_000 / encoder.fps.max(1) as u64);
     let sink = Box::new(ChannelSink::new(frame_tx.clone(), frame_dur));

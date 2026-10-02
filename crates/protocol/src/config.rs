@@ -25,6 +25,17 @@ pub struct ConfigState {
     /// Sections changed in the file that only take effect after a daemon restart.
     #[serde(default)]
     pub restart: Vec<String>,
+    /// What three-finger swipes do: `"swipe-3-up"` → `"app-drawer"`.
+    #[serde(default)]
+    pub gestures: std::collections::BTreeMap<String, String>,
+    /// Keyboard shortcuts the compositor keeps: `"Mod+Q"` → `"close-window"`, and what `Mod` is.
+    #[serde(default)]
+    pub binds: std::collections::BTreeMap<String, String>,
+    #[serde(default)]
+    pub bind_mod: String,
+    /// How many window rules config.kdl has.
+    #[serde(default)]
+    pub window_rules: usize,
     /// Shells are allowed on this host.
     #[serde(default = "yes")]
     pub shells: bool,

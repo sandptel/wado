@@ -84,6 +84,13 @@ impl Wado {
             tracing::warn!(?action, "window action ignored — nothing is focused");
             return;
         };
+        self.window_action_on(&window, action);
+    }
+
+    /// Maximize, minimize or close one particular window — the focused one for the bar, a new
+    /// one for a window rule.
+    pub(crate) fn window_action_on(&mut self, window: &Window, action: WindowAction) {
+        let window = window.clone();
         let strip = self.placement == wado_protocol::Placement::Strip;
         match action {
             // In the strip a column is always maximized; "fill the screen or not" becomes its
@@ -99,9 +106,8 @@ impl Wado {
                     t.send_close();
                 }
             }
-            WindowAction::CycleFocus | WindowAction::Focus { .. } | WindowAction::Back => {
-                unreachable!("handled above")
-            }
+            // Not actions on one window; `window_action` handles them before it gets here.
+            WindowAction::CycleFocus | WindowAction::Focus { .. } | WindowAction::Back => {}
         }
     }
 

@@ -315,6 +315,10 @@ pub struct SessionConfig {
     /// that every X application shares one screen with no window manager in it.
     #[serde(default)]
     pub x_server: bool,
+    /// The viewer's scheme is dark (`Some(true)`) or light — passed on to the session's apps so
+    /// they match the shell. `None`: leave apps to their own default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dark: Option<bool>,
 }
 
 /// Isolated. See [`SessionConfig::isolate_apps`].
@@ -380,6 +384,7 @@ mod config_validation_tests {
         SessionConfig {
             isolate_apps: true,
             x_server: false,
+            dark: None,
             width: 1280,
             height: 720,
             fps: 60,

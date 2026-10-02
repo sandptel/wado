@@ -83,6 +83,7 @@ pub fn build(ui: Ui) -> SessionConfig {
         encoder: EncoderPref { backend },
         isolate_apps: (s.isolate_apps)(),
         x_server: (s.x_server)(),
+        dark: Some(crate::theme::is_dark(&(s.theme)(), &(s.theme_custom)())),
     }
 }
 

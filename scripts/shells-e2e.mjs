@@ -7,7 +7,8 @@
 //   shells     a shell opens, runs a command, and lists with its title
 //   reattach   a viewer that drops and comes back gets the shell and its scrollback (as a replay)
 //   ssh        hosts come from ~/.ssh/config, and an alias that is not there is refused
-//   config     config_get answers; a live key set from the client lands and is pushed back
+//   config     config_get answers; live keys (caps, binds, gestures) set from the client land
+//              and are pushed back; bad ones and unconfirmed privileged ones are refused
 //   close      closing a tab ends the shell and the list says so
 
 import { spawn } from "node:child_process";
@@ -113,6 +114,16 @@ try {
   check("…in ui.kdl, not config.kdl",
     readFileSync(join(HOME, ".config/wado/ui.kdl"), "utf8").includes("max-fps 90") &&
     !readFileSync(join(HOME, ".config/wado/config.kdl"), "utf8").includes("max-fps 90"));
+  b.send({ type: "config_set", key: "binds.Mod+Q", value: "close-window" });
+  const bound = await b.waitWhere((m) => m.type === "config_state" && m.state.binds && m.state.binds["Mod+Q"] === "close-window");
+  check("a shortcut added from the client lands in binds", !!bound, JSON.stringify(b.msgs.slice(-2)));
+  b.send({ type: "config_set", key: "binds.Mod+Q", value: "explode" });
+  const badBind = await b.wait("config_rejected", 5000);
+  check("…and a bad action is refused with its position", badBind && /unknown action/.test(badBind.message), JSON.stringify(badBind));
+  b.send({ type: "config_set", key: "gestures.swipe-3-up", value: "keyboard" });
+  const swiped = await b.waitWhere((m) => m.type === "config_state" && m.state.gestures["swipe-3-up"] === "keyboard" && m.state.gestures["swipe-3-left"] === "back");
+  check("a swipe rebound from the client keeps the other defaults", !!swiped);
+  b.msgs.length = 0;
   b.send({ type: "config_set", key: "shells.enabled", value: "false" });
   const unconfirmed = await b.wait("config_rejected", 5000);
   check("a privileged key needs confirming", unconfirmed && /confirm/.test(unconfirmed.message), JSON.stringify(unconfirmed));

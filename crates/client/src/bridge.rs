@@ -74,6 +74,8 @@ pub const JS: &str = concat!(
     // After `input_touch`, which defines `W.windowDragAt`.
     include_str!("js/input_tap.js"),
     "\n",
+    include_str!("js/gestures.js"),
+    "\n",
     // After `relay.js` (for `W.relayOn`) and before any tap is taken.
     include_str!("js/targets.js"),
     "\n",
@@ -310,6 +312,7 @@ pub fn run(ui: Ui) {
                     live.shell_active.set(num("id").unwrap_or(0.0) as u32);
                     live.console_tab.set("shell".to_string());
                 }
+                "gesture" => crate::ui::gesture::run(ui, &string("action")),
                 "shellMods" => {
                     let flag = |k: &str| msg.get(k).and_then(|v| v.as_bool()).unwrap_or(false);
                     live.shell_mods.set((flag("ctrl"), flag("alt")));

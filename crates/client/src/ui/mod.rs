@@ -17,6 +17,7 @@ pub mod console;
 pub mod dock;
 pub mod drawer;
 pub mod gamepad;
+pub mod gesture;
 pub mod health;
 pub mod landing;
 pub mod live;

@@ -15,7 +15,18 @@ pub mod a11y;
 pub mod bus;
 pub mod xwayland;
 
-use std::process::Command;
+use std::{
+    process::Command,
+    sync::atomic::{AtomicU8, Ordering},
+};
+
+/// The viewer's light/dark choice for this session: 0 unknown, 1 dark, 2 light. Set at start;
+/// one compositor per daemon, so one value.
+static DARK: AtomicU8 = AtomicU8::new(0);
+
+pub fn set_dark(dark: Option<bool>) {
+    DARK.store(dark.map_or(0, |d| if d { 1 } else { 2 }), Ordering::Relaxed);
+}
 
 /// Where a launched application's session services come from.
 ///
@@ -46,6 +57,23 @@ pub enum AppEnv {
 pub fn apply(cmd: &mut Command, env: &AppEnv) {
     // The config's own variables go first, so the session's isolation below still wins over a
     // `DISPLAY` someone put in `session { env { } }`.
+    // The viewer's light or dark, so apps match the shell around them. GTK reads GTK_THEME;
+    // libadwaita ignores it but honours ADW_DEBUG_COLOR_SCHEME.
+    //
+    // ponytail: env, not a settings portal. A portal (org.freedesktop.appearance on the session
+    // bus) would also carry the accent and reach Qt and Electron; it is the upgrade if those
+    // apps matter enough to run a D-Bus service for.
+    match DARK.load(Ordering::Relaxed) {
+        1 => {
+            cmd.env("GTK_THEME", "Adwaita:dark");
+            cmd.env("ADW_DEBUG_COLOR_SCHEME", "prefer-dark");
+        }
+        2 => {
+            cmd.env("GTK_THEME", "Adwaita");
+            cmd.env("ADW_DEBUG_COLOR_SCHEME", "prefer-light");
+        }
+        _ => {}
+    }
     cmd.envs(&wado_config::live::current().session.env);
     let (bus, x) = match env {
         // The host's `DISPLAY` stays as it was when there is no session X server: an X11 app

@@ -16,6 +16,26 @@ pub fn schemes() -> Vec<(String, Vec<String>)> {
     serde_json::from_str(include_str!("schemes.json")).unwrap_or_default()
 }
 
+/// Whether the scheme in force has a dark ground — what the session's apps are told to match.
+/// Same threshold as `js/theme.js`, which decides the page's own `color-scheme` from it.
+pub fn is_dark(name: &str, custom: &str) -> bool {
+    let base00 = parse(custom)
+        .map(|v| v[0].clone())
+        .or_else(|| {
+            schemes()
+                .into_iter()
+                .find(|(n, _)| n == name)
+                .map(|(_, c)| c[0].clone())
+        })
+        .unwrap_or_default();
+    let Ok(n) = u32::from_str_radix(&base00, 16) else {
+        return true;
+    };
+    let lum =
+        0.2126 * (n >> 16) as f64 + 0.7152 * ((n >> 8) & 255) as f64 + 0.0722 * (n & 255) as f64;
+    lum <= 140.0
+}
+
 /// Push corner style, motion level and accent slot to the bridge.
 pub fn apply_look(radius: &str, motion: &str, accent: &str) {
     crate::bridge::call(format!(
@@ -140,6 +160,13 @@ base0F: "d65d0e"
                 "{name}"
             );
         }
+    }
+
+    #[test]
+    fn light_and_dark_schemes_are_told_apart() {
+        assert!(is_dark("gruvbox-dark", ""));
+        assert!(!is_dark("catppuccin-latte", ""));
+        assert!(is_dark("no-such-scheme", ""), "unknown falls back to dark");
     }
 
     #[test]
