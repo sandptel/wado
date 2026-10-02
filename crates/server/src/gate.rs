@@ -110,6 +110,25 @@ impl Gate {
         safe.then(|| self.pending_dir().join(format!("{id}.{ext}")))
     }
 
+    /// `(key, name)` for every trusted device, oldest first.
+    pub fn trusted(&self) -> Vec<(String, String)> {
+        fs::read_to_string(self.trusted_path())
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|l| {
+                let mut it = l.split('\t');
+                let key = it.next()?.trim();
+                (!key.is_empty())
+                    .then(|| (key.to_string(), it.next().unwrap_or("").trim().to_string()))
+            })
+            .collect()
+    }
+
+    /// The first device ever trusted — the owner unless `security { owner }` names another.
+    pub fn first_trusted(&self) -> Option<String> {
+        self.trusted().into_iter().next().map(|(k, _)| k)
+    }
+
     fn trusted_keys(&self) -> Vec<String> {
         fs::read_to_string(self.trusted_path())
             .unwrap_or_default()

@@ -93,3 +93,16 @@ mod tests {
         assert_eq!(r.fps, 120);
     }
 }
+
+/// Input settings the host pins (`input { }`) win over the client's.
+pub fn pin_input(req: &mut SessionConfig, pinned: &crate::schema::Input) {
+    if let Some(v) = pinned.repeat_rate {
+        req.input.repeat_rate = v;
+    }
+    if let Some(v) = pinned.repeat_delay {
+        req.input.repeat_delay = v;
+    }
+    if let Some(v) = pinned.focus_follows_pointer {
+        req.input.focus_follows_pointer = v;
+    }
+}

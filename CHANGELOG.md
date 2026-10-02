@@ -4,6 +4,22 @@
 
 ### Added
 
+**Config edits apply live, and the client can make them.** Save `config.kdl` and the daemon
+reloads it within a second. A file with a mistake is not applied: the daemon keeps running on
+the last good config and tells every connected client exactly where the mistake is (file, line
+and column). Changes to `server { }` are reported as needing a restart. Edits made from the
+client go to a separate `ui.kdl` that wado owns, so your own `config.kdl` is never rewritten.
+Settings that can run code or widen access (`server`, `security`, `session` env and
+autostart, `shells`) can only be changed from the **owner device**, which is the first one you
+trusted, or the one named in `security { owner }`, and they need an on-screen confirmation.
+**Each device's settings are now saved on the daemon** (`device "<id>" { }` in `ui.kdl`), so
+they follow the device across browsers and survive a cleared cache. `input { }` lets the host
+pin key repeat and focus-follows-mouse for everyone.
+
+**`wado msg`** talks to a running daemon: `wado msg reload`, `wado msg get stream`,
+`wado msg set stream.max-fps 90`, `wado msg devices`. Pass `--instance N` to reach one daemon
+in a pool.
+
 **The daemon has a config file: `~/.config/wado/config.kdl`.** It uses KDL, the way niri does.
 The first run writes a fully commented starting file that changes nothing until you edit it.
 The sections are:

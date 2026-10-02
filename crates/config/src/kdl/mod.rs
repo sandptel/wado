@@ -7,14 +7,29 @@
 pub mod merge;
 pub mod tree;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::{Config, ConfigError};
 
 pub fn load(path: &Path) -> Result<Config, ConfigError> {
+    load_tracked(path).map(|(c, _)| c)
+}
+
+/// Load, and say which files were read — what a watcher has to watch.
+///
+/// `ui.kdl` (the file wado writes for the client) is read after the main file unless the main
+/// file `include`s it itself, in which case its position there decides what wins. So client
+/// edits work out of the box, and someone who wants their file to win can say so.
+pub fn load_tracked(path: &Path) -> Result<(Config, Vec<PathBuf>), ConfigError> {
     let mut spans = tree::Spans::default();
-    let value = tree::read(path, &mut spans)?;
-    decode(value, &spans)
+    let mut value = tree::read(path, &mut spans)?;
+    let ui = path.with_file_name(crate::paths::UI_FILE);
+    if !spans.files().contains(&ui) && ui.exists() {
+        let extra = tree::read(&ui, &mut spans)?;
+        merge::deep(&mut value, extra);
+    }
+    let files = spans.files();
+    Ok((decode(value, &spans)?, files))
 }
 
 /// Parse KDL text with no file behind it (tests, `wado msg`, the client's preview).
