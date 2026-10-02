@@ -69,6 +69,7 @@ pub struct Saved {
     pub profile: Option<usize>,
     pub keep_awake: Option<bool>,
     pub lens_auto: Option<bool>,
+    pub dnd: Option<bool>,
     pub theme: Option<String>,
     pub theme_custom: Option<String>,
 
@@ -137,6 +138,7 @@ pub fn snapshot(ui: Ui) -> Saved {
         profile: Some((s.profile)()),
         keep_awake: Some((s.keep_awake)()),
         lens_auto: Some((s.lens_auto)()),
+        dnd: Some((s.dnd)()),
         theme: Some((s.theme)()),
         theme_custom: Some((s.theme_custom)()),
 
@@ -217,6 +219,7 @@ pub fn restore(ui: Ui, saved: Saved) {
     put!(profile);
     put!(keep_awake);
     put!(lens_auto);
+    put!(dnd);
     put!(theme);
     put!(theme_custom);
     put!(debug_master);

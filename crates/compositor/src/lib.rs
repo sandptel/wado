@@ -101,6 +101,8 @@ pub struct CompositorHandles {
     pub menu: tokio::sync::watch::Receiver<Option<hit::MenuSpot>>,
     /// The session clipboard, when an app copies text — see [`clipboard`].
     pub clipboard: tokio::sync::watch::Receiver<String>,
+    /// The session's private bus address — see [`Wado::app_bus_tx`].
+    pub app_bus: tokio::sync::watch::Receiver<Option<String>>,
 }
 
 /// Build the compositor: create the event loop, display, and [`Wado`] state, claim the
@@ -189,6 +191,7 @@ pub fn build(
     let shedding = state.shedding_tx.subscribe();
     let windows = state.windows_tx.subscribe();
     let clipboard = state.clipboard_tx.subscribe();
+    let app_bus = state.app_bus_tx.subscribe();
     let menu = state.menu_tx.subscribe();
     Ok((
         event_loop,
@@ -201,6 +204,7 @@ pub fn build(
             shedding,
             windows,
             clipboard,
+            app_bus,
             menu,
         },
     ))

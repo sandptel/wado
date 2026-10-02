@@ -29,6 +29,7 @@ pub fn render(ui: Ui) -> Element {
     let relay = (ui.set.conn_mode)() == "relay";
     let shells = (live.shells)();
     let clips = (live.clips)();
+    let notes = (live.notes)();
 
     rsx! {
         div {
@@ -46,6 +47,28 @@ pub fn render(ui: Ui) -> Element {
                 // its scroll; the pushed page is mounted only while it is up.
                 div { class: if page == Page::Root { "page" } else { "page behind" },
                     {hero::render(ui)}
+                    if !notes.is_empty() {
+                        div { class: "sect",
+                            span { "Notifications" }
+                            button { onclick: move |_| live.notes.write().clear(), "Clear all" }
+                        }
+                        div { class: "notes",
+                            for n in notes.iter().cloned() {
+                                div { key: "{n.id}", class: "note",
+                                    span { class: "disc", style: "--hue:var(--base0A)", Icon { name: "bell" } }
+                                    div { class: "notetext",
+                                        small { "{n.app}" }
+                                        b { "{n.summary}" }
+                                        if !n.body.is_empty() { p { "{n.body}" } }
+                                    }
+                                    button { class: "iconbtn", "aria-label": "Dismiss",
+                                        onclick: move |_| live.notes.write().retain(|x| x.id != n.id),
+                                        Icon { name: "x" }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     {tiles::render(ui)}
                     div { class: "sect",
                         span { "Shells" }

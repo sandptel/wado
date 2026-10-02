@@ -134,6 +134,9 @@ pub struct Wado {
     pub windows_tx: tokio::sync::watch::Sender<Vec<wado_protocol::WindowInfo>>,
     /// The session's clipboard text, whenever an app copies — see [`crate::clipboard`].
     pub clipboard_tx: tokio::sync::watch::Sender<String>,
+    /// The session's private D-Bus address while it has one — what the server serves
+    /// notifications on. `None` with no session, or with isolation off.
+    pub app_bus_tx: tokio::sync::watch::Sender<Option<String>>,
     /// The menu open on the focused window, for the S7 menu sheet — see [`crate::hit`].
     pub menu_tx: tokio::sync::watch::Sender<Option<crate::hit::MenuSpot>>,
     /// Stable per-window ids for that list. Never reused within a process.
@@ -446,6 +449,7 @@ impl Wado {
             shedding_tx: tokio::sync::watch::channel(1).0,
             windows_tx: tokio::sync::watch::channel(Vec::new()).0,
             clipboard_tx: tokio::sync::watch::channel(String::new()).0,
+            app_bus_tx: tokio::sync::watch::channel(None).0,
             menu_tx: tokio::sync::watch::channel(None).0,
             window_ids: std::collections::HashMap::new(),
             next_window_id: 0,

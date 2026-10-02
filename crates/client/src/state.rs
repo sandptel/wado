@@ -31,6 +31,18 @@ pub const MAX_RECENT: usize = 4;
 /// Keep at most this many log lines in memory / the DOM.
 pub const MAX_LOG_LINES: usize = 500;
 
+/// Notifications kept in the shade, newest first.
+pub const MAX_NOTES: usize = 20;
+
+/// One notification from an app in the session.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Note {
+    pub id: u32,
+    pub app: String,
+    pub summary: String,
+    pub body: String,
+}
+
 /// Clipboard entries kept from the session, newest first.
 pub const MAX_CLIPS: usize = 5;
 
@@ -138,6 +150,8 @@ pub struct Settings {
     pub keep_awake: Signal<bool>,
     /// An ambiguous tap opens the lens rather than clicking.
     pub lens_auto: Signal<bool>,
+    /// Do not disturb: notifications go to the shade without a toast.
+    pub dnd: Signal<bool>,
 
     pub theme: Signal<String>,
     /// Raw text of a pasted base16 scheme. Kept verbatim so the box still shows what was
@@ -223,6 +237,7 @@ impl Settings {
             profile: use_signal(|| 0),
             keep_awake: use_signal(|| true),
             lens_auto: use_signal(|| true),
+            dnd: use_signal(|| false),
             theme: use_signal(|| "default-dark".to_string()),
             theme_custom: use_signal(String::new),
 
@@ -267,6 +282,8 @@ pub struct Live {
     pub shell_mods: Signal<(bool, bool)>,
     /// What apps in the session copied, newest first — see `js/clipboard.js`.
     pub clips: Signal<Vec<String>>,
+    /// The notification shade, newest first.
+    pub notes: Signal<Vec<Note>>,
 
     /// The control centre: whether it is up, which page it shows, and whether the tiles are
     /// being edited. Not persisted — a sheet covering the video on load is never wanted.
@@ -394,6 +411,7 @@ impl Live {
             shell_active: use_signal(|| 0),
             shell_mods: use_signal(|| (false, false)),
             clips: use_signal(Vec::new),
+            notes: use_signal(Vec::new),
             cc_open: use_signal(|| false),
             cc_page: use_signal(Default::default),
             applied: use_signal(String::new),

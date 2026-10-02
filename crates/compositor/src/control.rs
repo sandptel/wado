@@ -218,6 +218,9 @@ fn start(
 
     state.app_env = if config.isolate_apps {
         state.app_bus = crate::session_env::bus::start();
+        let _ = state
+            .app_bus_tx
+            .send(state.app_bus.as_ref().map(|b| b.address.clone()));
         state.app_a11y = crate::session_env::a11y::start();
         crate::session_env::AppEnv::Isolated {
             bus: state.app_bus.as_ref().map(|b| b.address.clone()),

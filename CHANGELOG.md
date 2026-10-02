@@ -4,6 +4,12 @@
 
 ### Added
 
+**Notifications from the desktop's apps reach the phone.** An isolated session used to drop
+them, because its private bus had no notification daemon. wado now provides one there, and
+each notification pops up over the picture and stays in a shade in the control centre until
+it is dismissed. **Do not disturb** (a tile) keeps them in the shade without popping up.
+Summary and body only for now; action buttons aren't supported yet.
+
 **The clipboard works both ways.** Copy something in an app on the desktop and it lands on
 the phone's clipboard (when the browser allows it), and always in a *Copied in the session*
 list in the control centre, one tap from your clipboard. The **Paste here** tile sends the
