@@ -129,6 +129,12 @@ pub fn render(ui: Ui) -> Element {
                             Icon { name: "refresh" } "Resync"
                         }
                         button {
+                            class: "btn", disabled: !on,
+                            title: "Go home and leave the session running",
+                            onclick: move |_| actions::leave(ui),
+                            Icon { name: "home" } "Leave running"
+                        }
+                        button {
                             class: "btn danger", disabled: !on,
                             onclick: move |_| { live.cc_open.set(false); actions::stop(ui); },
                             Icon { name: "power" } "End session"

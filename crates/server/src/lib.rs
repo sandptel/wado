@@ -23,6 +23,7 @@ pub mod relay_client;
 pub mod remote_id;
 pub mod runlane;
 pub mod sched;
+pub mod sessions;
 pub mod shells;
 pub mod webrtc_settings;
 pub mod website;
