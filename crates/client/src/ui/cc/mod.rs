@@ -26,6 +26,8 @@ pub fn render(ui: Ui) -> Element {
     let open = (live.cc_open)();
     let page = (live.cc_page)();
     let on = (live.session_on)();
+    let relay = (ui.set.conn_mode)() == "relay";
+    let shells = (live.shells)();
 
     rsx! {
         div {
@@ -47,14 +49,31 @@ pub fn render(ui: Ui) -> Element {
                     div { class: "sect",
                         span { "Shells" }
                         button {
-                            disabled: !on,
-                            onclick: move |_| {
-                                live.console_tab.set("shell".to_string());
-                                live.console_open.set(true);
-                                live.cc_open.set(false);
-                                bridge::call("window.__wado.ptyShow();".to_string());
-                            },
-                            "Open"
+                            disabled: !relay,
+                            onclick: move |_| { live.cc_open.set(false); crate::ui::console::open_shells(ui); },
+                            if shells.is_empty() { "Open" } else { "Show" }
+                        }
+                    }
+                    if !shells.is_empty() {
+                        div { class: "shellstrip",
+                            for sh in shells.iter().cloned() {
+                                button {
+                                    key: "{sh.id}",
+                                    class: if sh.alive { "shellcard" } else { "shellcard dead" },
+                                    onclick: move |_| {
+                                        live.cc_open.set(false);
+                                        live.console_tab.set("shell".to_string());
+                                        live.console_open.set(true);
+                                        live.shell_active.set(sh.id);
+                                        bridge::call(format!("window.__wado.shellShow({});", sh.id));
+                                    },
+                                    span { class: "disc", style: if sh.host.is_some() { "--hue:var(--base0E)" } else { "--hue:var(--base0B)" },
+                                        Icon { name: if sh.host.is_some() { "server" } else { "term" } }
+                                    }
+                                    b { "{sh.title}" }
+                                    small { if sh.host.is_some() { "ssh" } else { "this computer" } if !sh.alive { " · exited" } }
+                                }
+                            }
                         }
                     }
                     div { class: "sect", span { "Settings" }

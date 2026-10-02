@@ -39,11 +39,17 @@ pub struct Pty {
 }
 
 impl Pty {
-    /// Open a PTY, start the user's shell on it, and stream its output into `out`.
+    /// Open a PTY, start the user's shell on it — or `ssh <host>` when `host` is given — and
+    /// stream its output into `out`.
     ///
-    /// The channel closing is what stops the reader thread: it is the signal that the viewer
-    /// has gone.
-    pub fn open(cols: u16, rows: u16, out: mpsc::Sender<String>) -> std::io::Result<Self> {
+    /// `host` is an alias the caller has already checked against the host's own ssh config
+    /// (see [`crate::shells::hosts`]); it is passed as one argument, never through a shell.
+    pub fn open(
+        cols: u16,
+        rows: u16,
+        host: Option<&str>,
+        out: mpsc::Sender<String>,
+    ) -> std::io::Result<Self> {
         if !wado_config::live::current().shells.enabled {
             return Err(std::io::Error::other(
                 "shells are disabled on this host (shells.enabled)",
@@ -66,8 +72,18 @@ impl Pty {
             .clone()
             .or_else(|| std::env::var("SHELL").ok())
             .unwrap_or_else(|| "/bin/sh".to_string());
-        let mut cmd = CommandBuilder::new(&shell);
-        cmd.arg("-l");
+        let mut cmd = match host {
+            Some(alias) => {
+                let mut c = CommandBuilder::new("ssh");
+                c.arg(alias);
+                c
+            }
+            None => {
+                let mut c = CommandBuilder::new(&shell);
+                c.arg("-l");
+                c
+            }
+        };
         if let Ok(home) = std::env::var("HOME") {
             cmd.cwd(home);
         }

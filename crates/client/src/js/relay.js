@@ -443,11 +443,6 @@ W.relayOn("ice_candidate", async (msg) => {
   }
 });
 
-// Straight to the emulator rather than through a Dioxus signal: terminal output arrives in
-// small bursts at high rate, and routing it through a re-render would make the shell feel
-// slower than the video behind it.
-W.relayOn("pty_output", (msg) => W.ptyOutput(msg.data || ""));
-W.relayOn("pty_exit", () => W.ptyExited());
 
 // Stashed rather than resolved through a promise: the collector runs on its own 1 Hz tick and
 // uses the most recent reply, so one dropped answer costs a stale sample instead of a stalled
@@ -575,8 +570,6 @@ W._relayNegotiate = async () => {
 
 // ── Session control helpers ───────────────────────────────────────────────────
 
-// Every pty verb is fire-and-forget: a keystroke that misses the socket is a keystroke the
-// shell never saw, and the terminal showing nothing is the right feedback for that.
 const relaySend = (obj) => W.relaySendMsg(obj);
 
 // The client's own verdict on its decoder, going back to the daemon so the render loop can shed
@@ -617,10 +610,6 @@ W.relayReconfigure = (config) => {
   return relaySend({ type: "session_reconfigure", config });
 };
 
-W.ptyOpen = (cols, rows) => relaySend({ type: "pty_open", cols, rows });
-W.ptyInput = (data) => relaySend({ type: "pty_input", data });
-W.ptyResize = (cols, rows) => relaySend({ type: "pty_resize", cols, rows });
-W.ptyClose = () => relaySend({ type: "pty_close" });
 
 // Stops the *session*. The link stays up, because the page is still open and the next Start
 // should be one message rather than a fresh dial — which is the whole point of the split.

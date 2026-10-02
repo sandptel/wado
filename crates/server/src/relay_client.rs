@@ -684,6 +684,39 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
         })
     };
 
+    // Every shell's output and exits, for whoever is connected now. The shells themselves
+    // outlive this connection (see `crate::shells`).
+    let shells_task = {
+        let mut rx = crate::shells::events();
+        let out_tx_s = out_tx.clone();
+        tokio::spawn(async move {
+            use crate::shells::Event;
+            loop {
+                let msg = match rx.recv().await {
+                    Ok(Event::Output { id, data }) => RelayMsg::PtyOutput {
+                        id,
+                        data,
+                        replay: false,
+                    },
+                    Ok(Event::Exit { id }) => RelayMsg::PtyExit { id, code: None },
+                    Ok(Event::Changed) => RelayMsg::Shells {
+                        shells: crate::shells::list(),
+                        hosts: crate::shells::hosts::list(),
+                    },
+                    // Fell behind a burst of output: say so in-band rather than silently skip.
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                        warn!(n, "shell output lagged for this viewer");
+                        continue;
+                    }
+                    Err(_) => break,
+                };
+                if send_relay(&out_tx_s, &msg).await.is_err() {
+                    break;
+                }
+            }
+        })
+    };
+
     // The open menu, as a sheet. Same shape as `windows_task`, plus the tree read in between:
     // each popup is read once, and a popup that closes before its read finishes is simply
     // superseded by the `None` that follows.
@@ -714,7 +747,6 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     // The viewer's interactive shell, if they have opened one. A local rather than
     // connection state held elsewhere, so that losing the connection drops it — and
     // dropping a `Pty` kills the shell and, through SIGHUP, whatever it was running.
-    let mut pty: Option<crate::pty::Pty> = None;
 
     // ── 4. Main message loop ─────────────────────────────────────────────────
     loop {
@@ -1214,69 +1246,47 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 send_relay(&out_tx, &RelayMsg::AppsList { apps }).await.ok();
             }
 
-            RelayMsg::PtyOpen { cols, rows } => {
-                // Replaces any existing shell: one per viewer. The old one is dropped first
-                // so its shell is gone before the new one starts, rather than both running.
-                pty = None;
-                let (tx, mut rx) = mpsc::channel::<String>(64);
-                match crate::pty::Pty::open(cols, rows, tx) {
-                    Ok(p) => {
-                        pty = Some(p);
-                        let out_tx = out_tx.clone();
-                        tokio::spawn(async move {
-                            while let Some(data) = rx.recv().await {
-                                if send_relay(&out_tx, &RelayMsg::PtyOutput { data })
-                                    .await
-                                    .is_err()
-                                {
-                                    break;
-                                }
-                            }
-                            // The channel closing means the reader thread saw EOF, which is
-                            // how a shell exiting looks from here.
-                            //
-                            // ponytail: no exit code. The thread that notices the exit is the
-                            // one reading the master and it does not hold the child handle;
-                            // plumbing the code back is a channel this does not need to show
-                            // "[shell exited]".
-                            let _ = send_relay(&out_tx, &RelayMsg::PtyExit { code: None }).await;
-                        });
-                    }
-                    Err(e) => {
-                        warn!("pty open failed: {e}");
-                        send_relay(
-                            &out_tx,
-                            &RelayMsg::PtyOutput {
-                                data: format!("wado: could not start a shell: {e}\r\n"),
-                            },
-                        )
-                        .await
-                        .ok();
-                        send_relay(&out_tx, &RelayMsg::PtyExit { code: None })
-                            .await
-                            .ok();
-                    }
+            RelayMsg::PtyOpen { cols, rows, host } => match crate::shells::open(cols, rows, host) {
+                Ok(id) => {
+                    send_relay(&out_tx, &RelayMsg::PtyOpened { id }).await.ok();
                 }
-            }
-
-            RelayMsg::PtyInput { data } => {
-                if let Some(p) = pty.as_mut() {
-                    if let Err(e) = p.write(&data) {
-                        warn!("pty write failed: {e}");
-                        pty = None;
-                    }
+                Err(e) => {
+                    warn!("shell open failed: {e}");
+                    send_relay(
+                        &out_tx,
+                        &RelayMsg::SessionError {
+                            message: format!("could not start a shell: {e}"),
+                        },
+                    )
+                    .await
+                    .ok();
                 }
-            }
+            },
 
-            RelayMsg::PtyResize { cols, rows } => {
-                if let Some(p) = pty.as_mut() {
-                    p.resize(cols, rows);
+            RelayMsg::PtyInput { id, data } => crate::shells::write(id, &data),
+
+            RelayMsg::PtyResize { id, cols, rows } => crate::shells::resize(id, cols, rows),
+
+            RelayMsg::PtyClose { id } => crate::shells::close(id),
+
+            RelayMsg::ShellsRequest => {
+                let shells = crate::shells::list();
+                let hosts = crate::shells::hosts::list();
+                send_relay(&out_tx, &RelayMsg::Shells { shells, hosts })
+                    .await
+                    .ok();
+                for (id, data) in crate::shells::replay() {
+                    send_relay(
+                        &out_tx,
+                        &RelayMsg::PtyOutput {
+                            id,
+                            data,
+                            replay: true,
+                        },
+                    )
+                    .await
+                    .ok();
                 }
-            }
-
-            RelayMsg::PtyClose => {
-                // Drop kills the shell; SIGHUP takes its jobs with it.
-                pty = None;
             }
 
             RelayMsg::TimingRequest => {
@@ -1381,6 +1391,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     sent_kbps_task.abort();
     windows_task.abort();
     config_task.abort();
+    shells_task.abort();
     menu_task.abort();
     write_task.abort();
     Ok(())

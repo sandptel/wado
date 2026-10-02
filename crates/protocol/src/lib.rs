@@ -12,6 +12,7 @@ pub mod control;
 pub mod menu;
 pub mod relay;
 pub mod relay_wire;
+pub mod shells;
 pub mod targets;
 
 use serde::{Deserialize, Serialize};
@@ -22,6 +23,7 @@ pub use apps::AppEntry;
 pub use config::{ConfigState, HostLimits, PinnedInput};
 pub use control::{SessionControl, WindowAction, WindowInfo};
 pub use menu::{MenuItem, MenuSheet};
+pub use shells::ShellInfo;
 pub use targets::Target;
 
 pub mod endpoints {

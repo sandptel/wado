@@ -45,6 +45,16 @@ pub fn render(ui: Ui) -> Element {
                     onclick: move |_| { live.cc_page.set(Page::Root); live.cc_open.set(true); },
                     Icon { name: "sliders" }
                 }
+                // Shell-only: a terminal over the relay with no compositor or encoder running.
+                if (s.conn_mode)() == "relay" {
+                    button {
+                        class: "iconbtn",
+                        "aria-label": "Open a shell — no video",
+                        title: "Open a shell — no video",
+                        onclick: move |_| crate::ui::console::open_shells(ui),
+                        Icon { name: "term" }
+                    }
+                }
                 button { class: "go", disabled: on, onclick: move |_| actions::start(ui),
                     Icon { name: "power" } "Start session"
                 }

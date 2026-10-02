@@ -293,6 +293,27 @@ pub fn run(ui: Ui) {
                     }
                     live.host.set(state);
                 }
+                "shells" => {
+                    let shells: Vec<wado_protocol::ShellInfo> = msg
+                        .get("shells")
+                        .and_then(|v| serde_json::from_value(v.clone()).ok())
+                        .unwrap_or_default();
+                    let hosts: Vec<String> = msg
+                        .get("hosts")
+                        .and_then(|v| serde_json::from_value(v.clone()).ok())
+                        .unwrap_or_default();
+                    live.shell_active.set(num("active").unwrap_or(0.0) as u32);
+                    live.shells.set(shells);
+                    live.shell_hosts.set(hosts);
+                }
+                "shellActive" => {
+                    live.shell_active.set(num("id").unwrap_or(0.0) as u32);
+                    live.console_tab.set("shell".to_string());
+                }
+                "shellMods" => {
+                    let flag = |k: &str| msg.get(k).and_then(|v| v.as_bool()).unwrap_or(false);
+                    live.shell_mods.set((flag("ctrl"), flag("alt")));
+                }
                 "configRejected" => {
                     let m = msg.get("message").and_then(|v| v.as_str()).unwrap_or("");
                     live.config_note.set(m.to_string());

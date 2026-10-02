@@ -1,152 +1,178 @@
-// The console's shell tab: a real terminal, driven by a PTY on the server.
+// The console's shells: one xterm per daemon-side shell, each in its own div inside
+// #wado-term, which this file owns outright — Dioxus renders that element empty and never
+// diffs inside it.
 //
-// The server sends ANSI, not lines — colour, cursor addressing, the alternate screen an
-// editor switches into. xterm.js interprets that; everything here is wiring.
+// The shells belong to the daemon, not to this page (see server::shells). On every link-up the
+// page asks for the list and gets each shell's scrollback back as a `replay`, which *replaces*
+// that terminal's screen — so a reconnect redraws rather than duplicates.
 //
-// Three things this has to get right, and each was a bug waiting to happen:
+// Things this has to get right:
 //
-//   * The emulator is loaded by a <script> tag in index.html while the WASM bundle boots,
-//     so it may not exist yet when the bridge runs. Nothing here assumes it does.
-//   * A terminal that does not know its size renders wrapped and misplaced the moment
-//     anything uses cursor addressing, so the size is measured and re-sent on every change.
-//   * The console is hidden with CSS rather than unmounted, so the terminal and its
-//     scrollback survive being closed and reopened. Sizing has to be redone on reveal,
-//     because a hidden element measures as zero.
+//   * The emulator is loaded by a <script> tag in index.html and may not exist yet when the
+//     bridge runs. Nothing here assumes it does; output that arrives first is queued.
+//   * A terminal that does not know its size wraps wrongly the moment anything uses cursor
+//     addressing, so size is measured on reveal (a hidden element measures as zero) and on
+//     every resize, and re-sent when it changes.
+//   * Output goes straight to the emulator, never through a Dioxus signal: it arrives in fast
+//     small bursts, and a re-render per burst would make the shell slower than the video.
 
 (() => {
-  let term = null;
-  let fit = null;
-  let opened = false; // has the server been asked for a shell yet?
-  let lastCols = 0;
-  let lastRows = 0;
+  const terms = new Map(); // id → { term, fit, el, cols, rows }
+  const queued = new Map(); // id → [data] that arrived before its terminal could be built
+  let active = 0;
+  let mods = { ctrl: false, alt: false }; // the key row's sticky modifiers
 
-  // Base16-ish, matching the app's palette closely enough not to jar. Not read from CSS
-  // variables: xterm wants concrete colours at construction and re-theming a live terminal
-  // is not worth the code.
-  const THEME = {
-    background: "#181818", foreground: "#d8d8d8", cursor: "#d8d8d8",
-    black: "#181818", red: "#ab4642", green: "#a1b56c", yellow: "#f7ca88",
-    blue: "#7cafc2", magenta: "#ba8baf", cyan: "#86c1b9", white: "#d8d8d8",
-    brightBlack: "#585858", brightRed: "#ab4642", brightGreen: "#a1b56c",
-    brightYellow: "#f7ca88", brightBlue: "#7cafc2", brightMagenta: "#ba8baf",
-    brightCyan: "#86c1b9", brightWhite: "#f8f8f8",
+  const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  // From the live base16 variables, so the terminal follows the scheme.
+  const theme = () => {
+    const b = (n) => css("--base0" + n) || undefined;
+    return {
+      background: b("0"), foreground: b("5"), cursor: b("5"), selectionBackground: b("2"),
+      black: b("0"), red: b("8"), green: b("B"), yellow: b("A"), blue: b("D"),
+      magenta: b("E"), cyan: b("C"), white: b("5"),
+      brightBlack: b("3"), brightRed: b("8"), brightGreen: b("B"), brightYellow: b("A"),
+      brightBlue: b("D"), brightMagenta: b("E"), brightCyan: b("C"), brightWhite: b("7"),
+    };
   };
-
-  function sizeChanged() {
-    if (!term) return;
-    const c = term.cols, r = term.rows;
-    if (c === lastCols && r === lastRows) return;
-    lastCols = c; lastRows = r;
-    W.ptyResize(c, r);
+  W.ptyRetheme = () => { for (const t of terms.values()) { try { t.term.options.theme = theme(); } catch (_) {} } };
+  {
+    const set = W.setTheme;
+    W.setTheme = (...a) => { set(...a); W.ptyRetheme(); };
   }
 
-  // Measuring a display:none element gives zero, which fit() turns into a 1x1 terminal
-  // that never recovers. Only fit when the element actually has a box.
-  function refit() {
-    if (!fit || !term) return;
-    const el = document.getElementById("wado-term");
-    if (!el || !el.clientHeight || !el.clientWidth) return;
-    try { fit.fit(); } catch (_) { return; }
-    sizeChanged();
-  }
+  const send = (obj) => W.relaySendMsg && W.relaySendMsg(obj);
+  const host = () => document.getElementById("wado-term");
 
-  // Build the terminal once the emulator script has arrived. Polled rather than hooked to
-  // the script's load event, because by the time this runs the script may already be in.
-  function build(then) {
-    if (term) { then && then(); return; }
-    if (typeof window.Terminal !== "function") {
-      setTimeout(() => build(then), 60);
-      return;
+  function sized(id) {
+    const t = terms.get(id);
+    if (!t || !t.fit || !t.el.clientWidth || !t.el.clientHeight) return;
+    try { t.fit.fit(); } catch (_) { return; }
+    if (t.term.cols !== t.cols || t.term.rows !== t.rows) {
+      t.cols = t.term.cols; t.rows = t.term.rows;
+      send({ type: "pty_resize", id, cols: t.cols, rows: t.rows });
     }
-    const el = document.getElementById("wado-term");
-    if (!el) { setTimeout(() => build(then), 60); return; }
+  }
 
-    term = new window.Terminal({
-      theme: THEME,
-      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, "DejaVu Sans Mono", monospace',
+  // The terminal for `id`, built on first use. Returns null until xterm has loaded.
+  function ensure(id) {
+    if (terms.has(id)) return terms.get(id);
+    if (typeof window.Terminal !== "function" || !host()) return null;
+    const el = document.createElement("div");
+    el.className = "termpane";
+    el.hidden = id !== active;
+    host().appendChild(el);
+    const term = new window.Terminal({
+      theme: theme(),
+      fontFamily: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
       fontSize: 13,
-      // A phone is narrow and a wrapped prompt is unreadable, so the rows are what give.
-      scrollback: 2000,
+      scrollback: 4000,
       cursorBlink: true,
-      // The stream already owns the screen; a terminal bell on a phone is noise.
       bellStyle: "none",
       allowProposedApi: true,
-      // Touch scrolling in the scrollback rather than the page behind it.
       macOptionIsMeta: true,
     });
-    if (window.FitAddon && window.FitAddon.FitAddon) {
-      fit = new window.FitAddon.FitAddon();
-      term.loadAddon(fit);
-    }
+    let fit = null;
+    if (window.FitAddon && window.FitAddon.FitAddon) { fit = new window.FitAddon.FitAddon(); term.loadAddon(fit); }
     term.open(el);
-
-    // Keystrokes straight through, control characters included — Ctrl-C has to reach the
-    // shell as 0x03, not be swallowed as a copy shortcut.
-    term.onData((data) => W.ptyInput(data));
-    term.onResize(() => sizeChanged());
-
-    // The console is sized in dvh, so a phone's address bar sliding away resizes it.
-    if (window.ResizeObserver) {
-      new ResizeObserver(() => refit()).observe(el);
-    }
-    window.addEventListener("resize", () => refit());
-
-    refit();
-    then && then();
+    // Keystrokes straight through, control characters included — Ctrl-C reaches the shell as
+    // 0x03. The key row's sticky Ctrl/Alt apply to the next character typed.
+    term.onData((data) => send({ type: "pty_input", id, data: withMods(data) }));
+    const t = { term, fit, el, cols: 0, rows: 0 };
+    terms.set(id, t);
+    if (window.ResizeObserver) new ResizeObserver(() => id === active && sized(id)).observe(el);
+    for (const d of queued.get(id) || []) term.write(d);
+    queued.delete(id);
+    return t;
   }
 
-  // Called when the shell tab becomes visible. Opens the server-side shell the first time.
-  //
-  // The sizing is deferred deliberately. The console is revealed by removing a class, and at
-  // the moment this runs the element has not been laid out yet — measuring it gives zero,
-  // `refit` declines, and the terminal keeps xterm's 80x24 default. That is not cosmetic: the
-  // server's PTY is created at whatever size is reported here, so a shell that believes it is
-  // 80 columns wide wraps its lines at 80 regardless of the panel.
-  //
-  // So: fit on the next frame, once layout has happened, and again shortly after to catch a
-  // phone's address bar settling. `refit` sends a resize whenever the answer changes, so the
-  // later pass corrects the earlier one at no cost.
-  W.ptyShow = () => {
-    build(() => {
-      const start = () => {
-        refit();
-        if (!opened && term) {
-          opened = true;
-          W.ptyOpen(term.cols, term.rows);
-        }
-      };
-      if (window.requestAnimationFrame) requestAnimationFrame(start);
-      else setTimeout(start, 16);
-      setTimeout(() => refit(), 150);
-      // Focus after layout, or the keyboard opens against a terminal that is still 0px.
-      setTimeout(() => { try { term && term.focus(); } catch (_) {} }, 60);
+  function withMods(data) {
+    if (!mods.ctrl && !mods.alt) return data;
+    let out = data;
+    if (mods.ctrl && data.length === 1) {
+      const c = data.toUpperCase().charCodeAt(0);
+      if (c >= 64 && c <= 95) out = String.fromCharCode(c - 64);
+    }
+    if (mods.alt) out = "\x1b" + out;
+    mods = { ctrl: false, alt: false };
+    emit({ type: "shellMods", ctrl: false, alt: false });
+    return out;
+  }
+
+  // Wait for xterm, then run `f`.
+  function ready(f) {
+    if (typeof window.Terminal === "function" && host()) f();
+    else setTimeout(() => ready(f), 60);
+  }
+
+  W.shellShow = (id) => {
+    active = id;
+    ready(() => {
+      ensure(id);
+      for (const [k, t] of terms) t.el.hidden = k !== id;
+      // After layout, or the fit measures a box that is still 0px.
+      requestAnimationFrame(() => { sized(id); const t = terms.get(id); try { t && t.term.focus(); } catch (_) {} });
+      setTimeout(() => sized(id), 150);
     });
   };
+  // Re-fit the visible terminal; the console calls this when it is revealed.
+  W.ptyShow = () => { if (active) W.shellShow(active); };
 
-  // Server output. Buffered until the terminal exists so the shell's own banner — which
-  // arrives immediately after pty_open — is not lost to a race with the CDN script.
-  const pending = [];
-  W.ptyOutput = (data) => {
-    if (!term) { pending.push(data); build(() => W.ptyFlush()); return; }
-    W.ptyFlush();
-    term.write(data);
+  W.shellNew = (alias) => {
+    const t = terms.get(active);
+    send({ type: "pty_open", cols: (t && t.cols) || 80, rows: (t && t.rows) || 24, host: alias || null });
   };
-  W.ptyFlush = () => {
-    if (!term || !pending.length) return;
-    const queued = pending.splice(0, pending.length);
-    for (const d of queued) term.write(d);
+  W.shellClose = (id) => send({ type: "pty_close", id });
+  W.shellsRequest = () => send({ type: "shells_request" });
+
+  // The key row: what a phone keyboard does not have.
+  const KEYS = { esc: "\x1b", tab: "\t", up: "\x1b[A", down: "\x1b[B", right: "\x1b[C", left: "\x1b[D",
+    home: "\x1b[H", end: "\x1b[F", pgup: "\x1b[5~", pgdn: "\x1b[6~", pipe: "|", tilde: "~", slash: "/", dash: "-" };
+  W.shellKey = (name) => {
+    if (!active) return;
+    if (name === "ctrl" || name === "alt") {
+      mods[name] = !mods[name];
+      emit({ type: "shellMods", ctrl: mods.ctrl, alt: mods.alt });
+      return;
+    }
+    const seq = KEYS[name];
+    if (seq) send({ type: "pty_input", id: active, data: withMods(seq) });
+    const t = terms.get(active);
+    try { t && t.term.focus(); } catch (_) {}
   };
 
-  W.ptyExited = () => {
-    if (term) term.write("\r\n\x1b[2m[shell exited — reopen the console to start another]\x1b[0m\r\n");
-    // Next reveal asks for a fresh shell rather than typing into a dead one.
-    opened = false;
-  };
+  W.relayOn("shells", (msg) => {
+    const shells = msg.shells || [];
+    // A tab closed here or elsewhere: its terminal goes too.
+    for (const [id, t] of terms) {
+      if (!shells.some((s) => s.id === id)) { try { t.term.dispose(); } catch (_) {} t.el.remove(); terms.delete(id); }
+    }
+    if (!shells.some((s) => s.id === active)) active = shells.length ? shells[shells.length - 1].id : 0;
+    emit({ type: "shells", shells, hosts: msg.hosts || [], active });
+  });
+  W.relayOn("pty_opened", (msg) => { emit({ type: "shellActive", id: msg.id }); W.shellShow(msg.id); });
+  W.relayOn("pty_output", (msg) => {
+    const id = msg.id || 0;
+    if (!id) return;
+    const t = ensure(id);
+    if (!t) {
+      const q = queued.get(id) || [];
+      if (msg.replay) q.length = 0;
+      q.push(msg.data || "");
+      queued.set(id, q);
+      ready(() => ensure(id));
+      return;
+    }
+    if (msg.replay) t.term.reset();
+    t.term.write(msg.data || "");
+  });
+  W.relayOn("pty_exit", (msg) => {
+    const t = terms.get(msg.id || 0);
+    if (t) t.term.write("\r\n\x1b[2m[exited — close this tab, or open another]\x1b[0m\r\n");
+  });
 
-  // Forget the terminal entirely — used when the session goes away, so a new session does
-  // not inherit the last one's screen.
-  W.ptyReset = () => {
-    opened = false;
-    if (term) { try { term.reset(); } catch (_) {} }
-  };
+  // Ask for the shells on every link-up: they may have been running all along.
+  {
+    const up = W._relayHandlers.__up;
+    W.relayOn("__up", (m) => { if (up) up(m); W.shellsRequest(); });
+  }
 })();
