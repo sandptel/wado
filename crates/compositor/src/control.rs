@@ -180,6 +180,7 @@ fn reconfigure(state: &mut Wado, config: &SessionConfig) -> Result<SessionInfo, 
         keyboard.change_repeat_info(config.input.repeat_rate, config.input.repeat_delay);
     }
     state.placement = config.window.placement;
+    state.background = crate::conf::background(config.background.as_deref());
     state.focus_follows_pointer = config.input.focus_follows_pointer;
     // Neither `isolate_apps` nor `x_server` is re-applied. The bus is per-session and the
     // applications already running are connected to it; switching now would leave the session
@@ -239,6 +240,7 @@ fn start(
         keyboard.change_repeat_info(config.input.repeat_rate, config.input.repeat_delay);
     }
     state.placement = config.window.placement;
+    state.background = crate::conf::background(config.background.as_deref());
     state.focus_follows_pointer = config.input.focus_follows_pointer;
     state.encoder_report = Some(encoder_report.clone());
 

@@ -265,6 +265,8 @@ pub struct Wado {
     pub focus_follows_pointer: bool,
     /// Keys whose press a bind ate, so their release is eaten too (see [`crate::binds`]).
     pub eaten_keys: std::collections::HashSet<u32>,
+    /// The desktop colour behind every window (`SessionConfig::background`), linear RGBA.
+    pub background: [f32; 4],
     /// Windows Home put away, and where they were — see [`crate::desktop`].
     pub hidden: Vec<(
         smithay::desktop::Window,
@@ -499,6 +501,7 @@ impl Wado {
             placement: Placement::default(),
             focus_follows_pointer: false,
             eaten_keys: Default::default(),
+            background: crate::conf::DEFAULT_BACKGROUND,
             hidden: Vec::new(),
             pre_maximize: std::collections::HashMap::new(),
             pre_fullscreen: std::collections::HashMap::new(),

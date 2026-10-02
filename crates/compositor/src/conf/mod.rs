@@ -2,7 +2,10 @@
 //! ([`SessionConfig`], [`Quality`]) live in the `wado-protocol` crate and are
 //! re-exported here; this module owns the x264-coupled encoder mapping.
 
+pub mod background;
 pub mod bitrate;
+
+pub use background::{DEFAULT_BACKGROUND, background};
 
 pub use wado_protocol::{EncoderBackend, Quality, SessionConfig};
 pub use x264::Preset;
