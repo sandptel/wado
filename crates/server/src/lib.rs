@@ -7,6 +7,7 @@ pub mod a11y;
 pub mod apps;
 pub mod error;
 pub mod ice;
+pub mod instance;
 pub mod menu_sheet;
 pub mod nat;
 pub mod panic_log;

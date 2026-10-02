@@ -9,8 +9,15 @@ now reads only a small fixed set of handshake messages (`relay_wire`) and forwar
 else unread. New features between daemon and client therefore never need a relay update.
 Daemon and relay now exchange a version number and a capability list. Older daemons and clients
 keep working unchanged; checked live with today's exact frames against the new relay. This is
-step 1 of the relay finalisation; next, the phone waits for the computer instead of being
-turned away.
+step 1 of the relay finalisation.
+
+**A relay restart now puts each device back on its own desktop.** Each daemon in a pool has a
+fixed number (`WADO_INSTANCE`, set by `scripts/rig.sh`), so after the relay restarts, a phone
+lands on the same daemon with its windows and apps still running. Before, it could be handed
+whichever daemon was free. If a daemon has restarted since you were last connected, the
+connection log now says its apps were closed. Two daemons configured with the same number are
+refused with a clear message instead of fighting over one slot. A phone whose daemon goes away
+is told right away; before, it found out only the next time it sent something.
 
 **Small buttons stop being a problem.** wado now asks each app, through its accessibility
 tree, what is under your finger and how big it is. The answer arrives before you lift, so it

@@ -98,7 +98,15 @@ const toWsUrl = (relayUrl, id) => {
 
 // A uuid is unreadable in a log line and useless on a phone screen; its first block is enough
 // to tell two daemons apart, which is all this is for.
-W.poolTag = () => (W.pool && W.pool.instance ? W.pool.instance.slice(0, 8) : "?");
+W.poolTag = () => {
+  const i = W.pool && W.pool.instance;
+  if (!i) return "?";
+  // A keyed daemon is "<remote id>:<n>" and its number is the readable part.
+  return i.includes(":") ? "#" + i.split(":").pop() : i.slice(0, 8);
+};
+// Last boot_id seen per instance, this page load. Not persisted: after a reload there is no
+// desktop on screen to have lost.
+W._bootIds = {};
 
 W.relayOn = (type, fn) => { W._relayHandlers[type] = fn; };
 
@@ -195,6 +203,15 @@ function openLink() {
         assignment: msg.assignment || "",
       };
       if (msg.instance_id) W.rememberInstance(String(msg.remote_id || ""), msg.instance_id);
+      // Same daemon, new boot_id: the process restarted, so the desktop this device left —
+      // its windows and running apps — is gone. Said plainly rather than letting an empty
+      // desktop look like a bug. Only `boot_id` can tell this from a reconnect.
+      if (msg.boot_id) {
+        const was = W._bootIds[msg.instance_id];
+        W._bootIds[msg.instance_id] = msg.boot_id;
+        if (was && was !== msg.boot_id && W.rlog)
+          W.rlog("this wado daemon restarted since you were last connected — its apps were closed");
+      }
       if (W.rlog) {
         const p = W.pool;
         W.rlog(p.size

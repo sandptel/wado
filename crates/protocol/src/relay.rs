@@ -57,6 +57,17 @@ pub enum RelayMsg {
         /// Handshake version the daemon speaks ([`WIRE_VERSION`]); `0` = predates versioning.
         #[serde(default)]
         v: u32,
+        /// This daemon's place in its pool (`WADO_INSTANCE`), stable across restarts of the
+        /// daemon *and* of the relay. It is what lets a client come back to the same daemon
+        /// after the relay restarts. Empty = a daemon from before this field; the relay then
+        /// mints a uuid per connection, as it always did.
+        #[serde(default)]
+        instance_key: String,
+        /// Fresh on every daemon start. Same key + same `boot_id` is one daemon redialling;
+        /// a different `boot_id` is a different process, which the relay refuses rather than
+        /// let it take the seat.
+        #[serde(default)]
+        boot_id: String,
     },
 
     // ── Relay → server (handshake) ──────────────────────────────────────────
@@ -120,6 +131,10 @@ pub enum RelayMsg {
         /// A marker that only reports the good case reads the same as nobody looking.
         #[serde(default)]
         assignment: String,
+        /// The answering daemon's `boot_id`. A client that sees it change for the same
+        /// `instance_id` knows the daemon restarted and the desktop it left is gone.
+        #[serde(default)]
+        boot_id: String,
         /// Same as in [`RelayMsg::Registered`], for the client.
         #[serde(default)]
         relay_v: u32,
