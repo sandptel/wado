@@ -22,6 +22,7 @@
 
 mod binds;
 pub mod capture;
+pub mod clipboard;
 pub mod conf;
 pub mod congestion;
 pub mod control;
@@ -98,6 +99,8 @@ pub struct CompositorHandles {
     pub windows: tokio::sync::watch::Receiver<Vec<wado_protocol::WindowInfo>>,
     /// The menu open on the focused window — see [`hit::MenuSpot`]. State, like `windows`.
     pub menu: tokio::sync::watch::Receiver<Option<hit::MenuSpot>>,
+    /// The session clipboard, when an app copies text — see [`clipboard`].
+    pub clipboard: tokio::sync::watch::Receiver<String>,
 }
 
 /// Build the compositor: create the event loop, display, and [`Wado`] state, claim the
@@ -185,6 +188,7 @@ pub fn build(
     let text_input = state.text_input_tx.subscribe();
     let shedding = state.shedding_tx.subscribe();
     let windows = state.windows_tx.subscribe();
+    let clipboard = state.clipboard_tx.subscribe();
     let menu = state.menu_tx.subscribe();
     Ok((
         event_loop,
@@ -196,6 +200,7 @@ pub fn build(
             text_input,
             shedding,
             windows,
+            clipboard,
             menu,
         },
     ))

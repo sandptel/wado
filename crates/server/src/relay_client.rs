@@ -93,6 +93,7 @@ struct RelayCtx {
     windows: tokio::sync::watch::Receiver<Vec<wado_protocol::WindowInfo>>,
     /// The menu open on the focused window, read into a sheet for the phone (M-P S7).
     menu: tokio::sync::watch::Receiver<Option<wado_compositor::hit::MenuSpot>>,
+    clipboard: tokio::sync::watch::Receiver<String>,
     /// Bitrate actually written to the video track over the last stretch, in kbps. Forwarded to
     /// the viewer — see [`wado_protocol::RelayMsg::SentKbps`] for why it has to be.
     sent_kbps: tokio::sync::watch::Receiver<u32>,
@@ -154,6 +155,7 @@ pub fn start(
     shedding: tokio::sync::watch::Receiver<u32>,
     windows: tokio::sync::watch::Receiver<Vec<wado_protocol::WindowInfo>>,
     menu: tokio::sync::watch::Receiver<Option<wado_compositor::hit::MenuSpot>>,
+    clipboard: tokio::sync::watch::Receiver<String>,
     frame_rx: mpsc::Receiver<FrameMsg>,
     relay_url: String,
     remote_id: String,
@@ -174,8 +176,8 @@ pub fn start(
             };
             rt.block_on(async move {
                 if let Err(e) = run(
-                    cmd_tx, input_tx, timings, text_input, shedding, windows, menu, frame_rx,
-                    relay_url, remote_id, log_bus,
+                    cmd_tx, input_tx, timings, text_input, shedding, windows, menu, clipboard,
+                    frame_rx, relay_url, remote_id, log_bus,
                 )
                 .await
                 {
@@ -194,6 +196,7 @@ async fn run(
     shedding: tokio::sync::watch::Receiver<u32>,
     windows: tokio::sync::watch::Receiver<Vec<wado_protocol::WindowInfo>>,
     menu: tokio::sync::watch::Receiver<Option<wado_compositor::hit::MenuSpot>>,
+    clipboard: tokio::sync::watch::Receiver<String>,
     mut frame_rx: mpsc::Receiver<FrameMsg>,
     relay_url: String,
     remote_id: String,
@@ -401,6 +404,7 @@ async fn run(
         shedding,
         windows,
         menu,
+        clipboard,
         sent_kbps,
         queue_us,
         active_pc: Arc::new(Mutex::new(None)),
@@ -675,6 +679,24 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 let key = viewer.lock().unwrap_or_else(|e| e.into_inner()).0.clone();
                 let state = crate::config::link::state_for(&key, &gate);
                 if send_relay(&out_tx_c, &RelayMsg::ConfigState { state })
+                    .await
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        })
+    };
+
+    // The session clipboard, whenever an app copies. Only changes are sent — `mark_changed` is
+    // not called, so a viewer that connects is not handed whatever was copied an hour ago.
+    let clipboard_task = {
+        let mut rx = ctx.clipboard.clone();
+        let out_tx_cb = out_tx.clone();
+        tokio::spawn(async move {
+            while rx.changed().await.is_ok() {
+                let text = rx.borrow_and_update().clone();
+                if send_relay(&out_tx_cb, &RelayMsg::Clipboard { text })
                     .await
                     .is_err()
                 {
@@ -1198,6 +1220,12 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 send_relay(&out_tx, &RelayMsg::SessionLaunched).await.ok();
             }
 
+            RelayMsg::ClipboardSet { text } => {
+                if ctx.viewer_ok.load(Ordering::SeqCst) {
+                    let _ = ctx.cmd_tx.send(CompositorCommand::SetClipboard { text });
+                }
+            }
+
             RelayMsg::ConfigGet => {
                 let key = ctx
                     .viewer
@@ -1392,6 +1420,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     windows_task.abort();
     config_task.abort();
     shells_task.abort();
+    clipboard_task.abort();
     menu_task.abort();
     write_task.abort();
     Ok(())

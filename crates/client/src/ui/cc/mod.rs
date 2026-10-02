@@ -28,6 +28,7 @@ pub fn render(ui: Ui) -> Element {
     let on = (live.session_on)();
     let relay = (ui.set.conn_mode)() == "relay";
     let shells = (live.shells)();
+    let clips = (live.clips)();
 
     rsx! {
         div {
@@ -72,6 +73,21 @@ pub fn render(ui: Ui) -> Element {
                                     }
                                     b { "{sh.title}" }
                                     small { if sh.host.is_some() { "ssh" } else { "this computer" } if !sh.alive { " · exited" } }
+                                }
+                            }
+                        }
+                    }
+                    if !clips.is_empty() {
+                        div { class: "sect", span { "Copied in the session" } }
+                        div { class: "clips",
+                            for (i, c) in clips.iter().cloned().enumerate() {
+                                div { key: "{i}", class: "clip",
+                                    span { class: "cliptext", "{c}" }
+                                    button {
+                                        class: "btn",
+                                        onclick: move |_| bridge::call(format!("window.__wado.clipboardToPhone({});", bridge::js(&c))),
+                                        "Copy"
+                                    }
                                 }
                             }
                         }

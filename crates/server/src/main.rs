@@ -55,6 +55,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             handles.shedding,
             handles.windows,
             handles.menu,
+            handles.clipboard,
             frame_rx,
             relay_url,
             remote_id,

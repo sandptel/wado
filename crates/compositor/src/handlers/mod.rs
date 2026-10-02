@@ -51,12 +51,49 @@ impl SeatHandler for Wado {
 }
 
 impl SelectionHandler for Wado {
-    type SelectionUserData = ();
+    /// The text of a selection the viewer gave us — see [`crate::clipboard`].
+    type SelectionUserData = std::sync::Arc<str>;
+
+    fn new_selection(
+        &mut self,
+        ty: smithay::wayland::selection::SelectionTarget,
+        source: Option<smithay::wayland::selection::SelectionSource>,
+        _seat: Seat<Self>,
+    ) {
+        self.clipboard_changed(ty, source);
+    }
+
+    fn send_selection(
+        &mut self,
+        _ty: smithay::wayland::selection::SelectionTarget,
+        _mime_type: String,
+        fd: std::os::fd::OwnedFd,
+        _seat: Seat<Self>,
+        user_data: &Self::SelectionUserData,
+    ) {
+        crate::clipboard::serve(fd, user_data);
+    }
 }
 
 impl DataDeviceHandler for Wado {
     fn data_device_state(&mut self) -> &mut DataDeviceState {
         &mut self.data_device_state
+    }
+}
+
+impl smithay::wayland::selection::ext_data_control::DataControlHandler for Wado {
+    fn data_control_state(
+        &mut self,
+    ) -> &mut smithay::wayland::selection::ext_data_control::DataControlState {
+        &mut self.ext_data_control_state
+    }
+}
+
+impl smithay::wayland::selection::wlr_data_control::DataControlHandler for Wado {
+    fn data_control_state(
+        &mut self,
+    ) -> &mut smithay::wayland::selection::wlr_data_control::DataControlState {
+        &mut self.wlr_data_control_state
     }
 }
 

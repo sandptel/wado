@@ -31,6 +31,9 @@ pub const MAX_RECENT: usize = 4;
 /// Keep at most this many log lines in memory / the DOM.
 pub const MAX_LOG_LINES: usize = 500;
 
+/// Clipboard entries kept from the session, newest first.
+pub const MAX_CLIPS: usize = 5;
+
 /// User choices. Everything here is persisted by [`crate::persist`].
 ///
 /// Grouped in the UI by *when it takes effect* — connection, session (needs a restart), live
@@ -262,6 +265,8 @@ pub struct Live {
     pub shell_hosts: Signal<Vec<String>>,
     pub shell_active: Signal<u32>,
     pub shell_mods: Signal<(bool, bool)>,
+    /// What apps in the session copied, newest first — see `js/clipboard.js`.
+    pub clips: Signal<Vec<String>>,
 
     /// The control centre: whether it is up, which page it shows, and whether the tiles are
     /// being edited. Not persisted — a sheet covering the video on load is never wanted.
@@ -388,6 +393,7 @@ impl Live {
             shell_hosts: use_signal(Vec::new),
             shell_active: use_signal(|| 0),
             shell_mods: use_signal(|| (false, false)),
+            clips: use_signal(Vec::new),
             cc_open: use_signal(|| false),
             cc_page: use_signal(Default::default),
             applied: use_signal(String::new),
