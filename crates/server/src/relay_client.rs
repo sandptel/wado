@@ -130,8 +130,10 @@ struct RelayCtx {
     checking: Arc<Mutex<std::collections::HashSet<String>>>,
     /// Rooms a takeover check approved. Their `PeerConnected` is let in without asking twice.
     approved: Arc<Mutex<std::collections::HashSet<String>>>,
-    /// The Opus track, added to every peer connection beside `track`.
+    /// The Opus track, added to every peer connection that asks for audio.
     audio_track: Arc<TrackLocalStaticSample>,
+    /// A peer connection with audio is up: the phone sink is being listened to.
+    listening: tokio::sync::watch::Sender<bool>,
     /// The device key and name of the viewer in `room` — what its config edits and saved
     /// settings are filed under (see [`crate::config::link`]).
     viewer: Arc<Mutex<(String, String)>>,
@@ -183,7 +185,6 @@ pub fn start(
                 menu,
                 clipboard,
                 app_bus,
-                audio,
             } = handles;
             rt.block_on(async move {
                 // Daemon-lifetime, not connection-lifetime: notifications arrive whether or not
@@ -191,7 +192,7 @@ pub fn start(
                 tokio::spawn(crate::notify::run(app_bus));
                 if let Err(e) = run(
                     cmd_tx, input_tx, timings, text_input, shedding, windows, menu, clipboard,
-                    audio, frame_rx, relay_url, remote_id, log_bus,
+                    frame_rx, relay_url, remote_id, log_bus,
                 )
                 .await
                 {
@@ -211,7 +212,6 @@ async fn run(
     windows: tokio::sync::watch::Receiver<Vec<wado_protocol::WindowInfo>>,
     menu: tokio::sync::watch::Receiver<Option<wado_compositor::hit::MenuSpot>>,
     clipboard: tokio::sync::watch::Receiver<String>,
-    audio: tokio::sync::watch::Receiver<Option<String>>,
     mut frame_rx: mpsc::Receiver<FrameMsg>,
     relay_url: String,
     remote_id: String,
@@ -228,9 +228,14 @@ async fn run(
         "video".to_owned(),
         "wado".to_owned(),
     ));
-    // The session's sound, on its own track (see `crate::audio`).
+    // The "This phone" output and its track (see `crate::host`, `crate::audio`). Session apps
+    // are pointed at the sink from the start, so a session plays on the phone by default.
     let audio_track = crate::audio::track();
-    tokio::spawn(crate::audio::run(audio, Arc::clone(&audio_track)));
+    let (listening_tx, listening) = tokio::sync::watch::channel(false);
+    if let Some(sink) = crate::host::start() {
+        let _ = cmd_tx.send(CompositorCommand::AudioSink(Some(sink.clone())));
+        tokio::spawn(crate::audio::run(sink, listening, Arc::clone(&audio_track)));
+    }
 
     // What actually leaves this process, measured at the track. Published for the viewer, which
     // otherwise sees only what arrived and must guess which end lost the difference.
@@ -439,6 +444,7 @@ async fn run(
         approved: Arc::default(),
         viewer: Arc::default(),
         audio_track,
+        listening: listening_tx,
         a11y: Arc::new(crate::a11y::A11y::default()),
         relay_url,
         remote_id,
@@ -1276,6 +1282,52 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 }
             }
 
+            RelayMsg::HostGet => {
+                let out_tx = out_tx.clone();
+                tokio::spawn(async move {
+                    let state = crate::host::state().await;
+                    send_relay(&out_tx, &RelayMsg::HostState { state })
+                        .await
+                        .ok();
+                });
+            }
+
+            RelayMsg::HostDo { action } => {
+                let device = ctx
+                    .viewer
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .0
+                    .clone();
+                let allowed = if !ctx.viewer_ok.load(Ordering::SeqCst) {
+                    Err("this device has not been approved yet".to_string())
+                } else if action.is_network() && !crate::config::link::is_owner(&device, &ctx.gate)
+                {
+                    Err("Wi-Fi can only be changed from the owner device".to_string())
+                } else {
+                    Ok(())
+                };
+                let out_tx = out_tx.clone();
+                tokio::spawn(async move {
+                    info!(device, ?action, "host action");
+                    if let Err(message) = match allowed {
+                        Ok(()) => crate::host::act(action).await,
+                        Err(e) => Err(e),
+                    } {
+                        warn!("host action failed: {message}");
+                        send_relay(&out_tx, &RelayMsg::HostError { message })
+                            .await
+                            .ok();
+                    }
+                    // A moment for the change to land before reading it back.
+                    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                    let state = crate::host::state().await;
+                    send_relay(&out_tx, &RelayMsg::HostState { state })
+                        .await
+                        .ok();
+                });
+            }
+
             RelayMsg::ConfigGet => {
                 let key = ctx
                     .viewer
@@ -1513,8 +1565,8 @@ fn is_keyframe(data: &[u8]) -> bool {
 }
 
 /// Summarise the ICE candidate types present in an SDP — "host", "srflx", "relay".
-fn offer_has_audio(sdp: &str) -> bool {
-    sdp.lines().any(|l| l.starts_with("m=audio"))
+fn offer_has(sdp: &str, kind: &str) -> bool {
+    sdp.lines().any(|l| l.starts_with(&format!("m={kind}")))
 }
 
 fn candidate_types(sdp: &str) -> String {
@@ -1569,12 +1621,18 @@ async fn handle_sdp_offer(
             .await?,
     );
 
-    let rtp_sender = pc
-        .add_track(Arc::clone(&ctx.track) as Arc<dyn TrackLocal + Send + Sync>)
-        .await?;
-    // Audio only when the viewer's offer asked for it: an older client that offers video alone
-    // must still get an answer it can apply.
-    if offer_has_audio(&offer.sdp) {
+    // Each track only when the offer asked for it: an older client offers video alone, and a
+    // shell-only "play on this phone" offers audio alone (no session, nothing to encode).
+    let has_audio = offer_has(&offer.sdp, "audio");
+    let rtp_sender = if offer_has(&offer.sdp, "video") {
+        Some(
+            pc.add_track(Arc::clone(&ctx.track) as Arc<dyn TrackLocal + Send + Sync>)
+                .await?,
+        )
+    } else {
+        None
+    };
+    if has_audio {
         pc.add_track(Arc::clone(&ctx.audio_track) as Arc<dyn TrackLocal + Send + Sync>)
             .await?;
     }
@@ -1635,7 +1693,7 @@ async fn handle_sdp_offer(
     }
 
     // RTCP read loop: PLI/FIR → ForceKeyframe.
-    {
+    if let Some(rtp_sender) = rtp_sender {
         let cmd_tx = ctx.cmd_tx.clone();
         tokio::spawn(async move {
             loop {
@@ -1662,9 +1720,11 @@ async fn handle_sdp_offer(
         let generation = Arc::clone(&ctx.generation);
         let last_connected = Arc::clone(&ctx.last_connected);
         let pc_peer = peer.clone();
+        let listening = ctx.listening.clone();
         pc.on_peer_connection_state_change(Box::new(move |state| {
             match state {
                 RTCPeerConnectionState::Connected => {
+                    let _ = listening.send(has_audio);
                     info!(peer = %pc_peer, took_ms = offered_at.elapsed().as_millis() as u64,
                           "relay client: viewer connected via WebRTC");
                     last_connected.store(now_ms(), Ordering::Relaxed);
@@ -1688,6 +1748,7 @@ async fn handle_sdp_offer(
                 | RTCPeerConnectionState::Closed
                 | RTCPeerConnectionState::Disconnected => {
                     if generation.load(Ordering::SeqCst) == my_gen {
+                        let _ = listening.send(false);
                         // Stop rendering for a viewer that is not receiving. `Disconnected` is
                         // included on purpose: it is the transient case — a lift, a handoff —
                         // and it is precisely when there is no point encoding into a dead path.

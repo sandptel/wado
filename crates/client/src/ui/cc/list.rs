@@ -60,9 +60,54 @@ pub fn render(ui: Ui) -> Element {
         }
     };
 
+    let hs = (live.hoststate)();
+    let sound = match &hs {
+        Some(h) => format!(
+            "{} · {}",
+            if crate::ui::host::on_phone(h) {
+                "On this phone"
+            } else {
+                "On the computer"
+            },
+            match h.audio.streams.len() {
+                0 => "nothing playing".to_string(),
+                1 => "1 app".to_string(),
+                n => format!("{n} apps"),
+            }
+        ),
+        None => "The computer's apps and outputs".into(),
+    };
+    let net = match &hs {
+        Some(h) => {
+            let w = h.wifi.as_ref().map(|w| {
+                w.connected.clone().unwrap_or_else(|| {
+                    if w.enabled {
+                        "Wi-Fi on".into()
+                    } else {
+                        "Wi-Fi off".into()
+                    }
+                })
+            });
+            let b = h.bluetooth.as_ref().map(|b| {
+                if b.powered {
+                    "Bluetooth on"
+                } else {
+                    "Bluetooth off"
+                }
+            });
+            [w, b.map(str::to_string)]
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>()
+                .join(" · ")
+        }
+        None => "The computer's connections".into(),
+    };
     let mut go = move |p: Page| live.cc_page.set(p);
     rsx! {
         div { class: "list",
+            NavRow { icon: "sound", hue: "0E", title: "Sound", sub: sound, onopen: move |_| go(Page::Sound) }
+            NavRow { icon: "wifi", hue: "0C", title: "Wi-Fi & Bluetooth", sub: net, onopen: move |_| go(Page::Network) }
             NavRow { icon: "monitor", hue: "0D", title: "Display & stream", sub: display, onopen: move |_| go(Page::Display) }
             NavRow { icon: "hand", hue: "0C", title: "Input & touch", sub: input, onopen: move |_| go(Page::Input) }
             NavRow { icon: "layers", hue: "0E", title: "Window switcher", sub: switcher, onopen: move |_| go(Page::Switcher) }

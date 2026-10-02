@@ -1,5 +1,6 @@
-//! The dock: three buttons, Android-style — **⋯ Control centre · ○ Apps · ◁ Back** — so Back
-//! sits under a right thumb (Decision Log 2026-09-29). ⋯ becomes ⌨ for the one moment that is
+//! The dock: **⋯ Control centre · ⊞ Apps · ○ Home · ◁ Back**, so Back sits under a right thumb
+//! (Decision Log 2026-09-29) and Home is in the middle where Android keeps it. Home shows an
+//! empty desktop; the app drawer has its own button. ⋯ becomes ⌨ for the one moment that is
 //! worth a slot: an app wants typing and the keyboard is down.
 //!
 //! The 6 px LED on ⋯ is the only status always on screen. It is how invariant #5 stays
@@ -53,7 +54,7 @@ pub fn render(ui: Ui) -> Element {
                 }
             }
             button {
-                class: "barbtn nav home",
+                class: "barbtn nav",
                 title: "Apps",
                 "aria-label": "Apps",
                 onclick: move |_| {
@@ -64,6 +65,14 @@ pub fn render(ui: Ui) -> Element {
                         bridge::call("window.__wado.requestApps();".to_string());
                     }
                 },
+                Icon { name: "apps" }
+            }
+            // Home: an empty desktop (compositor `desktop.rs`). Again brings the windows back.
+            button {
+                class: "barbtn nav home",
+                title: "Home",
+                "aria-label": "Home — show the empty desktop",
+                onclick: move |_| bridge::call("window.__wado.windowAction(\"home\");".to_string()),
                 span { class: "homering" }
             }
             button {

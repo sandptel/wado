@@ -460,8 +460,11 @@ W.relayOn("error", (msg) => status("relay error: " + (msg.message || "?")));
 
 // ── WebRTC negotiation over the relay link (replaces the HTTP /offer call) ────
 
-W._relayNegotiate = async () => {
+// `audioOnly`: just the computer's sound, with no session — "play on this phone" from a
+// shell-only connection (see js/host.js). The daemon answers with only the tracks offered.
+W._relayNegotiate = async (opts = {}) => {
   if (W.pc) { try { W.pc.close(); } catch (_) {} }
+  W._listenOnly = !!opts.audioOnly;
 
   const pc = new RTCPeerConnection({
     iceServers: [
@@ -471,7 +474,7 @@ W._relayNegotiate = async () => {
   });
   W.pc = pc;
 
-  pc.addTransceiver("video", { direction: "recvonly" });
+  if (!opts.audioOnly) pc.addTransceiver("video", { direction: "recvonly" });
   // The session's sound on its own track (server::audio). A daemon too old to send any simply
   // leaves this transceiver unused.
   pc.addTransceiver("audio", { direction: "recvonly" });

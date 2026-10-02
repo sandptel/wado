@@ -68,8 +68,8 @@ try {
   start("wado-relay", ["--bind", `127.0.0.1:${PORT}`], {});
   await sleep(400);
   const d = start("wado", [], {
-    WADO_RELAY_URL: RELAY, WADO_REMOTE_ID: RID, WADO_INSTANCE: "1", WADO_UDP_SLICE: "22",
-    HOME, XDG_CONFIG_HOME: join(HOME, ".config"), XDG_RUNTIME_DIR: HOME, SHELL: "/bin/sh",
+    WADO_RELAY_URL: RELAY, WADO_REMOTE_ID: RID, WADO_INSTANCE: "e2e-session", WADO_UDP_SLICE: "22",
+    HOME, XDG_CONFIG_HOME: join(HOME, ".config"), SHELL: "/bin/sh",
   });
   const a = new Client("Phone");
   check("joined", !!(await a.wait("join_accepted", 20000)));

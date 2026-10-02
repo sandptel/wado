@@ -5159,6 +5159,7 @@ dependencies = [
  "bytes",
  "ffmpeg-the-third",
  "futures-util",
+ "libc",
  "portable-pty",
  "rand 0.8.8",
  "serde",

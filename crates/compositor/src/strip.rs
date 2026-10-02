@@ -350,6 +350,10 @@ impl Wado {
             let Some(toplevel) = c.window.toplevel() else {
                 continue;
             };
+            // Home put it away; the strip keeps its place but does not show it.
+            if self.is_hidden(&c.window) {
+                continue;
+            }
             // Fullscreen already owns its size (see `crate::fullscreen`); only its place on
             // the row is the strip's business.
             if !crate::fullscreen::is_fullscreen(&c.window) {

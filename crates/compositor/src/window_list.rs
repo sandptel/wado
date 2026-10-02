@@ -25,7 +25,18 @@ impl Wado {
     pub fn publish_windows(&mut self) {
         self.window_ids.retain(|w, _| w.alive());
         let focused = self.focused_window();
-        let windows: Vec<Window> = self.space.elements().cloned().collect();
+        // Hidden ones too (see `crate::desktop`): the switcher is how they come back.
+        let windows: Vec<Window> = self
+            .space
+            .elements()
+            .cloned()
+            .chain(
+                self.hidden
+                    .iter()
+                    .map(|(w, _)| w.clone())
+                    .filter(|w| w.alive()),
+            )
+            .collect();
         let mut list: Vec<WindowInfo> = windows
             .iter()
             .filter_map(|w| {

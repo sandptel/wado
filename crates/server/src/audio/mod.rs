@@ -1,7 +1,7 @@
 //! The session's sound, streamed: its audio sink's monitor → Opus → a WebRTC audio track.
 //!
-//! Follows the compositor's sink (see `compositor::session_env::audio`): while there is one,
-//! a thread reads PCM from it, encodes 10 ms Opus frames and hands them to the track. Audio
+//! Captures the daemon's "This phone" sink (`crate::host::phone_sink`) while a viewer is
+//! listening: a thread reads PCM from it, encodes 10 ms Opus frames and hands them to the track. Audio
 //! has its own track and its own RTP stream, so it never waits behind a video frame, and it
 //! travels over SRTP/UDP like the video (invariant #2).
 //!
@@ -33,14 +33,20 @@ pub fn track() -> Arc<TrackLocalStaticSample> {
     ))
 }
 
-/// Follow the session's sink for the life of the daemon, streaming whatever it plays.
-pub async fn run(mut sink: watch::Receiver<Option<String>>, track: Arc<TrackLocalStaticSample>) {
+/// Stream the phone sink while someone is listening — a peer connection that asked for audio
+/// is up — and stop when nobody is, so an idle daemon encodes nothing.
+pub async fn run(
+    sink: String,
+    mut listening: watch::Receiver<bool>,
+    track: Arc<TrackLocalStaticSample>,
+) {
     loop {
-        let now = sink.borrow_and_update().clone();
+        let on = *listening.borrow_and_update();
         // A stop flag the capture thread checks once per frame; dropping the sender stops it.
         let (stop_tx, stop_rx) = std::sync::mpsc::channel::<()>();
-        if let Some(name) = now {
+        if on {
             let (tx, mut rx) = mpsc::channel::<Bytes>(50);
+            let name = sink.clone();
             std::thread::Builder::new()
                 .name("wado-audio".into())
                 .spawn(move || pump(&name, tx, stop_rx))
@@ -58,7 +64,7 @@ pub async fn run(mut sink: watch::Receiver<Option<String>>, track: Arc<TrackLoca
                 }
             });
         }
-        if sink.changed().await.is_err() {
+        if listening.changed().await.is_err() {
             break;
         }
         drop(stop_tx);

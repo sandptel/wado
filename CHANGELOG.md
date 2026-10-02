@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+### Added
+
+**Control the computer itself from the phone: its sound, Wi-Fi, Bluetooth and sleep.** It all
+works over the relay with no session running, so a phone with just a shell open can still turn
+the music down.
+
+- **Sound** (a card in the control centre, plus a full **Sound** page like pavucontrol):
+  everything playing on the computer, each app with its own volume, mute, and the output it
+  plays on; every output, with its volume, mute, and which one is the default. One switch
+  sends everything **to this phone** or back **to the computer**. Each app can also be moved
+  on its own. *This phone* works without a session too: the client opens an audio-only
+  connection when sound is routed to it. A session's apps play on the phone by default.
+- **Wi-Fi & Bluetooth**: switch either on or off, join a network, connect or disconnect paired
+  Bluetooth devices. **Wi-Fi never changes on a single tap**, because it can cut the
+  connection you are using. Every change asks first and says what it risks. Joining a network
+  is undone after a minute unless you tap *Keep*. *Off for 5 min* turns it back on by itself.
+  Only the owner device can change Wi-Fi.
+- **New tiles**: Play on phone, Computer sound (mute the computer), Wi-Fi, Bluetooth,
+  Computer awake (stops the computer from sleeping), and Phone sound (the tile that was *Sound*).
+- **The dock is now ⋯ · Apps · Home · Back.** Home shows an empty desktop: every window
+  steps aside and nothing has focus, so whatever you open next starts on a clean screen.
+  Press Home again, or pick a window in the switcher, to bring them back. The app drawer now
+  has its own button.
+
+Checked live, with no session running: one app's stream moved to *This phone* reached the
+browser at tone-sized Opus packets (138 bytes each). `scripts/shells-e2e.mjs` now also covers
+reading the computer's state and keeping it awake.
+
 ### Removed
 
 **The tap lens is gone.** An uncertain tap no longer opens a magnifier, whether the app has an

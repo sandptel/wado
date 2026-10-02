@@ -10,6 +10,8 @@ pub mod display;
 pub mod gamepad;
 pub mod host;
 pub mod input;
+pub mod network;
+pub mod sound;
 pub mod switcher;
 pub mod tiles;
 
@@ -30,6 +32,8 @@ pub enum Page {
     Diagnostics,
     Host,
     Tiles,
+    Sound,
+    Network,
 }
 
 impl Page {
@@ -45,6 +49,8 @@ impl Page {
             Page::Diagnostics => "Diagnostics",
             Page::Host => "This computer",
             Page::Tiles => "Edit tiles",
+            Page::Sound => "Sound",
+            Page::Network => "Wi-Fi & Bluetooth",
         }
     }
 }
@@ -61,6 +67,8 @@ pub fn render(ui: Ui, page: Page) -> Element {
         Page::Diagnostics => diagnostics::render(ui),
         Page::Host => host::render(ui),
         Page::Tiles => tiles::render(ui),
+        Page::Sound => sound::render(ui),
+        Page::Network => network::render(ui),
     }
 }
 

@@ -9,6 +9,7 @@
 //   ssh        hosts come from ~/.ssh/config, and an alias that is not there is refused
 //   config     config_get answers; live keys (caps, binds, gestures) set from the client land
 //              and are pushed back; bad ones and unconfirmed privileged ones are refused
+//   host       the computer's sound (with the This phone output) and sleep, with no session
 //   close      closing a tab ends the shell and the list says so
 
 import { spawn } from "node:child_process";
@@ -69,8 +70,8 @@ try {
   start("wado-relay", ["--bind", `127.0.0.1:${PORT}`], {});
   await sleep(400);
   start("wado", [], {
-    WADO_RELAY_URL: RELAY, WADO_REMOTE_ID: RID, WADO_INSTANCE: "1", WADO_UDP_SLICE: "20",
-    HOME, XDG_CONFIG_HOME: join(HOME, ".config"), XDG_RUNTIME_DIR: HOME, SHELL: "/bin/sh",
+    WADO_RELAY_URL: RELAY, WADO_REMOTE_ID: RID, WADO_INSTANCE: "e2e-shells", WADO_UDP_SLICE: "20",
+    HOME, XDG_CONFIG_HOME: join(HOME, ".config"), SHELL: "/bin/sh",
   });
 
   console.log("shells");
@@ -127,6 +128,20 @@ try {
   b.send({ type: "config_set", key: "shells.enabled", value: "false" });
   const unconfirmed = await b.wait("config_rejected", 5000);
   check("a privileged key needs confirming", unconfirmed && /confirm/.test(unconfirmed.message), JSON.stringify(unconfirmed));
+
+  console.log("host");
+  b.msgs.length = 0;
+  b.send({ type: "host_get" });
+  const hs = await b.wait("host_state", 10000);
+  check("the computer's state answers with no session", !!hs && Array.isArray(hs.state.audio.sinks), JSON.stringify(hs).slice(0, 300));
+  check("…including the This phone output", hs && hs.state.audio.phone_sink && hs.state.audio.sinks.some((x) => x.name === hs.state.audio.phone_sink && x.label === "This phone"),
+    hs && JSON.stringify(hs.state.audio.sinks));
+  b.msgs.length = 0;
+  b.send({ type: "host_do", action: { do: "keep_awake", on: true } });
+  const awake = await b.waitWhere((m) => m.type === "host_state" && m.state.awake === true, 10000);
+  check("keeping the computer awake is reflected back", !!awake);
+  b.send({ type: "host_do", action: { do: "keep_awake", on: false } });
+  check("…and released", !!(await b.waitWhere((m) => m.type === "host_state" && m.state.awake === false, 10000)));
 
   console.log("close");
   b.msgs.length = 0;
