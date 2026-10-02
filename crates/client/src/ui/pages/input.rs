@@ -42,12 +42,6 @@ pub fn render(ui: Ui) -> Element {
                 else { "Tap clicks, hold right-clicks, drag scrolls." }
             }
             SwitchRow {
-                title: "Lens on small targets",
-                sub: "An unsure tap magnifies instead of clicking",
-                on: (s.lens_auto)(),
-                ontoggle: move |on| { s.lens_auto.set(on); apply(ui); },
-            }
-            SwitchRow {
                 title: "Move windows",
                 sub: "Dragging moves the window under the finger",
                 on: (s.move_mode)(),

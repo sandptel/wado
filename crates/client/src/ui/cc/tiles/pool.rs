@@ -212,20 +212,6 @@ pub static ALL: &[Tile] = &[
         needs_session: false,
     },
     Tile {
-        id: "lens",
-        icon: "search",
-        label: "Lens",
-        on: Some(|ui| (ui.set.lens_auto)()),
-        sub: ("Taps click", "Unsure taps magnify"),
-        act: Act::Run(|ui| {
-            let mut s = ui.set;
-            s.lens_auto.set(!(s.lens_auto)());
-            live::apply(ui);
-        }),
-        page: Some(Page::Input),
-        needs_session: false,
-    },
-    Tile {
         id: "clipboard",
         icon: "clip",
         label: "Paste here",

@@ -6,7 +6,7 @@
 // rows. Cancel is Back: the compositor answers a Back with a popup open by sending Escape, and
 // the app closes its own menu, which in turn closes this sheet.
 //
-// An app with no tree gets the lens over its real popup instead (tree: false). The sheet is
+// An app with no tree keeps its own popup (tree: false), tapped like anything else. The sheet is
 // state-driven: it shows whatever the latest Menu message says and hides on `null`.
 
 W.menuSheet = {
@@ -16,9 +16,6 @@ W.menuSheet = {
     if (!menu) { W.menuSheet.hide(); return; }
     if (!menu.tree) {
       W.menuSheet.hide();
-      // No tree: magnify the app's own popup, centred.
-      const k = W.videoEl && W.targets.content(W.videoEl);
-      if (k && W.lens) W.lens.open(k.left + (menu.x + menu.w / 2) * k.w, k.top + (menu.y + menu.h / 2) * k.h);
       return;
     }
     const sheet = W.menuSheet.el || document.createElement("div");

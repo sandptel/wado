@@ -1,5 +1,5 @@
 //! The browser-side half of the settings: everything `js/` applies itself (move mode, scroll,
-//! touch, the dial, orientation, wake lock, lens) pushed to the bridge in one call.
+//! touch, the dial, orientation, wake lock, sound) pushed to the bridge in one call.
 
 use crate::{bridge, state::Ui};
 
@@ -40,9 +40,8 @@ pub fn apply(ui: Ui) {
         bridge::js(&(s.orientation)())
     ));
     bridge::call(format!(
-        "window.__wado.setWake({}); window.__wado.setLensAuto({}); window.__wado.setAudio({}, {});",
+        "window.__wado.setWake({}); window.__wado.setAudio({}, {});",
         (s.keep_awake)(),
-        (s.lens_auto)(),
         (s.volume)(),
         (s.muted)()
     ));

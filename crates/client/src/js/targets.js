@@ -6,7 +6,7 @@
 // A tap never waits more than TARGET_WAIT_MS past lift for it — an absent answer is a plain tap.
 //
 // Relay only (the direct transport has no push path yet): in direct mode every answer is
-// `null`, "no tree", and the tap falls back to the pixel heuristic in lens.js.
+// `null`, "no tree", and the tap is a plain click.
 
 // Fingertip radius in CSS pixels — ~7 mm across on a phone.
 const FINGER_CSS = 22;
@@ -69,16 +69,15 @@ W.targets = {
 W.relayOn("targets", (msg) => W.targets.answer(msg.seq, msg.targets));
 
 // What a tap on normalized point `n` should do, given the targets near it (pure — see
-// scripts/lens-check.mjs). `size` converts a normalized w/h to CSS pixels.
-//   → { kind: "click", at }  plain click (nothing actionable, or one big target under it)
+// scripts/tap-check.mjs). `size` converts a normalized w/h to CSS pixels.
+//   → { kind: "click", at }  plain click where the finger was (nothing near, or several)
 //   → { kind: "snap", at }   exactly one target near: click its centre (the magnetic tap)
-//   → { kind: "lens" }       several compete and one is small: let the lens decide
-W.decideTap = (n, targets, size, smallCss = 44) => {
+//
+// Several targets competing used to open a magnifying lens; it was removed (2026-10-02, it
+// did not work as intended), so the finger's own point decides.
+W.decideTap = (n, targets) => {
   if (!targets || targets.length === 0) return { kind: "click", at: n };
   const centre = (t) => ({ x: t.x + t.w / 2, y: t.y + t.h / 2 });
   if (targets.length === 1) return { kind: "snap", at: centre(targets[0]) };
-  const inside = targets.filter((t) => n.x >= t.x && n.x < t.x + t.w && n.y >= t.y && n.y < t.y + t.h);
-  const small = (t) => Math.min(size(t).w, size(t).h) < smallCss;
-  if (inside.length === 1 && !small(inside[0])) return { kind: "click", at: n };
-  return targets.some(small) ? { kind: "lens" } : { kind: "click", at: n };
+  return { kind: "click", at: n };
 };
