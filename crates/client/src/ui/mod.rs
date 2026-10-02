@@ -19,6 +19,7 @@ pub mod drawer;
 pub mod gamepad;
 pub mod gesture;
 pub mod health;
+pub mod host;
 pub mod landing;
 pub mod live;
 pub mod pages;

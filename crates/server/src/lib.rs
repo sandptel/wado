@@ -10,6 +10,7 @@ pub mod cli;
 pub mod config;
 pub mod error;
 pub mod gate;
+pub mod host;
 pub mod ice;
 pub mod instance;
 pub mod menu_sheet;

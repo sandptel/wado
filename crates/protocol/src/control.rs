@@ -56,6 +56,9 @@ pub enum WindowAction {
     /// Alt+Left (the app's own back — browsers, file managers, settings panels). Hiding the
     /// soft keyboard, the first thing Back does, never reaches here: the client does it.
     Back,
+    /// Show an empty desktop: every window out of the way. Again, or picking one in the
+    /// switcher, brings them back.
+    Home,
 }
 
 /// One toplevel, as the viewer sees it in the window list.

@@ -288,6 +288,8 @@ pub struct Live {
     pub notes: Signal<Vec<Note>>,
     /// The stream is being recorded (`js/capture.js`).
     pub recording: Signal<bool>,
+    /// The computer's sound, Wi-Fi, Bluetooth and sleep — `None` until the daemon has said.
+    pub hoststate: Signal<Option<wado_protocol::HostState>>,
     /// A one-line note for a toast — "Screenshot saved", and the like. Each new text shows again.
     pub note: Signal<String>,
 
@@ -419,6 +421,7 @@ impl Live {
             clips: use_signal(Vec::new),
             notes: use_signal(Vec::new),
             recording: use_signal(|| false),
+            hoststate: use_signal(|| None),
             note: use_signal(String::new),
             cc_open: use_signal(|| false),
             cc_page: use_signal(Default::default),

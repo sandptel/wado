@@ -29,4 +29,6 @@ portable-pty = "0.9.0"
 # Opus for the audio track (`audio/`). The same binding and version the compositor's video
 # encoder already links, so it costs no new build and no new system library.
 ffmpeg-the-third = "5.0.0"
+# PR_SET_PDEATHSIG for the helpers that must die with the daemon (`host/`).
+libc = "0.2"
 zbus = { version = "5", default-features = false, features = ["tokio"] }

@@ -394,6 +394,22 @@ pub enum RelayMsg {
         hosts: Vec<String>,
     },
 
+    // ── The computer itself: sound, Wi-Fi, Bluetooth (see `server::host`) ────
+    /// Client → server: send me [`RelayMsg::HostState`]. Needs no session.
+    HostGet,
+    /// Server → client: the computer as it is now. Sent on request and after every action.
+    HostState {
+        state: crate::HostState,
+    },
+    /// Client → server: do this to the computer.
+    HostDo {
+        action: crate::HostAction,
+    },
+    /// Server → client: an action failed, and why.
+    HostError {
+        message: String,
+    },
+
     // ── Notifications from the session's apps ──────────────────────────────
     /// Server → client: an app in the session raised a notification. Same `id` again replaces it.
     Notification {

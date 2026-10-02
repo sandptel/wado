@@ -8,7 +8,7 @@ use dioxus::prelude::*;
 use crate::{
     bridge, cfg,
     state::Ui,
-    ui::{gamepad, live, pages::Page},
+    ui::{gamepad, host, live, pages::Page},
 };
 
 /// What tapping does. Two tiles cannot be plain buttons: the keyboard must be a `label` so
@@ -38,12 +38,12 @@ pub struct Tile {
 pub const DEFAULTS: [&str; 8] = [
     "kbd",
     "sound",
-    "pad",
+    "playhere",
+    "pcmute",
+    "wifi",
+    "bluetooth",
     "mouse",
     "fullscreen",
-    "move",
-    "touch",
-    "natscroll",
 ];
 
 pub fn defaults() -> Vec<String> {
@@ -68,7 +68,7 @@ pub static ALL: &[Tile] = &[
     Tile {
         id: "sound",
         icon: "sound",
-        label: "Sound",
+        label: "Phone sound",
         on: Some(|ui| !(ui.set.muted)()),
         sub: ("Muted", "Playing"),
         act: Act::Run(|ui| {
@@ -76,6 +76,95 @@ pub static ALL: &[Tile] = &[
             s.muted.set(!(s.muted)());
             live::apply(ui);
             bridge::call("window.__wado.audioUnlock();".to_string());
+        }),
+        page: None,
+        needs_session: false,
+    },
+    Tile {
+        id: "pcmute",
+        icon: "monitor",
+        label: "Computer sound",
+        on: Some(|ui| {
+            (ui.live.hoststate)()
+                .as_ref()
+                .and_then(host::speaker)
+                .is_some_and(|s| !s.muted)
+        }),
+        sub: ("Muted", "On"),
+        act: Act::Run(|ui| {
+            if let Some(s) = (ui.live.hoststate)().as_ref().and_then(host::speaker) {
+                host::act(wado_protocol::HostAction::SinkMute {
+                    id: s.id,
+                    muted: !s.muted,
+                });
+            }
+        }),
+        page: Some(Page::Sound),
+        needs_session: false,
+    },
+    Tile {
+        id: "playhere",
+        icon: "phone",
+        label: "Play on phone",
+        on: Some(|ui| (ui.live.hoststate)().as_ref().is_some_and(host::on_phone)),
+        sub: ("Computer speakers", "Sound comes here"),
+        act: Act::Run(|ui| {
+            if let Some(h) = (ui.live.hoststate)() {
+                if host::on_phone(&h) {
+                    host::play_on_computer(&h)
+                } else {
+                    host::play_on_phone(&h)
+                }
+            }
+        }),
+        page: Some(Page::Sound),
+        needs_session: false,
+    },
+    Tile {
+        id: "wifi",
+        icon: "wifi",
+        label: "Wi-Fi",
+        on: Some(|ui| {
+            (ui.live.hoststate)()
+                .and_then(|h| h.wifi)
+                .is_some_and(|w| w.enabled)
+        }),
+        sub: ("Off", "On"),
+        // Never a one-tap toggle: it can cut this very connection. The page asks first.
+        act: Act::Run(|ui| {
+            let mut l = ui.live;
+            l.cc_page.set(Page::Network);
+        }),
+        page: Some(Page::Network),
+        needs_session: false,
+    },
+    Tile {
+        id: "bluetooth",
+        icon: "bt",
+        label: "Bluetooth",
+        on: Some(|ui| {
+            (ui.live.hoststate)()
+                .and_then(|h| h.bluetooth)
+                .is_some_and(|b| b.powered)
+        }),
+        sub: ("Off", "On"),
+        act: Act::Run(|ui| {
+            if let Some(b) = (ui.live.hoststate)().and_then(|h| h.bluetooth) {
+                host::act(wado_protocol::HostAction::BtPower { on: !b.powered });
+            }
+        }),
+        page: Some(Page::Network),
+        needs_session: false,
+    },
+    Tile {
+        id: "pcawake",
+        icon: "moon",
+        label: "Computer awake",
+        on: Some(|ui| (ui.live.hoststate)().is_some_and(|h| h.awake)),
+        sub: ("May sleep", "Kept awake"),
+        act: Act::Run(|ui| {
+            let on = (ui.live.hoststate)().is_some_and(|h| h.awake);
+            host::act(wado_protocol::HostAction::KeepAwake { on: !on });
         }),
         page: None,
         needs_session: false,

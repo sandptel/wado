@@ -12,7 +12,6 @@
 //! X11 — a `DISPLAY` that is the session's own ([`xwayland`]).
 
 pub mod a11y;
-pub mod audio;
 pub mod bus;
 pub mod xwayland;
 
@@ -25,7 +24,8 @@ use std::{
 /// one compositor per daemon, so one value.
 static DARK: AtomicU8 = AtomicU8::new(0);
 
-/// The session's audio sink name, while it has one — see [`audio`].
+/// The daemon's "this phone" audio sink (`server::host::phone_sink`), which session apps play
+/// into. Set once by [`crate::control::CompositorCommand::AudioSink`].
 static SINK: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
 pub fn set_sink(name: Option<String>) {

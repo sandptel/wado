@@ -276,3 +276,27 @@ details.card > summary { cursor: pointer; font-weight: 600; color: var(--bright)
 .notetext small { font-size: 11px; color: var(--dim); letter-spacing: .04em; text-transform: uppercase; }
 .notetext b { color: var(--bright); }
 .notetext p { margin: 0; font-size: 12.5px; color: var(--text); overflow-wrap: anywhere; }
+
+/* The sound card and the Sound page's rows. */
+.soundcard { border-radius: var(--r3); background: var(--s1); padding: 14px; display: grid; gap: 10px; }
+.soundcard .cardhead .why { font-weight: 400; }
+.linkbtn { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; color: var(--accent); font-weight: 600; font-size: 13px; min-height: 32px; }
+.linkbtn svg { width: 16px; height: 16px; }
+.volrow { display: flex; align-items: center; gap: 8px; }
+.volrow .slide { flex: 1; min-width: 0; }
+.slide.thin { height: 44px; }
+.slide.thin input[type=range]::-webkit-slider-thumb { height: 44px; }
+.slide.thin input[type=range]::-moz-range-thumb { height: 44px; }
+.iconbtn.on { color: var(--bad); background: color-mix(in oklab, var(--bad), transparent 86%); }
+.streamhead { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.streamhead .navtext { flex: 1; min-width: 0; }
+.netrow { border-radius: var(--r2); padding-inline: 8px; }
+.netrow.on { background: color-mix(in oklab, var(--accent), transparent 88%); }
+.confirm input { margin: 2px 0; }
+
+/* Output chips on the Sound page: wrap, so every output's name stays whole. */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border-radius: 999px;
+  background: var(--s0); color: var(--dim); font-size: 13px; font-weight: 600; border: 1px solid var(--line); }
+.chip svg { width: 15px; height: 15px; }
+.chip.on { background: var(--accent); color: var(--on-accent); border-color: transparent; }

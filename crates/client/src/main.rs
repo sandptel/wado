@@ -89,6 +89,13 @@ fn App() -> Element {
         }
     });
 
+    // The computer's state (sound, Wi-Fi, Bluetooth) is polled while the control centre is
+    // open — that is when someone is looking at it — and not otherwise.
+    use_effect(move || {
+        let open = (ui.live.cc_open)();
+        bridge::call(format!("window.__wado.hostWatch({open});"));
+    });
+
     // Keep the log panel pinned to the newest line, unless the user has scrolled up to read
     // history — following the tail while someone is reading is worse than not following it.
     use_effect(move || {

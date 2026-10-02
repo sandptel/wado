@@ -8,6 +8,7 @@
 pub mod apply_bar;
 pub mod hero;
 pub mod list;
+pub mod sound;
 pub mod tiles;
 
 use dioxus::prelude::*;
@@ -70,20 +71,7 @@ pub fn render(ui: Ui) -> Element {
                         }
                     }
                     {tiles::render(ui)}
-                    div { class: "slide",
-                        input {
-                            r#type: "range", min: "0", max: "1", step: "0.02", "aria-label": "Volume",
-                            value: "{(ui.set.volume)()}",
-                            oninput: move |e| if let Ok(v) = e.value().parse::<f64>() {
-                                let mut s = ui.set;
-                                s.volume.set(v);
-                                if v > 0.0 { s.muted.set(false); }
-                                crate::ui::live::apply(ui);
-                            },
-                        }
-                        span { class: "slidelab", Icon { name: "sound" } " Volume" }
-                        span { class: "slideval", if (ui.set.muted)() { "muted" } else { "{((ui.set.volume)() * 100.0).round()}%" } }
-                    }
+                    {sound::render(ui)}
                     div { class: "sect",
                         span { "Shells" }
                         button {

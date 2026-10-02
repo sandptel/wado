@@ -738,11 +738,6 @@ pub fn stop_session(state: &mut Wado) {
     if let Some(a11y) = state.app_a11y.take() {
         crate::session_env::a11y::terminate(a11y);
     }
-    if let Some(audio) = state.app_audio.take() {
-        let _ = state.audio_tx.send(None);
-        crate::session_env::set_sink(None);
-        crate::session_env::audio::terminate(audio);
-    }
     if let Some(bus) = state.app_bus.take() {
         let _ = state.app_bus_tx.send(None);
         crate::session_env::bus::terminate(bus);

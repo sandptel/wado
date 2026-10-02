@@ -137,10 +137,6 @@ pub struct Wado {
     /// The session's private D-Bus address while it has one — what the server serves
     /// notifications on. `None` with no session, or with isolation off.
     pub app_bus_tx: tokio::sync::watch::Sender<Option<String>>,
-    /// The session's audio sink, and its name for the server to capture — see
-    /// [`crate::session_env::audio`].
-    pub app_audio: Option<crate::session_env::audio::AudioSink>,
-    pub audio_tx: tokio::sync::watch::Sender<Option<String>>,
     /// The menu open on the focused window, for the S7 menu sheet — see [`crate::hit`].
     pub menu_tx: tokio::sync::watch::Sender<Option<crate::hit::MenuSpot>>,
     /// Stable per-window ids for that list. Never reused within a process.
@@ -269,6 +265,11 @@ pub struct Wado {
     pub focus_follows_pointer: bool,
     /// Keys whose press a bind ate, so their release is eaten too (see [`crate::binds`]).
     pub eaten_keys: std::collections::HashSet<u32>,
+    /// Windows Home put away, and where they were — see [`crate::desktop`].
+    pub hidden: Vec<(
+        smithay::desktop::Window,
+        smithay::utils::Point<i32, smithay::utils::Logical>,
+    )>,
     /// Where each maximized window was before it was maximized, so restore has somewhere to
     /// go back to. Only maximized windows appear here; the entry is removed on restore, and
     /// a window maximized at map time by `Placement::Maximized` never has one.
@@ -454,8 +455,6 @@ impl Wado {
             windows_tx: tokio::sync::watch::channel(Vec::new()).0,
             clipboard_tx: tokio::sync::watch::channel(String::new()).0,
             app_bus_tx: tokio::sync::watch::channel(None).0,
-            app_audio: None,
-            audio_tx: tokio::sync::watch::channel(None).0,
             menu_tx: tokio::sync::watch::channel(None).0,
             window_ids: std::collections::HashMap::new(),
             next_window_id: 0,
@@ -500,6 +499,7 @@ impl Wado {
             placement: Placement::default(),
             focus_follows_pointer: false,
             eaten_keys: Default::default(),
+            hidden: Vec::new(),
             pre_maximize: std::collections::HashMap::new(),
             pre_fullscreen: std::collections::HashMap::new(),
             gamepad: None,

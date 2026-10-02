@@ -64,6 +64,8 @@ pub enum CompositorCommand {
         y: f64,
         reply: oneshot::Sender<Option<crate::hit::HitWindow>>,
     },
+    /// The sink session apps should play into — the daemon's "this phone" output.
+    AudioSink(Option<String>),
     /// Make `text` the session's clipboard (the viewer pasted or copied on its side).
     SetClipboard { text: String },
     /// Make the next encoded frame a forced IDR keyframe. Sent when a viewer
@@ -141,6 +143,7 @@ pub fn handle_command(state: &mut Wado, cmd: CompositorCommand, frame_tx: &mpsc:
         }
         CompositorCommand::ForceKeyframe => headless::force_keyframe(state),
         CompositorCommand::SetClipboard { text } => state.set_clipboard(text),
+        CompositorCommand::AudioSink(name) => crate::session_env::set_sink(name),
         CompositorCommand::ViewerAttached(attached) => {
             headless::set_viewer_attached(state, attached)
         }
@@ -210,11 +213,6 @@ fn start(
     // this machine has no `dbus-daemon`, and the `DISPLAY` half of the isolation still holds.
     // Sized to the output, because the X screen cannot be resized afterwards any more than the
     // output can — same reason as invariant #8.
-    // Before anything is launched, so the first app already plays into it.
-    state.app_audio = crate::session_env::audio::start();
-    let sink = state.app_audio.as_ref().map(|a| a.name.clone());
-    crate::session_env::set_sink(sink.clone());
-    let _ = state.audio_tx.send(sink);
     state.app_x = config
         .x_server
         .then(|| crate::session_env::xwayland::start(config.width, config.height))

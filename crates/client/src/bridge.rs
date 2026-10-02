@@ -119,6 +119,8 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/audio.js"),
     "\n",
+    include_str!("js/host.js"),
+    "\n",
     include_str!("js/lifecycle.js"),
 );
 
@@ -336,6 +338,17 @@ pub fn run(ui: Ui) {
                     notes.retain(|n| n.id != note.id);
                     notes.insert(0, note);
                     notes.truncate(crate::state::MAX_NOTES);
+                }
+                "hostState" => {
+                    if let Some(st) = msg.get("state").and_then(|v| {
+                        serde_json::from_value::<wado_protocol::HostState>(v.clone()).ok()
+                    }) {
+                        // Sound routed to this phone with no session: listen, so it is heard.
+                        if crate::ui::host::on_phone(&st) && !(live.session_on)() {
+                            call("window.__wado.listenStart();".to_string());
+                        }
+                        live.hoststate.set(Some(st));
+                    }
                 }
                 "audioBlocked" => live.note.set(
                     "Tap the sound tile to hear the session — this browser held the audio back."

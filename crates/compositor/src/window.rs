@@ -73,9 +73,15 @@ impl Wado {
         if action == WindowAction::Back {
             return self.back();
         }
+        if action == WindowAction::Home {
+            return self.home();
+        }
         if let WindowAction::Focus { id } = action {
             match self.window_by_id(id) {
-                Some(w) => self.focus_window(&w),
+                Some(w) => {
+                    self.unhide(&w);
+                    self.focus_window(&w)
+                }
                 None => tracing::warn!(id, "focus ignored — no window with that id"),
             }
             return;
@@ -107,7 +113,10 @@ impl Wado {
                 }
             }
             // Not actions on one window; `window_action` handles them before it gets here.
-            WindowAction::CycleFocus | WindowAction::Focus { .. } | WindowAction::Back => {}
+            WindowAction::CycleFocus
+            | WindowAction::Focus { .. }
+            | WindowAction::Back
+            | WindowAction::Home => {}
         }
     }
 

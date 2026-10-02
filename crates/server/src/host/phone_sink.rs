@@ -1,10 +1,10 @@
-//! The session's own audio output: a PipeWire null sink its applications play into.
+//! "This phone": a PipeWire null sink whose sound goes to the viewer instead of a speaker.
 //!
-//! Without it, an app launched in the session plays on the speakers of the computer running
-//! wado — the audio equivalent of the window opening on the wrong desktop. With it, apps are
-//! pointed at `wado-<instance>-<pid>` (`PULSE_SINK`, which pipewire-pulse honours, and every common
-//! app speaks Pulse), and the server captures that sink's monitor for the stream
-//! (`server::audio`). Nothing plays on the host.
+//! One per daemon, for its whole life — not per session — so the computer's own playback can be
+//! routed to the phone over a shell-only connection too. Session apps are pointed at it
+//! (`PULSE_SINK`, via `CompositorCommand::AudioSink`), so a session plays on the phone by
+//! default; host apps play where they always did until moved here from the Sound page.
+//! `crate::audio` captures its monitor while a viewer is listening.
 //!
 //! The node lives exactly as long as the `pw-cli` process that created it, which is what makes
 //! cleanup automatic: kill the child, the sink is gone — even if the daemon itself dies.
@@ -53,7 +53,7 @@ pub fn start() -> Option<AudioSink> {
     };
     let create = format!(
         "create-node adapter {{ factory.name=support.null-audio-sink node.name={name} \
-         node.description=\"wado session\" media.class=Audio/Sink audio.position=[FL FR] \
+         node.description=\"This phone (wado)\" media.class=Audio/Sink audio.position=[FL FR] \
          object.linger=false }}\n"
     );
     // stdin is kept open: closing it would end pw-cli, and with it the node.
@@ -66,7 +66,7 @@ pub fn start() -> Option<AudioSink> {
         let _ = child.kill();
         return None;
     }
-    info!(sink = name, "session audio sink created");
+    info!(sink = name, "phone audio sink created");
     Some(AudioSink { name, child })
 }
 
