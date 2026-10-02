@@ -92,7 +92,8 @@ fn App() -> Element {
     // The computer's state (sound, Wi-Fi, Bluetooth) is polled while the control centre is
     // open — that is when someone is looking at it — and not otherwise.
     use_effect(move || {
-        let open = (ui.live.cc_open)();
+        // …or while the landing is up: its playback card is the computer's, live.
+        let open = (ui.live.cc_open)() || !(ui.live.session_on)();
         bridge::call(format!("window.__wado.hostWatch({open});"));
     });
 

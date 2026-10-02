@@ -48,7 +48,14 @@ pub fn render(ui: Ui) -> Element {
         return rsx! { div { class: "card", p { class: "why", "Host settings travel over the relay. Connect via relay to change them here — or edit ~/.config/wado/config.kdl on that computer." } } };
     }
 
+    let info = (ui.live.hoststate)()
+        .map(|h| h.info)
+        .filter(|i| !i.hostname.is_empty());
+
     rsx! {
+        if let Some(info) = info {
+            crate::ui::fetch::Fetch { info }
+        }
         if let Some(err) = h.error.clone() {
             div { class: "card alertcard",
                 b { "config.kdl has a mistake" }

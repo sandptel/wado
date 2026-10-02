@@ -31,4 +31,6 @@ portable-pty = "0.9.0"
 ffmpeg-the-third = "5.0.0"
 # PR_SET_PDEATHSIG for the helpers that must die with the daemon (`host/`).
 libc = "0.2"
+# Local cover art (`file://`) goes to the viewer as a data: URI (`host/media.rs`). Already in the tree.
+base64 = "0.22"
 zbus = { version = "5", default-features = false, features = ["tokio"] }

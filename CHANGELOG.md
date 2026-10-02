@@ -4,6 +4,28 @@
 
 ### Added
 
+**A playback card, Android-style.** Whatever is playing on the computer (Spotify, a browser
+tab, VLC, anything that speaks MPRIS) gets a card on the landing page and at the top of the
+control centre. It shows cover art, title and artist, play/pause, previous and next, a progress
+bar you can drag to seek, and shuffle. A chip shows where the sound is coming out, *This phone*
+or *Computer*, and a tap moves it. Players inside the session are included too. When several
+are open, tap the counter to switch between them. Checked against a real VLC: play/pause and
+seeking both take effect on it.
+
+**Computers are named after themselves, and you can see whether they're up.** A saved computer
+takes its hostname the first time it connects, until you give it a name of your own (the
+pencil on its card). Every card shows live status from the moment the page opens: *Online*,
+*Computer offline*, *In use on another device*, *Unreachable*, or *Connecting…*. Computers you
+aren't connected to are checked at their relay every 20 seconds through a small new relay
+route, `GET /online/:id`. Once connected, the computer's details appear neofetch-style under
+its card and on *This computer*: OS logo, user@host, OS, kernel, uptime, shell, desktop, CPU,
+GPU, memory, and the scheme's colour blocks.
+
+**Connect links.** `scripts/rig.sh` prints a *Phone link*. Opening it saves the relay and
+Remote ID on that device and replaces the stale ones. A rotated tunnel URL used to leave a
+phone failing silently, never reaching the relay. Where to connect is also no longer restored
+from settings saved on the daemon, which could hold a dead URL.
+
 **Control the computer itself from the phone: its sound, Wi-Fi, Bluetooth and sleep.** It all
 works over the relay with no session running, so a phone with just a shell open can still turn
 the music down.

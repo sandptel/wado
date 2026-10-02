@@ -66,7 +66,7 @@ pub fn render(ui: Ui) -> Element {
         .profiles
         .read()
         .get((s.profile)())
-        .map(|p| p.name.clone())
+        .map(|p| p.display())
         .unwrap_or_else(|| crate::profile::default_name(ui));
     let c = crate::cfg::build(ui);
     let sw = on && (live.encoder_mode)() == "software";

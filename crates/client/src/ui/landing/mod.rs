@@ -28,6 +28,7 @@ pub fn render(ui: Ui) -> Element {
             p { class: "tag", "Your desktop, at this screen's own resolution." }
             {progress::render(ui)}
             {profiles::render(ui)}
+            {crate::ui::media::render(ui)}
             button {
                 class: "shapecard",
                 onclick: move |_| { live.cc_page.set(Page::Display); live.cc_open.set(true); },
