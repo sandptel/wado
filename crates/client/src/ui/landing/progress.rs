@@ -27,10 +27,15 @@ pub fn render(ui: Ui) -> Element {
         return rsx! {};
     }
     let done = (stage as f64 / 4.0).min(1.0);
+    // Past the daemon with nothing starting is not "connecting": it is ready — the state
+    // shell-only mode sits in.
+    let starting = (ui.live.session_on)();
     let title = if failed {
         "Stopped"
     } else if stage >= 4 {
         "Streaming"
+    } else if stage >= 2 && !starting {
+        "Ready"
     } else {
         "Connecting…"
     };
@@ -49,7 +54,7 @@ pub fn render(ui: Ui) -> Element {
                         key: "{name}",
                         class: if (i as u8) < stage { "step done" }
                                else if (i as u8) == stage && failed { "step failed" }
-                               else if (i as u8) == stage { "step active" }
+                               else if (i as u8) == stage && (starting || stage < 2) { "step active" }
                                else { "step" },
                         title: "{hint}",
                         i {} "{name}"

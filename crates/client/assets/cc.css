@@ -40,6 +40,9 @@
 .page { position: absolute; inset: 0; overflow-y: auto; padding: 6px 16px calc(24px + env(safe-area-inset-bottom));
   display: flex; flex-direction: column; gap: 12px; scrollbar-width: none;
   transition: translate var(--dur-sheet) var(--spring), opacity var(--dur) var(--ease); }
+/* A scrolling flex column shrinks its children to fit unless told not to — which squashed the
+ * shell strip and the settings list to slivers. And nothing may be wider than the sheet. */
+.page > * { flex-shrink: 0; min-width: 0; max-width: 100%; }
 .page.behind { translate: -24% 0; opacity: 0; pointer-events: none; }
 .page.pushed { background: var(--s0); animation: push var(--dur-sheet) var(--spring) both; }
 @keyframes push { from { translate: 100% 0; } }
@@ -65,7 +68,8 @@
     linear-gradient(135deg, color-mix(in oklab, var(--accent), transparent 80%), color-mix(in oklab, var(--base0E), transparent 88%)),
     var(--s1); }
 .herotop { display: flex; align-items: center; gap: 12px; }
-.herotop > div { min-width: 0; }
+.herotop > div { min-width: 0; flex: 1; }
+.hero > * { min-width: 0; }
 .avatar { width: 42px; height: 42px; border-radius: var(--r2); display: grid; place-items: center; flex: none;
   background: var(--accent); color: var(--on-accent); }
 .hero h2 { margin: 0; font: 700 19px/1.1 var(--display); color: var(--bright); letter-spacing: -.01em;
