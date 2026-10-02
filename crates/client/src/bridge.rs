@@ -293,7 +293,22 @@ pub fn run(ui: Ui) {
                             .as_deref()
                             .and_then(|p| serde_json::from_str::<persist::Saved>(p).ok())
                         {
+                            // Where to connect stays this device's own: the daemon's copy can
+                            // hold a tunnel URL that has since rotated, and restoring it would
+                            // strand the next reload on a dead relay.
+                            let s = ui.set;
+                            let keep = (
+                                (s.conn_mode)(),
+                                (s.relay_url)(),
+                                (s.remote_id)(),
+                                (s.server_addr)(),
+                            );
                             persist::restore(ui, saved);
+                            let mut s = ui.set;
+                            s.conn_mode.set(keep.0);
+                            s.relay_url.set(keep.1);
+                            s.remote_id.set(keep.2);
+                            s.server_addr.set(keep.3);
                             crate::debug::apply(ui);
                             crate::ui::live::apply(ui);
                             crate::ui::gamepad::apply(ui);
