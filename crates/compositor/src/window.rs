@@ -76,10 +76,20 @@ impl Wado {
         if action == WindowAction::Home {
             return self.home();
         }
+        if let WindowAction::Workspace { n } = action {
+            return self.workspace_switch(n);
+        }
+        if let WindowAction::MoveToWorkspace { id, n, follow } = action {
+            match self.window_by_id(id) {
+                Some(w) => self.workspace_move(&w, n, follow),
+                None => tracing::warn!(id, "move ignored — no window with that id"),
+            }
+            return;
+        }
         if let WindowAction::Focus { id } = action {
             match self.window_by_id(id) {
                 Some(w) => {
-                    self.unhide(&w);
+                    self.workspace_reveal(&w);
                     self.focus_window(&w)
                 }
                 None => tracing::warn!(id, "focus ignored — no window with that id"),
@@ -116,7 +126,9 @@ impl Wado {
             WindowAction::CycleFocus
             | WindowAction::Focus { .. }
             | WindowAction::Back
-            | WindowAction::Home => {}
+            | WindowAction::Home
+            | WindowAction::Workspace { .. }
+            | WindowAction::MoveToWorkspace { .. } => {}
         }
     }
 

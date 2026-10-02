@@ -351,7 +351,7 @@ impl Wado {
                 continue;
             };
             // Home put it away; the strip keeps its place but does not show it.
-            if self.is_hidden(&c.window) {
+            if self.is_parked(&c.window) {
                 continue;
             }
             // Fullscreen already owns its size (see `crate::fullscreen`); only its place on

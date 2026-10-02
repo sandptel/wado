@@ -131,7 +131,7 @@ pub struct Wado {
     /// the phone itself had asked for three seconds earlier.
     pub shedding_tx: tokio::sync::watch::Sender<u32>,
     /// The window list for the viewer's bottom bar — see [`crate::window_list`].
-    pub windows_tx: tokio::sync::watch::Sender<Vec<wado_protocol::WindowInfo>>,
+    pub windows_tx: tokio::sync::watch::Sender<wado_protocol::WindowList>,
     /// The session's clipboard text, whenever an app copies — see [`crate::clipboard`].
     pub clipboard_tx: tokio::sync::watch::Sender<String>,
     /// The session's private D-Bus address while it has one — what the server serves
@@ -267,10 +267,12 @@ pub struct Wado {
     pub eaten_keys: std::collections::HashSet<u32>,
     /// The desktop colour behind every window (`SessionConfig::background`), linear RGBA.
     pub background: [f32; 4],
-    /// Windows Home put away, and where they were — see [`crate::desktop`].
-    pub hidden: Vec<(
-        smithay::desktop::Window,
-        smithay::utils::Point<i32, smithay::utils::Logical>,
+    /// Workspaces: which window is on which, and what is parked — see [`crate::workspace`].
+    pub ws: crate::workspace::Workspaces,
+    /// What the tiling layout last laid out, so it re-lays only on change — see [`crate::tile`].
+    pub tile_last: Option<(
+        Vec<smithay::desktop::Window>,
+        smithay::utils::Rectangle<i32, smithay::utils::Logical>,
     )>,
     /// Where each maximized window was before it was maximized, so restore has somewhere to
     /// go back to. Only maximized windows appear here; the entry is removed on restore, and
@@ -348,6 +350,7 @@ impl Wado {
         if self.placement == Placement::Strip {
             self.strip_tick();
         }
+        self.tile_tick();
         self.publish_windows();
         self.publish_menu();
     }
@@ -454,7 +457,7 @@ impl Wado {
             text_inputs: Default::default(),
             text_input_tx: tokio::sync::watch::channel(false).0,
             shedding_tx: tokio::sync::watch::channel(1).0,
-            windows_tx: tokio::sync::watch::channel(Vec::new()).0,
+            windows_tx: tokio::sync::watch::channel(Default::default()).0,
             clipboard_tx: tokio::sync::watch::channel(String::new()).0,
             app_bus_tx: tokio::sync::watch::channel(None).0,
             menu_tx: tokio::sync::watch::channel(None).0,
@@ -502,7 +505,8 @@ impl Wado {
             focus_follows_pointer: false,
             eaten_keys: Default::default(),
             background: crate::conf::DEFAULT_BACKGROUND,
-            hidden: Vec::new(),
+            ws: crate::workspace::Workspaces::new(),
+            tile_last: None,
             pre_maximize: std::collections::HashMap::new(),
             pre_fullscreen: std::collections::HashMap::new(),
             gamepad: None,

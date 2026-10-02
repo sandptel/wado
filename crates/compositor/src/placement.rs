@@ -28,6 +28,8 @@ const CASCADE_WRAP: u32 = 8;
 impl Wado {
     /// Map a new toplevel according to [`Wado::placement`]. Called from `new_toplevel`.
     pub(crate) fn place_new_toplevel(&mut self, window: Window) {
+        // A new window opens on the workspace showing.
+        self.workspace_adopt(&window);
         let output_geo = self
             .space
             .outputs()
@@ -63,7 +65,8 @@ impl Wado {
                 }
                 self.space.map_element(window.clone(), (0, 0), false);
             }
-            Placement::TopLeft => {
+            // Tiling places it on the next tick, with every other window (`crate::tile`).
+            Placement::TopLeft | Placement::Tile => {
                 self.space.map_element(window.clone(), (0, 0), false);
             }
             // Strip reaches here only for dialogs, which float centred.
@@ -135,6 +138,8 @@ impl Wado {
 
         self.space.map_element(window.clone(), loc, false);
         self.pending_placement.remove(idx);
+        // Its first real size is in: re-tile with it in the grid.
+        self.tile_last = None;
         self.apply_window_rules(&window);
     }
 
