@@ -30,38 +30,16 @@
 //! - Client → relay → server: session control + SDP offer + ICE candidates.
 //! - Server → relay → client: session responses + SDP answer + log lines.
 //!
-//! The relay itself never inspects post-handshake messages — it is a dumb pipe.
+//! The relay itself never inspects post-handshake messages — it is a dumb pipe. The handshake
+//! variants here are mirrored by [`crate::relay_wire::WireMsg`], which is all the relay parses.
 
 use serde::{Deserialize, Serialize};
 
 use crate::{SessionConfig, SessionInfo};
 
-/// WebSocket endpoint the **server** connects to in order to register itself.
-/// Path: `ws://<relay>/register`
-pub const RELAY_REGISTER_PATH: &str = "/register";
-
-/// WebSocket endpoint the **client** connects to in order to join a server.
-/// Path: `ws://<relay>/join/:remote_id`
-pub const RELAY_JOIN_BASE_PATH: &str = "/join";
-
-/// Canonicalize a Remote ID: strip the display separators (`-`, spaces) so
-/// `528-491-307`, `528 491 307`, and `528491307` all compare equal. Both the
-/// relay (register + join) and the server apply this before any comparison.
-pub fn normalize_remote_id(id: &str) -> String {
-    id.chars()
-        .filter(|c| !c.is_whitespace() && *c != '-')
-        .collect()
-}
-
-/// Human-readable form of a Remote ID: 9 digits grouped as `XXX-XXX-XXX`.
-/// Non-9-digit IDs (e.g. a custom `WADO_REMOTE_ID`) are returned unchanged.
-pub fn display_remote_id(id: &str) -> String {
-    if id.len() == 9 && id.chars().all(|c| c.is_ascii_digit()) {
-        format!("{}-{}-{}", &id[0..3], &id[3..6], &id[6..9])
-    } else {
-        id.to_string()
-    }
-}
+pub use crate::relay_wire::{
+    display_remote_id, normalize_remote_id, RELAY_JOIN_BASE_PATH, RELAY_REGISTER_PATH, WIRE_VERSION,
+};
 
 /// Every relay WebSocket frame is a JSON-serialised `RelayMsg`.
 ///
@@ -76,12 +54,21 @@ pub enum RelayMsg {
         remote_id: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         display_name: Option<String>,
+        /// Handshake version the daemon speaks ([`WIRE_VERSION`]); `0` = predates versioning.
+        #[serde(default)]
+        v: u32,
     },
 
     // ── Relay → server (handshake) ──────────────────────────────────────────
     /// Ack: server successfully registered.
     Registered {
         remote_id: String,
+        /// Handshake version the relay speaks; `0` = a relay that predates versioning.
+        #[serde(default)]
+        relay_v: u32,
+        /// Optional relay behaviours this relay offers. Use a feature only when it is listed.
+        #[serde(default)]
+        caps: Vec<String>,
     },
     /// A client has joined the room and is waiting for WebRTC negotiation.
     /// Future confirmation gate: the relay will hold the join here until the
@@ -133,6 +120,11 @@ pub enum RelayMsg {
         /// A marker that only reports the good case reads the same as nobody looking.
         #[serde(default)]
         assignment: String,
+        /// Same as in [`RelayMsg::Registered`], for the client.
+        #[serde(default)]
+        relay_v: u32,
+        #[serde(default)]
+        caps: Vec<String>,
     },
     /// Join denied (no server online with this Remote ID, room full, …).
     JoinDenied {
