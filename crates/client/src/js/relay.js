@@ -486,8 +486,10 @@ W._relayNegotiate = async (opts = {}) => {
       try { if (ev.receiver && "playoutDelayHint" in ev.receiver) ev.receiver.playoutDelayHint = 0; } catch (_) {}
       return;
     }
-    phase(4, "");
-    rlog("track received — media is flowing");
+    // A track arrives with the answer, before any network path exists — so this is not "media
+    // is flowing". That is said when ICE connects (below); saying it here hid every ICE
+    // failure behind a black picture and a green "Video" step.
+    rlog("track received — waiting for a network path");
     W.attachStream(ev.streams[0]);
     // Without this the browser picks its own adaptive jitter buffer, which relay mode was
     // silently living with: measured 23-25 ms of pure queueing on the receiver, on a link
@@ -514,9 +516,18 @@ W._relayNegotiate = async (opts = {}) => {
   pc.oniceconnectionstatechange = () => {
     rlog("ICE state: " + pc.iceConnectionState);
     status("ICE: " + pc.iceConnectionState);
+    if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+      phase(4, "");
+    }
     if (pc.iceConnectionState === "failed") {
-      phase(3, "no network path to the daemon — ICE failed. Both ends are likely behind " +
-               "a NAT that STUN cannot traverse; this needs a TURN server.");
+      // Cloudflare WARP (the 1.1.1.1 app) puts this device behind a symmetric NAT, which no
+      // amount of STUN gets through. Its tunnel address, 100.96.0.0/12, is the tell.
+      const warp = localAddrs.some((a) => /^100\.(9[6-9]|10[0-9]|11[01])\./.test(a));
+      phase(3, warp
+        ? "Cloudflare WARP (1.1.1.1) is on on this device, and it blocks the direct path video " +
+          "needs. Turn it off — or exclude this browser from it — and reload."
+        : "no network path to the daemon — ICE failed. Both ends are likely behind a NAT that " +
+          "STUN cannot traverse (a VPN on either end does this); this needs a TURN server.");
     }
   };
   pc.onconnectionstatechange = () => {
@@ -527,7 +538,9 @@ W._relayNegotiate = async (opts = {}) => {
   // Candidate types are the diagnosis. "host" only means STUN never answered — on a
   // carrier NAT that is the end of it, and the fix is a TURN server, not this code.
   const seenTypes = new Set();
+  const localAddrs = [];
   pc.onicecandidate = (ev) => {
+    if (ev.candidate && ev.candidate.address) localAddrs.push(ev.candidate.address);
     if (!ev.candidate) { rlog("ICE gathering complete — types: " + ([...seenTypes].join(",") || "none")); return; }
     const m = /(?: typ )(\w+)/.exec(ev.candidate.candidate);
     if (m && !seenTypes.has(m[1])) { seenTypes.add(m[1]); rlog("first " + m[1] + " candidate: " + ev.candidate.candidate); }

@@ -31,6 +31,14 @@ pub fn render(ui: Ui) -> Element {
                     span { b { "{n.summary}" } if !n.body.is_empty() { " — {n.body}" } }
                 }
             }
+            // The connection failing under a running session: said over the picture, and kept
+            // there — the landing that would show it is hidden while a session runs.
+            if (live.session_on)() && !(live.conn_error)().is_empty() {
+                div { key: "conn-{(live.conn_error)().len()}", class: "toast bad",
+                    Icon { name: "alert" }
+                    span { "{(live.conn_error)()}" }
+                }
+            }
             if !note.is_empty() {
                 div { key: "n-{note}", class: "toast fade", Icon { name: "info" } span { "{note}" } }
             }
