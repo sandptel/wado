@@ -244,6 +244,11 @@ echo "wado rig up"
 echo
 say "Relay URL   ${URL:-<none — check the tunnel log>}"
 say "Remote ID   ${RID:-<none — check the daemon log>}"
+# One link that points a device at this rig: the client saves both values from it, which is
+# the cure for a phone still holding a rotated tunnel URL.
+if [ -n "$URL" ] && [ -n "$RID" ]; then
+  say "Phone link  https://sandptel.github.io/wado/?relay=$URL&id=$(printf '%s' "$RID" | tr -d '-')"
+fi
 echo
 say "run lane    $LANE   (WADO_RUN=perf|connection|feature|compositor)"
 say "daemons     $INSTANCES in the pool — ${POOLED:-?} registered with the relay"
