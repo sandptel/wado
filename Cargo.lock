@@ -5157,6 +5157,7 @@ name = "wado"
 version = "0.0.3"
 dependencies = [
  "bytes",
+ "ffmpeg-the-third",
  "futures-util",
  "portable-pty",
  "rand 0.8.8",

@@ -37,12 +37,12 @@ pub struct Tile {
 
 pub const DEFAULTS: [&str; 8] = [
     "kbd",
+    "sound",
     "pad",
     "mouse",
     "fullscreen",
     "move",
     "touch",
-    "fpslock",
     "natscroll",
 ];
 
@@ -64,6 +64,21 @@ pub static ALL: &[Tile] = &[
         act: Act::Keyboard,
         page: Some(Page::Input),
         needs_session: true,
+    },
+    Tile {
+        id: "sound",
+        icon: "sound",
+        label: "Sound",
+        on: Some(|ui| !(ui.set.muted)()),
+        sub: ("Muted", "Playing"),
+        act: Act::Run(|ui| {
+            let mut s = ui.set;
+            s.muted.set(!(s.muted)());
+            live::apply(ui);
+            bridge::call("window.__wado.audioUnlock();".to_string());
+        }),
+        page: None,
+        needs_session: false,
     },
     Tile {
         id: "pad",

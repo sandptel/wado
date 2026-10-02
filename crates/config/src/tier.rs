@@ -15,6 +15,7 @@ const LIVE: &[&str] = &[
     "stream.",
     "input.",
     "session.app-cpu-weight",
+    "session.audio",
     "binds.",
     "gestures.",
     "window-rule",

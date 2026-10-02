@@ -204,7 +204,7 @@ details.card > summary { cursor: pointer; font-weight: 600; color: var(--bright)
 .slide input[type=range]::-moz-range-progress { height: 100%; background: color-mix(in oklab, var(--accent), transparent 62%); }
 .slide input[type=range]::-moz-range-thumb { width: 6px; height: 52px; border: 0; border-radius: 3px; background: var(--accent); }
 .slidelab, .slideval { position: absolute; top: 50%; translate: 0 -50%; pointer-events: none; font-weight: 600; color: var(--bright); }
-.slidelab { left: 16px; }
+.slidelab { left: 16px; display: flex; align-items: center; gap: 8px; }
 .slideval { right: 16px; font: 600 12px var(--mono); }
 
 /* Resolution chips, each drawn at its own aspect. */

@@ -40,8 +40,10 @@ pub fn apply(ui: Ui) {
         bridge::js(&(s.orientation)())
     ));
     bridge::call(format!(
-        "window.__wado.setWake({}); window.__wado.setLensAuto({});",
+        "window.__wado.setWake({}); window.__wado.setLensAuto({}); window.__wado.setAudio({}, {});",
         (s.keep_awake)(),
-        (s.lens_auto)()
+        (s.lens_auto)(),
+        (s.volume)(),
+        (s.muted)()
     ));
 }

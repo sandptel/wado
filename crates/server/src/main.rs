@@ -47,21 +47,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             "wado server — relay mode"
         );
 
-        wado::relay_client::start(
-            handles.commands,
-            handles.input,
-            handles.timings,
-            handles.text_input,
-            handles.shedding,
-            handles.windows,
-            handles.menu,
-            handles.clipboard,
-            handles.app_bus,
-            frame_rx,
-            relay_url,
-            remote_id,
-            log_bus,
-        )?;
+        wado::relay_client::start(handles, frame_rx, relay_url, remote_id, log_bus)?;
     } else {
         // A bare first argument is still the listen address, as it always was.
         let control_addr = args

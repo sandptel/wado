@@ -16,6 +16,10 @@ pub struct Session {
     pub env: BTreeMap<String, String>,
     /// Commands launched when a session starts, in order.
     pub autostart: Vec<String>,
+    /// Give the session its own audio output and stream it. Off: apps play on this computer.
+    pub audio: bool,
+    /// Opus bitrate for the audio stream, kbps.
+    pub audio_bitrate: u32,
 }
 
 impl Default for Session {
@@ -25,6 +29,8 @@ impl Default for Session {
             atspi: None,
             env: BTreeMap::new(),
             autostart: Vec::new(),
+            audio: true,
+            audio_bitrate: 96,
         }
     }
 }

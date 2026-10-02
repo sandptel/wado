@@ -137,6 +137,10 @@ pub struct Wado {
     /// The session's private D-Bus address while it has one — what the server serves
     /// notifications on. `None` with no session, or with isolation off.
     pub app_bus_tx: tokio::sync::watch::Sender<Option<String>>,
+    /// The session's audio sink, and its name for the server to capture — see
+    /// [`crate::session_env::audio`].
+    pub app_audio: Option<crate::session_env::audio::AudioSink>,
+    pub audio_tx: tokio::sync::watch::Sender<Option<String>>,
     /// The menu open on the focused window, for the S7 menu sheet — see [`crate::hit`].
     pub menu_tx: tokio::sync::watch::Sender<Option<crate::hit::MenuSpot>>,
     /// Stable per-window ids for that list. Never reused within a process.
@@ -450,6 +454,8 @@ impl Wado {
             windows_tx: tokio::sync::watch::channel(Vec::new()).0,
             clipboard_tx: tokio::sync::watch::channel(String::new()).0,
             app_bus_tx: tokio::sync::watch::channel(None).0,
+            app_audio: None,
+            audio_tx: tokio::sync::watch::channel(None).0,
             menu_tx: tokio::sync::watch::channel(None).0,
             window_ids: std::collections::HashMap::new(),
             next_window_id: 0,

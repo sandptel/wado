@@ -4,6 +4,15 @@
 
 ### Added
 
+**Sound.** The session now has its own audio output, and it streams to the phone. Apps
+launched in the session play into a private PipeWire sink instead of the speakers of the
+computer running wado. wado captures that sink and sends it as 10 ms Opus frames on a second
+WebRTC track (UDP like the video, and never queued behind it). A **Sound** tile mutes it and a
+volume slider sits in the control centre. Tapping Start counts as the tap a phone needs before
+it will play sound. `session { audio #false }` turns it off, and `audio-bitrate` sets the
+quality. Checked live: about 3 bytes per packet in silence and 136 while a tone plays, at 100
+packets a second. The sink disappears with the daemon even if the daemon is killed outright.
+
 **Screenshot and record.** Two tiles save the picture as a PNG, or record a video (WebM, or
 MP4 on Safari), straight onto the device you're viewing on. They capture the stream as
 received, at its full resolution. The daemon does no extra work. While recording, the dock

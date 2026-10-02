@@ -22,6 +22,8 @@ pub fn start(ui: Ui) {
     live.applied
         .set(serde_json::to_string(&config).unwrap_or_default());
     crate::profile::remember(ui);
+    // Start is a gesture: the one moment a phone lets audio begin without another tap.
+    bridge::call("window.__wado.audioUnlock();".to_string());
 
     bridge::call(format!(
         "window.__wado.start({}, {}, {});",
