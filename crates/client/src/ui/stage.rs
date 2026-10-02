@@ -129,9 +129,6 @@ pub fn render(ui: Ui) -> Element {
         // the thing a later diff is entitled to move. After the video, so the controls paint
         // over the picture rather than under it.
         div { id: "wado-pad-mount" }
-        // The window switcher dial (`js/switcher.js`), JS-owned for the same reason as the pad:
-        // it repaints every animation frame while it moves. Floats over the picture.
-        div { id: "wado-dial-mount" }
         }
         // Over the picture, not under it: as a sibling below the video it took height off
         // the stream and letterboxed it.

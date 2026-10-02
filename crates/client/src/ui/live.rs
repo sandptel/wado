@@ -1,5 +1,5 @@
 //! The browser-side half of the settings: everything `js/` applies itself (move mode, scroll,
-//! touch, the dial, orientation, wake lock, sound) pushed to the bridge in one call.
+//! touch, the dock pin, edge swipes, orientation, wake lock, sound) pushed to the bridge in one call.
 
 use crate::{bridge, state::Ui};
 
@@ -28,10 +28,9 @@ pub fn apply(ui: Ui) {
         bridge::js(&(s.touch_mode)())
     ));
     bridge::call(format!(
-        "window.__wado.setSwitcher({}, {}, {});",
-        bridge::js(&(s.dial_orient)()),
-        bridge::js(&(s.dial_pos)()),
-        bridge::js(&(s.dial_count)())
+        "window.__wado.setDockPin({}); window.__wado.setEdgeSwipe({});",
+        (s.dock_pin)(),
+        (s.edge_swipe)()
     ));
     // Same shape as the two above, and for the same reason: it is a browser-side flag the
     // Rust side only stores. It re-reports the screen, so the resolution list follows it.

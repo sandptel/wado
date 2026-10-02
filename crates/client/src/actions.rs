@@ -73,6 +73,23 @@ pub fn apply(ui: Ui) {
     ));
 }
 
+/// Turn the session a quarter: `to` is `landscape` or `portrait`. The output is re-made at the
+/// swapped size (invariant #8) and the windows re-fit, as a phone does when it is turned.
+pub fn rotate(ui: Ui, to: &str) {
+    let mut s = ui.set;
+    let c = cfg::build(ui);
+    let (w, h) = (c.width.max(c.height), c.width.min(c.height));
+    let (w, h) = if to == "landscape" { (w, h) } else { (h, w) };
+    s.custom_w.set(w);
+    s.custom_h.set(h);
+    s.res.set("custom".to_string());
+    s.orientation.set(to.to_string());
+    crate::ui::live::apply(ui);
+    if (ui.live.session_on)() {
+        apply(ui);
+    }
+}
+
 /// Go home and leave the session running — kept by the daemon until someone ends it.
 pub fn leave(ui: Ui) {
     let mut live = ui.live;

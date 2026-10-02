@@ -29,3 +29,4 @@ pub mod rejoin;
 pub mod stage;
 pub mod toast;
 pub mod widgets;
+pub mod workspaces;

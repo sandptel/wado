@@ -44,7 +44,7 @@ impl Page {
             Page::Root => "Control centre",
             Page::Display => "Display & stream",
             Page::Input => "Input & touch",
-            Page::Switcher => "Window switcher",
+            Page::Switcher => "Workspaces & windows",
             Page::Gamepad => "Gamepad",
             Page::Appearance => "Appearance",
             Page::Connection => "Connection",

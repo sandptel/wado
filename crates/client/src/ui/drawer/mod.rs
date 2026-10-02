@@ -112,6 +112,7 @@ pub fn render(ui: Ui) -> Element {
             // the video underneath must stay tappable while the drawer is open.
             button {
                 class: "drawerhandle",
+                "data-dismiss": "1",
                 "aria-label": "Close app drawer",
                 onclick: move |_| live.drawer_open.set(false),
             }
