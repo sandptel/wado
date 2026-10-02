@@ -25,17 +25,12 @@ impl Wado {
     pub fn publish_windows(&mut self) {
         self.window_ids.retain(|w, _| w.alive());
         let focused = self.focused_window();
-        // Hidden ones too (see `crate::desktop`): the switcher is how they come back.
+        // Every workspace's windows (see `crate::workspace`): the switcher is how they come back.
         let windows: Vec<Window> = self
             .space
             .elements()
             .cloned()
-            .chain(
-                self.hidden
-                    .iter()
-                    .map(|(w, _)| w.clone())
-                    .filter(|w| w.alive()),
-            )
+            .chain(self.parked_windows())
             .collect();
         let mut list: Vec<WindowInfo> = windows
             .iter()
@@ -50,6 +45,7 @@ impl Wado {
                     Some((attrs.title.clone(), attrs.app_id.clone()))
                 })?;
                 Some(WindowInfo {
+                    workspace: self.workspace_of(w),
                     id: self.window_id(w),
                     title: title.unwrap_or_default(),
                     app_id: app_id.unwrap_or_default(),
@@ -60,18 +56,22 @@ impl Wado {
         // Strip order when there is a strip (its dialogs after), map order otherwise — ids
         // follow map order. Never `space.elements()` order: that is stacking, every raise
         // reshuffles it, and a bar whose icons jump on each tap is unusable.
+        // Within a workspace, its row's order.
         let column = |id: u64| {
-            self.strip
-                .iter()
-                .position(|c| self.window_ids.get(&c.window) == Some(&id))
+            self.window_by_id(id)
+                .and_then(|w| self.column_of(&w))
                 .unwrap_or(usize::MAX)
         };
-        list.sort_by_key(|w| (column(w.id), w.id));
+        list.sort_by_key(|w| (w.workspace, column(w.id), w.id));
         // In the strip the list *is* the row: the dial's slot i is column i, so dialogs (which
         // float over their parent) stay out of it.
         if self.placement == wado_protocol::Placement::Strip {
             list.retain(|w| column(w.id) != usize::MAX);
         }
+        let list = wado_protocol::WindowList {
+            windows: list,
+            workspace: self.ws.active,
+        };
         self.windows_tx.send_if_modified(|cur| {
             if *cur == list {
                 return false;

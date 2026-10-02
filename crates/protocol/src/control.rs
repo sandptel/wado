@@ -51,6 +51,10 @@ pub enum WindowAction {
     /// An id that no longer exists is a logged no-op: the list the viewer tapped can be a
     /// moment older than the window it names.
     Focus { id: u64 },
+    /// Show workspace `n` (1-based).
+    Workspace { n: u32 },
+    /// Move window `id` to workspace `n` (0: the first empty one), following it if asked.
+    MoveToWorkspace { id: u64, n: u32, follow: bool },
     /// The phone's Back button. The compositor picks what "back" means from what is on
     /// screen: Escape when a menu/popup is open or a dialog is in front (dismiss it), otherwise
     /// Alt+Left (the app's own back — browsers, file managers, settings panels). Hiding the
@@ -76,6 +80,16 @@ pub struct WindowInfo {
     pub app_id: String,
     /// Holds keyboard focus. At most one window in a list has this set.
     pub focused: bool,
+    /// The workspace it is on, 1-based. 0 from a compositor without workspaces.
+    #[serde(default)]
+    pub workspace: u32,
+}
+
+/// The window list and which workspace is showing — what the compositor publishes.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WindowList {
+    pub windows: Vec<WindowInfo>,
+    pub workspace: u32,
 }
 
 #[cfg(test)]

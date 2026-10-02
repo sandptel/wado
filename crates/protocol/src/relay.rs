@@ -321,6 +321,9 @@ pub enum RelayMsg {
     /// focus changes, and once when a viewer attaches — see [`crate::WindowInfo`].
     Windows {
         windows: Vec<crate::WindowInfo>,
+        /// The workspace showing.
+        #[serde(default)]
+        workspace: u32,
     },
     /// The launchable applications the server found.
     AppsList {
@@ -638,6 +641,7 @@ mod wire_tests {
     #[test]
     fn window_list_and_focus_wire_shape() {
         let json = serde_json::to_value(RelayMsg::Windows {
+            workspace: 1,
             windows: vec![crate::WindowInfo {
                 id: 7,
                 title: "Files".into(),

@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 /// two sides cannot disagree on a path.
 pub use apps::AppEntry;
 pub use config::{ConfigState, HostLimits, PinnedInput};
-pub use control::{SessionControl, WindowAction, WindowInfo};
+pub use control::{SessionControl, WindowAction, WindowInfo, WindowList};
 pub use host::{HostAction, HostState};
 pub use menu::{MenuItem, MenuSheet};
 pub use sessions::SessionSummary;
@@ -590,6 +590,9 @@ pub enum Placement {
     /// The phone shell: every toplevel is a column of one horizontal, scrolling strip, and the
     /// output shows the focused one. Dialogs float, centred. See `wado_compositor::strip`.
     Strip,
+    /// Every window shares the screen in a grid that re-lays as windows come and go. See
+    /// `wado_compositor::tile`.
+    Tile,
 }
 
 /// Live-log wire format shared by the server's log bus (which formats lines) and

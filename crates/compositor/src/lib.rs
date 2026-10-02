@@ -26,7 +26,6 @@ pub mod clipboard;
 pub mod conf;
 pub mod congestion;
 pub mod control;
-mod desktop;
 pub mod encode;
 pub mod error;
 pub mod fit;
@@ -46,9 +45,11 @@ pub mod session_env;
 pub mod sink;
 pub mod state;
 pub mod strip;
+mod tile;
 pub mod timing;
 mod window;
 pub mod window_list;
+pub mod workspace;
 
 use std::panic::AssertUnwindSafe;
 
@@ -97,7 +98,7 @@ pub struct CompositorHandles {
     /// tell a frame rate *it asked us to reduce* from a compositor that has stopped producing.
     pub shedding: tokio::sync::watch::Receiver<u32>,
     /// The window list — see [`window_list`]. Latest-value-wins state, like `text_input`.
-    pub windows: tokio::sync::watch::Receiver<Vec<wado_protocol::WindowInfo>>,
+    pub windows: tokio::sync::watch::Receiver<wado_protocol::WindowList>,
     /// The menu open on the focused window — see [`hit::MenuSpot`]. State, like `windows`.
     pub menu: tokio::sync::watch::Receiver<Option<hit::MenuSpot>>,
     /// The session clipboard, when an app copies text — see [`clipboard`].

@@ -9,6 +9,7 @@
 //   phone → session   text the viewer sends is what `wl-paste` reads in the session
 //   notifications     `notify-send`, launched as a session app (so on the session's own bus),
 //                     reaches the viewer
+//   workspaces        a window opens on 1, moves to 2, 2 shows it, Home finds an empty one
 //   sessions          listed; left running (detach); found and resumed from another device,
 //                     re-fitted to its shape; gone from the list once ended
 
@@ -104,6 +105,23 @@ try {
   const n = await a.waitWhere((m) => m.type === "notification", 15000);
   check("an app's notification reaches the viewer", n && n.summary === "Build done" && n.body === "all green" && n.app === "e2e",
     JSON.stringify(n) + "\n" + d.out.split("\n").filter((l) => /notif|bus/i.test(l)).slice(-5).join("\n"));
+
+  console.log("workspaces");
+  a.send({ type: "session_launch", command: "gnome-calculator" });
+  const w1 = await a.waitWhere((m) => m.type === "windows" && m.windows.length > 0, 15000);
+  check("a new window opens on workspace 1", w1 && w1.workspace === 1 && w1.windows[0].workspace === 1, JSON.stringify(w1));
+  const wid = w1 && w1.windows[0].id;
+  a.msgs.length = 0;
+  a.send({ type: "session_window", action: { move_to_workspace: { id: wid, n: 2, follow: false } } });
+  const w2 = await a.waitWhere((m) => m.type === "windows" && m.windows.some((w) => w.id === wid && w.workspace === 2), 5000);
+  check("moving it to workspace 2 files it there, still listed", !!w2 && w2.workspace === 1, JSON.stringify(a.msgs.filter((m) => m.type === "windows").slice(-1)));
+  a.msgs.length = 0;
+  a.send({ type: "session_window", action: { workspace: { n: 2 } } });
+  check("switching to workspace 2 shows it", !!(await a.waitWhere((m) => m.type === "windows" && m.workspace === 2, 5000)));
+  a.msgs.length = 0;
+  a.send({ type: "session_window", action: "home" });
+  const home = await a.waitWhere((m) => m.type === "windows" && m.workspace !== 2, 5000);
+  check("Home goes to an empty workspace", home && !home.windows.some((w) => w.workspace === home.workspace), JSON.stringify(home));
 
   console.log("sessions");
   await sleep(3500); // one directory heartbeat

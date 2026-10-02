@@ -778,6 +778,9 @@ pub fn stop_session(state: &mut Wado) {
     state.window_move = None;
     state.pending_placement.clear();
     state.cascade_count = 0;
+    // A new session starts on workspace 1 with nothing parked.
+    state.ws = crate::workspace::Workspaces::new();
+    state.tile_last = None;
 
     // The negative case said out loud. A verdict that only logs when the answer is yes is a
     // verdict that reads as "no" and as "nobody looked" in exactly the same way — which is how

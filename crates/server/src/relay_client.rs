@@ -90,7 +90,7 @@ struct RelayCtx {
     shedding: tokio::sync::watch::Receiver<u32>,
     /// The session's windows, forwarded as `RelayMsg::Windows`. Latest-value-wins state, the
     /// same shape as `text_input`.
-    windows: tokio::sync::watch::Receiver<Vec<wado_protocol::WindowInfo>>,
+    windows: tokio::sync::watch::Receiver<wado_protocol::WindowList>,
     /// The menu open on the focused window, read into a sheet for the phone (M-P S7).
     menu: tokio::sync::watch::Receiver<Option<wado_compositor::hit::MenuSpot>>,
     clipboard: tokio::sync::watch::Receiver<String>,
@@ -214,7 +214,7 @@ async fn run(
     timings: tokio::sync::watch::Receiver<wado_protocol::StageTimings>,
     text_input: tokio::sync::watch::Receiver<bool>,
     shedding: tokio::sync::watch::Receiver<u32>,
-    windows: tokio::sync::watch::Receiver<Vec<wado_protocol::WindowInfo>>,
+    windows: tokio::sync::watch::Receiver<wado_protocol::WindowList>,
     menu: tokio::sync::watch::Receiver<Option<wado_compositor::hit::MenuSpot>>,
     clipboard: tokio::sync::watch::Receiver<String>,
     mut frame_rx: mpsc::Receiver<FrameMsg>,
@@ -503,6 +503,7 @@ async fn run(
                 let (width, height, fps) = *shape.lock().unwrap_or_else(|e| e.into_inner());
                 let apps = windows
                     .borrow()
+                    .windows
                     .iter()
                     .map(|w| {
                         if w.app_id.is_empty() {
@@ -746,10 +747,16 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
         tokio::spawn(async move {
             rx.mark_changed();
             while rx.changed().await.is_ok() {
-                let windows = rx.borrow_and_update().clone();
-                if send_relay(&out_tx_w, &RelayMsg::Windows { windows })
-                    .await
-                    .is_err()
+                let list = rx.borrow_and_update().clone();
+                if send_relay(
+                    &out_tx_w,
+                    &RelayMsg::Windows {
+                        windows: list.windows,
+                        workspace: list.workspace,
+                    },
+                )
+                .await
+                .is_err()
                 {
                     break;
                 }
