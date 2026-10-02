@@ -85,6 +85,10 @@ pub fn parse(json: &str) -> HostAudio {
                 .into_iter()
                 .find(|s| !s.is_empty())
                 .unwrap_or_default();
+            let pid = o["info"]["props"]["application.process.id"]
+                .as_u64()
+                .or_else(|| prop(o, "application.process.id").parse().ok())
+                .map(|p| p as u32);
             Stream {
                 id: id as u32,
                 app,
@@ -92,6 +96,7 @@ pub fn parse(json: &str) -> HostAudio {
                 volume,
                 muted,
                 sink,
+                pid,
             }
         })
         .collect();

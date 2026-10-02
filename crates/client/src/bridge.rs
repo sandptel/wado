@@ -121,6 +121,8 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/host.js"),
     "\n",
+    include_str!("js/online.js"),
+    "\n",
     include_str!("js/lifecycle.js"),
 );
 
@@ -362,8 +364,14 @@ pub fn run(ui: Ui) {
                         if crate::ui::host::on_phone(&st) && !(live.session_on)() {
                             call("window.__wado.listenStart();".to_string());
                         }
+                        crate::profile::learn_host(ui, &st.info.hostname);
                         live.hoststate.set(Some(st));
                     }
+                }
+                "online" => {
+                    let key = string("key");
+                    let n = num("daemons").unwrap_or(-1.0) as i32;
+                    live.online.write().insert(key, n);
                 }
                 "audioBlocked" => live.note.set(
                     "Tap the sound tile to hear the session — this browser held the audio back."

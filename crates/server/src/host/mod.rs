@@ -14,7 +14,9 @@ pub mod audio;
 pub mod awake;
 pub mod bluetooth;
 pub mod cmd;
+pub mod media;
 pub mod phone_sink;
+pub mod sysinfo;
 pub mod wifi;
 
 use std::sync::OnceLock;
@@ -47,7 +49,10 @@ pub async fn state() -> HostState {
         wifi::state(),
         bluetooth::state()
     );
+    let media = media::state(&audio.streams).await;
     HostState {
+        media,
+        info: sysinfo::now(),
         audio,
         wifi,
         bluetooth,
@@ -81,5 +86,6 @@ pub async fn act(action: HostAction) -> Result<(), String> {
         HostAction::BtPower { on } => bluetooth::power(on).await,
         HostAction::BtConnect { addr, connect } => bluetooth::connect(&addr, connect).await,
         HostAction::KeepAwake { on } => awake::set(on),
+        HostAction::Media { bus, op } => media::act(&bus, op).await,
     }
 }

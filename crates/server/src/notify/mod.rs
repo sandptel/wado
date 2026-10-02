@@ -40,6 +40,17 @@ pub fn events() -> broadcast::Receiver<Event> {
 
 static NEXT: AtomicU32 = AtomicU32::new(1);
 
+/// The session's private bus while there is one — also where `crate::host::media` looks for the
+/// session's own media players.
+static SESSION_BUS: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+pub fn session_bus() -> Option<String> {
+    SESSION_BUS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+}
+
 struct Notifications;
 
 #[interface(name = "org.freedesktop.Notifications")]
@@ -92,6 +103,7 @@ impl Notifications {
 pub async fn run(mut addr: watch::Receiver<Option<String>>) {
     loop {
         let now = addr.borrow_and_update().clone();
+        *SESSION_BUS.lock().unwrap_or_else(|e| e.into_inner()) = now.clone();
         // Held for this turn of the loop: the next change drops it, releasing the name on a
         // bus that is going away anyway.
         let _conn = match now {

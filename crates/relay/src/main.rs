@@ -73,6 +73,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/register", get(register::handle_register))
         .route("/join/:remote_id", get(join::handle_join))
         .route("/health", get(health))
+        .route("/online/:remote_id", get(online))
         .with_state(state);
 
     let addr: SocketAddr = cfg.bind.parse().expect("invalid bind address");
@@ -86,6 +87,21 @@ async fn main() -> anyhow::Result<()> {
     .await?;
 
     Ok(())
+}
+
+/// Whether a Remote ID has daemons online, for a client's device list to show live status before
+/// it joins. Reveals nothing a join attempt does not (it is told "waiting" or "accepted"), and
+/// readable cross-origin because the client is served from another host.
+async fn online(
+    State(state): State<AppState>,
+    axum::extract::Path(remote_id): axum::extract::Path<String>,
+) -> impl axum::response::IntoResponse {
+    let id = wado_protocol::relay::normalize_remote_id(&remote_id);
+    let daemons = state.registry.instances_for(&id).len();
+    (
+        [(axum::http::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
+        Json(json!({ "daemons": daemons })),
+    )
 }
 
 async fn health(State(state): State<AppState>) -> Json<serde_json::Value> {

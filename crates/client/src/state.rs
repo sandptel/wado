@@ -290,6 +290,9 @@ pub struct Live {
     pub recording: Signal<bool>,
     /// The computer's sound, Wi-Fi, Bluetooth and sleep — `None` until the daemon has said.
     pub hoststate: Signal<Option<wado_protocol::HostState>>,
+    /// Daemons online per saved computer (`relay|id`) that this page is not dialled to; −1 means
+    /// its relay did not answer. See `js/online.js`.
+    pub online: Signal<std::collections::HashMap<String, i32>>,
     /// A one-line note for a toast — "Screenshot saved", and the like. Each new text shows again.
     pub note: Signal<String>,
 
@@ -422,6 +425,7 @@ impl Live {
             notes: use_signal(Vec::new),
             recording: use_signal(|| false),
             hoststate: use_signal(|| None),
+            online: use_signal(Default::default),
             note: use_signal(String::new),
             cc_open: use_signal(|| false),
             cc_page: use_signal(Default::default),

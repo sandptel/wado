@@ -16,13 +16,27 @@ pub fn render(ui: Ui) -> Element {
         .get(i)
         .map(|p| p.name.clone())
         .unwrap_or_default();
+    let host = s
+        .profiles
+        .read()
+        .get(i)
+        .map(|p| p.host.clone())
+        .filter(|h| !h.is_empty());
+    let redial = move || {
+        crate::bridge::call(format!(
+            "window.__wado.relayDial({}, {});",
+            crate::bridge::js(&(s.relay_url)()),
+            crate::bridge::js(&(s.remote_id)())
+        ))
+    };
 
     rsx! {
         div { class: "card",
             label { class: "field",
                 span { "Name" }
                 input {
-                    r#type: "text", value: "{name}", placeholder: "{profile::default_name(ui)}",
+                    r#type: "text", value: "{name}",
+                    placeholder: "{host.clone().unwrap_or_else(|| profile::default_name(ui))}",
                     oninput: move |e| {
                         if let Some(p) = s.profiles.write().get_mut(i) { p.name = e.value(); }
                     },
@@ -43,6 +57,7 @@ pub fn render(ui: Ui) -> Element {
                         placeholder: "528-491-307 — shown in the daemon's log",
                         value: "{(s.remote_id)()}",
                         oninput: move |e| s.remote_id.set(e.value()),
+                        onchange: move |_| redial(),
                     }
                 }
                 label { class: "field",
@@ -51,6 +66,7 @@ pub fn render(ui: Ui) -> Element {
                         r#type: "url", disabled: on, placeholder: "wss://relay.example",
                         value: "{(s.relay_url)()}",
                         oninput: move |e| s.relay_url.set(e.value()),
+                        onchange: move |_| redial(),
                     }
                 }
             } else {

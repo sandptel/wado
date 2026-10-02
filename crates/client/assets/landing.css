@@ -62,3 +62,15 @@ button.dev > svg:last-child { margin-left: auto; color: var(--dim); }
   #landing { transition: opacity 500ms var(--ease), scale 600ms var(--spring), translate var(--dur-sheet) var(--spring), visibility 0s; }
   .cc-open #landing { translate: -210px 0; }
 }
+
+/* A computer card's live status pill. */
+.devstatus { justify-self: start; margin-top: 4px; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; --tone: var(--dim);
+  color: var(--tone); background: color-mix(in oklab, var(--tone), transparent 86%); display: inline-flex; align-items: center; gap: 5px; }
+.dev .navtext { display: grid; }
+.dev { min-width: 0; overflow: hidden; }
+#landing > * { min-width: 0; max-width: 100%; }
+.devstatus::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.devstatus.ok { --tone: var(--good); }
+.devstatus.warn { --tone: var(--base0A); }
+.devstatus.bad { --tone: var(--bad); }
+.devstatus.wait::before { animation: breathe 1.2s ease-in-out infinite; }

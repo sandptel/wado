@@ -20,6 +20,68 @@ pub struct HostState {
     /// A Wi-Fi change is on probation: seconds until it is undone unless someone confirms it.
     #[serde(default)]
     pub wifi_revert_in: Option<u32>,
+    /// Media players (MPRIS) on the computer and in the session — playing ones first.
+    #[serde(default)]
+    pub media: Vec<Player>,
+    /// What the computer is, neofetch-style. The hostname is what a device card is named after
+    /// until the person names it.
+    #[serde(default)]
+    pub info: SysInfo,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct SysInfo {
+    pub user: String,
+    pub hostname: String,
+    /// `PRETTY_NAME` from os-release, e.g. "NixOS 26.11 (Xantusia)".
+    pub os: String,
+    /// os-release `ID`, e.g. "nixos" — picks the logo.
+    pub os_id: String,
+    pub kernel: String,
+    pub uptime_s: u64,
+    pub cpu: String,
+    pub cores: u32,
+    pub gpu: String,
+    pub mem_used_mb: u64,
+    pub mem_total_mb: u64,
+    pub shell: String,
+    pub desktop: String,
+}
+
+/// A media player, as its playback card shows it.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Player {
+    /// Its D-Bus name — what an action addresses.
+    pub bus: String,
+    /// "Spotify", "Firefox".
+    pub app: String,
+    pub title: String,
+    pub artist: String,
+    /// Cover art: an `https:` URL as the player gives it, or a `data:` URI for a local file.
+    #[serde(default)]
+    pub art: Option<String>,
+    pub playing: bool,
+    pub position_ms: u64,
+    /// 0 when the player does not say (a live stream).
+    pub length_ms: u64,
+    pub shuffle: Option<bool>,
+    pub can_next: bool,
+    pub can_prev: bool,
+    pub can_seek: bool,
+    /// The audio stream it plays through, when it could be matched — what the card's output
+    /// chip shows and moves.
+    #[serde(default)]
+    pub stream: Option<u32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "op", rename_all = "snake_case")]
+pub enum MediaOp {
+    PlayPause,
+    Next,
+    Previous,
+    SeekTo { ms: u64 },
+    Shuffle { on: bool },
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -56,6 +118,9 @@ pub struct Stream {
     pub muted: bool,
     /// `node.name` of the output it is playing on now.
     pub sink: Option<String>,
+    /// The process playing it, which is what ties a media player to its stream.
+    #[serde(default)]
+    pub pid: Option<u32>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -148,6 +213,11 @@ pub enum HostAction {
     },
     KeepAwake {
         on: bool,
+    },
+    /// Control a media player.
+    Media {
+        bus: String,
+        op: MediaOp,
     },
 }
 
