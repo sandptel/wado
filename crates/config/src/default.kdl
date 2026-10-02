@@ -30,6 +30,8 @@ session {
     // atspi "/nix/store/…-at-spi2-core"
     // env { GDK_SCALE "1"; }
     // autostart "foot"
+    // audio #true                     // own audio output, streamed; off = apps play here
+    // audio-bitrate 96                // kbps, Opus
 }
 
 shells {

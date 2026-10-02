@@ -119,6 +119,8 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/capture.js"),
     "\n",
+    include_str!("js/audio.js"),
+    "\n",
     include_str!("js/lifecycle.js"),
 );
 
@@ -337,6 +339,10 @@ pub fn run(ui: Ui) {
                     notes.insert(0, note);
                     notes.truncate(crate::state::MAX_NOTES);
                 }
+                "audioBlocked" => live.note.set(
+                    "Tap the sound tile to hear the session — this browser held the audio back."
+                        .into(),
+                ),
                 "recording" => live
                     .recording
                     .set(msg.get("on").and_then(|v| v.as_bool()).unwrap_or(false)),

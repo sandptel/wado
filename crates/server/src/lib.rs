@@ -5,6 +5,7 @@
 
 pub mod a11y;
 pub mod apps;
+pub mod audio;
 pub mod cli;
 pub mod config;
 pub mod error;

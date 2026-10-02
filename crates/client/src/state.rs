@@ -152,6 +152,9 @@ pub struct Settings {
     pub lens_auto: Signal<bool>,
     /// Do not disturb: notifications go to the shade without a toast.
     pub dnd: Signal<bool>,
+    /// The session's sound: 0..1, and muted.
+    pub volume: Signal<f64>,
+    pub muted: Signal<bool>,
 
     pub theme: Signal<String>,
     /// Raw text of a pasted base16 scheme. Kept verbatim so the box still shows what was
@@ -238,6 +241,8 @@ impl Settings {
             keep_awake: use_signal(|| true),
             lens_auto: use_signal(|| true),
             dnd: use_signal(|| false),
+            volume: use_signal(|| 1.0),
+            muted: use_signal(|| false),
             theme: use_signal(|| "default-dark".to_string()),
             theme_custom: use_signal(String::new),
 

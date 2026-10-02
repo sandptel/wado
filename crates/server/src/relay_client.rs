@@ -130,6 +130,8 @@ struct RelayCtx {
     checking: Arc<Mutex<std::collections::HashSet<String>>>,
     /// Rooms a takeover check approved. Their `PeerConnected` is let in without asking twice.
     approved: Arc<Mutex<std::collections::HashSet<String>>>,
+    /// The Opus track, added to every peer connection beside `track`.
+    audio_track: Arc<TrackLocalStaticSample>,
     /// The device key and name of the viewer in `room` — what its config edits and saved
     /// settings are filed under (see [`crate::config::link`]).
     viewer: Arc<Mutex<(String, String)>>,
@@ -147,16 +149,12 @@ fn now_ms() -> u64 {
 }
 
 /// Spawn the relay client on a dedicated thread. Mirrors `website::start`.
+///
+/// Takes the compositor's handles whole and unpacks them by name: a dozen receivers of
+/// near-identical types passed by position is how the audio sink once received the D-Bus
+/// address instead.
 pub fn start(
-    cmd_tx: CommandSender,
-    input_tx: InputSender,
-    timings: tokio::sync::watch::Receiver<wado_protocol::StageTimings>,
-    text_input: tokio::sync::watch::Receiver<bool>,
-    shedding: tokio::sync::watch::Receiver<u32>,
-    windows: tokio::sync::watch::Receiver<Vec<wado_protocol::WindowInfo>>,
-    menu: tokio::sync::watch::Receiver<Option<wado_compositor::hit::MenuSpot>>,
-    clipboard: tokio::sync::watch::Receiver<String>,
-    app_bus: tokio::sync::watch::Receiver<Option<String>>,
+    handles: wado_compositor::CompositorHandles,
     frame_rx: mpsc::Receiver<FrameMsg>,
     relay_url: String,
     remote_id: String,
@@ -175,13 +173,25 @@ pub fn start(
                     return;
                 }
             };
+            let wado_compositor::CompositorHandles {
+                commands: cmd_tx,
+                input: input_tx,
+                timings,
+                text_input,
+                shedding,
+                windows,
+                menu,
+                clipboard,
+                app_bus,
+                audio,
+            } = handles;
             rt.block_on(async move {
                 // Daemon-lifetime, not connection-lifetime: notifications arrive whether or not
                 // a viewer is connected at that moment.
                 tokio::spawn(crate::notify::run(app_bus));
                 if let Err(e) = run(
                     cmd_tx, input_tx, timings, text_input, shedding, windows, menu, clipboard,
-                    frame_rx, relay_url, remote_id, log_bus,
+                    audio, frame_rx, relay_url, remote_id, log_bus,
                 )
                 .await
                 {
@@ -201,6 +211,7 @@ async fn run(
     windows: tokio::sync::watch::Receiver<Vec<wado_protocol::WindowInfo>>,
     menu: tokio::sync::watch::Receiver<Option<wado_compositor::hit::MenuSpot>>,
     clipboard: tokio::sync::watch::Receiver<String>,
+    audio: tokio::sync::watch::Receiver<Option<String>>,
     mut frame_rx: mpsc::Receiver<FrameMsg>,
     relay_url: String,
     remote_id: String,
@@ -217,6 +228,10 @@ async fn run(
         "video".to_owned(),
         "wado".to_owned(),
     ));
+    // The session's sound, on its own track (see `crate::audio`).
+    let audio_track = crate::audio::track();
+    tokio::spawn(crate::audio::run(audio, Arc::clone(&audio_track)));
+
     // What actually leaves this process, measured at the track. Published for the viewer, which
     // otherwise sees only what arrived and must guess which end lost the difference.
     let (sent_kbps_tx, sent_kbps) = tokio::sync::watch::channel(0u32);
@@ -423,6 +438,7 @@ async fn run(
         checking: Arc::default(),
         approved: Arc::default(),
         viewer: Arc::default(),
+        audio_track,
         a11y: Arc::new(crate::a11y::A11y::default()),
         relay_url,
         remote_id,
@@ -1497,6 +1513,10 @@ fn is_keyframe(data: &[u8]) -> bool {
 }
 
 /// Summarise the ICE candidate types present in an SDP — "host", "srflx", "relay".
+fn offer_has_audio(sdp: &str) -> bool {
+    sdp.lines().any(|l| l.starts_with("m=audio"))
+}
+
 fn candidate_types(sdp: &str) -> String {
     let mut types: Vec<&str> = sdp
         .lines()
@@ -1552,6 +1572,12 @@ async fn handle_sdp_offer(
     let rtp_sender = pc
         .add_track(Arc::clone(&ctx.track) as Arc<dyn TrackLocal + Send + Sync>)
         .await?;
+    // Audio only when the viewer's offer asked for it: an older client that offers video alone
+    // must still get an answer it can apply.
+    if offer_has_audio(&offer.sdp) {
+        pc.add_track(Arc::clone(&ctx.audio_track) as Arc<dyn TrackLocal + Send + Sync>)
+            .await?;
+    }
 
     // Input data channel: forward JSON InputEvents to the compositor.
     {

@@ -12,6 +12,7 @@
 //! X11 — a `DISPLAY` that is the session's own ([`xwayland`]).
 
 pub mod a11y;
+pub mod audio;
 pub mod bus;
 pub mod xwayland;
 
@@ -23,6 +24,13 @@ use std::{
 /// The viewer's light/dark choice for this session: 0 unknown, 1 dark, 2 light. Set at start;
 /// one compositor per daemon, so one value.
 static DARK: AtomicU8 = AtomicU8::new(0);
+
+/// The session's audio sink name, while it has one — see [`audio`].
+static SINK: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+pub fn set_sink(name: Option<String>) {
+    *SINK.lock().unwrap_or_else(|e| e.into_inner()) = name;
+}
 
 pub fn set_dark(dark: Option<bool>) {
     DARK.store(dark.map_or(0, |d| if d { 1 } else { 2 }), Ordering::Relaxed);
@@ -73,6 +81,9 @@ pub fn apply(cmd: &mut Command, env: &AppEnv) {
             cmd.env("ADW_DEBUG_COLOR_SCHEME", "prefer-light");
         }
         _ => {}
+    }
+    if let Some(sink) = SINK.lock().unwrap_or_else(|e| e.into_inner()).as_deref() {
+        cmd.env("PULSE_SINK", sink);
     }
     cmd.envs(&wado_config::live::current().session.env);
     let (bus, x) = match env {

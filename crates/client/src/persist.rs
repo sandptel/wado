@@ -70,6 +70,8 @@ pub struct Saved {
     pub keep_awake: Option<bool>,
     pub lens_auto: Option<bool>,
     pub dnd: Option<bool>,
+    pub volume: Option<f64>,
+    pub muted: Option<bool>,
     pub theme: Option<String>,
     pub theme_custom: Option<String>,
 
@@ -139,6 +141,8 @@ pub fn snapshot(ui: Ui) -> Saved {
         keep_awake: Some((s.keep_awake)()),
         lens_auto: Some((s.lens_auto)()),
         dnd: Some((s.dnd)()),
+        volume: Some((s.volume)()),
+        muted: Some((s.muted)()),
         theme: Some((s.theme)()),
         theme_custom: Some((s.theme_custom)()),
 
@@ -220,6 +224,8 @@ pub fn restore(ui: Ui, saved: Saved) {
     put!(keep_awake);
     put!(lens_auto);
     put!(dnd);
+    put!(volume);
+    put!(muted);
     put!(theme);
     put!(theme_custom);
     put!(debug_master);

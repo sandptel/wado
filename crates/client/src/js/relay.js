@@ -472,9 +472,17 @@ W._relayNegotiate = async () => {
   W.pc = pc;
 
   pc.addTransceiver("video", { direction: "recvonly" });
+  // The session's sound on its own track (server::audio). A daemon too old to send any simply
+  // leaves this transceiver unused.
+  pc.addTransceiver("audio", { direction: "recvonly" });
   W.inputDC = pc.createDataChannel(INPUT_CHANNEL, { ordered: true });
 
   pc.ontrack = (ev) => {
+    if (ev.track && ev.track.kind === "audio") {
+      W.audio.attach(ev.track);
+      try { if (ev.receiver && "playoutDelayHint" in ev.receiver) ev.receiver.playoutDelayHint = 0; } catch (_) {}
+      return;
+    }
     phase(4, "");
     rlog("track received — media is flowing");
     W.attachStream(ev.streams[0]);

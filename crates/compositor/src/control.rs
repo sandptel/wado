@@ -210,6 +210,11 @@ fn start(
     // this machine has no `dbus-daemon`, and the `DISPLAY` half of the isolation still holds.
     // Sized to the output, because the X screen cannot be resized afterwards any more than the
     // output can — same reason as invariant #8.
+    // Before anything is launched, so the first app already plays into it.
+    state.app_audio = crate::session_env::audio::start();
+    let sink = state.app_audio.as_ref().map(|a| a.name.clone());
+    crate::session_env::set_sink(sink.clone());
+    let _ = state.audio_tx.send(sink);
     state.app_x = config
         .x_server
         .then(|| crate::session_env::xwayland::start(config.width, config.height))
