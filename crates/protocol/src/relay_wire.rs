@@ -26,6 +26,10 @@ use serde::{Deserialize, Serialize};
 /// handshake is exactly v1's minus the new optional fields, so `0` and `1` interoperate.
 pub const WIRE_VERSION: u32 = 1;
 
+/// WebSocket close code a client uses when it is done, not dropped: the relay frees its seat
+/// instead of holding it. Announced as the `leave` cap; an older relay ignores the code.
+pub const LEAVE_CLOSE_CODE: u16 = 4001;
+
 /// WebSocket endpoint the **server** connects to in order to register itself.
 /// Path: `ws://<relay>/register`
 pub const RELAY_REGISTER_PATH: &str = "/register";

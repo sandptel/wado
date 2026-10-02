@@ -128,7 +128,14 @@ W.stopSession = async () => {
 // **Direct mode still sends the beacon.** The watchdog lives in the relay client, so the direct
 // path has no equivalent net and this is its only cleanup.
 window.addEventListener("pagehide", (ev) => {
-  if (!W.sessionOn) return;
+  // With no session there is nothing to resume, so a page going away gives its seat back now
+  // rather than holding it for the full grace. If it was only an app switch, the link redials
+  // on return and takes the seat again.
+  if (!W.sessionOn) {
+    const ws = W.relayWs;
+    if (W.relayMode && ws) { try { ws.close(4001, "leave"); } catch (_) {} }
+    return;
+  }
   if (W.rlog) W.rlog("pagehide persisted=" + ev.persisted + " relayMode=" + !!W.relayMode);
   if (W.relayMode) return;
   if (W.server) navigator.sendBeacon(W.server + "/session/stop");

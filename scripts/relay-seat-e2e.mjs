@@ -13,6 +13,7 @@
 //   takeover   one tap moves a seat; the displaced device is told; an unknown device must be
 //              approved by the device it would displace
 //   away       a daemon restart parks its client, which gets the same daemon back
+//   leave      a client closing with the leave code frees its seat instead of holding it
 //   silence    a frozen daemon is noticed and its client released
 //   ratelimit  a burst of joins from one address is cut off with a retry time
 //
@@ -125,7 +126,7 @@ try {
   const acc = await phone.wait("join_accepted", 20000);
   check("…and paired when the daemon registers", !!acc, JSON.stringify(phone.msgs));
   check("…on a stable instance id", acc && acc.instance_id === `${RID}:1`, acc && acc.instance_id);
-  check("…with the relay's caps", acc && ["park", "hold", "takeover", "gate", "ping"].every((c) => acc.caps.includes(c)));
+  check("…with the relay's caps", acc && ["park", "hold", "takeover", "gate", "ping", "leave"].every((c) => acc.caps.includes(c)));
 
   // ── gate ────────────────────────────────────────────────────────────────────
   console.log("gate");
@@ -212,11 +213,20 @@ try {
   check("…with a new boot id (the client can say its apps closed)", bacc && acc && bacc.boot_id !== acc.boot_id);
   void regs;
 
+  // ── leave ───────────────────────────────────────────────────────────────────
+  console.log("leave");
+  back.ws.close(4001, "leave");
+  await back.waitClosed(3000);
+  await sleep(300);
+  const after = new Client("Phone");
+  const lvacc = await after.wait("join_accepted", 5000);
+  check("a device that leaves frees its seat at once: the next one walks in", !!lvacc && !after.has("join_denied"), JSON.stringify(after.msgs));
+
   // ── silence ─────────────────────────────────────────────────────────────────
   console.log("silence (≈50 s)");
   d1.kill("SIGSTOP");
   const t0 = Date.now();
-  const gone = await back.waitClosed(60000);
+  const gone = await after.waitClosed(60000);
   check("a frozen daemon is noticed and its client released", gone, `after ${Date.now() - t0} ms`);
   check("…within the 45 s window plus a check tick", Date.now() - t0 < 56000, `${Date.now() - t0} ms`);
   d1.kill("SIGCONT");

@@ -16,7 +16,9 @@ use futures_util::{SinkExt, StreamExt};
 use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
-use wado_protocol::relay_wire::{display_remote_id, normalize_remote_id, WireMsg, WIRE_VERSION};
+use wado_protocol::relay_wire::{
+    display_remote_id, normalize_remote_id, WireMsg, LEAVE_CLOSE_CODE, WIRE_VERSION,
+};
 
 use crate::registry::Instance;
 use crate::room::{Claim, Want};
@@ -394,6 +396,7 @@ async fn join_loop(socket: WebSocket, remote_id: String, j: Joiner, peer: String
 
     let mut last_heard = Instant::now();
     let mut check = tokio::time::interval(Duration::from_secs(5));
+    let mut leaving = false;
     loop {
         let frame = tokio::select! {
             f = ws_rx.next() => f,
@@ -434,6 +437,10 @@ async fn join_loop(socket: WebSocket, remote_id: String, j: Joiner, peer: String
                     break;
                 }
             }
+            Some(Ok(Message::Close(Some(f)))) if f.code == LEAVE_CLOSE_CODE => {
+                leaving = true;
+                break;
+            }
             Some(Ok(Message::Close(_))) | Some(Err(_)) | None => break,
             Some(Ok(_)) => {}
         }
@@ -443,7 +450,13 @@ async fn join_loop(socket: WebSocket, remote_id: String, j: Joiner, peer: String
     // The seat is *held*, not freed: a viewer going away is not a request to stop. The daemon
     // is told only that the viewer is gone — once this used to synthesize a `session_stop`,
     // and every dropped socket cost the viewer their windows and applications.
-    state.rooms.release(&instance_id, &room_id);
+    // A client that said it is done has nothing to come back to: free the seat.
+    if leaving {
+        info!(instance = %instance_id, client = %label, "client left — seat freed");
+        state.rooms.remove_if(&instance_id, &room_id);
+    } else {
+        state.rooms.release(&instance_id, &room_id);
+    }
     send_to(
         &server_inbox_tx,
         &WireMsg::PeerDisconnected {
