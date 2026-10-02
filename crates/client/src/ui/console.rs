@@ -1,32 +1,58 @@
-//! The console: an interactive shell and the server log, in one sheet over the picture.
+//! The console: the daemon's shells as tabs, and the server log, in one sheet over the picture.
 //!
-//! Two things decided the shape. They float rather than stack, because as siblings under the
-//! video they took height off it and letterboxed the stream — the same fault the status bar
-//! had. And they share one sheet with two tabs rather than opening separately, because a
-//! phone has room for one panel at a time and two collapsed headers is two rows of nothing.
+//! Over the picture rather than beside it — as a sibling it took height off the stream. One
+//! sheet with tabs rather than separate panels, because a phone has room for one at a time.
 //!
-//! The shell is a real terminal on a real PTY (see `server::pty` and `js/pty.js`), not a
-//! box that runs one command and prints its lines. That is why this renders an empty div
-//! and stops: xterm.js owns everything inside `#wado-term`, and Dioxus must never diff it.
-//!
-//! For the same reason the sheet is **hidden with a class rather than unmounted**. Removing
-//! the node would take the terminal, its scrollback and its running shell with it every time
-//! the console was closed.
+//! The terminals are real PTYs on the daemon, several of them, and they outlive this page (see
+//! `server::shells`). xterm.js owns everything inside `#wado-term` — one pane per shell, made by
+//! `js/pty.js` — and Dioxus never diffs it. For the same reason the sheet is **hidden with a
+//! class, not unmounted**: removing the node would take every terminal's screen with it.
 
 use dioxus::prelude::*;
 
-use crate::{bridge, state::Ui};
+use crate::{bridge, state::Ui, ui::widgets::Icon};
 
-/// Reveal the terminal and, the first time, ask the server for a shell.
-fn show_shell() {
-    bridge::call("window.__wado.ptyShow();".to_string());
+const KEYS: &[(&str, &str)] = &[
+    ("esc", "esc"),
+    ("tab", "tab"),
+    ("ctrl", "ctrl"),
+    ("alt", "alt"),
+    ("left", "←"),
+    ("up", "↑"),
+    ("down", "↓"),
+    ("right", "→"),
+    ("pipe", "|"),
+    ("tilde", "~"),
+    ("slash", "/"),
+    ("dash", "-"),
+    ("home", "home"),
+    ("end", "end"),
+    ("pgup", "pgup"),
+    ("pgdn", "pgdn"),
+];
+
+/// Open the console on its shells, starting a local one if there is none.
+pub fn open_shells(ui: Ui) {
+    let mut live = ui.live;
+    live.console_tab.set("shell".to_string());
+    live.console_open.set(true);
+    if live.shells.read().is_empty() {
+        bridge::call("window.__wado.shellNew(null);".to_string());
+    } else {
+        bridge::call("window.__wado.ptyShow();".to_string());
+    }
 }
 
 pub fn render(ui: Ui) -> Element {
     let mut live = ui.live;
     let open = (live.console_open)();
     let shell = (live.console_tab)() == "shell";
+    let shells = (live.shells)();
+    let hosts = (live.shell_hosts)();
+    let active = (live.shell_active)();
+    let (ctrl, alt) = (live.shell_mods)();
     let logs = live.logs.read().clone();
+    let mut picker = use_signal(|| false);
 
     rsx! {
         section {
@@ -34,13 +60,30 @@ pub fn render(ui: Ui) -> Element {
             class: if open { "open" } else { "shut" },
 
             div { class: "consoletabs",
-                button {
-                    class: if shell { "ctab on" } else { "ctab" },
-                    onclick: move |_| {
-                        live.console_tab.set("shell".to_string());
-                        show_shell();
-                    },
-                    "Shell"
+                for s in shells.iter().cloned() {
+                    div {
+                        key: "{s.id}",
+                        class: if shell && s.id == active { "ctab on" } else { "ctab" },
+                        button {
+                            class: if s.alive { "ctabname" } else { "ctabname dead" },
+                            onclick: move |_| {
+                                live.console_tab.set("shell".to_string());
+                                live.shell_active.set(s.id);
+                                bridge::call(format!("window.__wado.shellShow({});", s.id));
+                            },
+                            span { class: if s.host.is_some() { "cdot ssh" } else { "cdot" } }
+                            "{s.title}"
+                        }
+                        button {
+                            class: "ctabx",
+                            "aria-label": "Close {s.title}",
+                            onclick: move |_| bridge::call(format!("window.__wado.shellClose({});", s.id)),
+                            Icon { name: "x" }
+                        }
+                    }
+                }
+                button { class: "ctab ctabplus", "aria-label": "New shell", onclick: move |_| picker.set(!picker()),
+                    Icon { name: "plus" }
                 }
                 button {
                     class: if shell { "ctab" } else { "ctab on" },
@@ -52,15 +95,51 @@ pub fn render(ui: Ui) -> Element {
                     class: "ctab cclose",
                     "aria-label": "Close console",
                     onclick: move |_| live.console_open.set(false),
-                    "✕"
+                    Icon { name: "down" }
                 }
             }
 
-            // Always in the tree, shown only on the shell tab. Empty on purpose — xterm.js
-            // mounts into it and owns its children from then on.
-            div {
-                id: "wado-term",
-                class: if shell { "termshow" } else { "termhide" },
+            if picker() {
+                div { class: "hostpick",
+                    button { class: "navrow", onclick: move |_| { picker.set(false); bridge::call("window.__wado.shellNew(null);".to_string()); },
+                        span { class: "disc", style: "--hue:var(--base0B)", Icon { name: "term" } }
+                        span { class: "navtext", b { "This computer" } small { "a login shell" } }
+                    }
+                    for h in hosts.iter().cloned() {
+                        button {
+                            key: "{h}",
+                            class: "navrow",
+                            onclick: move |_| {
+                                picker.set(false);
+                                bridge::call(format!("window.__wado.shellNew({});", bridge::js(&h)));
+                            },
+                            span { class: "disc", style: "--hue:var(--base0E)", Icon { name: "server" } }
+                            span { class: "navtext", b { "{h}" } small { "ssh {h} — from this computer's ~/.ssh/config" } }
+                        }
+                    }
+                    if hosts.is_empty() {
+                        p { class: "why", "Add Host entries to ~/.ssh/config on the computer running wado, and they appear here." }
+                    }
+                }
+            }
+
+            // Always in the tree, shown only on a shell tab. Empty on purpose — js/pty.js
+            // builds one pane per shell inside it and owns them from then on.
+            div { id: "wado-term", class: if shell { "termshow" } else { "termhide" } }
+
+            if shell && active != 0 {
+                div { class: "keyrow",
+                    for (k, label) in KEYS.iter() {
+                        button {
+                            key: "{k}",
+                            class: if (*k == "ctrl" && ctrl) || (*k == "alt" && alt) { "on" } else { "" },
+                            // Keep the terminal's focus — and the phone keyboard — up.
+                            onmousedown: move |e| e.prevent_default(),
+                            onclick: move |_| bridge::call(format!("window.__wado.shellKey({});", bridge::js(k))),
+                            "{label}"
+                        }
+                    }
+                }
             }
 
             if !shell {

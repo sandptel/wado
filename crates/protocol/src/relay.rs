@@ -331,45 +331,67 @@ pub enum RelayMsg {
         message: String,
     },
 
-    // ── Interactive shell (PTY) ─────────────────────────────────────────────
-    /// Start a login shell on a pseudo-terminal, sized `cols`x`rows`.
-    ///
-    /// A PTY is what makes a shell behave like a shell: job control, line editing, colour,
-    /// and full-screen programs all key off being attached to a terminal. Opening twice
-    /// replaces the first — one shell per viewer.
+    // ── Interactive shells (PTY), several per daemon ───────────────────────
+    //
+    // Shells belong to the daemon, not the connection: a dropped link leaves them running and
+    // the next viewer gets them back, scrollback and all. Every message names its shell by `id`;
+    // `id` defaults to 0, which is never a real shell, so an old client's messages are ignored
+    // rather than sent to the wrong terminal.
+    /// Start a shell sized `cols`x`rows`: a login shell, or `ssh <host>` for an alias from the
+    /// host's own ssh config. Answered with [`RelayMsg::PtyOpened`].
     PtyOpen {
         cols: u16,
         rows: u16,
+        #[serde(default)]
+        host: Option<String>,
     },
-    /// Keystrokes for the shell, exactly as typed — control characters included.
-    ///
-    /// Always valid UTF-8: this is what the terminal emulator produced from a key event, and
-    /// a control byte like `0x03` is a perfectly good `char`.
+    /// The shell [`RelayMsg::PtyOpen`] asked for exists.
+    PtyOpened {
+        id: u32,
+    },
+    /// Keystrokes for a shell, exactly as typed — control characters included.
     PtyInput {
+        #[serde(default)]
+        id: u32,
         data: String,
     },
-    /// Output from the shell, for the terminal emulator to interpret.
-    ///
-    /// UTF-8 text rather than bytes, which costs one thing and buys another. A PTY read can
-    /// end mid-character, so the server holds the incomplete tail back until the rest
-    /// arrives (see `server::pty`). Output that is not UTF-8 at all — a stray `cat` of a
-    /// binary — arrives as replacement characters, which is what a terminal shows anyway.
+    /// Output from a shell. UTF-8 text: a read that ends mid-character is held back until the
+    /// rest arrives (see `server::pty`). `replay` marks a reattach's scrollback, which replaces
+    /// whatever the terminal showed rather than adding to it.
     ///
     /// ponytail: base64 is the upgrade path if byte-exact non-UTF-8 output ever matters.
     PtyOutput {
+        #[serde(default)]
+        id: u32,
         data: String,
+        #[serde(default)]
+        replay: bool,
     },
-    /// The terminal was resized. Full-screen programs redraw from this, and a shell that
-    /// never receives it wraps its lines at the wrong column.
+    /// A terminal was resized.
     PtyResize {
+        #[serde(default)]
+        id: u32,
         cols: u16,
         rows: u16,
     },
-    /// Close the shell and everything running under it.
-    PtyClose,
-    /// The shell exited. `code` is absent when it was killed by a signal.
+    /// Close a shell and everything running under it.
+    PtyClose {
+        #[serde(default)]
+        id: u32,
+    },
+    /// A shell exited. Its tab stays, with its output, until closed.
     PtyExit {
+        #[serde(default)]
+        id: u32,
         code: Option<i32>,
+    },
+    /// Client → server: which shells are open, and the ssh hosts on offer. Answered with
+    /// [`RelayMsg::Shells`] and a replay of each shell's scrollback.
+    ShellsRequest,
+    /// The shells, in the order they were opened, and the ssh aliases a new one can use.
+    Shells {
+        shells: Vec<crate::ShellInfo>,
+        hosts: Vec<String>,
     },
 
     // ── Daemon config (see `wado-config`) ──────────────────────────────────

@@ -249,3 +249,11 @@ details.card > summary { cursor: pointer; font-weight: 600; color: var(--bright)
 .applybar span { font-weight: 600; color: var(--bright); }
 .applybar small { color: var(--dim); font-size: 12px; flex: 1; }
 .applybar .btn { width: auto; min-height: 42px; }
+
+/* Shell cards on the root page. */
+.shellstrip { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin-inline: -16px; padding-inline: 16px; }
+.shellcard { flex: none; width: 130px; display: grid; gap: 4px; justify-items: start; text-align: left; padding: 12px;
+  border-radius: var(--r3); background: var(--s1); border: 1px solid var(--line); }
+.shellcard b { font-size: 13px; color: var(--bright); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shellcard small { font-size: 11px; color: var(--dim); }
+.shellcard.dead { opacity: .6; }

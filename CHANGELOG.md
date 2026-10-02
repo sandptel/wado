@@ -4,6 +4,18 @@
 
 ### Added
 
+**Shells have tabs, keep running, and do SSH.** The console holds several shells at once,
+each in its own tab. **They belong to the computer, not to the connection**: lock the phone,
+lose signal or reload the page, and the shells keep running. You get them back with
+everything they printed. **+** opens a new shell on the computer, or an SSH session to any
+`Host` in that computer's `~/.ssh/config`. The SSH runs from the computer with its own keys,
+so nothing secret lives in the browser, and only hosts listed there can be opened. A key row
+under the terminal adds what a phone keyboard lacks: Esc, Tab, sticky Ctrl and Alt, arrows,
+`|`, `~`. **Open a shell without starting video** from the landing page: no compositor or
+encoder runs, so it costs the computer almost nothing. Terminals follow the base16 scheme.
+`scripts/shells-e2e.mjs` checks all of this, and the config-over-relay path, against the real
+binaries.
+
 **A new client: a landing page, a control centre, and base16 all the way through.** The
 settings column and the ⋯ button grid are gone. In their place:
 

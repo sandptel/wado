@@ -256,6 +256,12 @@ pub struct Live {
     /// reading.
     pub console_open: Signal<bool>,
     pub console_tab: Signal<String>,
+    /// The daemon's shells, the ssh aliases it offers, the one showing, and the key row's
+    /// sticky modifiers. See `js/pty.js` and `server::shells`.
+    pub shells: Signal<Vec<wado_protocol::ShellInfo>>,
+    pub shell_hosts: Signal<Vec<String>>,
+    pub shell_active: Signal<u32>,
+    pub shell_mods: Signal<(bool, bool)>,
 
     /// The control centre: whether it is up, which page it shows, and whether the tiles are
     /// being edited. Not persisted — a sheet covering the video on load is never wanted.
@@ -378,6 +384,10 @@ impl Live {
             logs: use_signal(Vec::new),
             console_open: use_signal(|| false),
             console_tab: use_signal(|| "shell".to_string()),
+            shells: use_signal(Vec::new),
+            shell_hosts: use_signal(Vec::new),
+            shell_active: use_signal(|| 0),
+            shell_mods: use_signal(|| (false, false)),
             cc_open: use_signal(|| false),
             cc_page: use_signal(Default::default),
             applied: use_signal(String::new),
