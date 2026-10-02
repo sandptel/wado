@@ -196,6 +196,26 @@ impl RoomStore {
         }
     }
 
+    /// The daemon's hold for this room's seat. Applies to a seat already held, too: a hold of
+    /// zero frees it now, a shorter one brings its expiry forward.
+    pub fn set_hold(&self, instance_id: &str, room_id: &str, hold: Duration) {
+        let removed = self.inner.remove_if(instance_id, |_, s| {
+            s.room_id == room_id && s.link.is_none() && hold.is_zero()
+        });
+        if removed.is_some() {
+            tracing::info!(instance = %instance_id, "seat freed — the daemon has nothing to hold it for");
+            return;
+        }
+        if let Some(mut s) = self.inner.get_mut(instance_id) {
+            if s.room_id == room_id {
+                s.hold = hold;
+                if let Some(t) = s.held_until {
+                    s.held_until = Some(t.min(Instant::now() + hold));
+                }
+            }
+        }
+    }
+
     /// Drop a seat outright (a gated join was refused).
     pub fn remove_if(&self, instance_id: &str, room_id: &str) {
         self.inner
@@ -330,6 +350,20 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn a_seat_the_daemon_has_nothing_to_hold_for_is_freed() {
+        let rooms = RoomStore::new();
+        let (a, _ra) = want("r1", "A", false);
+        assert!(got(&rooms.claim("i", a)));
+        rooms.release("i", "r1");
+        rooms.set_hold("i", "r1", Duration::ZERO);
+        let (b, _rb) = want("r2", "B", false);
+        assert!(
+            got(&rooms.claim("i", b)),
+            "a ghost seat refused another device"
+        );
     }
 
     #[test]

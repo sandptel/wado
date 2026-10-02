@@ -144,6 +144,27 @@ pub enum RelayMsg {
         room_id: String,
     },
 
+    /// Daemon → relay: how long to keep this room's seat once its client is gone, replacing the
+    /// registration's `hold_ms` for it. `0` frees a dropped client's seat now — the daemon sends
+    /// it when there is nothing to hold the seat for (no session, or one left running, which
+    /// any device can resume from the list). Without it a phone that closed its tab kept a
+    /// daemon of the pool for the full 30 min hold, and two such ghosts refused every other
+    /// device (2026-10-03). Announced by the relay as the `seat_hold` cap; an older relay
+    /// forwards it to the client, which ignores it.
+    SeatHold {
+        room_id: String,
+        #[serde(default)]
+        hold_ms: u64,
+    },
+
+    /// Daemon → relay: whether a session is running here. The relay hands a device with no
+    /// daemon of its own an idle one first. Sent on every change and on each registration.
+    /// Announced as the `occupancy` cap.
+    Occupancy {
+        #[serde(default)]
+        session: bool,
+    },
+
     // ── Relay → client (handshake) ──────────────────────────────────────────
     /// Join accepted; room is open. (The client never sends a join message —
     /// connecting to `/join/:remote_id` with a valid Remote ID is the join.)
@@ -647,6 +668,7 @@ mod wire_tests {
                 title: "Files".into(),
                 app_id: "org.gnome.Nautilus".into(),
                 focused: true,
+                workspace: 1,
             }],
         })
         .unwrap();

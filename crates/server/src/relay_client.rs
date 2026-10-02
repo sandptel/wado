@@ -628,6 +628,32 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             }) => {
                 relay_gates = caps.iter().any(|c| c == "gate");
                 relay_pings = caps.iter().any(|c| c == "ping");
+                // Tell the relay whether a session runs here, on every change, so a device
+                // without a daemon of its own is handed an idle one. Ends with the link: its
+                // sends fail once the write task's receiver is gone.
+                {
+                    let out_tx = out_tx.clone();
+                    let started = Arc::clone(&ctx.session_started);
+                    tokio::spawn(async move {
+                        let mut last = None;
+                        loop {
+                            let now = started.load(Ordering::SeqCst);
+                            if last != Some(now) {
+                                if send_relay(&out_tx, &RelayMsg::Occupancy { session: now })
+                                    .await
+                                    .is_err()
+                                {
+                                    break;
+                                }
+                                last = Some(now);
+                            }
+                            if out_tx.is_closed() {
+                                break;
+                            }
+                            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                        }
+                    });
+                }
                 // relay_v 0 = a relay from before the handshake was versioned.
                 info!(
                     "relay client: registered — Remote ID {} as instance {} (relay wire v{relay_v}, caps {caps:?})",
@@ -1109,6 +1135,24 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                             warn!("relay client: closing a departed viewer's peer connection: {e}");
                         }
                     });
+                }
+                // Nothing to keep the seat for: no session, or one left running (resumable by any
+                // device from the list). Holding it anyway is how one phone's closed tabs filled
+                // the whole pool and every other device was refused (2026-10-03).
+                if !ctx.session_started.load(Ordering::SeqCst)
+                    || ctx.detached.load(Ordering::SeqCst)
+                {
+                    send_relay(
+                        &out_tx,
+                        &RelayMsg::SeatHold {
+                            room_id: room_id.clone(),
+                            hold_ms: 0,
+                        },
+                    )
+                    .await
+                    .ok();
+                    info!(room_id = %room_id, "relay client: viewer disconnected — no session to hold, seat freed");
+                    continue;
                 }
                 info!(
                     room_id = %room_id,

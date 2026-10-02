@@ -60,8 +60,15 @@ function recentlyWatching() {
 // rejoin can only ever attach to something that already exists. A `session_start` used as the
 // query would *create* a session on a daemon that had none — a compositor and an encoder spun
 // up because a page loaded, which nobody asked for.
+//
+// Only after the interface crashed and reloaded itself (js/watchdog.js). A reload the viewer
+// did lands on the home page, where the running session is a tile with Rejoin — a page load
+// is a choice to look at the home page, not a request to be thrown back into the session.
 W.relayResumeIfWatching = () => {
+  let crashed = false;
+  try { crashed = sessionStorage.getItem("wado.crashRejoin") === "1"; sessionStorage.removeItem("wado.crashRejoin"); } catch (_) {}
   const mark = recentlyWatching();
+  if (!crashed) { markWatching(false); return false; }
   if (!mark || W.sessionOn || W._relayWanted) return false;
   // The scroll conversion needs the session's scale and the config is not here on a cold load.
   W.outputScale = mark.scale > 0 ? mark.scale : 1;

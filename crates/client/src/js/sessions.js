@@ -30,6 +30,18 @@ W.leaveSession = () => {
   setTimeout(W.sessionsGet, 600);
 };
 
+// New session while this daemon already has one: leave its seat (freed, not held) and redial
+// with no daemon asked for, so the relay hands over an idle one (it puts those first).
+W.freshDaemon = () => {
+  const t = W._relayTarget;
+  if (!t) return;
+  W.rememberInstance(String(t.id).replace(/[\s-]/g, ""), "");
+  try { localStorage.removeItem("wado.watching"); } catch (_) {}
+  const { url, id } = t;
+  W.relayDrop(true);
+  W.relayDial(url, id);
+};
+
 let afterUp = null; // "resume" | "stop", for a session on another daemon
 
 function act(kind) {

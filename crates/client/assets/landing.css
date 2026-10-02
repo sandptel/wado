@@ -84,3 +84,19 @@ button.dev > svg:last-child { margin-left: auto; color: var(--dim); }
 .sessioncard .navtext b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
 .sessioncard .navtext small { white-space: normal; }
 #landing .sect { margin: 4px 4px -6px; }
+
+/* The active-session tile: the session's own shape, drawn, beside what it runs. */
+.sessioncard.watched { border-color: color-mix(in oklab, var(--accent), transparent 40%); }
+.sessionshape { width: 54px; height: 54px; flex: none; display: grid; place-items: center; border-radius: var(--r2); background: var(--s0); }
+.sessionshape span { display: block; border-radius: 5px; border: 2px solid var(--good);
+  background: color-mix(in oklab, var(--good), transparent 82%); animation: shapein 500ms var(--pop) both; }
+.sessioncard.watched .sessionshape span { border-color: var(--accent); background: color-mix(in oklab, var(--accent), transparent 82%); }
+@keyframes shapein { from { scale: .3; opacity: 0; } }
+.sessionwho { display: flex !important; align-items: center; gap: 6px; }
+.sessionwho .cdot { width: 7px; height: 7px; border-radius: 50%; background: var(--dim); flex: none; }
+.sessionwho .cdot.on { background: var(--accent); animation: breathe 2s ease-in-out infinite; }
+.sessionapps { display: flex; flex-wrap: wrap; gap: 6px; }
+.appchip { padding: 3px 10px; border-radius: 999px; background: var(--s2); color: var(--text); font-size: 12px; }
+.gonew { min-height: 58px; padding: 0 16px; border-radius: var(--r3); display: inline-flex; align-items: center; gap: 6px;
+  background: var(--s1); color: var(--bright); font: 600 15px var(--display); border: 1px solid var(--line); }
+.gonew:disabled { opacity: .5; }

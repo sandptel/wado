@@ -22,8 +22,19 @@ use dioxus::prelude::*;
 
 use state::{Live, Settings, Ui};
 
+/// The page's watchdog (`js/watchdog.js`): a panic leaves every button dead while the video
+/// plays on, so it is reported there and the page reloads itself back into the session.
+#[wasm_bindgen::prelude::wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = ["window", "__wado"], catch)]
+    fn crashed(why: &str) -> Result<(), wasm_bindgen::JsValue>;
+}
+
 fn main() {
-    console_error_panic_hook::set_once();
+    std::panic::set_hook(Box::new(|info| {
+        console_error_panic_hook::hook(info);
+        let _ = crashed(&info.to_string());
+    }));
     dioxus::launch(App);
 }
 

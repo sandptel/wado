@@ -22,6 +22,7 @@ pub fn render(ui: Ui) -> Element {
     let s = ui.set;
     let c = crate::cfg::build(ui);
     let status = (live.status)();
+    let has_sessions = !(live.sessions)().1.is_empty();
 
     rsx! {
         section { id: "landing", class: if on { "gone" } else { "" }, "aria-hidden": "{on}",
@@ -58,8 +59,20 @@ pub fn render(ui: Ui) -> Element {
                         Icon { name: "term" }
                     }
                 }
-                button { class: "go", disabled: on, onclick: move |_| actions::start(ui),
-                    Icon { name: "power" } "Start session"
+                if has_sessions {
+                    // A session is already running: joining it is the likely wish, a new one the
+                    // other. Both on the one button row, Join the bigger.
+                    button { class: "gonew", disabled: on, title: "Start a new session", "aria-label": "New session",
+                        onclick: move |_| sessions::new(ui),
+                        Icon { name: "plus" } "New"
+                    }
+                    button { class: "go", disabled: on, onclick: move |_| sessions::join(ui),
+                        Icon { name: "play" } "Join session"
+                    }
+                } else {
+                    button { class: "go", disabled: on, onclick: move |_| actions::start(ui),
+                        Icon { name: "power" } "Start session"
+                    }
                 }
             }
             if status != "idle" { p { class: "landingstatus", "{status}" } }

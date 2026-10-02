@@ -2,6 +2,16 @@
 
 ### Fixed
 
+- **A second device is no longer refused while the pool has room.** A phone that closed its
+  tab kept its daemon's seat held for 30 minutes, so two such ghosts filled a two-daemon pool.
+  Daemons now tell the relay when there is nothing to hold a seat for (new `seat_hold`), and
+  which of them run a session (new `occupancy`), so a device with no daemon of its own is
+  handed an idle one. Both are additive messages, announced in `caps`.
+- **Buttons that went dead mid-session now recover.** If the Rust UI dies (a panic, a WASM
+  trap, or no answer for 10 s), the video plays on and every button stops working. The page
+  now notices, reloads and goes straight back into the session, and the cause goes to the
+  daemon's log. `scripts/pool-e2e.mjs` checks this along with reload, Join and a parallel
+  session from a second browser.
 - Host toggles in the control centre (sound, Wi-Fi, Bluetooth) no longer snap back after a
   tap. A status poll already in flight answered with the state from before the action and
   overwrote it.
@@ -9,6 +19,11 @@
 ## Unreleased
 
 ### Added
+
+**The home page is where a reload lands.** A running session shows there as an
+**Active session** tile: its shape drawn to scale, its apps, who is watching, with **Rejoin**
+and **End**. The start button becomes **Join session**, with **New** beside it for a second
+session of your own.
 
 **A dock for a desktop on a phone.** The dock is now three groups along the bottom edge. On the
 left, a **workspace bar** shows one numbered pill per workspace, and the workspace you're on
