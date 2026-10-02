@@ -321,6 +321,10 @@ pub struct SessionConfig {
     /// they match the shell. `None`: leave apps to their own default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dark: Option<bool>,
+    /// The desktop's colour behind every window, `rrggbb` — the viewer's scheme, so an empty
+    /// session matches the shell around it. `None`: wado's own default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background: Option<String>,
 }
 
 /// Isolated. See [`SessionConfig::isolate_apps`].
@@ -387,6 +391,7 @@ mod config_validation_tests {
             isolate_apps: true,
             x_server: false,
             dark: None,
+            background: None,
             width: 1280,
             height: 720,
             fps: 60,

@@ -36,6 +36,30 @@ pub fn is_dark(name: &str, custom: &str) -> bool {
     lum <= 140.0
 }
 
+/// The session desktop's colour for this scheme: its ground with a little of the accent mixed
+/// in, so the desktop is plainly the shell's own and never a flat black that reads as "broken".
+pub fn desktop(name: &str, custom: &str, accent: &str) -> Option<String> {
+    let pal = parse(custom).or_else(|| {
+        schemes()
+            .into_iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, c)| c)
+    })?;
+    let slot = usize::from_str_radix(accent, 16)
+        .ok()
+        .filter(|i| *i < 16)
+        .unwrap_or(13);
+    let rgb = |h: &str| -> Option<[f32; 3]> {
+        let c = |i: usize| u8::from_str_radix(h.get(i..i + 2)?, 16).ok().map(f32::from);
+        Some([c(0)?, c(2)?, c(4)?])
+    };
+    let (g, a) = (rgb(&pal[1])?, rgb(&pal[slot])?);
+    let mix: Vec<String> = (0..3)
+        .map(|i| format!("{:02x}", (g[i] * 0.78 + a[i] * 0.22).round() as u8))
+        .collect();
+    Some(mix.concat())
+}
+
 /// Push corner style, motion level and accent slot to the bridge.
 pub fn apply_look(radius: &str, motion: &str, accent: &str) {
     crate::bridge::call(format!(

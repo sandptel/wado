@@ -1125,7 +1125,7 @@ fn render_tick(state: &mut Wado) -> crate::Result<()> {
             let capture = state.capture.as_mut().unwrap();
             let damage_tracker = state.damage_tracker.as_mut().unwrap();
             let space = &state.space;
-            let bg = [0.1, 0.1, 0.1, 1.0];
+            let bg = state.background;
 
             let mut render = |r: &mut GlesRenderer, fb: &mut GlesTarget<'_>| -> crate::Result<()> {
                 if let Some(placed) = &scaled {
