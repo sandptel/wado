@@ -133,7 +133,40 @@ impl Wado {
             _ => (output_geo.loc.x, output_geo.loc.y).into(),
         };
 
-        self.space.map_element(window, loc, false);
+        self.space.map_element(window.clone(), loc, false);
         self.pending_placement.remove(idx);
+        self.apply_window_rules(&window);
+    }
+
+    /// config.kdl's `window-rule { }`, applied once, at first placement — the first moment the
+    /// app id and title are reliably set.
+    fn apply_window_rules(&mut self, window: &Window) {
+        let Some(toplevel) = window.toplevel() else {
+            return;
+        };
+        let (title, app_id) =
+            smithay::wayland::compositor::with_states(toplevel.wl_surface(), |states| {
+                states
+                    .data_map
+                    .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                    .and_then(|d| {
+                        d.lock().ok().map(|a| {
+                            (
+                                a.title.clone().unwrap_or_default(),
+                                a.app_id.clone().unwrap_or_default(),
+                            )
+                        })
+                    })
+                    .unwrap_or_default()
+            });
+        let cfg = wado_config::live::current();
+        let Some(rule) = wado_config::schema::rules::first(&cfg.window_rule, &app_id, &title)
+        else {
+            return;
+        };
+        tracing::debug!(app_id, title, "window rule");
+        if rule.open_maximized == Some(true) && self.placement != Placement::Maximized {
+            self.window_action_on(window, wado_protocol::WindowAction::Maximize);
+        }
     }
 }

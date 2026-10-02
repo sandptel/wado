@@ -36,3 +36,21 @@ shells {
     // enabled #true
     // program "/run/current-system/sw/bin/fish"
 }
+
+binds {
+    // mod "super"                     // what Mod means: super | alt | ctrl | ctrl+alt
+    // Mod+Q "close-window"            // actions: close-window maximize minimize focus-next back
+    // Mod+Tab "focus-next"
+}
+
+gestures {
+    // swipe-3-up "app-drawer"         // also: control-centre keyboard back focus-next
+    // swipe-3-down "control-centre"   //       close-window maximize minimize none
+    // swipe-3-left "back"
+    // swipe-3-right "focus-next"
+}
+
+// window-rule {
+//     match app-id="steam"            // app-id is exact; title="…" matches anywhere
+//     open-maximized #true
+// }

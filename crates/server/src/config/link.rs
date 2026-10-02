@@ -28,6 +28,10 @@ pub fn state_for(key: &str, gate: &Gate) -> ConfigState {
         error: status.error,
         restart: status.restart,
         shells: cfg.shells.enabled,
+        gestures: cfg.gestures.clone(),
+        binds: cfg.binds.keys.clone(),
+        bind_mod: cfg.binds.modifier.clone(),
+        window_rules: cfg.window_rule.len(),
     }
 }
 

@@ -40,11 +40,22 @@ pub fn parse(src: &str) -> Result<Config, ConfigError> {
 }
 
 fn decode(value: serde_json::Value, spans: &tree::Spans) -> Result<Config, ConfigError> {
-    serde_path_to_error::deserialize(value).map_err(|e| {
+    // Gestures merge over the defaults rather than replacing them: a file that rebinds one
+    // swipe keeps the other three.
+    let mut value = value;
+    if let Some(g) = value.get_mut("gestures") {
+        let mut all = serde_json::to_value(crate::schema::gestures::defaults()).unwrap_or_default();
+        merge::deep(&mut all, g.take());
+        *g = all;
+    }
+    let cfg: Config = serde_path_to_error::deserialize(value).map_err(|e| {
         let path = e.path().to_string();
         let msg = e.into_inner().to_string();
         spans.error(&path, format!("{path}: {msg}"))
-    })
+    })?;
+    cfg.check()
+        .map_err(|(path, msg)| spans.error(&path, format!("{path}: {msg}")))?;
+    Ok(cfg)
 }
 
 #[cfg(test)]
@@ -97,6 +108,20 @@ mod tests {
     fn a_wrong_type_is_an_error_with_a_position() {
         let e = parse("stream {\n  max-fps \"lots\"\n}").unwrap_err();
         assert_eq!(e.line, 2, "{e}");
+    }
+
+    #[test]
+    fn binds_and_gestures_are_checked_with_positions() {
+        let c = parse("binds {\n  mod \"ctrl+alt\"\n  Mod+Q \"close-window\"\n}\ngestures { swipe-3-up \"keyboard\"; }").unwrap();
+        assert_eq!(c.binds.parsed().unwrap().len(), 1);
+        assert_eq!(c.gestures["swipe-3-up"], "keyboard");
+        assert_eq!(
+            c.gestures["swipe-3-left"], "back",
+            "the other defaults survive"
+        );
+        let e = parse("binds {\n  Mod+Q \"explode\"\n}").unwrap_err();
+        assert_eq!(e.line, 2, "{e}");
+        assert!(parse("gestures { swipe-4-up \"back\"; }").is_err());
     }
 
     #[test]

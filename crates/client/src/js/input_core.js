@@ -67,18 +67,21 @@ W.setupInputCapture = () => {
     try { video.setPointerCapture(e.pointerId); } catch (_) {}
     W.activePointers.add(e.pointerId);
     if (W.showTouches) W.overlay.mark(e.clientX, e.clientY);
-    if (isMouse(e)) W.mouse.down(e, video); else touch().down(e, video);
+    if (isMouse(e)) W.mouse.down(e, video);
+    else if (!W.swipe3.down(e)) touch().down(e, video);
   });
   video.addEventListener("pointermove", (e) => {
     // Mouse hover fires with no button down; touch only while a contact is held.
     if (!isMouse(e) && !W.activePointers.has(e.pointerId)) return;
-    if (isMouse(e)) W.mouse.move(e, video); else touch().move(e, video);
+    if (isMouse(e)) W.mouse.move(e, video);
+    else if (!W.swipe3.move(e)) touch().move(e, video);
   });
   const end = (e) => {
     const had = W.activePointers.delete(e.pointerId);
     try { video.releasePointerCapture(e.pointerId); } catch (_) {}
     if (!isMouse(e) && !had) return;
-    if (isMouse(e)) W.mouse.up(e, video); else touch().up(e, video);
+    if (isMouse(e)) W.mouse.up(e, video);
+    else if (!W.swipe3.up(e)) touch().up(e, video);
   };
   video.addEventListener("pointerup", end);
   video.addEventListener("pointercancel", end);

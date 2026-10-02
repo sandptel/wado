@@ -20,6 +20,7 @@
 
 #![allow(irrefutable_let_patterns)]
 
+mod binds;
 pub mod capture;
 pub mod conf;
 pub mod congestion;

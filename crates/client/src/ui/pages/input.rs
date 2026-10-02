@@ -11,9 +11,23 @@ use crate::{
     },
 };
 
+const GESTURE_ACTIONS: &[(&str, &str)] = &[
+    ("app-drawer", "App drawer"),
+    ("control-centre", "Control centre"),
+    ("keyboard", "Keyboard"),
+    ("back", "Back"),
+    ("focus-next", "Next window"),
+    ("maximize", "Maximize"),
+    ("minimize", "Minimize"),
+    ("close-window", "Close window"),
+    ("none", "Nothing"),
+];
+
 pub fn render(ui: Ui) -> Element {
     let mut s = ui.set;
-    let pinned = (ui.live.host)().input;
+    let host = (ui.live.host)();
+    let pinned = host.input.clone();
+    let gestures = host.gestures.clone();
 
     rsx! {
         div { class: "card",
@@ -57,6 +71,31 @@ pub fn render(ui: Ui) -> Element {
                 on: (s.natural_scroll)(),
                 ontoggle: move |on| { s.natural_scroll.set(on); apply(ui); },
             }
+        }
+
+        div { class: "card",
+            div { class: "cardhead", "Three-finger swipes" WhenBadge { when: When::Host } }
+            for dir in ["up", "down", "left", "right"] {
+                {
+                    let key = format!("swipe-3-{dir}");
+                    let now = gestures.get(&key).cloned().unwrap_or_default();
+                    rsx! {
+                        label { key: "{key}", class: "field",
+                            span { "Swipe {dir}" }
+                            select {
+                                value: "{now}",
+                                onchange: move |e| crate::bridge::call(format!(
+                                    "window.__wado.configSet({}, {}, false);",
+                                    crate::bridge::js(&format!("gestures.{key}")),
+                                    crate::bridge::js(&e.value())
+                                )),
+                                for (v, l) in GESTURE_ACTIONS { option { key: "{v}", value: "{v}", "{l}" } }
+                            }
+                        }
+                    }
+                }
+            }
+            p { class: "why", "Saved on this computer for every device. Gesture mode only — raw touch passes three fingers to the app." }
         }
 
         div { class: "card",

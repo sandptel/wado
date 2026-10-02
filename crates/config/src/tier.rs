@@ -11,7 +11,14 @@ pub enum Tier {
     Privileged,
 }
 
-const LIVE: &[&str] = &["stream.", "input.", "session.app-cpu-weight"];
+const LIVE: &[&str] = &[
+    "stream.",
+    "input.",
+    "session.app-cpu-weight",
+    "binds.",
+    "gestures.",
+    "window-rule",
+];
 
 pub fn of(key: &str) -> Tier {
     if LIVE

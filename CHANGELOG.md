@@ -4,6 +4,17 @@
 
 ### Added
 
+**Shortcuts, swipes and window rules.** `binds { Mod+Q "close-window" }` adds keyboard
+shortcuts that the compositor keeps for itself instead of passing to the app: close, maximize,
+minimize, next window, back. `Mod` can be Super, Alt, Ctrl or Ctrl+Alt, because a browser
+can't always capture Super. **Three-finger swipes** come with defaults: up opens the app
+drawer, down the control centre, left goes back, right switches to the next window. Each
+direction can be rebound, or set to do nothing. `window-rule { match app-id="steam";
+open-maximized #true }` decides how an app's windows open; the first rule that matches wins.
+All three can be edited from the client (Input & touch, This computer) as well as in
+`config.kdl`. A mistake is reported with its line and column. **Apps now follow the shell's
+light or dark scheme** (GTK and libadwaita apps, through their environment).
+
 **Shells have tabs, keep running, and do SSH.** The console holds several shells at once,
 each in its own tab. **They belong to the computer, not to the connection**: lock the phone,
 lose signal or reload the page, and the shells keep running. You get them back with

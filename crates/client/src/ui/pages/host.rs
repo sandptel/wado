@@ -41,6 +41,8 @@ pub fn render(ui: Ui) -> Element {
     let note = (ui.live.config_note)();
     let relay = (ui.set.conn_mode)() == "relay";
     let mut confirm = use_signal(|| None::<(&'static str, String)>);
+    let mut new_combo = use_signal(String::new);
+    let mut new_action = use_signal(|| "close-window".to_string());
 
     if !relay {
         return rsx! { div { class: "card", p { class: "why", "Host settings travel over the relay. Connect via relay to change them here — or edit ~/.config/wado/config.kdl on that computer." } } };
@@ -91,6 +93,48 @@ pub fn render(ui: Ui) -> Element {
                 sub: if h.input.focus_follows_pointer.is_some() { "Pinned for every device" } else { "Each device chooses" },
                 on: h.input.focus_follows_pointer.is_some(),
                 ontoggle: move |v: bool| set("input.focus-follows-pointer", if v { "true".into() } else { String::new() }, false),
+            }
+        }
+
+        div { class: "card",
+            div { class: "cardhead", "Shortcuts" }
+            p { class: "why", "Keys the compositor keeps for itself. Mod is {h.bind_mod} — a browser cannot always capture Super, so ctrl+alt is the fallback." }
+            label { class: "field",
+                span { "Mod is" }
+                select {
+                    value: "{h.bind_mod}",
+                    onchange: move |e| set("binds.mod", e.value(), false),
+                    for m in ["super", "alt", "ctrl", "ctrl+alt"] { option { key: "{m}", value: "{m}", "{m}" } }
+                }
+            }
+            for (combo, action) in h.binds.clone().into_iter() {
+                div { key: "{combo}", class: "editrow",
+                    b { class: "mono", "{combo}" }
+                    span { class: "why", "{action}" }
+                    button { "aria-label": "Remove {combo}", onclick: move |_| set(&format!("binds.{combo}"), String::new(), false),
+                        crate::ui::widgets::Icon { name: "x" }
+                    }
+                }
+            }
+            div { class: "row",
+                input { r#type: "text", placeholder: "Mod+Q", value: "{new_combo}", oninput: move |e| new_combo.set(e.value()) }
+                select {
+                    value: "{new_action}",
+                    onchange: move |e| new_action.set(e.value()),
+                    for a in ["close-window", "maximize", "minimize", "focus-next", "back"] { option { key: "{a}", value: "{a}", "{a}" } }
+                }
+            }
+            button {
+                class: "btn",
+                disabled: new_combo().trim().is_empty(),
+                onclick: move |_| {
+                    set(&format!("binds.{}", new_combo().trim()), new_action(), false);
+                    new_combo.set(String::new());
+                },
+                "Add shortcut"
+            }
+            if h.window_rules > 0 {
+                p { class: "why", "{h.window_rules} window rule(s) in config.kdl." }
             }
         }
 

@@ -254,6 +254,8 @@ pub struct Wado {
     pub placement: Placement,
     /// When true, pointer hover also moves keyboard focus (`SessionConfig.input`).
     pub focus_follows_pointer: bool,
+    /// Keys whose press a bind ate, so their release is eaten too (see [`crate::binds`]).
+    pub eaten_keys: std::collections::HashSet<u32>,
     /// Where each maximized window was before it was maximized, so restore has somewhere to
     /// go back to. Only maximized windows appear here; the entry is removed on restore, and
     /// a window maximized at map time by `Placement::Maximized` never has one.
@@ -465,6 +467,7 @@ impl Wado {
             pinch_open: false,
             placement: Placement::default(),
             focus_follows_pointer: false,
+            eaten_keys: Default::default(),
             pre_maximize: std::collections::HashMap::new(),
             pre_fullscreen: std::collections::HashMap::new(),
             gamepad: None,
