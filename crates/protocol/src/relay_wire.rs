@@ -111,6 +111,15 @@ pub enum WireMsg {
     PeerDisconnected {
         room_id: String,
     },
+    SeatHold {
+        room_id: String,
+        #[serde(default)]
+        hold_ms: u64,
+    },
+    Occupancy {
+        #[serde(default)]
+        session: bool,
+    },
     JoinAccepted {
         remote_id: String,
         room_id: String,
@@ -200,6 +209,11 @@ mod tests {
             WireMsg::PeerDisconnected {
                 room_id: "r".into(),
             },
+            WireMsg::SeatHold {
+                room_id: "r".into(),
+                hold_ms: 0,
+            },
+            WireMsg::Occupancy { session: true },
             WireMsg::JoinAccepted {
                 remote_id: "528491307".into(),
                 room_id: "r".into(),

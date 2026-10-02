@@ -497,7 +497,9 @@ fn assign(
         .and_then(|w| pool.iter().find(|i| i.instance_id == w));
     let mut holders = Vec::new();
     let is_preferred = |i: &Instance| preferred.is_some_and(|p| p.instance_id == i.instance_id);
-    let others = pool.iter().filter(|i| !is_preferred(i));
+    // Idle daemons first (stable, so oldest-first still breaks ties).
+    let mut others: Vec<&Instance> = pool.iter().filter(|i| !is_preferred(i)).collect();
+    others.sort_by_key(|i| i.session);
     for i in preferred.into_iter().chain(others) {
         match state.rooms.claim(&i.instance_id, want(i)) {
             Claim::Busy { holder, .. } => holders.push(holder),

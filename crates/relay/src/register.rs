@@ -226,6 +226,20 @@ async fn from_daemon(state: &AppState, instance_id: &str, text: String) {
             _ => {}
         }
     }
+    if text.starts_with(r#"{"type":"occupancy"#) {
+        if let Ok(WireMsg::Occupancy { session }) = serde_json::from_str(&text) {
+            state.registry.set_session(instance_id, session);
+            return;
+        }
+    }
+    if text.starts_with(r#"{"type":"seat_hold"#) {
+        if let Ok(WireMsg::SeatHold { room_id, hold_ms }) = serde_json::from_str(&text) {
+            let hold = Duration::from_millis(hold_ms).min(MAX_HOLD);
+            state.rooms.set_hold(instance_id, &room_id, hold);
+            debug!(instance = %instance_id, ?hold, "seat hold set by the daemon");
+            return;
+        }
+    }
     debug!(instance = %instance_id, "server msg: {}", head(&text));
     if !state.rooms.forward_to_client(instance_id, text).await {
         // No accepted client on the seat — dropped (e.g. a session event before anyone joined).

@@ -125,6 +125,8 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/chrome.js"),
     "\n",
+    include_str!("js/watchdog.js"),
+    "\n",
     include_str!("js/lifecycle.js"),
 );
 
@@ -418,6 +420,10 @@ pub fn run(ui: Ui) {
                         .unwrap_or_default();
                     let n = msg.get("workspace").and_then(|v| v.as_u64()).unwrap_or(1) as u32;
                     live.windows.set((list, n));
+                }
+                "alive" => {
+                    let n = msg.get("n").and_then(|v| v.as_u64()).unwrap_or(0);
+                    call(format!("window.__wado.alive({n});"));
                 }
                 "winMenu" => {
                     live.win_menu.set(msg.get("id").and_then(|v| v.as_u64()));

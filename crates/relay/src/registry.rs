@@ -125,6 +125,7 @@ impl ServerRegistry {
                 boot_id: s.boot_id,
                 hold: s.hold,
                 gate: s.gate,
+                session: false,
             },
         };
         let replaced = match self.inner.entry(instance_id.clone()) {
@@ -186,6 +187,13 @@ impl ServerRegistry {
         found.into_iter().map(|(_, i)| i).collect()
     }
 
+    /// The daemon said whether it has a session running (`occupancy`).
+    pub fn set_session(&self, instance_id: &str, session: bool) {
+        if let Some(mut e) = self.inner.get_mut(instance_id) {
+            e.info.session = session;
+        }
+    }
+
     pub fn count(&self) -> usize {
         self.inner.len()
     }
@@ -201,6 +209,10 @@ pub struct Instance {
     pub boot_id: String,
     pub hold: Duration,
     pub gate: bool,
+    /// A session is running on it — its own report (`occupancy`). A device with no daemon of
+    /// its own is handed an idle one first, so it starts a session of its own rather than
+    /// landing on someone's.
+    pub session: bool,
 }
 
 #[cfg(test)]

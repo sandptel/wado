@@ -66,7 +66,16 @@ pub const SILENCE: Duration = Duration::from_secs(45);
 /// - `gate`: joins wait for the daemon's `peer_accept` / `peer_reject`.
 /// - `ping`: the relay pings daemons that list `pong`, and closes ones that fall silent.
 /// - `leave`: a client closing with `LEAVE_CLOSE_CODE` frees its seat rather than holding it.
-pub const CAPS: &[&str] = &["park", "hold", "takeover", "gate", "ping", "leave"];
+pub const CAPS: &[&str] = &[
+    "park",
+    "hold",
+    "takeover",
+    "gate",
+    "ping",
+    "leave",
+    "seat_hold",
+    "occupancy",
+];
 
 pub fn caps() -> Vec<String> {
     CAPS.iter().map(|c| c.to_string()).collect()
