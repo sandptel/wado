@@ -37,7 +37,7 @@ use futures_util::{SinkExt, StreamExt};
 use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
-use wado_protocol::relay::{display_remote_id, normalize_remote_id, RelayMsg};
+use wado_protocol::relay_wire::{display_remote_id, normalize_remote_id, WireMsg, WIRE_VERSION};
 
 use crate::AppState;
 
@@ -46,6 +46,15 @@ use crate::AppState;
 /// Comfortably under the ~100 s after which a cloudflared quick tunnel drops an idle
 /// connection, and far under any load — one small frame per client per interval.
 const KEEPALIVE: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Optional behaviours this relay offers, sent in `registered` and `join_accepted`. Peers use
+/// a behaviour only when it is listed here, which is how the relay gains features without
+/// breaking daemons and clients older than it. None yet: parking and seat holding append theirs.
+const CAPS: &[&str] = &[];
+
+fn caps() -> Vec<String> {
+    CAPS.iter().map(|c| c.to_string()).collect()
+}
 
 // ── Server registration ──────────────────────────────────────────────────────
 
@@ -69,11 +78,12 @@ async fn register_loop(socket: WebSocket, addr: SocketAddr, state: AppState) {
         }
     };
 
-    let (remote_id, display_name) = match serde_json::from_str::<RelayMsg>(&first) {
-        Ok(RelayMsg::Register {
+    let (remote_id, display_name, peer_v) = match serde_json::from_str::<WireMsg>(&first) {
+        Ok(WireMsg::Register {
             remote_id,
             display_name,
-        }) => (normalize_remote_id(&remote_id), display_name),
+            v,
+        }) => (normalize_remote_id(&remote_id), display_name, v),
         Ok(other) => {
             warn!(%addr, ?other, "register: expected Register, got something else");
             send_error(&mut ws_tx, "expected Register as first message").await;
@@ -109,12 +119,15 @@ async fn register_loop(socket: WebSocket, addr: SocketAddr, state: AppState) {
         %addr,
         instance = %instance_id,
         pool_size,
+        wire_v = peer_v,
         "server registered — pool now holds {pool_size} daemon(s) for this Remote ID"
     );
 
     // ── 3. Send Registered ack ───────────────────────────────────────────────
-    let ack = match serde_json::to_string(&RelayMsg::Registered {
+    let ack = match serde_json::to_string(&WireMsg::Registered {
         remote_id: remote_id.clone(),
+        relay_v: WIRE_VERSION,
+        caps: caps(),
     }) {
         Ok(s) => s,
         Err(_) => return,
@@ -329,7 +342,7 @@ async fn join_loop(
     // ── 3. Notify server of incoming peer ────────────────────────────────────
     // (Future confirmation gate: wait here for the server's Approve/Deny before
     // sending JoinAccepted.)
-    let peer_msg = match serde_json::to_string(&RelayMsg::PeerConnected {
+    let peer_msg = match serde_json::to_string(&WireMsg::PeerConnected {
         room_id: room_id.clone(),
         client_addr: peer.clone(),
     }) {
@@ -347,13 +360,15 @@ async fn join_loop(
     }
 
     // ── 4. Send JoinAccepted to client ───────────────────────────────────────
-    let accepted = match serde_json::to_string(&RelayMsg::JoinAccepted {
+    let accepted = match serde_json::to_string(&WireMsg::JoinAccepted {
         remote_id: remote_id.clone(),
         room_id: room_id.clone(),
         instance_id: instance_id.clone(),
         pool_size,
         pool_busy,
         assignment: assignment.to_string(),
+        relay_v: WIRE_VERSION,
+        caps: caps(),
     }) {
         Ok(s) => s,
         Err(_) => {
@@ -388,7 +403,7 @@ async fn join_loop(
         tick.tick().await; // the first tick is immediate; the socket is fresh
         loop {
             tick.tick().await;
-            let Ok(text) = serde_json::to_string(&RelayMsg::Ping) else {
+            let Ok(text) = serde_json::to_string(&WireMsg::Ping) else {
                 break;
             };
             if ping_tx.send(text).await.is_err() {
@@ -452,7 +467,7 @@ async fn join_loop(
     // teardown. A cell handoff, a screen lock, a tunnel hiccup — each one killed the windows and
     // every application the session had launched, before the 45 s grace period downstream could
     // look at it even once. A viewer going away is not a request to stop.
-    if let Ok(text) = serde_json::to_string(&RelayMsg::PeerDisconnected {
+    if let Ok(text) = serde_json::to_string(&WireMsg::PeerDisconnected {
         room_id: room_id.clone(),
     }) {
         let _ = server_inbox_tx.send(text).await;
@@ -472,7 +487,7 @@ async fn send_error(
     ws_tx: &mut futures_util::stream::SplitSink<WebSocket, Message>,
     message: &str,
 ) {
-    let msg = serde_json::to_string(&RelayMsg::Error {
+    let msg = serde_json::to_string(&WireMsg::Error {
         message: message.to_string(),
     })
     .unwrap_or_else(|_| r#"{"type":"error","message":"internal"}"#.to_string());
@@ -480,7 +495,7 @@ async fn send_error(
 }
 
 async fn send_deny(ws_tx: &mut futures_util::stream::SplitSink<WebSocket, Message>, reason: &str) {
-    let msg = serde_json::to_string(&RelayMsg::JoinDenied {
+    let msg = serde_json::to_string(&WireMsg::JoinDenied {
         reason: reason.to_string(),
     })
     .unwrap_or_else(|_| r#"{"type":"join_denied","reason":"internal"}"#.to_string());

@@ -10,6 +10,7 @@ pub mod apps;
 pub mod control;
 pub mod menu;
 pub mod relay;
+pub mod relay_wire;
 pub mod targets;
 
 use serde::{Deserialize, Serialize};

@@ -476,15 +476,21 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
         &RelayMsg::Register {
             remote_id: ctx.remote_id.clone(),
             display_name,
+            v: wado_protocol::relay::WIRE_VERSION,
         },
     )
     .await?;
 
     match ws_stream.next().await {
         Some(Ok(WsMsg::Text(t))) => match serde_json::from_str::<RelayMsg>(&t) {
-            Ok(RelayMsg::Registered { remote_id }) => {
+            Ok(RelayMsg::Registered {
+                remote_id,
+                relay_v,
+                caps,
+            }) => {
+                // relay_v 0 = a relay from before the handshake was versioned.
                 info!(
-                    "relay client: registered — Remote ID {}",
+                    "relay client: registered — Remote ID {} (relay wire v{relay_v}, caps {caps:?})",
                     display_remote_id(&remote_id)
                 );
             }
