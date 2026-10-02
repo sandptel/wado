@@ -64,6 +64,10 @@ pub enum WireMsg {
         display_name: Option<String>,
         #[serde(default)]
         v: u32,
+        #[serde(default)]
+        instance_key: String,
+        #[serde(default)]
+        boot_id: String,
     },
     Registered {
         remote_id: String,
@@ -91,6 +95,8 @@ pub enum WireMsg {
         #[serde(default)]
         assignment: String,
         #[serde(default)]
+        boot_id: String,
+        #[serde(default)]
         relay_v: u32,
         #[serde(default)]
         caps: Vec<String>,
@@ -116,6 +122,8 @@ mod tests {
                 remote_id: "528491307".into(),
                 display_name: Some("box".into()),
                 v: 1,
+                instance_key: "1".into(),
+                boot_id: "b".into(),
             },
             WireMsg::Registered {
                 remote_id: "528491307".into(),
@@ -136,6 +144,7 @@ mod tests {
                 pool_size: 2,
                 pool_busy: 1,
                 assignment: "assigned".into(),
+                boot_id: "b".into(),
                 relay_v: 1,
                 caps: vec![],
             },
@@ -184,7 +193,7 @@ mod tests {
     #[test]
     fn unknown_fields_are_ignored() {
         let reg: WireMsg = serde_json::from_str(
-            r#"{"type":"register","remote_id":"1","v":9,"instance_key":"k","boot_id":"b"}"#,
+            r#"{"type":"register","remote_id":"1","v":9,"seat_hold_ms":5,"future":[1]}"#,
         )
         .unwrap();
         assert!(matches!(reg, WireMsg::Register { v: 9, .. }));

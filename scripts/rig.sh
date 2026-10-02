@@ -34,6 +34,9 @@
 #         scripts/rig.sh --add N    add N more daemons to the RUNNING pool, disturbing nothing
 #         scripts/rig.sh --stop     stop everything and exit
 #
+# Each daemon gets WADO_INSTANCE=n (its log number), its stable identity in the pool: after a
+# relay restart a device is handed back the same daemon, and its running desktop, by that key.
+#
 # WADO_INSTANCES=N controls how many daemons are started (default 2). They all register under
 # the SAME Remote ID and the relay hands each connecting device one of its own, so N is the
 # number of devices that can hold a wado session at once. Each is a whole process with its own
@@ -112,7 +115,7 @@ add_daemons() {
   for n in $(seq "$first" $((first + want - 1))); do
     : > "$LOGS/daemon-$n.log"
     setsid env WADO_RELAY_URL="ws://127.0.0.1:$RELAY_PORT" WADO_REMOTE_ID="$rid" \
-      WADO_UDP_SLICE="$((n - 1))" WADO_RUN="$LANE" \
+      WADO_UDP_SLICE="$((n - 1))" WADO_INSTANCE="$n" WADO_RUN="$LANE" \
       nohup ./target/release/wado > "$LOGS/daemon-$n.log" 2>&1 < /dev/null &
     for _ in $(seq 60); do
       grep -q "clients can connect" "$LOGS/daemon-$n.log" 2>/dev/null && break
@@ -197,7 +200,8 @@ done
 # Logs are per instance: `watch.sh` keeps per-session state (target fps, last dropped count),
 # and two sessions interleaved into one file make it attribute one device's numbers to another.
 : > "$LOGS/daemon-1.log"
-setsid env WADO_RELAY_URL="ws://127.0.0.1:$RELAY_PORT" WADO_UDP_SLICE=0 WADO_RUN="$LANE" \
+setsid env WADO_RELAY_URL="ws://127.0.0.1:$RELAY_PORT" WADO_UDP_SLICE=0 WADO_INSTANCE=1 \
+  WADO_RUN="$LANE" \
   nohup ./target/release/wado > "$LOGS/daemon-1.log" 2>&1 < /dev/null &
 
 RID=""
@@ -215,7 +219,7 @@ for n in $(seq 2 "$INSTANCES"); do
   # Its own UDP slice. Sharing one range is what made all four daemons fail ICE while each
   # log looked healthy — see `udp_port_range` in crates/server/src/webrtc_settings.rs.
   setsid env WADO_RELAY_URL="ws://127.0.0.1:$RELAY_PORT" WADO_REMOTE_ID="$RID" \
-    WADO_UDP_SLICE="$((n - 1))" WADO_RUN="$LANE" \
+    WADO_UDP_SLICE="$((n - 1))" WADO_INSTANCE="$n" WADO_RUN="$LANE" \
     nohup ./target/release/wado > "$LOGS/daemon-$n.log" 2>&1 < /dev/null &
   for _ in $(seq 60); do
     grep -q "clients can connect" "$LOGS/daemon-$n.log" 2>/dev/null && break

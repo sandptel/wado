@@ -78,23 +78,32 @@ async fn register_loop(socket: WebSocket, addr: SocketAddr, state: AppState) {
         }
     };
 
-    let (remote_id, display_name, peer_v) = match serde_json::from_str::<WireMsg>(&first) {
-        Ok(WireMsg::Register {
-            remote_id,
-            display_name,
-            v,
-        }) => (normalize_remote_id(&remote_id), display_name, v),
-        Ok(other) => {
-            warn!(%addr, ?other, "register: expected Register, got something else");
-            send_error(&mut ws_tx, "expected Register as first message").await;
-            return;
-        }
-        Err(e) => {
-            warn!(%addr, %e, "register: bad JSON");
-            send_error(&mut ws_tx, "malformed Register message").await;
-            return;
-        }
-    };
+    let (remote_id, display_name, peer_v, instance_key, boot_id) =
+        match serde_json::from_str::<WireMsg>(&first) {
+            Ok(WireMsg::Register {
+                remote_id,
+                display_name,
+                v,
+                instance_key,
+                boot_id,
+            }) => (
+                normalize_remote_id(&remote_id),
+                display_name,
+                v,
+                instance_key,
+                boot_id,
+            ),
+            Ok(other) => {
+                warn!(%addr, ?other, "register: expected Register, got something else");
+                send_error(&mut ws_tx, "expected Register as first message").await;
+                return;
+            }
+            Err(e) => {
+                warn!(%addr, %e, "register: bad JSON");
+                send_error(&mut ws_tx, "malformed Register message").await;
+                return;
+            }
+        };
 
     if remote_id.is_empty() {
         warn!(%addr, "register: empty Remote ID");
@@ -103,14 +112,32 @@ async fn register_loop(socket: WebSocket, addr: SocketAddr, state: AppState) {
     }
 
     // ── 2. Register in the registry ─────────────────────────────────────────
-    // Infallible now: a second daemon on this Remote ID joins the pool rather than colliding
-    // with the first. The instance id minted here is this registration's identity for as long
-    // as its socket lives, and is what rooms are keyed by.
+    // A second daemon on this Remote ID joins the pool. The instance id is stable when the
+    // daemon sends an `instance_key`, which is what returns a client to the same daemon after
+    // the relay restarts; see `ServerRegistry::insert` for the one case that is refused.
     let (inbox_tx, mut inbox_rx) = mpsc::channel::<String>(128);
-    let instance_id =
-        state
-            .registry
-            .insert(remote_id.clone(), display_name.clone(), addr, inbox_tx);
+    let reg = match state.registry.insert(
+        remote_id.clone(),
+        &instance_key,
+        boot_id,
+        display_name.clone(),
+        addr,
+        inbox_tx,
+    ) {
+        Ok(reg) => reg,
+        Err(why) => {
+            warn!(remote_id = %display_remote_id(&remote_id), %addr, "register refused: {why}");
+            send_error(&mut ws_tx, &why).await;
+            return;
+        }
+    };
+    let instance_id = reg.instance_id.clone();
+    let mut kicked = reg.kicked;
+    if reg.replaced {
+        // The client paired with the old connection was talking to an inbox that is now
+        // dead. Drop its room so its socket closes and it rejoins — onto this connection.
+        state.rooms.remove(&instance_id);
+    }
     let pool_size = state.registry.instances_for(&remote_id).len();
 
     info!(
@@ -120,6 +147,7 @@ async fn register_loop(socket: WebSocket, addr: SocketAddr, state: AppState) {
         instance = %instance_id,
         pool_size,
         wire_v = peer_v,
+        replaced = reg.replaced,
         "server registered — pool now holds {pool_size} daemon(s) for this Remote ID"
     );
 
@@ -133,7 +161,7 @@ async fn register_loop(socket: WebSocket, addr: SocketAddr, state: AppState) {
         Err(_) => return,
     };
     if ws_tx.send(Message::Text(ack)).await.is_err() {
-        state.registry.remove(&instance_id);
+        state.registry.remove_if(&instance_id, &reg.conn_id);
         return;
     }
 
@@ -150,7 +178,17 @@ async fn register_loop(socket: WebSocket, addr: SocketAddr, state: AppState) {
     }));
 
     // Main task: ws_rx → route to active room's client (server → relay → client).
-    while let Some(frame) = ws_rx.next().await {
+    loop {
+        let frame = tokio::select! {
+            f = ws_rx.next() => f,
+            // This registration was replaced by the same daemon redialling. Without this, the
+            // stale socket would linger until its TCP died, which behind a tunnel can be never.
+            _ = &mut kicked => {
+                info!(instance = %instance_id, "server connection replaced by a redial — closing the old one");
+                return; // its cleanup belongs to the replacement now
+            }
+        };
+        let Some(frame) = frame else { break };
         match frame {
             Ok(Message::Text(text)) => {
                 debug!(
@@ -179,8 +217,11 @@ async fn register_loop(socket: WebSocket, addr: SocketAddr, state: AppState) {
     // ── 5. Cleanup ───────────────────────────────────────────────────────────
     // `_fwd_task` aborts itself on drop — including when this function unwinds. See
     // `AbortOnDrop`.
-    state.registry.remove(&instance_id);
-    state.rooms.remove(&instance_id);
+    // Guarded: if this connection was replaced mid-teardown, the registration and room now
+    // belong to the replacement.
+    if state.registry.remove_if(&instance_id, &reg.conn_id) {
+        state.rooms.remove(&instance_id);
+    }
     info!(
         remote_id = %display_remote_id(&remote_id),
         %addr,
@@ -367,6 +408,7 @@ async fn join_loop(
         pool_size,
         pool_busy,
         assignment: assignment.to_string(),
+        boot_id: instance.boot_id.clone(),
         relay_v: WIRE_VERSION,
         caps: caps(),
     }) {
@@ -425,7 +467,18 @@ async fn join_loop(
     }));
 
     // Main task: ws_rx → server's inbox (client → relay → server).
-    while let Some(frame) = ws_rx.next().await {
+    loop {
+        let frame = tokio::select! {
+            f = ws_rx.next() => f,
+            // The daemon went away or was replaced by a redial. Before this, the client's socket
+            // stayed open — and the client unaware — until it next sent something. Closing it
+            // sends the client through its own reconnect, back onto the daemon when it returns.
+            _ = server_inbox_tx.closed() => {
+                info!(instance = %instance_id, client = %peer, "daemon gone — closing the client's link so it rejoins");
+                break;
+            }
+        };
+        let Some(frame) = frame else { break };
         match frame {
             Ok(Message::Text(text)) => {
                 // Swallowed here: a `pong` is this socket's own liveness answer and means
