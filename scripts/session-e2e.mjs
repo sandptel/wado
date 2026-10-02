@@ -9,6 +9,8 @@
 //   phone → session   text the viewer sends is what `wl-paste` reads in the session
 //   notifications     `notify-send`, launched as a session app (so on the session's own bus),
 //                     reaches the viewer
+//   sessions          listed; left running (detach); found and resumed from another device,
+//                     re-fitted to its shape; gone from the list once ended
 
 import { spawn } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
@@ -40,9 +42,11 @@ const start = (bin, args, env) => {
 };
 
 class Client {
-  constructor(name) {
+  constructor(name, takeover = false) {
     this.msgs = [];
-    this.ws = new WebSocket(`${RELAY}/join/${RID}?${new URLSearchParams({ client: name + "-key", name })}`);
+    const q = new URLSearchParams({ client: name + "-key", name });
+    if (takeover) q.set("takeover", "1");
+    this.ws = new WebSocket(`${RELAY}/join/${RID}?${q}`);
     this.ws.onmessage = (e) => {
       const m = JSON.parse(e.data);
       if (m.type === "ping") return this.send({ type: "pong" });
@@ -63,6 +67,10 @@ class Client {
   output(id) { return this.msgs.filter((m) => m.type === "pty_output" && m.id === id).map((m) => m.data).join(""); }
   close() { this.ws.close(); }
 }
+
+// Both devices already trusted — as after an approval — so the run tests sessions, not the gate.
+mkdirSync(join(HOME, ".config/wado"), { recursive: true });
+writeFileSync(join(HOME, ".config/wado/trusted_clients"), "Phone-key\tPhone\nLaptop-key\tLaptop\n");
 
 try {
   start("wado-relay", ["--bind", `127.0.0.1:${PORT}`], {});
@@ -96,8 +104,31 @@ try {
   const n = await a.waitWhere((m) => m.type === "notification", 15000);
   check("an app's notification reaches the viewer", n && n.summary === "Build done" && n.body === "all green" && n.app === "e2e",
     JSON.stringify(n) + "\n" + d.out.split("\n").filter((l) => /notif|bus/i.test(l)).slice(-5).join("\n"));
-  a.send({ type: "session_stop" });
-  await sleep(500);
+
+  console.log("sessions");
+  await sleep(3500); // one directory heartbeat
+  a.msgs.length = 0;
+  a.send({ type: "sessions_request" });
+  const l1 = await a.wait("sessions");
+  check("the running session is listed, with its apps", l1 && l1.sessions.length === 1 && l1.sessions[0].width === 640, JSON.stringify(l1));
+  a.send({ type: "session_detach" });
+  a.close();
+  await sleep(4000);
+  const b = new Client("Laptop", true);
+  check("another device joins", !!(await b.wait("join_accepted", 20000)));
+  b.send({ type: "sessions_request" });
+  const l2 = await b.wait("sessions");
+  check("…sees the session left running", l2 && l2.sessions.length === 1 && l2.sessions[0].detached === true, JSON.stringify(l2));
+  b.send({ type: "session_rejoin" });
+  check("…and resumes it", !!(await b.waitWhere((m) => m.type === "session_started", 10000)));
+  b.send({ type: "session_reconfigure", config: { width: 360, height: 640, fps: 30, quality: "balanced" } });
+  check("…re-fitted to its own shape, apps kept", !!(await b.waitWhere((m) => m.type === "session_reconfigured", 10000)));
+  b.send({ type: "session_stop" });
+  await sleep(4000);
+  b.msgs.length = 0;
+  b.send({ type: "sessions_request" });
+  const l3 = await b.wait("sessions");
+  check("ending it removes it from the list", l3 && l3.sessions.length === 0, JSON.stringify(l3));
 } finally {
   for (const p of procs) p.kill("SIGTERM");
 }

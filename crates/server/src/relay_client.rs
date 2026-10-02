@@ -108,6 +108,11 @@ struct RelayCtx {
     /// Whether a session was started for a viewer and has not been stopped. See
     /// [`viewer_watchdog`].
     session_started: Arc<AtomicBool>,
+    /// The viewer left on purpose ("Leave"): keep the session, do not reap it.
+    detached: Arc<AtomicBool>,
+    /// The running session's start time (unix ms) and shape, for the session directory.
+    session_since: Arc<AtomicU64>,
+    session_shape: Arc<Mutex<(u32, u32, u32)>>,
     /// Who the relay says is on the other end — `<addr> room=<first 8 of room_id>`.
     ///
     /// Only the relay knows this; the WebRTC half of the daemon otherwise logs offers, answers
@@ -436,6 +441,9 @@ async fn run(
         last_connected: Arc::new(AtomicU64::new(now_ms())),
         last_relay_msg: Arc::new(AtomicU64::new(now_ms())),
         session_started: Arc::new(AtomicBool::new(false)),
+        detached: Arc::default(),
+        session_since: Arc::default(),
+        session_shape: Arc::default(),
         peer: Arc::new(Mutex::new("<none>".to_string())),
         room: Arc::new(Mutex::new(String::new())),
         viewer_ok: Arc::new(AtomicBool::new(false)),
@@ -461,7 +469,64 @@ async fn run(
         Arc::clone(&ctx.last_relay_msg),
         Arc::clone(&ctx.session_started),
         Arc::clone(&ctx.active_pc),
+        Arc::clone(&ctx.detached),
     ));
+
+    // The session directory (`crate::sessions`): this daemon's running session, rewritten every
+    // few seconds as a heartbeat, removed when there is none.
+    {
+        let started = Arc::clone(&ctx.session_started);
+        let detached = Arc::clone(&ctx.detached);
+        let since = Arc::clone(&ctx.session_since);
+        let shape = Arc::clone(&ctx.session_shape);
+        let windows = ctx.windows.clone();
+        let viewer = Arc::clone(&ctx.viewer);
+        let active_pc = Arc::clone(&ctx.active_pc);
+        let instance = format!(
+            "{}:{}",
+            wado_protocol::relay::normalize_remote_id(&ctx.remote_id),
+            crate::instance::instance_key()
+        );
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(std::time::Duration::from_secs(3));
+            loop {
+                tick.tick().await;
+                if !started.load(Ordering::SeqCst) {
+                    crate::sessions::clear(&instance);
+                    continue;
+                }
+                let connected = active_pc
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clone()
+                    .is_some_and(|pc| pc.connection_state() == RTCPeerConnectionState::Connected);
+                let (width, height, fps) = *shape.lock().unwrap_or_else(|e| e.into_inner());
+                let apps = windows
+                    .borrow()
+                    .iter()
+                    .map(|w| {
+                        if w.app_id.is_empty() {
+                            w.title.clone()
+                        } else {
+                            w.app_id.clone()
+                        }
+                    })
+                    .collect();
+                crate::sessions::write(&wado_protocol::SessionSummary {
+                    instance: instance.clone(),
+                    started_ms: since.load(Ordering::Relaxed),
+                    age_s: 0,
+                    width,
+                    height,
+                    fps,
+                    apps,
+                    viewer: connected
+                        .then(|| viewer.lock().unwrap_or_else(|e| e.into_inner()).1.clone()),
+                    detached: detached.load(Ordering::SeqCst),
+                });
+            }
+        });
+    }
 
     // ── Reconnect loop ──────────────────────────────────────────────────────
     let mut backoff = BACKOFF_INITIAL;
@@ -1070,6 +1135,10 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     continue;
                 }
                 ctx.session_started.store(true, Ordering::SeqCst);
+                ctx.detached.store(false, Ordering::SeqCst);
+                ctx.session_since.store(now_ms(), Ordering::Relaxed);
+                *ctx.session_shape.lock().unwrap_or_else(|e| e.into_inner()) =
+                    (config.width, config.height, config.fps);
                 // The grace period starts now: a viewer that asked for a session but never
                 // completes ICE must still be reaped, and it has never been connected.
                 ctx.last_connected.store(now_ms(), Ordering::Relaxed);
@@ -1130,6 +1199,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 match live_session(&ctx).await {
                     Some(info) => {
                         ctx.session_started.store(true, Ordering::SeqCst);
+                        ctx.detached.store(false, Ordering::SeqCst);
                         ctx.last_connected.store(now_ms(), Ordering::Relaxed);
                         // The per-viewer reset (strain, shed divisor, congestion window) and the
                         // keyframe used to be sent from here by hand. They belong to
@@ -1158,6 +1228,8 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             }
 
             RelayMsg::SessionReconfigure { config } => {
+                *ctx.session_shape.lock().unwrap_or_else(|e| e.into_inner()) =
+                    (config.width, config.height, config.fps);
                 // Same guard as `SessionStart`, from the same `SessionConfig::validate` — the
                 // two verbs take the same struct from the same untrusted socket, and a check on
                 // one of them is a check the other silently does not have.
@@ -1279,6 +1351,23 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             RelayMsg::ClipboardSet { text } => {
                 if ctx.viewer_ok.load(Ordering::SeqCst) {
                     let _ = ctx.cmd_tx.send(CompositorCommand::SetClipboard { text });
+                }
+            }
+
+            RelayMsg::SessionsRequest => {
+                let sessions = crate::sessions::list();
+                send_relay(&out_tx, &RelayMsg::Sessions { sessions })
+                    .await
+                    .ok();
+            }
+
+            RelayMsg::SessionDetach => {
+                // Left on purpose: the media path goes, the session stays — and is kept past the
+                // no-viewer grace, until someone ends it from a home page.
+                if ctx.session_started.load(Ordering::SeqCst) {
+                    ctx.detached.store(true, Ordering::SeqCst);
+                    let _ = ctx.cmd_tx.send(CompositorCommand::ViewerAttached(false));
+                    info!("relay client: viewer left; the session is kept running until ended");
                 }
             }
 
@@ -2080,11 +2169,13 @@ async fn viewer_watchdog(
     last_relay_msg: Arc<AtomicU64>,
     session_started: Arc<AtomicBool>,
     active_pc: Arc<Mutex<Option<Arc<RTCPeerConnection>>>>,
+    detached: Arc<AtomicBool>,
 ) {
     let mut tick = tokio::time::interval(std::time::Duration::from_secs(5));
     loop {
         tick.tick().await;
-        if !session_started.load(Ordering::SeqCst) {
+        // A session left running on purpose is kept until someone ends it.
+        if !session_started.load(Ordering::SeqCst) || detached.load(Ordering::SeqCst) {
             continue;
         }
         // The lock is released before the await point; holding a std Mutex across one would

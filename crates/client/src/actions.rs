@@ -73,6 +73,17 @@ pub fn apply(ui: Ui) {
     ));
 }
 
+/// Go home and leave the session running — kept by the daemon until someone ends it.
+pub fn leave(ui: Ui) {
+    let mut live = ui.live;
+    live.session_on.set(false);
+    live.clear_telemetry();
+    live.applied.set(String::new());
+    live.cc_open.set(false);
+    live.status.set("left the session running".to_string());
+    bridge::call("window.__wado.leaveSession();".to_string());
+}
+
 pub fn stop(ui: Ui) {
     let mut live = ui.live;
     live.session_on.set(false);

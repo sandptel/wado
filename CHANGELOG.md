@@ -4,6 +4,17 @@
 
 ### Added
 
+**One session, reachable from any device.** *Leave running* (control centre) takes you back
+to the home page and keeps the session and its apps running, kept by the daemon until someone
+ends it, however long that is. The home page lists every session running on the computer, on
+whichever daemon of the pool it lives, with its apps, shape, age and who is watching. **Resume
+here** takes it back from any device. If it's on another daemon, the page reconnects to that
+daemon and takes the seat. **End** closes it, after a confirmation. A resumed session is
+re-fitted to the device you resumed it on (new size and aspect, same apps). The daemons share
+the list through `~/.config/wado/sessions/`, rewritten every few seconds as a heartbeat, so
+a crashed daemon's entry disappears on its own. `scripts/session-e2e.mjs` checks the whole
+loop: listed, left, found from another device, resumed and re-fitted, ended.
+
 **Scan a QR code to connect.** `wado qr` prints the connect link and a terminal QR code.
 `scripts/rig.sh` shows it on every start, and the daemon prints it itself when run in a
 terminal with `server { public-relay "…" }` set. Scanning it on a phone opens wado pointed at

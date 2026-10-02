@@ -6,6 +6,7 @@
 
 mod profiles;
 mod progress;
+mod sessions;
 
 use dioxus::prelude::*;
 
@@ -27,6 +28,7 @@ pub fn render(ui: Ui) -> Element {
             div { class: "wordmark", "wado" span { "." } }
             p { class: "tag", "Your desktop, at this screen's own resolution." }
             {progress::render(ui)}
+            {sessions::render(ui)}
             {profiles::render(ui)}
             {crate::ui::media::render(ui)}
             button {

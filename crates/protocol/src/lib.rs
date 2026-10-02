@@ -13,6 +13,7 @@ pub mod host;
 pub mod menu;
 pub mod relay;
 pub mod relay_wire;
+pub mod sessions;
 pub mod shells;
 pub mod targets;
 
@@ -25,6 +26,7 @@ pub use config::{ConfigState, HostLimits, PinnedInput};
 pub use control::{SessionControl, WindowAction, WindowInfo};
 pub use host::{HostAction, HostState};
 pub use menu::{MenuItem, MenuSheet};
+pub use sessions::SessionSummary;
 pub use shells::ShellInfo;
 pub use targets::Target;
 

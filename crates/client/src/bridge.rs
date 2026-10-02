@@ -123,6 +123,8 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/online.js"),
     "\n",
+    include_str!("js/sessions.js"),
+    "\n",
     include_str!("js/lifecycle.js"),
 );
 
@@ -368,6 +370,13 @@ pub fn run(ui: Ui) {
                         live.hoststate.set(Some(st));
                     }
                 }
+                "sessions" => {
+                    let list: Vec<wado_protocol::SessionSummary> = msg
+                        .get("sessions")
+                        .and_then(|v| serde_json::from_value(v.clone()).ok())
+                        .unwrap_or_default();
+                    live.sessions.set((string("here"), list));
+                }
                 "online" => {
                     let key = string("key");
                     let n = num("daemons").unwrap_or(-1.0) as i32;
@@ -433,12 +442,11 @@ pub fn run(ui: Ui) {
                 // connected session"*.
                 "sessionOn" => {
                     live.session_on.set(true);
-                    // A rejoined session's shape is not known here; these settings are the best
-                    // stand-in, and they are what Apply would compare against anyway.
-                    // ponytail: ask the daemon for the running config if this ever misleads.
+                    // Not from this page's Start: a session resumed — after a reload, from the home
+                    // page, or from another device. It is re-fitted to this device's shape: the
+                    // same apps, at this screen's size and aspect.
                     if (live.applied)().is_empty() {
-                        live.applied
-                            .set(serde_json::to_string(&crate::cfg::build(ui)).unwrap_or_default());
+                        crate::actions::apply(ui);
                     }
                 }
                 // The other direction, which had the same hole: a session stopped by the daemon —

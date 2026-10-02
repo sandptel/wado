@@ -394,6 +394,17 @@ pub enum RelayMsg {
         hosts: Vec<String>,
     },
 
+    // ── Running sessions, across the pool ────────────────────────────────────
+    /// Client → server: which sessions are running on this computer, on any daemon of the pool.
+    SessionsRequest,
+    /// Server → client: the answer — one per running session.
+    Sessions {
+        sessions: Vec<crate::SessionSummary>,
+    },
+    /// Client → server: this viewer is leaving and the session is to stay running until someone
+    /// ends it — not reaped by the no-viewer watchdog.
+    SessionDetach,
+
     // ── The computer itself: sound, Wi-Fi, Bluetooth (see `server::host`) ────
     /// Client → server: send me [`RelayMsg::HostState`]. Needs no session.
     HostGet,
