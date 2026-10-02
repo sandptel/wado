@@ -6,6 +6,7 @@ license = "AGPL-3.0-only"
 
 [dependencies]
 wado-protocol = { path = "../protocol" }
+wado-config = { path = "../config" }
 # The compositor library. The server drives it only through the typed command/frame
 # boundary it exposes (build / CompositorCommand / FrameMsg) — no Smithay here.
 wado-compositor = { path = "../compositor" }

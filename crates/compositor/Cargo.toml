@@ -7,6 +7,7 @@ description = "wado's headless Smithay compositor: Wayland protocol state, GLES 
 
 [dependencies]
 wado-protocol = { path = "../protocol" }
+wado-config = { path = "../config" }
 tracing = "0.1"
 thiserror = "1"
 bitflags = "2"

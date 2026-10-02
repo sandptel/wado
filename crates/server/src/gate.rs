@@ -131,7 +131,10 @@ impl Gate {
         if !key.is_empty() && keys.iter().any(|k| k == key) {
             return Decision::Trusted;
         }
-        if !key.is_empty() && keys.is_empty() {
+        if !key.is_empty()
+            && keys.is_empty()
+            && wado_config::live::current().security.trust_first_device
+        {
             self.trust(key, name);
             return Decision::FirstDevice;
         }

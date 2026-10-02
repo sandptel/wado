@@ -1,0 +1,38 @@
+// wado daemon configuration. Every line below is commented out and shows the built-in
+// default, so this file changes nothing until you edit it. Changes are picked up live where
+// they can be; `wado validate` checks the file without starting anything.
+//
+// Precedence: WADO_* environment variables > this file (and its includes, later wins) > defaults.
+
+server {
+    // listen "127.0.0.1:8080"         // direct-mode control address; keep it on localhost
+    // relay "wss://relay.example"     // set to use relay mode
+    // instance "1"                    // identity within a pool of daemons
+    // remote-id "123456789"           // pin the Remote ID (default: generated once, saved)
+    // udp-slice 0                     // which 100-port UDP range this daemon uses
+    // turn { url "turn:turn.example:3478"; user "wado"; pass "secret"; }
+}
+
+security {
+    // trust-first-device #true        // with an empty trust list, trust the first device
+}
+
+stream {
+    // encoder "auto"                  // "auto" (client decides) | "hardware" | "software"
+    // max-fps 120
+    // max-bitrate 20000               // kbps
+    // max-width 3840
+    // max-height 2160
+}
+
+session {
+    // app-cpu-weight 50               // cgroup CPU weight for session apps; 0 = off
+    // atspi "/nix/store/…-at-spi2-core"
+    // env { GDK_SCALE "1"; }
+    // autostart "foot"
+}
+
+shells {
+    // enabled #true
+    // program "/run/current-system/sw/bin/fish"
+}

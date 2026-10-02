@@ -53,21 +53,18 @@ const STUN: &[&str] = &[
 /// Zscaler on the client, a connection that could not be made between two machines on one WiFi.
 /// See [`crate::nat`] for how that state is detected and why no code change routes around it.
 ///
-/// Configured from the environment rather than a config file because the daemon already takes
-/// `WADO_RELAY_URL`, `WADO_REMOTE_ID` and `WADO_UDP_SLICE` that way, and a pool starts N of them
-/// from one script. Absent means STUN only, which is what wado has always done.
+/// Configured by `server { turn { } }` in config.kdl, or `WADO_TURN_URL` / `_USER` / `_PASS`
+/// (comma-separated URLs), which win. Absent means STUN only, which is what wado has always done.
 ///
 /// ponytail: long-lived shared credentials, no REST/ephemeral-token scheme. The upgrade path is
 /// coturn's `use-auth-secret` with time-limited usernames, and it matters only once the TURN
 /// server is reachable by people who are not us.
 fn turn() -> Option<RTCIceServer> {
-    let urls: Vec<String> = std::env::var("WADO_TURN_URL")
-        .ok()?
-        .split(',')
-        .map(str::trim)
-        .filter(|u| !u.is_empty())
-        .map(str::to_owned)
-        .collect();
+    turn_from(wado_config::live::current().server.turn.clone()?)
+}
+
+fn turn_from(turn: wado_config::schema::Turn) -> Option<RTCIceServer> {
+    let urls = turn.url;
     if urls.is_empty() {
         return None;
     }
@@ -78,7 +75,7 @@ fn turn() -> Option<RTCIceServer> {
         .find(|u| !u.starts_with("turn:") && !u.starts_with("turns:"))
     {
         tracing::error!(
-            "WADO_TURN_URL entry {bad:?} is not a turn: or turns: URL — webrtc-rs will reject it \
+            "TURN url {bad:?} is not a turn: or turns: URL — webrtc-rs will reject it \
              and this daemon will fall back to STUN only, which cannot connect two peers that \
              are both behind a VPN or a symmetric NAT."
         );
@@ -86,8 +83,8 @@ fn turn() -> Option<RTCIceServer> {
     }
     Some(RTCIceServer {
         urls,
-        username: std::env::var("WADO_TURN_USER").unwrap_or_default(),
-        credential: std::env::var("WADO_TURN_PASS").unwrap_or_default(),
+        username: turn.user,
+        credential: turn.pass,
         ..Default::default()
     })
 }
@@ -122,34 +119,23 @@ pub fn servers() -> Vec<RTCIceServer> {
 mod tests {
     use super::*;
 
-    /// One test, not three: these read a process-global env var and `cargo test` runs tests in
-    /// parallel threads of one process, so split across `#[test]`s they race and fail at random.
-    ///
     /// A scheme typo is the case worth covering — it is silent otherwise: ICE simply never
     /// gathers a relay candidate and the answer looks like a normal STUN-only one.
     #[test]
-    fn turn_is_configured_from_the_environment_and_a_bad_scheme_is_refused() {
-        unsafe { std::env::remove_var("WADO_TURN_URL") };
-        assert!(turn().is_none(), "unset means STUN only");
+    fn a_bad_turn_scheme_is_refused() {
+        let t = |url: &[&str]| wado_config::schema::Turn {
+            url: url.iter().map(|u| u.to_string()).collect(),
+            ..Default::default()
+        };
+        assert!(turn().is_none(), "unconfigured means STUN only");
         assert_eq!(servers().len(), STUN.len());
-
-        unsafe { std::env::set_var("WADO_TURN_URL", "stun:example.org:3478") };
+        assert!(turn_from(t(&[])).is_none());
         assert!(
-            turn().is_none(),
+            turn_from(t(&["stun:example.org:3478"])).is_none(),
             "a stun: URL in the TURN slot is refused, not passed through"
         );
-
-        unsafe {
-            std::env::set_var(
-                "WADO_TURN_URL",
-                "turn:example.org:3478,turns:example.org:5349",
-            )
-        };
-        let t = turn().expect("both schemes accepted");
-        assert_eq!(t.urls.len(), 2, "comma-separated entries are split");
-        assert_eq!(servers().len(), STUN.len() + 1);
-
-        unsafe { std::env::remove_var("WADO_TURN_URL") };
+        let ok = turn_from(t(&["turn:example.org:3478", "turns:example.org:5349"]));
+        assert_eq!(ok.expect("both schemes accepted").urls.len(), 2);
     }
 }
 

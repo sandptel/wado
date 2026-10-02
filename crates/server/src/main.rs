@@ -1,11 +1,14 @@
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt as _, prelude::*};
 use wado::website::{self, FRAME_CHANNEL_CAPACITY, logbus::LogBus};
 
-/// Where the control server listens in direct mode.
-const DEFAULT_CONTROL_ADDR: &str = "127.0.0.1:8080";
-
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Some(code) = wado::cli::dispatch(&args) {
+        std::process::exit(code);
+    }
+
     let log_bus = init_logging();
+    let config = load_config();
 
     // A debug build cannot meet the latency target and does not fail in a way that looks
     // like a build problem: it looks like a network or encoder fault. SRTP encrypts and
@@ -36,7 +39,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Direct mode (default): server binds an HTTP control endpoint.
     //   First CLI argument overrides the default listen address (127.0.0.1:8080).
 
-    if let Ok(relay_url) = std::env::var("WADO_RELAY_URL") {
+    if let Some(relay_url) = config.server.relay.clone() {
         let remote_id = wado::remote_id::resolve();
 
         tracing::info!(
@@ -58,9 +61,11 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             log_bus,
         )?;
     } else {
-        let control_addr = std::env::args()
-            .nth(1)
-            .unwrap_or_else(|| DEFAULT_CONTROL_ADDR.to_string());
+        // A bare first argument is still the listen address, as it always was.
+        let control_addr = args
+            .first()
+            .cloned()
+            .unwrap_or_else(|| config.server.listen.clone());
 
         tracing::info!(
             addr = %control_addr,
@@ -87,6 +92,29 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // per event and it covers commands and Wayland traffic too.
     event_loop.run(None, &mut state, |state| state.after_dispatch())?;
     Ok(())
+}
+
+/// Load `config.kdl` (writing the commented default on first run) and make it current.
+///
+/// A broken file does not stop the daemon: it says where the error is and runs on built-in
+/// defaults plus env, which is exactly what it ran on before config.kdl existed.
+fn load_config() -> std::sync::Arc<wado_config::Config> {
+    match wado_config::load_or_init() {
+        Ok((cfg, env)) => {
+            tracing::info!(file = %wado_config::paths::config_file().display(), "config loaded");
+            if !env.is_empty() {
+                tracing::info!("config overridden by environment: {}", env.join(", "));
+            }
+            wado_config::live::install(cfg);
+        }
+        Err(e) => {
+            tracing::error!("config not loaded, using built-in defaults: {e}");
+            let mut cfg = wado_config::Config::default();
+            wado_config::env::overlay(&mut cfg);
+            wado_config::live::install(cfg);
+        }
+    }
+    wado_config::live::current()
 }
 
 /// What the client's log panel sees. Deliberately **not** the string above: the panel is a
