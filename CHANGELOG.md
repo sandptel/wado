@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Removed
+
+**The tap lens is gone.** An uncertain tap no longer opens a magnifier, whether the app has an
+accessibility tree or not, and neither does a two-finger tap or an app menu with no tree. It
+did not work as intended. A tap now clicks where the finger was. The one exception: an app with
+an accessibility tree and exactly one target near the tap still snaps the click onto that
+target's centre. The *Lens* tile and the *Lens on small targets* setting are gone too.
+
 ### Added
 
 **Sound.** The session now has its own audio output, and it streams to the phone. Apps

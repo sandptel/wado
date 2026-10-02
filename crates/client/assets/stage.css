@@ -462,17 +462,6 @@ button.ctab { padding: 0 14px; }
 .dialchip.retract { animation: chip-in 200ms ease-in forwards; pointer-events: none; }
 @keyframes chip-in { to { transform: var(--from); opacity: 0; } }
 
-/* The lens (js/lens.js): a live 3× magnifier the next tap aims through. On top of everything,
- * the bar included — while it is open it owns the next touch (its capture listener takes it,
- * so the canvas itself needs no input). */
-.wado-lens {
-  position: fixed; z-index: 50;
-  width: 190px; height: 190px;
-  border-radius: 50%;
-  box-shadow: 0 0 0 3px var(--base0D), 0 6px 24px #000a;
-  pointer-events: none;
-}
-
 /* The native menu sheet (js/menu_sheet.js): an app's menu as 48 px rows along the bottom. */
 .wado-menusheet {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;

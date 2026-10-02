@@ -148,8 +148,6 @@ pub struct Settings {
     pub profile: Signal<usize>,
     /// Hold a screen wake lock while a session runs.
     pub keep_awake: Signal<bool>,
-    /// An ambiguous tap opens the lens rather than clicking.
-    pub lens_auto: Signal<bool>,
     /// Do not disturb: notifications go to the shade without a toast.
     pub dnd: Signal<bool>,
     /// The session's sound: 0..1, and muted.
@@ -239,7 +237,6 @@ impl Settings {
             profiles: use_signal(Vec::new),
             profile: use_signal(|| 0),
             keep_awake: use_signal(|| true),
-            lens_auto: use_signal(|| true),
             dnd: use_signal(|| false),
             volume: use_signal(|| 1.0),
             muted: use_signal(|| false),

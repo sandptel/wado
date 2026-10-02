@@ -1,13 +1,12 @@
-// Runnable check for the tap decision (W.decideTap in js/targets.js) and the pixel heuristic
-// (W.lens.edgeFraction in js/lens.js) — the two pure halves of M-P S4/S6.
+// Runnable check for the tap decision (W.decideTap in js/targets.js).
 //
-// Run:  node scripts/lens-check.mjs
+// Run:  node scripts/tap-check.mjs
 import { readFileSync } from "node:fs";
 
 const js = (f) => readFileSync(new URL(`../crates/client/src/js/${f}`, import.meta.url), "utf8");
 const W = { relayOn() {} };
 globalThis.document = { addEventListener() {} };
-new Function("W", js("targets.js") + "\n" + js("lens.js"))(W);
+new Function("W", js("targets.js"))(W);
 
 let failures = 0;
 const run = (name, f) => {
@@ -29,9 +28,10 @@ run("one target near: snap onto its centre, even from just outside it", () => {
   assert(d.kind === "snap" && Math.abs(d.at.x - 0.25) < 1e-9, JSON.stringify(d));
 });
 
-run("several small ones competing: the lens", () => {
+run("several competing: a plain click where the finger was (no lens any more)", () => {
   const bold = t(0.40, 0.1, 0.06, 0.02), ital = t(0.46, 0.1, 0.06, 0.02);
-  assert(W.decideTap({ x: 0.46, y: 0.11 }, [bold, ital], size).kind === "lens", "lens");
+  const d = W.decideTap({ x: 0.46, y: 0.11 }, [bold, ital], size);
+  assert(d.kind === "click" && d.at.x === 0.46, JSON.stringify(d));
 });
 
 run("finger squarely inside one big target beside others: just click it", () => {
@@ -40,20 +40,8 @@ run("finger squarely inside one big target beside others: just click it", () => 
   assert(d.kind === "click", JSON.stringify(d));
 });
 
-run("no tree is not decided here (null → pixel fallback in the caller)", () => {
+run("no tree: a plain click", () => {
   assert(W.decideTap({ x: 0, y: 0 }, null, size).kind === "click", "null reads as nothing near");
-});
-
-run("flat pixels are calm; a checkerboard of controls is dense", () => {
-  const n = 8;
-  const flat = new Uint8ClampedArray(n * n * 4).fill(128);
-  const busy = new Uint8ClampedArray(n * n * 4);
-  for (let i = 0; i < n * n; i++) {
-    const v = ((i % n) + Math.floor(i / n)) % 2 ? 255 : 0;
-    busy.set([v, v, v, 255], i * 4);
-  }
-  assert(W.lens.edgeFraction(flat, n) === 0, "flat");
-  assert(W.lens.edgeFraction(busy, n) > 0.9, "busy");
 });
 
 console.log(failures ? `\n${failures} FAILED` : "\nall passed");
