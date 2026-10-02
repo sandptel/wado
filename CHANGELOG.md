@@ -19,6 +19,35 @@ connection log now says its apps were closed. Two daemons configured with the sa
 refused with a clear message instead of fighting over one slot. A phone whose daemon goes away
 is told right away; before, it found out only the next time it sent something.
 
+**Open wado before your computer is ready, and it waits.** If no computer is online yet, the
+phone now says "waiting for it to start" and connects the moment the computer comes up. It no
+longer gets turned away and has to keep retrying. An ID this browser has never connected to gets
+a hint to check it for typos.
+
+**Your desktop keeps your place for 30 minutes.** If your phone loses signal, locks or switches
+apps, your desktop stays reserved for that phone for 30 minutes, and no other device is put on it
+in the meantime. If the computer itself restarts or drops off, the phone waits on the same
+connection and is put back on its own desktop when the computer returns. A desktop with nobody
+connected now closes after 30 minutes (it was 10).
+
+**"Use it here" moves your desktop between devices with one tap.** If another device is using the
+desktop, you can take it over from this one with a single tap. The other device is told where it
+went and does not try to grab it back. A device you have not approved can't take over at all
+until the device it would displace says yes.
+
+**New devices need your approval.** The first device that connects is trusted automatically.
+After that, a new device waits until a device you are already using wado on allows it: *Always
+allow*, *Allow once* or *Deny*. Trusted devices are remembered in `~/.config/wado/trusted_clients`.
+
+**Dead connections are noticed within 45 s.** The relay, the computer and the browser now check
+on each other every 15 s. A frozen computer or a phone that silently changed networks is noticed
+within 45 s, instead of looking connected indefinitely. After a relay restart, computers reconnect
+within about 5 s, down from up to 30 s.
+
+**The relay is ready for a public host.** It limits how fast one address can try Remote IDs,
+which would otherwise be guessable. `deploy/relay/` has a Caddy config for TLS and a systemd unit;
+pick a host and it can be deployed once.
+
 **Small buttons stop being a problem.** wado now asks each app, through its accessibility
 tree, what is under your finger and how big it is. The answer arrives before you lift, so it
 costs no delay. With one button near your finger, the tap **snaps onto it**. With several small

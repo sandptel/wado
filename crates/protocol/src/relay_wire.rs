@@ -68,6 +68,10 @@ pub enum WireMsg {
         instance_key: String,
         #[serde(default)]
         boot_id: String,
+        #[serde(default)]
+        hold_ms: u64,
+        #[serde(default)]
+        caps: Vec<String>,
     },
     Registered {
         remote_id: String,
@@ -79,6 +83,26 @@ pub enum WireMsg {
     PeerConnected {
         room_id: String,
         client_addr: String,
+        #[serde(default)]
+        client_key: String,
+        #[serde(default)]
+        client_name: String,
+    },
+    PeerCheck {
+        room_id: String,
+        client_addr: String,
+        #[serde(default)]
+        client_key: String,
+        #[serde(default)]
+        client_name: String,
+    },
+    PeerAccept {
+        room_id: String,
+    },
+    PeerReject {
+        room_id: String,
+        #[serde(default)]
+        reason: String,
     },
     PeerDisconnected {
         room_id: String,
@@ -103,6 +127,19 @@ pub enum WireMsg {
     },
     JoinDenied {
         reason: String,
+        #[serde(default)]
+        takeover: bool,
+        #[serde(default)]
+        retry_ms: u64,
+    },
+    Waiting {
+        reason: String,
+        #[serde(default)]
+        ms_left: u64,
+    },
+    TakenOver {
+        #[serde(default)]
+        by: String,
     },
     Ping,
     Pong,
@@ -124,6 +161,8 @@ mod tests {
                 v: 1,
                 instance_key: "1".into(),
                 boot_id: "b".into(),
+                hold_ms: 1_800_000,
+                caps: vec!["pong".into(), "gate".into()],
             },
             WireMsg::Registered {
                 remote_id: "528491307".into(),
@@ -133,7 +172,27 @@ mod tests {
             WireMsg::PeerConnected {
                 room_id: "r".into(),
                 client_addr: "1.2.3.4".into(),
+                client_key: "k".into(),
+                client_name: "Android · Chrome".into(),
             },
+            WireMsg::PeerCheck {
+                room_id: "r".into(),
+                client_addr: "1.2.3.4".into(),
+                client_key: "k".into(),
+                client_name: "Laptop".into(),
+            },
+            WireMsg::PeerAccept {
+                room_id: "r".into(),
+            },
+            WireMsg::PeerReject {
+                room_id: "r".into(),
+                reason: "denied".into(),
+            },
+            WireMsg::Waiting {
+                reason: "no computer online".into(),
+                ms_left: 5,
+            },
+            WireMsg::TakenOver { by: "Pixel".into() },
             WireMsg::PeerDisconnected {
                 room_id: "r".into(),
             },
@@ -150,6 +209,8 @@ mod tests {
             },
             WireMsg::JoinDenied {
                 reason: "no".into(),
+                takeover: true,
+                retry_ms: 3,
             },
             WireMsg::Ping,
             WireMsg::Pong,

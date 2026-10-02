@@ -6,6 +6,7 @@
 pub mod a11y;
 pub mod apps;
 pub mod error;
+pub mod gate;
 pub mod ice;
 pub mod instance;
 pub mod menu_sheet;

@@ -68,6 +68,16 @@ pub enum RelayMsg {
         /// let it take the seat.
         #[serde(default)]
         boot_id: String,
+        /// How long the relay should hold this daemon's seat for a viewer that drops, in ms —
+        /// the daemon's own `VIEWER_GRACE`, so the seat and the desktop it leads to expire
+        /// together. `0` = do not hold (a daemon from before seats).
+        #[serde(default)]
+        hold_ms: u64,
+        /// Optional daemon behaviours: `"pong"` (answers relay pings, so the relay may time
+        /// out a silent daemon) and `"gate"` (decides each join with `peer_accept` /
+        /// `peer_reject`, so the relay must wait for it).
+        #[serde(default)]
+        caps: Vec<String>,
     },
 
     // ── Relay → server (handshake) ──────────────────────────────────────────
@@ -87,6 +97,37 @@ pub enum RelayMsg {
     PeerConnected {
         room_id: String,
         client_addr: String,
+        /// The browser's own random id (`localStorage`). What the daemon's trust list holds,
+        /// and what the relay holds a dropped viewer's seat for. Empty = an older client.
+        #[serde(default)]
+        client_key: String,
+        /// A human label for the device ("Android · Chrome"), for prompts and logs only.
+        #[serde(default)]
+        client_name: String,
+    },
+    /// Relay → daemon: *would* you let this device in? Asked before a takeover, so that a device
+    /// the daemon does not trust can never displace a live viewer — it must be approved first,
+    /// and the viewer it would displace is still connected to approve it. Answered with
+    /// `peer_accept` / `peer_reject` like a join; an accepted room is let straight in when its
+    /// `peer_connected` follows.
+    PeerCheck {
+        room_id: String,
+        client_addr: String,
+        #[serde(default)]
+        client_key: String,
+        #[serde(default)]
+        client_name: String,
+    },
+    /// Daemon → relay: let the viewer of `room_id` in. Only a daemon that listed `"gate"` in
+    /// its caps sends these, and only then does the relay wait for one.
+    PeerAccept {
+        room_id: String,
+    },
+    /// Daemon → relay: refuse the viewer of `room_id`; `reason` is shown to it.
+    PeerReject {
+        room_id: String,
+        #[serde(default)]
+        reason: String,
     },
     /// The viewer's WebSocket closed. The room is gone; the **session is not**.
     ///
@@ -144,6 +185,29 @@ pub enum RelayMsg {
     /// Join denied (no server online with this Remote ID, room full, …).
     JoinDenied {
         reason: String,
+        /// The refusal is "in use by another device", and joining again with `takeover=1`
+        /// would move the seat here. A client offers that as a button, never does it itself.
+        #[serde(default)]
+        takeover: bool,
+        /// Rate-limited: try again no sooner than this.
+        #[serde(default)]
+        retry_ms: u64,
+    },
+    /// Relay → client: the join is parked, not refused — the socket stays open and
+    /// `join_accepted` follows on it when the reason clears (a daemon registers, the client's
+    /// own daemon comes back, a device approves this one). `ms_left` is how long the relay
+    /// will keep waiting where that is known, else 0.
+    Waiting {
+        reason: String,
+        #[serde(default)]
+        ms_left: u64,
+    },
+    /// Relay → client: another device took this seat with a deliberate tap. The client must
+    /// **not** reconnect on its own — that is what keeps two devices from trading a seat
+    /// forever (I17); it offers its own "use it here" instead.
+    TakenOver {
+        #[serde(default)]
+        by: String,
     },
 
     // ── Session control: client → server (forwarded by relay) ───────────────
@@ -416,6 +480,24 @@ pub enum RelayMsg {
     /// A single Trickle-ICE candidate (for future trickle ICE support).
     IceCandidate {
         candidate: String,
+    },
+
+    // ── Device approval: daemon ↔ an already-connected client (relay forwards) ──
+    /// A device the daemon does not trust is waiting to join (it may be waiting on another
+    /// daemon of the same pool — they share one trust list). Shown to a connected viewer.
+    ApproveRequest {
+        id: String,
+        name: String,
+        addr: String,
+    },
+    /// The viewer's answer: `verdict` is `"once"`, `"always"` or `"deny"`.
+    ApproveAnswer {
+        id: String,
+        verdict: String,
+    },
+    /// The request was answered (here or elsewhere) or withdrawn; drop the prompt.
+    ApproveCleared {
+        id: String,
     },
 
     // ── Keepalive ────────────────────────────────────────────────────────────

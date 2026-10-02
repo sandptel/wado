@@ -25,4 +25,20 @@ pub struct RelayConfig {
     /// rejected. 0 = unlimited.
     #[arg(long, default_value_t = 0)]
     pub max_rooms: usize,
+
+    /// Believe `CF-Connecting-IP` / `X-Forwarded-For` for the client's address. Set it when
+    /// every connection arrives through a proxy that overwrites those headers (Caddy, a
+    /// cloudflared tunnel) — the join rate limit is per address, and without the flag every
+    /// tunnelled client shares 127.0.0.1's bucket. Never set it on a relay exposed directly:
+    /// the headers are client-settable, and believing them lets one machine look like many.
+    #[arg(long, default_value_t = false)]
+    pub trust_proxy: bool,
+
+    /// Joins an address may make in a burst before it is rate limited.
+    #[arg(long, default_value_t = 20)]
+    pub join_burst: u32,
+
+    /// Seconds for an address to earn back one join after its burst is spent.
+    #[arg(long, default_value_t = 3)]
+    pub join_refill_secs: u64,
 }

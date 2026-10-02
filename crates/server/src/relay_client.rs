@@ -53,7 +53,15 @@ use crate::website::logbus::LogBus;
 
 /// Reconnect backoff bounds.
 const BACKOFF_INITIAL: Duration = Duration::from_secs(1);
-const BACKOFF_MAX: Duration = Duration::from_secs(30);
+///
+/// Capped at 5 s, down from 30: the relay is meant to be restarted rarely and reached fast, and
+/// after a relay restart every daemon of every pool is waiting out this cap with a phone parked
+/// on the other side. The jitter in the reconnect loop keeps a pool from redialling in lockstep.
+const BACKOFF_MAX: Duration = Duration::from_secs(5);
+
+/// The relay pings every 15 s; this long with nothing at all from it means the link is dead
+/// even if TCP has not noticed — behind a tunnel it may never notice.
+const RELAY_SILENCE: Duration = Duration::from_secs(45);
 
 /// Everything a relay connection needs; lives across reconnects.
 struct RelayCtx {
@@ -107,6 +115,20 @@ struct RelayCtx {
     /// offer's *candidate count* as a device fingerprint, and on 2026-09-14 the absence of this
     /// cost three wrong hypotheses about which daemon was poisoned. It is one string.
     peer: Arc<Mutex<String>>,
+    /// The relay room of the viewer the relay last said is here, or empty. A `PeerDisconnected`
+    /// for any other room is stale — the viewer it names was already replaced — and acting on
+    /// it would close the *current* viewer's peer connection.
+    room: Arc<Mutex<String>>,
+    /// The viewer in `room` passed the gate. Only such a viewer is shown other devices'
+    /// approval requests, or may answer them.
+    viewer_ok: Arc<AtomicBool>,
+    /// The trust list and pending approvals — see [`crate::gate`].
+    gate: crate::gate::Gate,
+    /// Takeover checks (`PeerCheck`) still being decided, by room id. Cleared by that room's
+    /// `PeerDisconnected`, which withdraws its approval request.
+    checking: Arc<Mutex<std::collections::HashSet<String>>>,
+    /// Rooms a takeover check approved. Their `PeerConnected` is let in without asking twice.
+    approved: Arc<Mutex<std::collections::HashSet<String>>>,
     /// The accessibility-tree client that answers `TargetsRequest` — see [`crate::a11y`].
     /// Shared, because each question runs as its own task.
     a11y: Arc<crate::a11y::A11y>,
@@ -384,6 +406,11 @@ async fn run(
         last_relay_msg: Arc::new(AtomicU64::new(now_ms())),
         session_started: Arc::new(AtomicBool::new(false)),
         peer: Arc::new(Mutex::new("<none>".to_string())),
+        room: Arc::new(Mutex::new(String::new())),
+        viewer_ok: Arc::new(AtomicBool::new(false)),
+        gate: crate::gate::Gate::default(),
+        checking: Arc::default(),
+        approved: Arc::default(),
         a11y: Arc::new(crate::a11y::A11y::default()),
         relay_url,
         remote_id,
@@ -442,7 +469,8 @@ async fn run(
             }
         }
         first_attempt = false;
-        tokio::time::sleep(backoff).await;
+        let jitter = backoff.mul_f64(rand::random::<f64>() * 0.5);
+        tokio::time::sleep(backoff + jitter).await;
         backoff = (backoff * 2).min(BACKOFF_MAX);
     }
 }
@@ -470,6 +498,10 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     });
 
     // ── 2. Register ──────────────────────────────────────────────────────────
+    // What this relay can do, from its `registered`. An older relay neither waits for this
+    // daemon's verdict on a join nor pings it, so neither may be assumed.
+    let relay_gates: bool;
+    let relay_pings: bool;
     let display_name = std::env::var("HOSTNAME").ok();
     send_relay(
         &out_tx,
@@ -479,6 +511,10 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             v: wado_protocol::relay::WIRE_VERSION,
             instance_key: crate::instance::instance_key(),
             boot_id: crate::instance::boot_id().to_string(),
+            // The relay holds a dropped viewer's seat exactly as long as this daemon keeps the
+            // desktop behind it, so the two can never disagree.
+            hold_ms: VIEWER_GRACE.as_millis() as u64,
+            caps: vec!["pong".into(), "gate".into()],
         },
     )
     .await?;
@@ -490,6 +526,8 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 relay_v,
                 caps,
             }) => {
+                relay_gates = caps.iter().any(|c| c == "gate");
+                relay_pings = caps.iter().any(|c| c == "ping");
                 // relay_v 0 = a relay from before the handshake was versioned.
                 info!(
                     "relay client: registered — Remote ID {} as instance {} (relay wire v{relay_v}, caps {caps:?})",
@@ -523,6 +561,16 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             ));
         }
     }
+
+    // ── 3a. Approval prompts (per connection) ────────────────────────────────
+    // Other devices waiting to join this computer — on this daemon or another of its pool —
+    // shown to this daemon's viewer once it has itself been let in. See `crate::gate`.
+    let approval_task = tokio::spawn(show_approvals(
+        ctx.gate.clone(),
+        out_tx.clone(),
+        Arc::clone(&ctx.room),
+        Arc::clone(&ctx.viewer_ok),
+    ));
 
     // ── 3. Log forwarding task (per connection) ──────────────────────────────
     let log_task = {
@@ -643,7 +691,21 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     let mut pty: Option<crate::pty::Pty> = None;
 
     // ── 4. Main message loop ─────────────────────────────────────────────────
-    while let Some(frame) = ws_stream.next().await {
+    loop {
+        let frame = if relay_pings {
+            match tokio::time::timeout(RELAY_SILENCE, ws_stream.next()).await {
+                Ok(f) => f,
+                Err(_) => {
+                    warn!(
+                        "relay client: nothing from the relay for {RELAY_SILENCE:?} — reconnecting"
+                    );
+                    break;
+                }
+            }
+        } else {
+            ws_stream.next().await
+        };
+        let Some(frame) = frame else { break };
         let text = match frame {
             Ok(WsMsg::Text(t)) => t,
             Ok(WsMsg::Ping(_)) | Ok(WsMsg::Pong(_)) => continue,
@@ -658,12 +720,13 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
         // Liveness for `viewer_watchdog`. Bumped on every frame, including ones we do not
         // understand — the point is that the relay link is carrying traffic, not what it says.
         //
-        // The relay keepalive does NOT reach here and must not be assumed to: `KEEPALIVE` is
-        // spawned inside `join_loop` and sends into the *client* inbox, so a daemon sees no
-        // pings and `silent_ms` grows honestly. Verified live 2026-09-19 — an abandoned session
-        // was reaped at exactly `VIEWER_GRACE`. If a daemon-side keepalive is ever added, this
-        // line must start excluding it or the watchdog dies silently.
-        ctx.last_relay_msg.store(now_ms(), Ordering::Relaxed);
+        // The relay's own pings are excluded, and must stay excluded: since `2026-10-02` the
+        // relay pings this daemon every 15 s, and counting those would keep `silent_ms` near
+        // zero forever — the watchdog would never reap anything. Verified live 2026-09-19,
+        // before pings: an abandoned session was reaped at exactly `VIEWER_GRACE`.
+        if text.trim() != r#"{"type":"ping"}"# {
+            ctx.last_relay_msg.store(now_ms(), Ordering::Relaxed);
+        }
 
         let msg = match serde_json::from_str::<RelayMsg>(&text) {
             Ok(m) => m,
@@ -689,15 +752,131 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             RelayMsg::PeerConnected {
                 room_id,
                 client_addr,
+                client_key,
+                client_name,
             } => {
                 // Remembered, not just logged: every WebRTC line below is tagged with it.
                 let short: String = room_id.chars().take(8).collect();
                 *ctx.peer.lock().unwrap_or_else(|e| e.into_inner()) =
                     format!("{client_addr} room={short}");
-                info!(room_id = %room_id, client = %client_addr, "relay client: peer connected");
+                *ctx.room.lock().unwrap_or_else(|e| e.into_inner()) = room_id.clone();
+                ctx.viewer_ok.store(!relay_gates, Ordering::SeqCst);
+                info!(room_id = %room_id, client = %client_addr, device = %client_name, "relay client: peer connected");
+                if relay_gates {
+                    let pre_approved = ctx
+                        .approved
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .remove(&room_id);
+                    if pre_approved {
+                        ctx.viewer_ok.store(true, Ordering::SeqCst);
+                        send_relay(&out_tx, &RelayMsg::PeerAccept { room_id })
+                            .await
+                            .ok();
+                    } else {
+                        let room = Arc::clone(&ctx.room);
+                        let room_now = Arc::clone(&ctx.room);
+                        let ok = Arc::clone(&ctx.viewer_ok);
+                        let rid = room_id.clone();
+                        let rid_now = room_id.clone();
+                        tokio::spawn(decide_join(
+                            ctx.gate.clone(),
+                            out_tx.clone(),
+                            Join {
+                                room_id,
+                                key: client_key,
+                                name: client_name,
+                                addr: client_addr,
+                            },
+                            move || *room.lock().unwrap_or_else(|e| e.into_inner()) == rid,
+                            move |_| {
+                                // Only if it is still the viewer here — it may have left while
+                                // it waited.
+                                if *room_now.lock().unwrap_or_else(|e| e.into_inner()) == rid_now {
+                                    ok.store(true, Ordering::SeqCst);
+                                }
+                            },
+                        ));
+                    }
+                }
+            }
+
+            RelayMsg::PeerCheck {
+                room_id,
+                client_addr,
+                client_key,
+                client_name,
+            } => {
+                // A device asking to take the seat from the viewer here. Decided exactly like a
+                // join, but without touching `room` — the current viewer is still the current
+                // viewer until the relay says otherwise.
+                info!(room_id = %room_id, device = %client_name, "relay client: takeover check");
+                ctx.checking
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .insert(room_id.clone());
+                let checking = Arc::clone(&ctx.checking);
+                let checking_done = Arc::clone(&ctx.checking);
+                let approved = Arc::clone(&ctx.approved);
+                let rid = room_id.clone();
+                tokio::spawn(decide_join(
+                    ctx.gate.clone(),
+                    out_tx.clone(),
+                    Join {
+                        room_id,
+                        key: client_key,
+                        name: client_name,
+                        addr: client_addr,
+                    },
+                    move || {
+                        checking
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .contains(&rid)
+                    },
+                    move |room_id| {
+                        checking_done
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .remove(room_id);
+                        approved
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .insert(room_id.to_string());
+                    },
+                ));
+            }
+
+            RelayMsg::ApproveAnswer { id, verdict } => {
+                // Only a viewer that was itself let in may let others in.
+                if !ctx.viewer_ok.load(Ordering::SeqCst) {
+                    warn!(
+                        "relay client: approval answer from a viewer that is not approved — ignored"
+                    );
+                } else if let Some(v) = crate::gate::Verdict::parse(&verdict) {
+                    ctx.gate.answer(&id, v);
+                }
             }
 
             RelayMsg::PeerDisconnected { room_id } => {
+                // A takeover check abandoned, or a check-approved room that never connected.
+                ctx.checking
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .remove(&room_id);
+                ctx.approved
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .remove(&room_id);
+                {
+                    let mut room = ctx.room.lock().unwrap_or_else(|e| e.into_inner());
+                    if *room != room_id {
+                        info!(room_id = %room_id, "relay client: departure of a viewer already replaced — ignored");
+                        continue;
+                    }
+                    room.clear();
+                }
+                ctx.viewer_ok.store(false, Ordering::SeqCst);
                 // Deliberately *not* a teardown. See `RelayMsg::PeerDisconnected`: the relay used
                 // to synthesize a `SessionStop` here, which made every dropped socket cost the
                 // viewer their windows and their applications. The session stays up and
@@ -918,7 +1097,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             RelayMsg::SessionStop => {
                 // Logged on receipt, not just on the watchdog's own reap: this is the only other
                 // path to `CompositorCommand::Stop` in relay mode, and until now neither side
-                // logged anything for it — a stop here and a stop from the 600s grace expiring
+                // logged anything for it — a stop here and a stop from the grace expiring
                 // were indistinguishable in the log, which cost real time chasing an unexplained
                 // teardown on 2026-09-13 that turned out to be unprovable either way.
                 info!("relay client: session_stop received from the viewer — tearing down");
@@ -1125,6 +1304,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
         }
     }
 
+    approval_task.abort();
     log_task.abort();
     text_input_task.abort();
     shedding_task.abort();
@@ -1466,6 +1646,118 @@ fn build_webrtc_api() -> crate::Result<API> {
         .build())
 }
 
+/// One device asking to join, as the relay described it.
+struct Join {
+    room_id: String,
+    key: String,
+    name: String,
+    addr: String,
+}
+
+/// Answer the relay's question about one join (or takeover check): trusted, first device, or
+/// ask a connected one. `still_wanted` turns false when the device gives up waiting;
+/// `on_accept` runs before the relay is told yes.
+async fn decide_join(
+    gate: crate::gate::Gate,
+    out_tx: mpsc::Sender<String>,
+    j: Join,
+    still_wanted: impl Fn() -> bool + Send + 'static,
+    on_accept: impl FnOnce(&str) + Send + 'static,
+) {
+    use crate::gate::{Decision, Request, Verdict};
+    let Join {
+        room_id,
+        key,
+        name,
+        addr,
+    } = j;
+    let label = if name.is_empty() {
+        addr.clone()
+    } else {
+        name.clone()
+    };
+    let verdict: Result<(), String> = match gate.decide(&key, &name) {
+        Decision::Trusted => Ok(()),
+        Decision::FirstDevice => {
+            warn!("gate: no device was trusted yet — trusting the first one to connect, {label}");
+            Ok(())
+        }
+        Decision::Unknown => {
+            let req = Request {
+                id: room_id.clone(),
+                name: label.clone(),
+                addr: addr.clone(),
+            };
+            if !gate.post(&req) {
+                Err("this computer could not ask for approval".into())
+            } else {
+                info!("gate: {label} is waiting for a connected device to approve it");
+                let v = gate.wait(&room_id, still_wanted).await;
+                gate.withdraw(&room_id);
+                match v {
+                    Some(Verdict::Once) => Ok(()),
+                    Some(Verdict::Always) => {
+                        gate.trust(&key, &name);
+                        Ok(())
+                    }
+                    Some(Verdict::Deny) => {
+                        Err("a device already using this computer said no".into())
+                    }
+                    None => Err("nobody approved this device in time".into()),
+                }
+            }
+        }
+    };
+    let msg = match verdict {
+        Ok(()) => {
+            on_accept(&room_id);
+            info!("gate: let {label} in");
+            RelayMsg::PeerAccept { room_id }
+        }
+        Err(reason) => {
+            info!("gate: refused {label} — {reason}");
+            RelayMsg::PeerReject { room_id, reason }
+        }
+    };
+    send_relay(&out_tx, &msg).await.ok();
+}
+
+/// Keep this daemon's approved viewer shown exactly the approval requests that are pending.
+async fn show_approvals(
+    gate: crate::gate::Gate,
+    out_tx: mpsc::Sender<String>,
+    room: Arc<Mutex<String>>,
+    viewer_ok: Arc<AtomicBool>,
+) {
+    let mut shown: Vec<String> = Vec::new();
+    let mut tick = tokio::time::interval(Duration::from_millis(1000));
+    loop {
+        tick.tick().await;
+        let now: Vec<crate::gate::Request> = if viewer_ok.load(Ordering::SeqCst) {
+            let own = room.lock().unwrap_or_else(|e| e.into_inner()).clone();
+            gate.pending().into_iter().filter(|r| r.id != own).collect()
+        } else {
+            Vec::new()
+        };
+        for r in now.iter().filter(|r| !shown.contains(&r.id)) {
+            let msg = RelayMsg::ApproveRequest {
+                id: r.id.clone(),
+                name: r.name.clone(),
+                addr: r.addr.clone(),
+            };
+            if send_relay(&out_tx, &msg).await.is_err() {
+                return;
+            }
+        }
+        for id in shown.iter().filter(|id| !now.iter().any(|r| &r.id == *id)) {
+            send_relay(&out_tx, &RelayMsg::ApproveCleared { id: id.clone() })
+                .await
+                .ok();
+        }
+        shown = now.into_iter().map(|r| r.id).collect();
+    }
+}
+
 async fn send_relay(tx: &mpsc::Sender<String>, msg: &RelayMsg) -> crate::Result<()> {
     let text = serde_json::to_string(msg)?;
     tx.send(text)
@@ -1517,7 +1809,11 @@ mod pump_tests {
 ///
 /// A dead zone on a commute routinely outlasted 45 s, so the old value reaped exactly the
 /// sessions this branch exists to preserve.
-const VIEWER_GRACE: std::time::Duration = std::time::Duration::from_secs(600);
+///
+/// Thirty minutes since `2026-10-02`, the user's choice for how long a desktop with nobody
+/// connected stays open. The relay holds the viewer's seat for the same time (`hold_ms` in the
+/// registration), so a seat never outlives its desktop or the other way round.
+const VIEWER_GRACE: std::time::Duration = std::time::Duration::from_secs(1800);
 
 /// Stop a session whose viewer has vanished without saying so.
 ///

@@ -1,12 +1,14 @@
-//! WebSocket handlers for server registration (`/register`) and client join
-//! (`/join/:remote_id`). After the handshake both sides enter a pure-forwarding
-//! loop — the relay never inspects post-handshake message content.
+//! Relay signaling: daemons register (`/register`), clients join (`/join/:remote_id`), and
+//! after the handshake both sides enter a pure-forwarding loop — the relay never inspects
+//! post-handshake message content beyond the few frames addressed to the relay itself
+//! (`pong`, `peer_accept`, `peer_reject`). See `wado_protocol::relay_wire` for the frozen
+//! handshake and `WADO_PLAN.md`, Decision Log `2026-10-02`, for why it is frozen.
 //!
-//! Auth model: a single **Remote ID** is both address and access token. A join
-//! is authorized purely by connecting to `/join/:remote_id` with an ID that has
-//! a live registered server — no password message. The future hardening step is
-//! a confirmation gate: hold the join at `PeerConnected` until the server
-//! approves it (new Approve/Deny variants), then send `JoinAccepted`.
+//! Auth model: the **Remote ID** addresses a pool of daemons, and a daemon that lists `gate`
+//! in its caps decides each join itself — the relay holds the join at `peer_connected` until
+//! the daemon answers `peer_accept` or `peer_reject`. The policy (trusted devices, who may
+//! approve) lives in the daemon, so it can change without touching the relay. A daemon without
+//! `gate` is joined on the Remote ID alone, as before.
 //!
 //! ## One Remote ID, several daemons
 //!
@@ -27,234 +29,109 @@
 //! closed, evicted each other 132 times in two minutes — the same failure `issues.md` I17
 //! recorded at a slower 18 s period. Contention is answered with a different daemon or a
 //! plain refusal, never by stealing.
+//!
+//! ## Where the code lives
+//!
+//! [`crate::register`] serves daemons, [`crate::join`] serves clients. This file holds what both
+//! share: timing, the relay's caps, the pool-full wording and the small socket helpers.
 
 use std::net::SocketAddr;
+use std::time::Duration;
 
 use axum::extract::ws::{Message, WebSocket};
-use axum::extract::{ConnectInfo, Path, State, WebSocketUpgrade};
-use axum::response::IntoResponse;
-use futures_util::{SinkExt, StreamExt};
-use tokio::sync::mpsc;
-use tracing::{debug, info, warn};
-use uuid::Uuid;
-use wado_protocol::relay_wire::{display_remote_id, normalize_remote_id, WireMsg, WIRE_VERSION};
+use futures_util::stream::SplitSink;
+use futures_util::SinkExt;
+use wado_protocol::relay_wire::WireMsg;
 
-use crate::AppState;
+pub type WsTx = SplitSink<WebSocket, Message>;
 
-/// How often the relay pings an idle client.
+/// How often the relay pings each client, and each daemon that answers pings.
 ///
-/// Comfortably under the ~100 s after which a cloudflared quick tunnel drops an idle
-/// connection, and far under any load — one small frame per client per interval.
-const KEEPALIVE: std::time::Duration = std::time::Duration::from_secs(30);
+/// Well under the ~100 s after which a cloudflared quick tunnel drops an idle connection, and
+/// a third of [`SILENCE`], so one lost ping never ends a link on its own.
+pub const KEEPALIVE: Duration = Duration::from_secs(15);
 
-/// Optional behaviours this relay offers, sent in `registered` and `join_accepted`. Peers use
+/// A peer that has sent nothing — not even a pong — for this long is gone. Its socket is
+/// closed, which is what lets the seat be held for it and the other side be told; a half-open
+/// TCP connection behind a tunnel can otherwise look alive for hours.
+pub const SILENCE: Duration = Duration::from_secs(45);
+
+/// Optional behaviours this relay offers, sent in `registered` and `join_accepted`. A peer uses
 /// a behaviour only when it is listed here, which is how the relay gains features without
-/// breaking daemons and clients older than it. None yet: parking and seat holding append theirs.
-const CAPS: &[&str] = &[];
+/// breaking daemons and clients older than it. Append; never rename.
+///
+/// - `park`: a join with no daemon to go to waits (`waiting`) instead of being refused.
+/// - `hold`: a dropped client's seat is kept for it for the daemon's hold time.
+/// - `takeover`: `takeover=1` on a join moves a seat from another device.
+/// - `gate`: joins wait for the daemon's `peer_accept` / `peer_reject`.
+/// - `ping`: the relay pings daemons that list `pong`, and closes ones that fall silent.
+pub const CAPS: &[&str] = &["park", "hold", "takeover", "gate", "ping"];
 
-fn caps() -> Vec<String> {
+pub fn caps() -> Vec<String> {
     CAPS.iter().map(|c| c.to_string()).collect()
 }
 
-// ── Server registration ──────────────────────────────────────────────────────
-
-pub async fn handle_register(
-    ws: WebSocketUpgrade,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    State(state): State<AppState>,
-) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| register_loop(socket, addr, state))
+/// The refusal when every daemon in the pool has a client.
+///
+/// The phrase "already has an active connection" is load-bearing, not prose: older clients
+/// match it (`OCCUPIED_RE` in `js/relay_link.js`) to tell "the pool is full" from "no daemon is
+/// online" and back off hard instead of knocking every 500 ms. Without it two devices trade the
+/// session forever — `issues.md` I17, measured as 18 knocks in 94 s.
+/// `scripts/relay-link-check.mjs` reads this file and fails if the wording moves.
+pub fn occupied_reason(pool_size: usize, holders: &[String]) -> String {
+    let who = holders
+        .iter()
+        .filter(|h| !h.is_empty())
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(", ");
+    let who = if who.is_empty() {
+        String::new()
+    } else {
+        format!(" (in use by {who})")
+    };
+    format!(
+        "every one of the {pool_size} wado session(s) on this Remote ID already has an active \
+         connection{who}. Use it here to move one to this device, or start another daemon \
+         (WADO_INSTANCES) to raise the limit."
+    )
 }
 
-async fn register_loop(socket: WebSocket, addr: SocketAddr, state: AppState) {
-    let (mut ws_tx, mut ws_rx) = socket.split();
-
-    // ── 1. Expect the first message to be Register ──────────────────────────
-    let first = match ws_rx.next().await {
-        Some(Ok(Message::Text(t))) => t,
-        _ => {
-            warn!(%addr, "register: no first message or non-text frame");
-            return;
-        }
-    };
-
-    let (remote_id, display_name, peer_v, instance_key, boot_id) =
-        match serde_json::from_str::<WireMsg>(&first) {
-            Ok(WireMsg::Register {
-                remote_id,
-                display_name,
-                v,
-                instance_key,
-                boot_id,
-            }) => (
-                normalize_remote_id(&remote_id),
-                display_name,
-                v,
-                instance_key,
-                boot_id,
-            ),
-            Ok(other) => {
-                warn!(%addr, ?other, "register: expected Register, got something else");
-                send_error(&mut ws_tx, "expected Register as first message").await;
-                return;
-            }
-            Err(e) => {
-                warn!(%addr, %e, "register: bad JSON");
-                send_error(&mut ws_tx, "malformed Register message").await;
-                return;
-            }
-        };
-
-    if remote_id.is_empty() {
-        warn!(%addr, "register: empty Remote ID");
-        send_error(&mut ws_tx, "Remote ID must not be empty").await;
-        return;
-    }
-
-    // ── 2. Register in the registry ─────────────────────────────────────────
-    // A second daemon on this Remote ID joins the pool. The instance id is stable when the
-    // daemon sends an `instance_key`, which is what returns a client to the same daemon after
-    // the relay restarts; see `ServerRegistry::insert` for the one case that is refused.
-    let (inbox_tx, mut inbox_rx) = mpsc::channel::<String>(128);
-    let reg = match state.registry.insert(
-        remote_id.clone(),
-        &instance_key,
-        boot_id,
-        display_name.clone(),
-        addr,
-        inbox_tx,
-    ) {
-        Ok(reg) => reg,
-        Err(why) => {
-            warn!(remote_id = %display_remote_id(&remote_id), %addr, "register refused: {why}");
-            send_error(&mut ws_tx, &why).await;
-            return;
-        }
-    };
-    let instance_id = reg.instance_id.clone();
-    let mut kicked = reg.kicked;
-    if reg.replaced {
-        // The client paired with the old connection was talking to an inbox that is now
-        // dead. Drop its room so its socket closes and it rejoins — onto this connection.
-        state.rooms.remove(&instance_id);
-    }
-    let pool_size = state.registry.instances_for(&remote_id).len();
-
-    info!(
-        remote_id = %display_remote_id(&remote_id),
-        display_name = ?display_name,
-        %addr,
-        instance = %instance_id,
-        pool_size,
-        wire_v = peer_v,
-        replaced = reg.replaced,
-        "server registered — pool now holds {pool_size} daemon(s) for this Remote ID"
-    );
-
-    // ── 3. Send Registered ack ───────────────────────────────────────────────
-    let ack = match serde_json::to_string(&WireMsg::Registered {
-        remote_id: remote_id.clone(),
-        relay_v: WIRE_VERSION,
-        caps: caps(),
-    }) {
-        Ok(s) => s,
-        Err(_) => return,
-    };
-    if ws_tx.send(Message::Text(ack)).await.is_err() {
-        state.registry.remove_if(&instance_id, &reg.conn_id);
-        return;
-    }
-
-    // ── 4. Bidirectional message pump ────────────────────────────────────────
-    // Spawn a task that drains inbox_rx → ws_tx (messages from relay/client to server).
-    let instance_fwd = instance_id.clone();
-    let _fwd_task = AbortOnDrop(tokio::spawn(async move {
-        while let Some(text) = inbox_rx.recv().await {
-            if ws_tx.send(Message::Text(text)).await.is_err() {
-                debug!(instance = %instance_fwd, "forward task: ws write failed");
-                break;
-            }
-        }
-    }));
-
-    // Main task: ws_rx → route to active room's client (server → relay → client).
-    loop {
-        let frame = tokio::select! {
-            f = ws_rx.next() => f,
-            // This registration was replaced by the same daemon redialling. Without this, the
-            // stale socket would linger until its TCP died, which behind a tunnel can be never.
-            _ = &mut kicked => {
-                info!(instance = %instance_id, "server connection replaced by a redial — closing the old one");
-                return; // its cleanup belongs to the replacement now
-            }
-        };
-        let Some(frame) = frame else { break };
-        match frame {
-            Ok(Message::Text(text)) => {
-                debug!(
-                    remote_id = %display_remote_id(&remote_id),
-                    "server msg: {}",
-                    head(&text)
-                );
-                // Forward verbatim to *this daemon's* client. Keyed by instance: with a pool,
-                // a Remote ID no longer identifies one conversation.
-                if !state
-                    .rooms
-                    .forward_to_client(&instance_id, text.to_string())
-                    .await
-                {
-                    // No client in the room yet — message is dropped (e.g. server
-                    // sent a session event before a client connected).
-                    debug!(remote_id = %display_remote_id(&remote_id), "no client in room, dropping message");
-                }
-            }
-            Ok(Message::Ping(_)) => {} // axum auto-replies with Pong
-            Ok(Message::Close(_)) | Err(_) => break,
-            _ => {}
-        }
-    }
-
-    // ── 5. Cleanup ───────────────────────────────────────────────────────────
-    // `_fwd_task` aborts itself on drop — including when this function unwinds. See
-    // `AbortOnDrop`.
-    // Guarded: if this connection was replaced mid-teardown, the registration and room now
-    // belong to the replacement.
-    if state.registry.remove_if(&instance_id, &reg.conn_id) {
-        state.rooms.remove(&instance_id);
-    }
-    info!(
-        remote_id = %display_remote_id(&remote_id),
-        %addr,
-        instance = %instance_id,
-        "server disconnected — registry + room cleaned up"
-    );
+/// A client's own pong, recognised exactly.
+///
+/// It was `text.contains("\"pong\"")`, which also swallowed any frame that merely *mentioned*
+/// pong as a value — `{"type":"session_launch","command":"pong"}` never reached the daemon.
+pub fn is_pong(text: &str) -> bool {
+    text.trim() == r#"{"type":"pong"}"#
 }
 
-// ── Client join ──────────────────────────────────────────────────────────────
-
-/// Query string on `/join/:remote_id`.
-#[derive(serde::Deserialize, Default)]
-pub struct JoinQuery {
-    /// The daemon instance this client used last, if any. A client stores the `instance_id`
-    /// from its `JoinAccepted` and hands it back here, which is what returns it to its own
-    /// running desktop rather than to whichever daemon happens to be free.
-    instance: Option<String>,
+pub async fn send_wire(ws_tx: &mut WsTx, msg: &WireMsg) -> bool {
+    match serde_json::to_string(msg) {
+        Ok(text) => ws_tx.send(Message::Text(text)).await.is_ok(),
+        Err(_) => false,
+    }
 }
 
-pub async fn handle_join(
-    ws: WebSocketUpgrade,
-    Path(remote_id): Path<String>,
-    query: Option<axum::extract::Query<JoinQuery>>,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    headers: axum::http::HeaderMap,
-    State(state): State<AppState>,
-) -> impl IntoResponse {
-    // `Option<Query<_>>` so a malformed query string is an empty preference rather than a
-    // rejected upgrade: the instance hint is an optimisation, and losing it must cost the
-    // client its stickiness, not its connection.
-    let wanted = query.and_then(|axum::extract::Query(q)| q.instance);
-    let peer = peer_ip(&headers, addr);
-    ws.on_upgrade(move |socket| join_loop(socket, remote_id, wanted, addr, peer, state))
+pub async fn send_error(ws_tx: &mut WsTx, message: &str) {
+    send_wire(
+        ws_tx,
+        &WireMsg::Error {
+            message: message.to_string(),
+        },
+    )
+    .await;
+}
+
+pub async fn send_deny(ws_tx: &mut WsTx, reason: &str, takeover: bool, retry_ms: u64) {
+    send_wire(
+        ws_tx,
+        &WireMsg::JoinDenied {
+            reason: reason.to_string(),
+            takeover,
+            retry_ms,
+        },
+    )
+    .await;
 }
 
 /// The device's own address, as opposed to the socket the relay sees.
@@ -264,295 +141,23 @@ pub async fn handle_join(
 /// the real one in `CF-Connecting-IP`; a plain reverse proxy uses `X-Forwarded-For`, whose first
 /// entry is the originating client. Direct LAN clients have neither and the socket is the truth.
 ///
-/// ponytail: display only — the headers are client-settable, so nothing is authorized on this.
-fn peer_ip(headers: &axum::http::HeaderMap, addr: SocketAddr) -> String {
-    headers
-        .get("cf-connecting-ip")
-        .or_else(|| headers.get("x-forwarded-for"))
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.split(',').next())
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
-        .unwrap_or_else(|| addr.to_string())
-}
-
-async fn join_loop(
-    socket: WebSocket,
-    remote_id: String,
-    wanted_instance: Option<String>,
-    addr: SocketAddr,
-    peer: String,
-    state: AppState,
-) {
-    let remote_id = normalize_remote_id(&remote_id);
-    let (mut ws_tx, mut ws_rx) = socket.split();
-
-    // ── 1. Authenticate purely from the URL path (the Remote ID IS the join) ─
-    let pool = state.registry.instances_for(&remote_id);
-    if pool.is_empty() {
-        warn!(
-            client = %peer,
-            remote_id = %display_remote_id(&remote_id),
-            "join: no server online with this Remote ID"
-        );
-        send_deny(&mut ws_tx, "no server online with this Remote ID").await;
-        return;
-    }
-    let pool_size = pool.len();
-
-    // ── 2. Pick a daemon from the pool and claim it ──────────────────────────
-    let room_id = Uuid::new_v4().to_string();
-    let (client_inbox_tx, mut client_inbox_rx) = mpsc::channel::<String>(128);
-
-    // Preference first, then anything free. The preferred instance is the one this device used
-    // last, so a reload or a cell handoff comes back to its own windows and its own running
-    // programs. When that daemon is busy the device gets a *different* one rather than taking
-    // it — which is what stops two devices evicting each other forever.
-    let claim = |i: &crate::registry::Instance| {
-        state.rooms.claim(
-            &i.instance_id,
-            &remote_id,
-            room_id.clone(),
-            addr,
-            client_inbox_tx.clone(),
-        )
+/// The headers are client-settable, so they are believed only with `--trust-proxy` — set it
+/// when, and only when, every connection arrives through a proxy that overwrites them. The join
+/// rate limit keys on this, so believing a forged header would let one machine look like many.
+pub fn peer_ip(headers: &axum::http::HeaderMap, addr: SocketAddr, trust_proxy: bool) -> String {
+    let forwarded = || {
+        headers
+            .get("cf-connecting-ip")
+            .or_else(|| headers.get("x-forwarded-for"))
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.split(',').next())
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
     };
-    let chosen = wanted_instance
-        .as_deref()
-        .and_then(|w| pool.iter().find(|i| i.instance_id == w))
-        .filter(|i| claim(i))
-        .map(|i| (i.clone(), "reclaimed"))
-        .or_else(|| {
-            pool.iter()
-                .find(|i| claim(i))
-                .map(|i| (i.clone(), "assigned"))
-        });
-
-    let (instance, assignment) = match chosen {
-        Some(pair) => pair,
-        None => {
-            // Refusal is a normal outcome here, not a fault: every daemon in the pool has a
-            // client. It carries the numbers that make it actionable, because a bare denial is
-            // indistinguishable from a broken connection.
-            warn!(
-                client = %peer,
-                remote_id = %display_remote_id(&remote_id),
-                pool_size,
-                "join: every daemon in the pool already has a client"
-            );
-            // The phrase "already has an active connection" is load-bearing, not prose: the
-            // client matches it (`OCCUPIED_RE` in `js/relay_link.js`) to tell "the pool is
-            // full" from "no daemon is online", and backs off hard instead of knocking every
-            // 500 ms. Without it two devices trade the session forever — `issues.md` I17,
-            // measured as 18 knocks in 94 s. `scripts/relay-link-check.mjs` reads this file
-            // and fails if the wording moves.
-            send_deny(
-                &mut ws_tx,
-                &format!(
-                    "every one of the {pool_size} wado session(s) on this Remote ID already \
-                     has an active connection. Close one, or start another daemon \
-                     (WADO_INSTANCES) to raise the limit."
-                ),
-            )
-            .await;
-            return;
-        }
-    };
-    let instance_id = instance.instance_id.clone();
-    let server_inbox_tx = instance.inbox_tx.clone();
-    let display_name = instance.display_name.clone();
-    let pool_busy = state.rooms.busy_among(
-        &pool
-            .iter()
-            .map(|i| i.instance_id.clone())
-            .collect::<Vec<_>>(),
-    );
-
-    info!(
-        remote_id = %display_remote_id(&remote_id),
-        display_name = ?display_name,
-        room_id = %room_id,
-        instance = %instance_id,
-        assignment,
-        pool_busy,
-        pool_size,
-        client = %peer,
-        "client joined — {assignment} daemon, {pool_busy} of {pool_size} session(s) in use"
-    );
-
-    // ── 3. Notify server of incoming peer ────────────────────────────────────
-    // (Future confirmation gate: wait here for the server's Approve/Deny before
-    // sending JoinAccepted.)
-    let peer_msg = match serde_json::to_string(&WireMsg::PeerConnected {
-        room_id: room_id.clone(),
-        client_addr: peer.clone(),
-    }) {
-        Ok(s) => s,
-        Err(_) => {
-            state.rooms.remove_if(&instance_id, &room_id);
-            return;
-        }
-    };
-    if server_inbox_tx.send(peer_msg).await.is_err() {
-        warn!(remote_id = %display_remote_id(&remote_id), "join: server inbox closed right after lookup");
-        state.rooms.remove_if(&instance_id, &room_id);
-        send_deny(&mut ws_tx, "server disconnected during handshake").await;
-        return;
-    }
-
-    // ── 4. Send JoinAccepted to client ───────────────────────────────────────
-    let accepted = match serde_json::to_string(&WireMsg::JoinAccepted {
-        remote_id: remote_id.clone(),
-        room_id: room_id.clone(),
-        instance_id: instance_id.clone(),
-        pool_size,
-        pool_busy,
-        assignment: assignment.to_string(),
-        boot_id: instance.boot_id.clone(),
-        relay_v: WIRE_VERSION,
-        caps: caps(),
-    }) {
-        Ok(s) => s,
-        Err(_) => {
-            state.rooms.remove_if(&instance_id, &room_id);
-            return;
-        }
-    };
-    if ws_tx.send(Message::Text(accepted)).await.is_err() {
-        state.rooms.remove_if(&instance_id, &room_id);
-        return;
-    }
-
-    // ── 4b. Keepalive ────────────────────────────────────────────────────────
-    //
-    // Once media is flowing this WebSocket carries nothing: video and input are on WebRTC, so
-    // the signalling socket sits idle for minutes. The **cloudflared quick tunnel closes an
-    // idle connection**, the client reconnects, and the reconnect costs a fresh room, a fresh
-    // offer/answer and a black frame — plus four ICE ports on the daemon (I14). Measured
-    // `2026-09-14`: one device re-joined every 1-2.5 minutes all evening and renegotiated
-    // twice each time, and it read as flaky Wi-Fi rather than an idle socket.
-    //
-    // The client half of this already shipped — `js/relay_link.js` answers `ping` with `pong`
-    // and has since the protocol gained the variants. Only the sender was missing, so nothing
-    // needs to be deployed to the client for this to take effect.
-    //
-    // Sent into the room's own inbox rather than written to the socket here, so it goes
-    // through the single forward task that owns `ws_tx` — two writers on one sink is how
-    // interleaved frames happen. When the room is dropped the sender closes and this ends.
-    let ping_tx = client_inbox_tx.clone();
-    let _keepalive = AbortOnDrop(tokio::spawn(async move {
-        let mut tick = tokio::time::interval(KEEPALIVE);
-        tick.tick().await; // the first tick is immediate; the socket is fresh
-        loop {
-            tick.tick().await;
-            let Ok(text) = serde_json::to_string(&WireMsg::Ping) else {
-                break;
-            };
-            if ping_tx.send(text).await.is_err() {
-                break; // room gone — nothing to keep alive
-            }
-        }
-    }));
-
-    // ── 5. Bidirectional message pump ────────────────────────────────────────
-    // Spawn a task that drains client_inbox_rx → ws_tx (server → relay → client).
-    let remote_id_fwd = remote_id.clone();
-    let _fwd_task = AbortOnDrop(tokio::spawn(async move {
-        while let Some(text) = client_inbox_rx.recv().await {
-            if ws_tx.send(Message::Text(text)).await.is_err() {
-                debug!(remote_id = %remote_id_fwd, "client fwd task: ws write failed");
-                break;
-            }
-        }
-    }));
-
-    // Main task: ws_rx → server's inbox (client → relay → server).
-    loop {
-        let frame = tokio::select! {
-            f = ws_rx.next() => f,
-            // The daemon went away or was replaced by a redial. Before this, the client's socket
-            // stayed open — and the client unaware — until it next sent something. Closing it
-            // sends the client through its own reconnect, back onto the daemon when it returns.
-            _ = server_inbox_tx.closed() => {
-                info!(instance = %instance_id, client = %peer, "daemon gone — closing the client's link so it rejoins");
-                break;
-            }
-        };
-        let Some(frame) = frame else { break };
-        match frame {
-            Ok(Message::Text(text)) => {
-                // Swallowed here: a `pong` is this socket's own liveness answer and means
-                // nothing to the daemon, which would otherwise reject it as an unknown message
-                // and send back a `SessionError`.
-                if text.contains("\"pong\"") {
-                    continue;
-                }
-                debug!(
-                    remote_id = %display_remote_id(&remote_id),
-                    client = %peer,
-                    "client msg: {}",
-                    head(&text)
-                );
-                if server_inbox_tx.send(text.to_string()).await.is_err() {
-                    info!(remote_id = %display_remote_id(&remote_id), "server inbox closed — ending room");
-                    break;
-                }
-            }
-            Ok(Message::Ping(_)) => {}
-            Ok(Message::Close(_)) | Err(_) => break,
-            _ => {}
-        }
-    }
-
-    // ── 6. Cleanup ───────────────────────────────────────────────────────────
-    // `_fwd_task` aborts itself on drop — including when this function unwinds. See
-    // `AbortOnDrop`.
-    state.rooms.remove_if(&instance_id, &room_id);
-    // Tell the server the viewer is gone — and nothing more than that.
-    //
-    // This used to synthesize `{"type":"session_stop"}`. The reason was real at the time: the
-    // server's only teardown hung off the WebRTC peer state, which never reaches Failed/Closed
-    // when ICE never completed, so a timed-out client left `session_active` set forever and every
-    // later join was refused. `viewer_watchdog` covers that case now, by two clocks that do not
-    // depend on any single event.
-    //
-    // What the synthesized stop cost in the meantime: **any** socket close became an instant
-    // teardown. A cell handoff, a screen lock, a tunnel hiccup — each one killed the windows and
-    // every application the session had launched, before the 45 s grace period downstream could
-    // look at it even once. A viewer going away is not a request to stop.
-    if let Ok(text) = serde_json::to_string(&WireMsg::PeerDisconnected {
-        room_id: room_id.clone(),
-    }) {
-        let _ = server_inbox_tx.send(text).await;
-    }
-    info!(
-        remote_id = %display_remote_id(&remote_id),
-        room_id = %room_id,
-        instance = %instance_id,
-        client = %peer,
-        "client disconnected — room removed"
-    );
-}
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-async fn send_error(
-    ws_tx: &mut futures_util::stream::SplitSink<WebSocket, Message>,
-    message: &str,
-) {
-    let msg = serde_json::to_string(&WireMsg::Error {
-        message: message.to_string(),
-    })
-    .unwrap_or_else(|_| r#"{"type":"error","message":"internal"}"#.to_string());
-    let _ = ws_tx.send(Message::Text(msg)).await;
-}
-
-async fn send_deny(ws_tx: &mut futures_util::stream::SplitSink<WebSocket, Message>, reason: &str) {
-    let msg = serde_json::to_string(&WireMsg::JoinDenied {
-        reason: reason.to_string(),
-    })
-    .unwrap_or_else(|_| r#"{"type":"join_denied","reason":"internal"}"#.to_string());
-    let _ = ws_tx.send(Message::Text(msg)).await;
+    trust_proxy
+        .then(forwarded)
+        .flatten()
+        .unwrap_or_else(|| addr.ip().to_string())
 }
 
 /// First [`LOG_HEAD`] *characters* of a relayed message, for the debug log.
@@ -566,14 +171,22 @@ async fn send_deny(ws_tx: &mut futures_util::stream::SplitSink<WebSocket, Messag
 /// precisely what put the `●` on the wire.
 ///
 /// Truncating by characters cannot land mid-codepoint, so it cannot panic.
-fn head(text: &str) -> String {
+pub fn head(text: &str) -> String {
     const LOG_HEAD: usize = 120;
     text.chars().take(LOG_HEAD).collect()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::head;
+    use super::{head, is_pong};
+
+    #[test]
+    fn only_a_real_pong_is_swallowed() {
+        assert!(is_pong(r#"{"type":"pong"}"#));
+        // Frames that merely mention pong must reach the daemon.
+        assert!(!is_pong(r#"{"type":"session_launch","command":"pong"}"#));
+        assert!(!is_pong(r#"{"type":"pty_input","data":"\"pong\""}"#));
+    }
 
     #[test]
     fn head_never_splits_a_codepoint() {
@@ -604,7 +217,7 @@ mod tests {
 ///
 /// A guard turns that into what it should have been: the connection closes, the peer notices,
 /// and it reconnects.
-struct AbortOnDrop(tokio::task::JoinHandle<()>);
+pub struct AbortOnDrop(pub tokio::task::JoinHandle<()>);
 
 impl Drop for AbortOnDrop {
     fn drop(&mut self) {

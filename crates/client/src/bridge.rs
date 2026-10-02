@@ -45,6 +45,11 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/relay.js"),
     "\n",
+    // After `relay.js`: `seat.js` wraps the `__up` handler `relay.js` registers.
+    include_str!("js/sheet.js"),
+    "\n",
+    include_str!("js/seat.js"),
+    "\n",
     include_str!("js/input_core.js"),
     "\n",
     include_str!("js/input_units.js"),

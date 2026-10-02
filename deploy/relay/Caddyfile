@@ -1,0 +1,16 @@
+# wado-relay behind Caddy — TLS for the relay, decided 2026-10-02 (WADO_PLAN.md Decision Log).
+#
+# Caddy gets and renews the certificate itself; the relay stays plain HTTP on localhost and has
+# no TLS code. Browsers then reach it as wss://relay.example.com — set that as the relay URL in
+# the client, and WADO_RELAY_URL=wss://relay.example.com on each daemon.
+#
+# Install: put this at /etc/caddy/Caddyfile with your domain, point the domain's A/AAAA record at
+# the server, open ports 80 and 443, and run the relay with deploy/relay/wado-relay.service.
+#
+# WebSockets need nothing extra: reverse_proxy passes the upgrade through. Caddy sets
+# X-Forwarded-For, which is why the relay runs with --trust-proxy — and why it must listen on
+# 127.0.0.1 only, so nothing can reach it without going through here.
+
+relay.example.com {
+	reverse_proxy 127.0.0.1:4000
+}
