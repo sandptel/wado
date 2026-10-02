@@ -42,7 +42,7 @@ pub fn render(ui: Ui) -> Element {
             class: if open { "open" } else { "" },
             "aria-label": "Control centre",
             "aria-hidden": "{!open}",
-            div { class: "grab", onclick: move |_| live.cc_open.set(false) }
+            div { class: "grab", "data-dismiss": "1", onclick: move |_| live.cc_open.set(false) }
             div { class: "pages",
                 // The root stays mounted under a pushed page so coming back is instant and keeps
                 // its scroll; the pushed page is mounted only while it is up.

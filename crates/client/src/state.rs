@@ -127,11 +127,14 @@ pub struct Settings {
     /// What a finger is to the session: `pointer` (gestures translated to clicks, scrolls and
     /// drags — `js/input_tap.js`) or `touch` (raw `wl_touch` — `js/input_touch.js`).
     pub touch_mode: Signal<String>,
-    /// The window switcher dial (`js/switcher.js`): `vertical`/`horizontal`, its anchor
-    /// (`bottom-right`, `left`, `top`, …) and how many windows show at once (`3`/`5`).
-    pub dial_orient: Signal<String>,
-    pub dial_pos: Signal<String>,
-    pub dial_count: Signal<String>,
+    /// The dock stays on screen instead of fading when idle (`js/chrome.js`).
+    pub dock_pin: Signal<bool>,
+    /// The workspace bar at the dock's left (`ui/workspaces.rs`).
+    pub ws_bar: Signal<bool>,
+    /// The quick rail — rotate, fullscreen, keyboard: `right`, `left` or `off`.
+    pub rail: Signal<String>,
+    /// Sideways swipes in from a screen edge switch workspace (`js/chrome.js`).
+    pub edge_swipe: Signal<bool>,
 
     // ── appearance ──────────────────────────────────────────────────────────────
     /// Bundled base16 scheme name; ignored while `theme_custom` parses.
@@ -218,9 +221,10 @@ impl Settings {
             orientation: use_signal(|| "auto".to_string()),
             natural_scroll: use_signal(|| false),
             touch_mode: use_signal(|| "pointer".to_string()),
-            dial_orient: use_signal(|| "vertical".to_string()),
-            dial_pos: use_signal(|| "bottom-right".to_string()),
-            dial_count: use_signal(|| "3".to_string()),
+            dock_pin: use_signal(|| false),
+            ws_bar: use_signal(|| true),
+            rail: use_signal(|| "right".to_string()),
+            edge_swipe: use_signal(|| true),
 
             pad_on: use_signal(|| false),
             // Keys, not pad: the uinput device needs the daemon's user in the `uinput` group,
@@ -379,6 +383,10 @@ pub struct Live {
     /// Whether the app drawer is over the video. Not persisted — a drawer covering the
     /// picture on load is never what anyone wanted.
     pub drawer_open: Signal<bool>,
+    /// Every window in the session and the workspace showing (`js/chrome.js`).
+    pub windows: Signal<(Vec<wado_protocol::WindowInfo>, u32)>,
+    /// The window whose action sheet is open — a long press on its icon in the workspace bar.
+    pub win_menu: Signal<Option<u64>>,
 
     pub fps: Signal<Option<f64>>,
     pub ping: Signal<Option<f64>>,
@@ -456,6 +464,8 @@ impl Live {
             session_alive: use_signal(|| None),
             apps: use_signal(Vec::new),
             drawer_open: use_signal(|| false),
+            windows: use_signal(|| (Vec::new(), 1)),
+            win_menu: use_signal(|| None),
             fps: use_signal(|| None),
             ping: use_signal(|| None),
             jbuf: use_signal(|| None),

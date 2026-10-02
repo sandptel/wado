@@ -219,12 +219,6 @@ details.card > summary { cursor: pointer; font-weight: 600; color: var(--bright)
 .shape b { font: 600 11px var(--mono); color: var(--bright); }
 .shape small { font-size: 10px; color: var(--dim); max-width: 88px; text-align: center; }
 
-/* Dial anchor picker: a 3×3 of where the dial can sit. */
-.anchors { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; aspect-ratio: 16 / 10; max-width: 100%; }
-.anchor { border-radius: var(--r1); background: var(--s0); font-size: 18px; color: var(--dim); }
-.anchor.on { background: var(--accent); color: var(--on-accent); }
-.anchor-mid { border-radius: var(--r1); border: 1.5px dashed var(--line); }
-
 /* Appearance gallery. */
 .themes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .theme { border-radius: var(--r3); padding: 8px; display: grid; gap: 8px; text-align: left; border: 2px solid transparent;

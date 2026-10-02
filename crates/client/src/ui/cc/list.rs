@@ -37,10 +37,13 @@ pub fn render(ui: Ui) -> Element {
         }
     );
     let switcher = format!(
-        "{} · {} · {} apps",
-        (s.dial_orient)(),
-        (s.dial_pos)().replace('-', " "),
-        (s.dial_count)()
+        "{} · {}",
+        crate::ui::pages::switcher::layout_name(&(s.placement)()),
+        if (s.dock_pin)() {
+            "dock pinned"
+        } else {
+            "dock fades"
+        }
     );
     let pad = if (s.pad_on)() { "On" } else { "Off" }.to_string()
         + if (s.pad_mode)() == "pad" {
@@ -110,7 +113,7 @@ pub fn render(ui: Ui) -> Element {
             NavRow { icon: "wifi", hue: "0C", title: "Wi-Fi & Bluetooth", sub: net, onopen: move |_| go(Page::Network) }
             NavRow { icon: "monitor", hue: "0D", title: "Display & stream", sub: display, onopen: move |_| go(Page::Display) }
             NavRow { icon: "hand", hue: "0C", title: "Input & touch", sub: input, onopen: move |_| go(Page::Input) }
-            NavRow { icon: "layers", hue: "0E", title: "Window switcher", sub: switcher, onopen: move |_| go(Page::Switcher) }
+            NavRow { icon: "layers", hue: "0E", title: "Workspaces & windows", sub: switcher, onopen: move |_| go(Page::Switcher) }
             NavRow { icon: "pad", hue: "0B", title: "Gamepad", sub: pad, onopen: move |_| go(Page::Gamepad) }
             NavRow { icon: "palette", hue: "0A", title: "Appearance", sub: look, onopen: move |_| go(Page::Appearance) }
             NavRow { icon: "net", hue: "09", title: "Connection", sub: conn, onopen: move |_| go(Page::Connection) }

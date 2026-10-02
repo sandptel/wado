@@ -101,8 +101,6 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/bar.js"),
     "\n",
-    include_str!("js/switcher.js"),
-    "\n",
     include_str!("js/settings.js"),
     "\n",
     include_str!("js/control.js"),
@@ -124,6 +122,8 @@ pub const JS: &str = concat!(
     include_str!("js/online.js"),
     "\n",
     include_str!("js/sessions.js"),
+    "\n",
+    include_str!("js/chrome.js"),
     "\n",
     include_str!("js/lifecycle.js"),
 );
@@ -411,6 +411,18 @@ pub fn run(ui: Ui) {
                     let m = msg.get("message").and_then(|v| v.as_str()).unwrap_or("");
                     live.config_note.set(m.to_string());
                 }
+                "windows" => {
+                    let list = msg
+                        .get("windows")
+                        .and_then(|v| serde_json::from_value(v.clone()).ok())
+                        .unwrap_or_default();
+                    let n = msg.get("workspace").and_then(|v| v.as_u64()).unwrap_or(1) as u32;
+                    live.windows.set((list, n));
+                }
+                "winMenu" => {
+                    live.win_menu.set(msg.get("id").and_then(|v| v.as_u64()));
+                }
+                "rotate" => crate::actions::rotate(ui, &string("to")),
                 "apps" => {
                     live.apps.set(
                         msg.get("apps")

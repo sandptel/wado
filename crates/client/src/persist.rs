@@ -50,9 +50,10 @@ pub struct Saved {
     pub orientation: Option<String>,
     pub natural_scroll: Option<bool>,
     pub touch_mode: Option<String>,
-    pub dial_orient: Option<String>,
-    pub dial_pos: Option<String>,
-    pub dial_count: Option<String>,
+    pub dock_pin: Option<bool>,
+    pub ws_bar: Option<bool>,
+    pub rail: Option<String>,
+    pub edge_swipe: Option<bool>,
 
     pub pad_on: Option<bool>,
     pub pad_mode: Option<String>,
@@ -122,9 +123,10 @@ pub fn snapshot(ui: Ui) -> Saved {
         orientation: Some((s.orientation)()),
         natural_scroll: Some((s.natural_scroll)()),
         touch_mode: Some((s.touch_mode)()),
-        dial_orient: Some((s.dial_orient)()),
-        dial_pos: Some((s.dial_pos)()),
-        dial_count: Some((s.dial_count)()),
+        dock_pin: Some((s.dock_pin)()),
+        ws_bar: Some((s.ws_bar)()),
+        rail: Some((s.rail)()),
+        edge_swipe: Some((s.edge_swipe)()),
 
         pad_on: Some((s.pad_on)()),
         pad_mode: Some((s.pad_mode)()),
@@ -207,9 +209,10 @@ pub fn restore(ui: Ui, saved: Saved) {
     put!(orientation);
     put!(natural_scroll);
     put!(touch_mode);
-    put!(dial_orient);
-    put!(dial_pos);
-    put!(dial_count);
+    put!(dock_pin);
+    put!(ws_bar);
+    put!(rail);
+    put!(edge_swipe);
     put!(pad_on);
     put!(pad_mode);
     put!(pad_scale);

@@ -201,17 +201,6 @@ pub fn render(ui: Ui) -> Element {
                 disabled: limits.encoder.is_some(),
                 onpick: move |v| s.encoder_backend.set(v),
             }
-            div { class: "cardhead", "Window placement" WhenBadge { when: When::Apply } }
-            select {
-                value: "{(s.placement)()}",
-                onchange: move |e| s.placement.set(e.value()),
-                option { value: "auto", "Auto (phone strip on phones)" }
-                option { value: "strip", "Phone strip (scrolling columns)" }
-                option { value: "center", "Center" }
-                option { value: "top_left", "Top-left" }
-                option { value: "cascade", "Cascade" }
-                option { value: "maximized", "Maximized" }
-            }
         }
 
         div { class: "card",

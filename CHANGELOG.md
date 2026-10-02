@@ -4,6 +4,22 @@
 
 ### Added
 
+**A dock for a desktop on a phone.** The dock is now three groups along the bottom edge. On the
+left, a **workspace bar** shows one numbered pill per workspace, and the workspace you're on
+also shows its apps' icons. Tap a number to switch, tap an icon to focus that app, and tap `+`
+for a new workspace. **Hold an icon** for its sheet: move it to another workspace or a new one,
+take it along with you, maximise or close it. In the middle are Apps, Home and Back; on the
+right is the control centre. A **quick rail** on the screen's edge has **rotate** (the session
+turns between landscape and portrait the way a phone does: the output is remade at the swapped
+size, the phone goes fullscreen and locks to the new orientation, and the picture turns with
+it), **fullscreen** and the **keyboard**. **Swipe in from a side edge** to move to the next or
+previous workspace. The new **Workspaces & windows** page holds the layout (sliding, tiling,
+full, floating, applied at once), the workspace bar, pinning the dock so it never fades,
+edge swipes, and which side the rail sits on. It replaces the old JS window-switcher dial.
+
+**Bottom sheets close the way they look like they should.** Drag the handle down, or tap
+outside the app drawer or the shell console.
+
 **One session, reachable from any device.** *Leave running* (control centre) takes you back
 to the home page and keeps the session and its apps running, kept by the daemon until someone
 ends it, however long that is. The home page lists every session running on the computer, on

@@ -87,7 +87,6 @@ document.addEventListener("visibilitychange", () => {
 
 W.stopSession = async () => {
   W.sessionOn = false;
-  W.dial.clear();
   W.wake.release();
   W.stopStats();
   W.latency.stop();

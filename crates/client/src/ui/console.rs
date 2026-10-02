@@ -59,6 +59,7 @@ pub fn render(ui: Ui) -> Element {
             id: "console",
             class: if open { "open" } else { "shut" },
 
+            div { class: "grab", "data-dismiss": "1", "aria-label": "Close", onclick: move |_| live.console_open.set(false) }
             div { class: "consoletabs",
                 for s in shells.iter().cloned() {
                     div {

@@ -371,7 +371,6 @@ W.relayOn("session_error", (msg) => {
   if (W._relayResuming) {
     W._relayResuming = false;
     W.sessionOn = false;
-    W.dial.clear();
     markWatching(false);
     emit({ type: "sessionOff" });
     if (!W._relayWanted || !W._relayConfig) {
@@ -403,7 +402,6 @@ W.relayOn("session_stopped", () => {
   }
   if (W.sessionOn) {
     W.sessionOn = false;
-    W.dial.clear();
     markWatching(false);
     emit({ type: "sessionOff" });
     stagebar("Session stopped.");
@@ -416,13 +414,9 @@ W.relayOn("session_stopped", () => {
 // the phone keyboard on a text field without anyone pressing ⌨.
 W.relayOn("text_input", (msg) => W.textInput(!!msg.active));
 
-// The session's windows, in strip order: [{ id, title, app_id, focused }]. State, re-sent whole
-// on every change and on attach. `W.onWindows` is the bottom bar's hook.
+// The session's windows: [{ id, title, app_id, focused, workspace }], re-sent whole on every
+// change and on attach. Handled in chrome.js, which hands them to the workspace bar.
 W.windows = [];
-W.relayOn("windows", (msg) => {
-  W.windows = msg.windows || [];
-  if (W.onWindows) W.onWindows(W.windows);
-});
 
 // The compositor is sending 1 render tick in N. The verdict has to know, or it measures the
 // effect of a mitigation this phone asked for and reports it as the server failing.
@@ -450,9 +444,7 @@ W.relayOn("ice_candidate", async (msg) => {
 W.relayOn("timing", (msg) => { W._lastTiming = msg.timings || null; });
 
 W.relayOn("apps_list", (msg) => {
-  // Kept here too: the switcher dial joins window app_ids against it for icons (switcher.js).
   W.appsList = msg.apps || [];
-  if (W.onWindows) W.onWindows(W.windows);
   emit({ type: "apps", apps: W.appsList });
 });
 W.relayOn("log", (msg) => { if (msg.line) emit({ type: "log", line: msg.line }); });

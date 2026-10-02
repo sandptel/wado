@@ -13,22 +13,93 @@
  * keyboard shortcut, so it has to be reachable always and visible rarely. */
 #wado-bar {
   position: absolute;
-  left: 50%;
-  bottom: calc(14px + env(safe-area-inset-bottom));
-  translate: -50% 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px;
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--s1), transparent 12%);
-  border: 1px solid color-mix(in oklab, var(--line), transparent 30%);
+  left: calc(10px + env(safe-area-inset-left));
+  right: calc(10px + env(safe-area-inset-right));
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: end;
+  gap: 8px;
   z-index: 10;
+  pointer-events: none; /* the gaps between groups belong to the picture */
   transition: opacity var(--dur) var(--ease), translate var(--dur-sheet) var(--spring);
 }
+#wado-bar .grp {
+  display: flex; align-items: center; gap: 4px; padding: 5px; border-radius: 999px;
+  pointer-events: auto; min-width: 0;
+  background: color-mix(in oklab, var(--s1), transparent 12%);
+  border: 1px solid color-mix(in oklab, var(--line), transparent 30%);
+  box-shadow: 0 6px 24px -10px rgb(0 0 0 / .55);
+}
+#wado-bar .grp:empty { display: none; }
+#wado-bar .left { justify-self: start; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+#wado-bar .right { justify-self: end; }
 #wado-bar.idle { opacity: 0; }
 #wado-bar:hover, #wado-bar:focus-within { opacity: 1; }
-#wado-bar.hidden { translate: -50% 140%; opacity: 0; pointer-events: none; }
+#wado-bar.hidden { translate: 0 140%; opacity: 0; }
+#wado-bar.hidden .grp { pointer-events: none; }
+/* A narrow phone: workspaces get their own row above the buttons rather than squeezing them. */
+@media (max-width: 430px) {
+  #wado-bar { grid-template-columns: 1fr auto; grid-template-areas: "ws ws" "mid right"; }
+  #wado-bar .left { grid-area: ws; }
+  #wado-bar .mid { grid-area: mid; justify-self: start; }
+  #wado-bar .right { grid-area: right; }
+}
+
+/* ── the workspace bar (ui/workspaces.rs) ───────────────────────────────────────────── */
+.wsbar { display: flex; align-items: center; gap: 4px; }
+.wspill { display: flex; align-items: center; gap: 2px; border-radius: 999px; padding: 2px;
+  transition: background var(--dur) var(--ease), padding var(--dur-sheet) var(--spring); }
+.wspill.on { background: color-mix(in oklab, var(--accent), transparent 78%); padding-right: 6px; }
+.wsnum { min-width: 34px; height: 34px; border-radius: 999px; display: inline-grid; place-items: center;
+  font: 700 13px var(--mono); color: var(--dim); background: var(--s2); }
+.wspill.on .wsnum, .wsnum.on { background: var(--accent); color: var(--on-accent); }
+.wsnum.add { background: none; color: var(--dim); border: 1.5px dashed var(--line); }
+.wsnum.add svg { width: 15px; height: 15px; }
+.wsapp { width: 34px; height: 34px; border-radius: 10px; display: inline-grid; place-items: center; position: relative;
+  -webkit-touch-callout: none; user-select: none; animation: wsin 260ms var(--pop) both; }
+.wsapp img { width: 26px; height: 26px; pointer-events: none; -webkit-user-drag: none; }
+.wsapp.on::after { content: ""; position: absolute; bottom: 0; width: 12px; height: 3px; border-radius: 2px; background: var(--accent); }
+.wsapp:active { scale: .88; }
+.wsletter { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center;
+  background: var(--s3); color: var(--bright); font-weight: 700; font-size: 13px; }
+.wsdots { display: flex; gap: 3px; padding: 0 6px 0 2px; }
+.wsdots i { width: 5px; height: 5px; border-radius: 50%; background: var(--dim); }
+@keyframes wsin { from { scale: .4; opacity: 0; } }
+
+/* The window sheet: a long press on an icon. */
+.scrim { position: absolute; inset: 0; z-index: 19; background: rgb(0 0 0 / .35); animation: fade var(--dur) both; }
+@keyframes fade { from { opacity: 0; } }
+.winsheet { position: absolute; left: 50%; bottom: calc(10px + env(safe-area-inset-bottom)); translate: -50% 0;
+  width: min(420px, calc(100% - 20px)); z-index: 20; display: grid; gap: 10px; padding: 0 16px 16px;
+  border-radius: var(--r3); background: var(--s1); border: 1px solid var(--line);
+  animation: sheetup var(--dur-sheet) var(--spring) both; }
+@keyframes sheetup { from { translate: -50% 110%; } }
+.winsheet-title { color: var(--bright); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wsmove { display: flex; gap: 8px; flex-wrap: wrap; }
+.wsmove .wsnum { min-width: 44px; height: 44px; }
+.wsmove .wsnum:disabled { opacity: 1; }
+.winacts { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip.bad { color: var(--bad); border-color: color-mix(in oklab, var(--bad), transparent 50%); }
+
+/* ── the quick rail ─────────────────────────────────────────────────────────────────── */
+.rail { position: absolute; top: 50%; translate: 0 -50%; z-index: 10; display: grid; gap: 4px; padding: 5px;
+  border-radius: 999px; background: color-mix(in oklab, var(--s1), transparent 18%);
+  border: 1px solid color-mix(in oklab, var(--line), transparent 30%);
+  transition: opacity var(--dur) var(--ease), translate var(--dur-sheet) var(--spring); }
+.rail.right { right: calc(8px + env(safe-area-inset-right)); }
+.rail.left { left: calc(8px + env(safe-area-inset-left)); }
+.rail .barbtn { min-width: 40px; min-height: 40px; }
+#wado-bar.idle ~ .rail:not(:hover) { opacity: 0; }
+#wado-bar.idle ~ .rail.right:not(:hover) { translate: 60% -50%; }
+#wado-bar.idle ~ .rail.left:not(:hover) { translate: -60% -50%; }
+#wado-bar.hidden ~ .rail { opacity: 0; pointer-events: none; }
+
+/* Rotate: the picture turns a quarter and settles while the new output comes up. */
+:root[data-rotating] #stage-video { animation: turn 650ms var(--spring); }
+@keyframes turn { 0% { rotate: 0deg; scale: 1; } 45% { rotate: -90deg; scale: .62; opacity: .5; } 100% { rotate: 0deg; scale: 1; } }
+:root[data-rotating] .rail [data-rotate] svg { animation: spin 650ms var(--ease); }
+@keyframes spin { to { rotate: -90deg; } }
 
 .barbtn {
   display: inline-grid;
@@ -137,3 +208,4 @@
 /* The ⋯ glyph is three round dots drawn as zero-length strokes; at the default width they
  * read as specks. */
 .barbtn.more svg { stroke-width: 3.2; }
+[data-dismiss] { touch-action: none; }
