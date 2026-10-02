@@ -4,6 +4,7 @@
 //! which page it is on — the page answers "what is this about", the badge answers "when".
 
 pub mod appearance;
+pub mod computers;
 pub mod connection;
 pub mod diagnostics;
 pub mod display;
@@ -34,6 +35,7 @@ pub enum Page {
     Tiles,
     Sound,
     Network,
+    Computers,
 }
 
 impl Page {
@@ -51,6 +53,7 @@ impl Page {
             Page::Tiles => "Edit tiles",
             Page::Sound => "Sound",
             Page::Network => "Wi-Fi & Bluetooth",
+            Page::Computers => "Computers & relays",
         }
     }
 }
@@ -69,6 +72,7 @@ pub fn render(ui: Ui, page: Page) -> Element {
         Page::Tiles => tiles::render(ui),
         Page::Sound => sound::render(ui),
         Page::Network => network::render(ui),
+        Page::Computers => computers::render(ui),
     }
 }
 

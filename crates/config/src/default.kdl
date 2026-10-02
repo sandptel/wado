@@ -11,6 +11,8 @@ server {
     // remote-id "123456789"           // pin the Remote ID (default: generated once, saved)
     // udp-slice 0                     // which 100-port UDP range this daemon uses
     // turn { url "turn:turn.example:3478"; user "wado"; pass "secret"; }
+    // public-relay "https://relay.example"   // the relay as a phone reaches it — for `wado qr`
+    // client-url "https://sandptel.github.io/wado/"
 }
 
 security {

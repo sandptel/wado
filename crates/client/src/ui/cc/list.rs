@@ -115,6 +115,7 @@ pub fn render(ui: Ui) -> Element {
             NavRow { icon: "palette", hue: "0A", title: "Appearance", sub: look, onopen: move |_| go(Page::Appearance) }
             NavRow { icon: "net", hue: "09", title: "Connection", sub: conn, onopen: move |_| go(Page::Connection) }
             NavRow { icon: "sliders", hue: "0F", title: "This computer", sub: host_sub, onopen: move |_| go(Page::Host) }
+            NavRow { icon: "server", hue: "0B", title: "Computers & relays", sub: format!("{} saved", s.profiles.read().len()), onopen: move |_| go(Page::Computers) }
             NavRow { icon: "pulse", hue: "08", title: "Diagnostics", sub: "Readouts · health · server log", onopen: move |_| go(Page::Diagnostics) }
         }
     }

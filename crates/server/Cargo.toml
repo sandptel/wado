@@ -33,4 +33,6 @@ ffmpeg-the-third = "5.0.0"
 libc = "0.2"
 # Local cover art (`file://`) goes to the viewer as a data: URI (`host/media.rs`). Already in the tree.
 base64 = "0.22"
+# The connect QR code `wado qr` prints in the terminal. No image output, so no image deps.
+qrcode = { version = "0.14", default-features = false }
 zbus = { version = "5", default-features = false, features = ["tokio"] }

@@ -49,6 +49,9 @@ fn overlay_from(cfg: &mut Config, get: impl Fn(&str) -> Option<String>) -> Vec<&
     if let Some(v) = take("WADO_TURN_PASS") {
         cfg.server.turn.get_or_insert_with(Turn::default).pass = v;
     }
+    if let Some(v) = take("WADO_PUBLIC_RELAY") {
+        cfg.server.public_relay = Some(v);
+    }
     if let Some(n) = take("WADO_APP_CPU_WEIGHT").and_then(|v| v.trim().parse().ok()) {
         cfg.session.app_cpu_weight = n;
     }

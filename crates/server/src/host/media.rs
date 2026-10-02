@@ -19,7 +19,10 @@ const PREFIX: &str = "org.mpris.MediaPlayer2.";
 const PATH: &str = "/org/mpris/MediaPlayer2";
 const PLAYER: &str = "org.mpris.MediaPlayer2.Player";
 /// Local cover art bigger than this is left out rather than sent on every refresh.
-const ART_MAX: u64 = 256 * 1024;
+///
+/// ponytail: the art rides in every refresh; 128 KiB keeps that bearable on mobile data. An
+/// art hash the client asks for once is the upgrade if covers this size become common.
+const ART_MAX: u64 = 128 * 1024;
 
 /// One connection per bus address (`""` is the computer's own session bus), kept between polls.
 static CONNS: Mutex<Vec<(String, Connection)>> = Mutex::new(Vec::new());
@@ -127,6 +130,8 @@ async fn player(
         .get_property("Identity")
         .await
         .unwrap_or_else(|_| name.trim_start_matches(PREFIX).to_string());
+    let desktop: String = root.get_property("DesktopEntry").await.unwrap_or_default();
+    let icon = icon(&desktop, &identity);
     let flag = |b: Result<bool, _>| b.unwrap_or(false);
     // The stream whose process is this player — or, for browsers, a child of it.
     let stream = pid.and_then(|pid| {
@@ -154,7 +159,39 @@ async fn player(
         can_prev: flag(p.get_property("CanGoPrevious").await),
         can_seek: flag(p.get_property("CanSeek").await) && length_us > 0,
         stream,
+        icon,
+        loop_status: p.get_property("LoopStatus").await.ok(),
     })
+}
+
+/// The app's icon by its desktop entry (`vlc`, `org.mozilla.firefox`), else by its name — looked
+/// up once per app and remembered, since it is sent on every refresh.
+fn icon(desktop: &str, identity: &str) -> Option<String> {
+    static CACHE: Mutex<Vec<(String, Option<String>)>> = Mutex::new(Vec::new());
+    let key = format!("{desktop}|{identity}");
+    if let Some((_, v)) = CACHE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .find(|(k, _)| *k == key)
+    {
+        return v.clone();
+    }
+    let first_word = identity
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .to_lowercase();
+    let last = desktop.rsplit('.').next().unwrap_or("").to_string();
+    let found = [desktop.to_string(), last, first_word]
+        .iter()
+        .filter(|n| !n.is_empty())
+        .find_map(|n| crate::apps::icons::resolve(n));
+    CACHE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .push((key, found.clone()));
+    found
 }
 
 /// The parent pid, from `/proc` — a browser plays audio from a child of the process that owns
@@ -218,10 +255,18 @@ pub async fn act(bus: &str, op: MediaOp) -> Result<(), String> {
         let Ok(p) = zbus::Proxy::new(&conn, bus, PATH, PLAYER).await else {
             continue;
         };
-        let done = match op {
+        let done = match op.clone() {
             MediaOp::PlayPause => p.call_method("PlayPause", &()).await.map(drop),
             MediaOp::Next => p.call_method("Next", &()).await.map(drop),
             MediaOp::Previous => p.call_method("Previous", &()).await.map(drop),
+            MediaOp::Loop { mode } => {
+                if !matches!(mode.as_str(), "None" | "Track" | "Playlist") {
+                    return Err("loop is None, Track or Playlist".into());
+                }
+                p.set_property("LoopStatus", mode.as_str())
+                    .await
+                    .map_err(zbus::Error::from)
+            }
             MediaOp::Shuffle { on } => p
                 .set_property("Shuffle", on)
                 .await

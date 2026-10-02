@@ -301,38 +301,42 @@ details.card > summary { cursor: pointer; font-weight: 600; color: var(--bright)
 .chip svg { width: 15px; height: 15px; }
 .chip.on { background: var(--accent); color: var(--on-accent); border-color: transparent; }
 
-/* The playback card (ui/media.rs): cover art under a tint of the scheme's accent. */
-.mediacard { position: relative; overflow: hidden; border-radius: var(--r4); padding: 16px; display: grid; gap: 14px; color: var(--bright);
-  background: linear-gradient(135deg, color-mix(in oklab, var(--accent), var(--s1) 55%), color-mix(in oklab, var(--base0E), var(--s1) 60%));
-  isolation: isolate; flex-shrink: 0; }
-.mediacard.art::before { content: ""; position: absolute; inset: -20px; z-index: -2; background: var(--art) center / cover; filter: blur(18px) saturate(1.3); }
-.mediacard.art::after { content: ""; position: absolute; inset: 0; z-index: -1;
-  background: linear-gradient(160deg, color-mix(in oklab, var(--s0), transparent 35%), color-mix(in oklab, var(--accent), transparent 55%)); }
-.mediatop { display: flex; align-items: center; gap: 8px; }
-.mediaapp { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; opacity: .9; min-width: 0; }
-.mediaapp svg { width: 18px; height: 18px; }
-.mediapick { font: 600 11px var(--mono); padding: 4px 8px; border-radius: 999px; background: color-mix(in oklab, var(--s0), transparent 50%); }
-.mediaout { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 600;
+/* The playback card (ui/media.rs): the cover as it is, on a tint of the scheme's accent. */
+.mediacard { position: relative; overflow: hidden; border-radius: var(--r4); padding: 16px; display: grid; gap: 12px; color: var(--bright);
+  background: linear-gradient(135deg, color-mix(in oklab, var(--accent), var(--s1) 62%), color-mix(in oklab, var(--base0E), var(--s1) 70%));
+  flex-shrink: 0; }
+.mediatop { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.mediaapp { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; opacity: .9; min-width: 0;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.mediaicon { width: 20px; height: 20px; border-radius: 5px; object-fit: contain; flex: none; }
+.mediaout { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 600;
   background: color-mix(in oklab, var(--bright), transparent 82%); }
 .mediaout svg { width: 16px; height: 16px; }
-.mediamid { display: flex; align-items: center; gap: 12px; }
+.mediamid { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.mediaart { width: 64px; height: 64px; flex: none; border-radius: var(--r2); object-fit: cover; box-shadow: 0 4px 14px rgb(0 0 0 / .3); }
 .mediatext { flex: 1; min-width: 0; display: grid; gap: 2px; }
-.mediatext b { font: 700 20px/1.15 var(--display); letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mediatext b { font: 700 19px/1.15 var(--display); letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mediatext span { font-size: 13px; opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mediaplay { width: 64px; height: 64px; flex: none; border-radius: var(--r3); display: grid; place-items: center;
+.mediaplay { width: 60px; height: 60px; flex: none; border-radius: var(--r3); display: grid; place-items: center;
   background: color-mix(in oklab, var(--bright), var(--accent) 25%); color: var(--s0); }
-.mediaplay svg { width: 26px; height: 26px; fill: currentColor; stroke: none; }
-.mediactl { display: flex; align-items: center; gap: 4px; }
-.mediactl > button { width: 40px; height: 40px; flex: none; border-radius: 50%; display: grid; place-items: center; }
-.mediactl > button.on { background: color-mix(in oklab, var(--bright), transparent 80%); }
-.mediactl > button svg { width: 20px; height: 20px; }
-.mediabar { position: relative; flex: 1; height: 28px; display: flex; align-items: center; }
+.mediaplay svg { width: 24px; height: 24px; fill: currentColor; stroke: none; }
+.mediabar { position: relative; height: 20px; display: flex; align-items: center; }
 .mediabar::before { content: ""; position: absolute; left: 0; right: 0; height: 4px; border-radius: 2px; background: color-mix(in oklab, var(--bright), transparent 72%); }
 .mediafill { position: absolute; left: 0; height: 4px; border-radius: 2px; background: var(--bright); width: var(--from); }
 .mediafill.run { animation: mediarun var(--left) linear forwards; }
 @keyframes mediarun { from { width: var(--from); } to { width: 100%; } }
 .mediabar input[type=range] { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
-.mediatime { position: absolute; right: 0; top: -14px; font: 10px var(--mono); opacity: .75; }
+.mediatimes { display: flex; justify-content: space-between; font: 10.5px var(--mono); opacity: .75; margin-top: -8px; }
+.mediactl { display: flex; align-items: center; gap: 4px; }
+.mediactl > button { width: 40px; height: 40px; flex: none; border-radius: 50%; display: grid; place-items: center; }
+.mediactl > button.on { background: color-mix(in oklab, var(--bright), transparent 80%); }
+.mediactl > button svg { width: 20px; height: 20px; }
+.mediavol { flex: 1; min-width: 80px; margin-left: 6px; background: color-mix(in oklab, var(--bright), transparent 86%); }
+.mediavol.slide.thin { height: 36px; }
+.mediavol .slidelab svg { width: 16px; height: 16px; }
+.mediarows { display: grid; gap: 6px; flex-shrink: 0; }
+.mediarow { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px; border-radius: var(--r3); background: var(--s1); }
+.mediarowpick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; text-align: left; min-height: 44px; }
 #landing .mediacard { flex-shrink: 0; }
 
 /* neofetch, in the scheme's colours (ui/fetch.rs). */
