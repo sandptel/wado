@@ -1,12 +1,14 @@
-// End-to-end check of the clipboard, both ways, against the real binaries and a real session.
+// End-to-end checks that need a real session: the clipboard both ways, and notifications.
 //
-//   node scripts/clipboard-e2e.mjs [target/debug]     (default target/release; needs a GPU and
+//   node scripts/session-e2e.mjs [target/debug]     (default target/release; needs a GPU and
 //                                                      wl-clipboard, and the sandbox off)
 //
 // Starts a small session, then uses a shell inside it (which inherits WAYLAND_DISPLAY):
 //
 //   session → phone   `wl-copy` in the session reaches the viewer as a `clipboard` message
 //   phone → session   text the viewer sends is what `wl-paste` reads in the session
+//   notifications     `notify-send`, launched as a session app (so on the session's own bus),
+//                     reaches the viewer
 
 import { spawn } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
@@ -88,6 +90,12 @@ try {
   a.send({ type: "pty_input", id, data: "echo pasted:$(wl-paste --no-newline)\n" });
   check("the viewer's text is what the session pastes",
     !!(await a.waitWhere(() => a.output(id).includes("pasted:from-the-phone"), 10000)), a.output(id).slice(-300));
+
+  console.log("notifications");
+  a.send({ type: "session_launch", command: "notify-send -a e2e 'Build done' 'all green'" });
+  const n = await a.waitWhere((m) => m.type === "notification", 15000);
+  check("an app's notification reaches the viewer", n && n.summary === "Build done" && n.body === "all green" && n.app === "e2e",
+    JSON.stringify(n) + "\n" + d.out.split("\n").filter((l) => /notif|bus/i.test(l)).slice(-5).join("\n"));
   a.send({ type: "session_stop" });
   await sleep(500);
 } finally {

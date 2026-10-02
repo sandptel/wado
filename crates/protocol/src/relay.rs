@@ -394,6 +394,19 @@ pub enum RelayMsg {
         hosts: Vec<String>,
     },
 
+    // ── Notifications from the session's apps ──────────────────────────────
+    /// Server → client: an app in the session raised a notification. Same `id` again replaces it.
+    Notification {
+        id: u32,
+        app: String,
+        summary: String,
+        body: String,
+    },
+    /// Server → client: the app withdrew it.
+    NotificationClosed {
+        id: u32,
+    },
+
     // ── Clipboard, as text ─────────────────────────────────────────────────
     /// Client → server: make this the session's clipboard.
     ClipboardSet {

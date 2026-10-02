@@ -739,6 +739,7 @@ pub fn stop_session(state: &mut Wado) {
         crate::session_env::a11y::terminate(a11y);
     }
     if let Some(bus) = state.app_bus.take() {
+        let _ = state.app_bus_tx.send(None);
         crate::session_env::bus::terminate(bus);
     }
     // Last: it is the display the applications were drawing on.

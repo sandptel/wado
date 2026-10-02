@@ -221,6 +221,19 @@ pub static ALL: &[Tile] = &[
         needs_session: true,
     },
     Tile {
+        id: "dnd",
+        icon: "bell",
+        label: "Do not disturb",
+        on: Some(|ui| (ui.set.dnd)()),
+        sub: ("Notifications pop up", "Shade only"),
+        act: Act::Run(|ui| {
+            let mut s = ui.set;
+            s.dnd.set(!(s.dnd)());
+        }),
+        page: None,
+        needs_session: false,
+    },
+    Tile {
         id: "resync",
         icon: "refresh",
         label: "Resync",

@@ -13,6 +13,7 @@ pub mod ice;
 pub mod instance;
 pub mod menu_sheet;
 pub mod nat;
+pub mod notify;
 pub mod panic_log;
 pub mod pty;
 pub mod pumpstats;

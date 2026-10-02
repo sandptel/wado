@@ -156,6 +156,7 @@ pub fn start(
     windows: tokio::sync::watch::Receiver<Vec<wado_protocol::WindowInfo>>,
     menu: tokio::sync::watch::Receiver<Option<wado_compositor::hit::MenuSpot>>,
     clipboard: tokio::sync::watch::Receiver<String>,
+    app_bus: tokio::sync::watch::Receiver<Option<String>>,
     frame_rx: mpsc::Receiver<FrameMsg>,
     relay_url: String,
     remote_id: String,
@@ -175,6 +176,9 @@ pub fn start(
                 }
             };
             rt.block_on(async move {
+                // Daemon-lifetime, not connection-lifetime: notifications arrive whether or not
+                // a viewer is connected at that moment.
+                tokio::spawn(crate::notify::run(app_bus));
                 if let Err(e) = run(
                     cmd_tx, input_tx, timings, text_input, shedding, windows, menu, clipboard,
                     frame_rx, relay_url, remote_id, log_bus,
@@ -682,6 +686,36 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     .await
                     .is_err()
                 {
+                    break;
+                }
+            }
+        })
+    };
+
+    // Notifications from the session's apps, as they happen.
+    let notify_task = {
+        let mut rx = crate::notify::events();
+        let out_tx_n = out_tx.clone();
+        tokio::spawn(async move {
+            use crate::notify::Event;
+            loop {
+                let msg = match rx.recv().await {
+                    Ok(Event::Shown {
+                        id,
+                        app,
+                        summary,
+                        body,
+                    }) => RelayMsg::Notification {
+                        id,
+                        app,
+                        summary,
+                        body,
+                    },
+                    Ok(Event::Closed { id }) => RelayMsg::NotificationClosed { id },
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(_) => break,
+                };
+                if send_relay(&out_tx_n, &msg).await.is_err() {
                     break;
                 }
             }
@@ -1421,6 +1455,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     config_task.abort();
     shells_task.abort();
     clipboard_task.abort();
+    notify_task.abort();
     menu_task.abort();
     write_task.abort();
     Ok(())

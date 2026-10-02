@@ -23,6 +23,13 @@ pub fn render(ui: Ui) -> Element {
                     span { "Software encoding — no working GPU encoder. Higher CPU use and latency." }
                 }
             }
+            // The newest notification, unless Do not disturb — the shade keeps it either way.
+            if let Some(n) = (!(ui.set.dnd)()).then(|| live.notes.read().first().cloned()).flatten() {
+                div { key: "note-{n.id}-{n.summary.len()}", class: "toast fade",
+                    Icon { name: "bell" }
+                    span { b { "{n.summary}" } if !n.body.is_empty() { " — {n.body}" } }
+                }
+            }
             if let Some(e) = cfg_err {
                 div { key: "cfg-{e.len()}", class: "toast bad fade",
                     Icon { name: "alert" }

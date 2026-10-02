@@ -115,6 +115,8 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/clipboard.js"),
     "\n",
+    include_str!("js/notify.js"),
+    "\n",
     include_str!("js/lifecycle.js"),
 );
 
@@ -320,6 +322,22 @@ pub fn run(ui: Ui) {
                     clips.retain(|c| *c != text);
                     clips.insert(0, text);
                     clips.truncate(crate::state::MAX_CLIPS);
+                }
+                "notification" => {
+                    let note = crate::state::Note {
+                        id: num("id").unwrap_or(0.0) as u32,
+                        app: string("app"),
+                        summary: string("summary"),
+                        body: string("body"),
+                    };
+                    let mut notes = live.notes.write();
+                    notes.retain(|n| n.id != note.id);
+                    notes.insert(0, note);
+                    notes.truncate(crate::state::MAX_NOTES);
+                }
+                "notificationClosed" => {
+                    let id = num("id").unwrap_or(0.0) as u32;
+                    live.notes.write().retain(|n| n.id != id);
                 }
                 "clipboardSent" => {
                     let err = string("error");
