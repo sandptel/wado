@@ -1,5 +1,11 @@
 # Changelog
 
+### Fixed
+
+- Host toggles in the control centre (sound, Wi-Fi, Bluetooth) no longer snap back after a
+  tap. A status poll already in flight answered with the state from before the action and
+  overwrote it.
+
 ## Unreleased
 
 ### Added
