@@ -13,6 +13,7 @@ pub fn render(ui: Ui) -> Element {
     let live = ui.live;
     let sw = (live.session_on)() && (live.encoder_mode)() == "software";
     let cfg_err = (live.host)().error;
+    let note = (live.note)();
 
     rsx! {
         div { class: "toasts", "aria-live": "polite",
@@ -29,6 +30,9 @@ pub fn render(ui: Ui) -> Element {
                     Icon { name: "bell" }
                     span { b { "{n.summary}" } if !n.body.is_empty() { " — {n.body}" } }
                 }
+            }
+            if !note.is_empty() {
+                div { key: "n-{note}", class: "toast fade", Icon { name: "info" } span { "{note}" } }
             }
             if let Some(e) = cfg_err {
                 div { key: "cfg-{e.len()}", class: "toast bad fade",

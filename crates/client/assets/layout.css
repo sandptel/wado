@@ -130,3 +130,10 @@
 .rejoinbtns button { min-height: 44px; border-radius: var(--r2); background: var(--s2); color: var(--bright); font-weight: 600; }
 .rejoinbtns .primary { background: var(--accent); color: var(--on-accent); }
 .rejoinbtns .danger { background: none; border: 1px solid var(--bad); color: var(--bad); }
+
+/* Recording: a red ring on the dock, so a recording in progress cannot be forgotten. */
+#wado-bar.rec { box-shadow: 0 0 0 2px var(--bad); }
+#wado-bar.rec.idle { opacity: .6; }
+/* The ⋯ glyph is three round dots drawn as zero-length strokes; at the default width they
+ * read as specks. */
+.barbtn.more svg { stroke-width: 3.2; }
