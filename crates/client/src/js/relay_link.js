@@ -185,7 +185,8 @@ W.relayDrop = (silent) => {
   const ws = W.relayWs;
   W.relayWs = null;
   W.relayUp = false;
-  if (ws) { try { ws.onclose = null; ws.close(); } catch (_) {} }
+  // 4001 = leave (`LEAVE_CLOSE_CODE`): the relay frees this device's seat instead of holding it.
+  if (ws) { try { ws.onclose = null; ws.close(4001, "leave"); } catch (_) {} }
   if (!silent) W.relayMode = false;
 };
 

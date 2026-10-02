@@ -28,7 +28,9 @@ a hint to check it for typos.
 apps, your desktop stays reserved for that phone for 30 minutes, and no other device is put on it
 in the meantime. If the computer itself restarts or drops off, the phone waits on the same
 connection and is put back on its own desktop when the computer returns. A desktop with nobody
-connected now closes after 30 minutes (it was 10).
+connected now closes after 30 minutes (it was 10). A device that is done (it disconnects on
+purpose, or its page closes with no session running) gives its place back at once instead of
+keeping it for the 30 minutes.
 
 **"Use it here" moves your desktop between devices with one tap.** If another device is using the
 desktop, you can take it over from this one with a single tap. The other device is told where it

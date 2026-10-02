@@ -74,6 +74,7 @@ function makeWorld() {
     handleFailure: () => {}, startStats: () => {}, stopStats: () => {},
     setupInputCapture: () => {}, attachLatencyEcho: () => {},
     minimizePlayoutDelay: () => "", latency: { start() {}, stop() {} },
+    dial: { clear() {} }, // switcher.js, loaded later in the bundle
     // Negotiation needs a browser; the cases here are all about signalling, so it is stubbed
     // after the eval (relay.js defines the real one).
   };
