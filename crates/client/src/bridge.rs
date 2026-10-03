@@ -285,6 +285,10 @@ pub fn run(ui: Ui) {
                     );
                     live.dropped
                         .set(msg.get("dropped").and_then(|v| v.as_u64()));
+                    let d = string("decoder");
+                    if d != *live.decoder.peek() {
+                        live.decoder.set(d);
+                    }
                 }
                 "hostConfig" => {
                     let state: wado_protocol::ConfigState = msg

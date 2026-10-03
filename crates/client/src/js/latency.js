@@ -44,6 +44,7 @@ W.latency = {
     this.stop();
     this._inflight.clear();
     this._inMs = null;
+    this._dec = null;
 
     this._pingTimer = setInterval(() => {
       const dc = W.inputDC;
@@ -62,7 +63,7 @@ W.latency = {
       if (!W.pc || W.pc !== pc) { this.stop(); return; }
 
       // --- client + network legs, from the browser's own stats ---
-      let net = null, buf = null, decode = null;
+      let net = null, buf = null, decode = null, decoder = "";
       try {
         const stats = await pc.getStats();
         stats.forEach((r) => {
@@ -72,10 +73,14 @@ W.latency = {
                 r.jitterBufferEmittedCount > 0) {
               buf = (r.jitterBufferDelay / r.jitterBufferEmittedCount) * 1000;
             }
-            if (typeof r.totalDecodeTime === "number" &&
-                typeof r.framesDecoded === "number" && r.framesDecoded > 0) {
-              decode = (r.totalDecodeTime / r.framesDecoded) * 1000;
+            // Over the last second, not the session: a cumulative mean stays pinned to the
+            // startup and reads as a cost the decoder is not paying now (or hides one it is).
+            if (typeof r.totalDecodeTime === "number" && typeof r.framesDecoded === "number") {
+              const p = this._dec;
+              if (p && r.framesDecoded > p.n) decode = ((r.totalDecodeTime - p.t) / (r.framesDecoded - p.n)) * 1000;
+              this._dec = { t: r.totalDecodeTime, n: r.framesDecoded };
             }
+            decoder = `${r.decoderImplementation || ""} powerEfficient=${r.powerEfficientDecoder}`;
           } else if (r.type === "candidate-pair" && (r.nominated || r.state === "succeeded")) {
             // One-way estimate; RTT is the only thing actually observable.
             if (typeof r.currentRoundTripTime === "number") net = (r.currentRoundTripTime * 1000) / 2;
@@ -113,6 +118,7 @@ W.latency = {
         buf,
         decode,
         input: this._inMs,
+        decoder,
       });
 
       // Also to the server log, where it sits beside the pump's own numbers. The two halves

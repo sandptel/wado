@@ -394,6 +394,8 @@ pub struct Live {
     pub jbuf: Signal<Option<f64>>,
     /// Per-stage breakdown as (label, ms) in pipeline order; empty until the bridge reports.
     pub stages: Signal<Vec<(String, f64)>>,
+    /// The video decoder the browser picked, as `getStats` names it (`js/latency.js`).
+    pub decoder: Signal<String>,
     pub dropped: Signal<Option<u64>>,
     /// The one-line verdict: which of the three machines in this picture is at fault.
     /// Computed in `js/health.js`; see there for why it is a verdict and not another number.
@@ -470,6 +472,7 @@ impl Live {
             ping: use_signal(|| None),
             jbuf: use_signal(|| None),
             stages: use_signal(Vec::new),
+            decoder: use_signal(String::new),
             dropped: use_signal(|| None),
             health: use_signal(Health::default),
         }

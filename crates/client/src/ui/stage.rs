@@ -101,6 +101,9 @@ pub fn render(ui: Ui) -> Element {
         {super::health::render(ui)}
         if show_lat {
             div { id: "wado-latency",
+                if let Some((side, text)) = crate::ui::latency::blame(&stages, &(live.decoder)(), (ui.set.fps)()) {
+                    span { class: "latstage latblame side-{side}", "{text}" }
+                }
                 for (label, ms) in stages.iter() {
                     span { key: "{label}", class: "latstage",
                         span { class: "latname", "{label}" }

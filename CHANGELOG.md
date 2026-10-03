@@ -30,6 +30,18 @@
 
 ### Added
 
+**The latency line names the culprit.** Its first entry now says which side of the trip is
+slowest (the computer, the network or the phone), which leg it is, and what to try, coloured by
+side. Legs are added up only within one clock, and the three sides are compared, never summed.
+A big playout buffer with a healthy decoder counts against the network, because it comes from
+uneven arrival. Decode time is now read over the last second, not averaged over the whole
+session.
+
+**Less background traffic during a session.** Cover art and app icons go once per viewer
+instead of on every refresh. That alone was most of a megabit a second while the control centre
+was open. Host status refreshes every 3 s during a session, and the landing page's online probes
+of other computers stop while you stream.
+
 **Pick any output from the sound card.** This phone, the computer's speakers, headphones, HDMI:
 every output is one tap. **The playback card uses the album art as its whole background**, and
 when there is no art the app's icon takes its place at the same size. The client also logs which
