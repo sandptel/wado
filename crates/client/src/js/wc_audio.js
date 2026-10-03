@@ -80,8 +80,14 @@ W.wcAudio = {
       if (W.rlog) W.rlog("wc: audio unavailable — " + e.message);
     }
   },
-  packet(body, ts) {
+  packet(body, ts, seq) {
     if (!this.dec) { this.ensure(); return; }
+    // "Redundant audio" sends each packet up to three times: the first copy is the one used,
+    // and the only one measured — the jitter the buffer must cover is the earliest arrival's.
+    this._seen = this._seen || new Set();
+    if (this._seen.has(seq)) { this.dups = (this.dups || 0) + 1; return; }
+    this._seen.add(seq);
+    if (this._seen.size > 512) this._seen = new Set([...this._seen].slice(-256));
     // Arrival jitter: offset = arrival − send time, up to a constant; its spread is the jitter.
     const off = performance.now() * 1000 - ts;
     this._off.push(off);

@@ -481,6 +481,9 @@ W._relayNegotiate = async (opts = {}) => {
   // Moves go unreliable: a lost one is superseded by the next, and must never hold up a tap
   // behind its retransmit (invariant #1). Direct mode always had this; relay mode did not.
   W.motionDC = pc.createDataChannel(MOTION_CHANNEL, { ordered: true, maxRetransmits: 0 });
+  // "Redundant input": fast unordered copies of discrete events (input_core.js, server::input_order).
+  W.fastDC = pc.createDataChannel(FAST_CHANNEL, { ordered: false, maxRetransmits: 0 });
+  W.inputSeq = 0;
   // The low-latency pipeline's channel (js/wc_recv.js): idle unless the session asks for it.
   if (W.wcSupported) W.wc.open(pc);
 

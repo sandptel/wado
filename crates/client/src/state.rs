@@ -137,6 +137,10 @@ pub struct Settings {
     pub keyframe_mode: Signal<String>,
     /// "Low-latency pipeline (WebCodecs)": media over our own channel, decoded and synced here.
     pub webcodecs: Signal<bool>,
+    /// "Redundant input": discrete input also sent as a fast unreliable copy (first one wins).
+    pub redundant_input: Signal<bool>,
+    /// "Redundant audio" (low-latency pipeline): each audio packet sent three times.
+    pub audio_redundancy: Signal<bool>,
     /// The dock stays on screen instead of fading when idle (`js/chrome.js`).
     pub dock_pin: Signal<bool>,
     /// The workspace bar at the dock's left (`ui/workspaces.rs`).
@@ -235,6 +239,8 @@ impl Settings {
             low_latency_audio: use_signal(|| false),
             keyframe_mode: use_signal(|| "periodic".to_string()),
             webcodecs: use_signal(|| false),
+            redundant_input: use_signal(|| false),
+            audio_redundancy: use_signal(|| false),
             dock_pin: use_signal(|| false),
             ws_bar: use_signal(|| true),
             rail: use_signal(|| "right".to_string()),

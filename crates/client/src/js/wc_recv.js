@@ -44,7 +44,7 @@ W.wc = {
     const idx = v.getUint16(6), count = v.getUint16(8);
     const ts = Number(v.getBigUint64(10)); // µs, the daemon's one clock for audio and video
     const body = new Uint8Array(buf, WC_HEADER);
-    if (kind === 1) { W.wcAudio.packet(body, ts); return; }
+    if (kind === 1) { W.wcAudio.packet(body, ts, seq); return; }
     if (!this.live) emit({ type: "wcLive", on: true });
     this.lastFrameAt = performance.now();
     let f = this.partial.get(seq);

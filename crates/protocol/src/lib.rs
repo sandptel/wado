@@ -76,6 +76,11 @@ pub const MOTION_CHANNEL: &str = "wado-motion";
 /// messages the other way are control (`{"t":"kf"}`: send a keyframe). See `server::wcmedia`.
 pub const MEDIA_CHANNEL: &str = "wado-media";
 
+/// Label of the **fast** input channel ("Redundant input"): unordered, unreliable copies of the
+/// discrete input events also sent on `INPUT_CHANNEL`, each with the same sequence number `q`.
+/// The first copy to arrive is used, in `q` order — see `server::input_order`.
+pub const FAST_CHANNEL: &str = "wado-fast";
+
 /// One input event from the remote client, sent as JSON over the input data channel.
 ///
 /// All coordinates are **normalized 0..1** relative to the *displayed video content*
@@ -345,6 +350,10 @@ pub struct SessionConfig {
     /// RTP, decoded and synced by the viewer with a buffer it sizes. RTP stays the fallback.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub webcodecs: bool,
+    /// "Redundant audio" (low-latency pipeline only): each audio packet is re-sent with the next
+    /// two, so one stuck in a delay spike is covered by a copy and the buffer can stay small.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub audio_redundancy: bool,
 }
 
 /// Isolated. See [`SessionConfig::isolate_apps`].
@@ -415,6 +424,7 @@ mod config_validation_tests {
             bitrate_cap_kbps: None,
             low_latency_audio: false,
             webcodecs: false,
+            audio_redundancy: false,
             width: 1280,
             height: 720,
             fps: 60,

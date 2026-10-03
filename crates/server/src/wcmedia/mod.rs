@@ -23,6 +23,9 @@ const MAX_BUFFERED: usize = 256 * 1024;
 pub struct Hub {
     dc: Mutex<Option<Arc<RTCDataChannel>>>,
     wanted: AtomicBool,
+    /// "Redundant audio": each packet goes again with the next two.
+    audio_redundancy: AtomicBool,
+    recent_audio: Mutex<std::collections::VecDeque<(u32, u64, Vec<u8>)>>,
     video_seq: AtomicU32,
     audio_seq: AtomicU32,
     epoch: Instant,
@@ -33,6 +36,8 @@ impl Default for Hub {
         Self {
             dc: Mutex::new(None),
             wanted: AtomicBool::new(false),
+            audio_redundancy: AtomicBool::new(false),
+            recent_audio: Mutex::new(std::collections::VecDeque::new()),
             video_seq: AtomicU32::new(0),
             audio_seq: AtomicU32::new(0),
             epoch: Instant::now(),
@@ -49,6 +54,10 @@ impl Hub {
     /// The session config asked for (or stopped asking for) this path.
     pub fn set_wanted(&self, on: bool) {
         self.wanted.store(on, Ordering::SeqCst);
+    }
+
+    pub fn set_audio_redundancy(&self, on: bool) {
+        self.audio_redundancy.store(on, Ordering::SeqCst);
     }
 
     /// Media goes here instead of RTP: asked for, and a channel is open to carry it.
@@ -79,9 +88,28 @@ impl Hub {
         self.send(wire::VIDEO, key, seq, ts_us, data).await
     }
 
+    /// One Opus packet — and with "Redundant audio", the previous two again under their own
+    /// seq and timestamp: each packet arrives up to three times, 10 ms apart, and the receiver
+    /// keeps the first. A delay spike that holds one packet back is covered by its copy, so the
+    /// buffer need not grow for it (and video waits on that buffer).
     pub async fn send_audio(&self, data: &[u8], ts_us: u64) -> bool {
         let seq = self.audio_seq.fetch_add(1, Ordering::Relaxed);
-        self.send(wire::AUDIO, false, seq, ts_us, data).await
+        let sent = self.send(wire::AUDIO, false, seq, ts_us, data).await;
+        if self.audio_redundancy.load(Ordering::SeqCst) {
+            let again: Vec<_> = {
+                let mut r = self.recent_audio.lock().unwrap_or_else(|e| e.into_inner());
+                let old = r.iter().cloned().collect();
+                r.push_back((seq, ts_us, data.to_vec()));
+                while r.len() > 2 {
+                    r.pop_front();
+                }
+                old
+            };
+            for (s, t, d) in again {
+                self.send(wire::AUDIO, false, s, t, &d).await;
+            }
+        }
+        sent
     }
 
     /// False when the frame was not sent (no channel, or too much already queued).

@@ -39,6 +39,15 @@
 
 ### Added
 
+**Redundant input and redundant audio** (Display & stream, off by default): spare bandwidth
+spent on smoothness. With **redundant input**, taps, keys and lifts go on the reliable channel
+and also as an unordered, unreliable copy on a new `wado-fast` channel, under one sequence
+number. The daemon uses whichever copy arrives first, strictly in order (`server::input_order`),
+so a packet stuck behind a retransmit no longer stalls the touch behind it. **Redundant audio**
+(low-latency pipeline) re-sends each audio packet with the next two, about 0.3 Mbit/s. A packet
+held up by a delay spike is covered by its copy, so the buffer the picture waits on need not
+grow. Both carry e2e checks.
+
 **Low-latency pipeline (WebCodecs)**, an experimental switch on Display & stream (latency phase 3,
 Decision Log 2026-10-03). Video and audio travel over an unreliable, unordered WebRTC data channel
 (`wado-media`, still peer-to-peer over UDP) instead of RTP. The device decodes them itself:

@@ -48,7 +48,8 @@ use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSampl
 
 use wado_compositor::{CommandSender, CompositorCommand, FrameMsg, InputEvent, InputSender};
 use wado_protocol::{
-    INPUT_CHANNEL, MEDIA_CHANNEL, MOTION_CHANNEL, relay::RelayMsg, relay::display_remote_id,
+    FAST_CHANNEL, INPUT_CHANNEL, MEDIA_CHANNEL, MOTION_CHANNEL, relay::RelayMsg,
+    relay::display_remote_id,
 };
 
 use crate::website::logbus::LogBus;
@@ -1196,6 +1197,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
 
             RelayMsg::SessionStart { config } => {
                 ctx.wc.set_wanted(config.webcodecs);
+                ctx.wc.set_audio_redundancy(config.audio_redundancy);
                 ctx.audio_low.send_if_modified(|v| {
                     std::mem::replace(v, config.low_latency_audio) != config.low_latency_audio
                 });
@@ -1321,6 +1323,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     let _ = ctx.cmd_tx.send(CompositorCommand::ForceKeyframe);
                 }
                 ctx.wc.set_wanted(config.webcodecs);
+                ctx.wc.set_audio_redundancy(config.audio_redundancy);
                 ctx.audio_low.send_if_modified(|v| {
                     std::mem::replace(v, config.low_latency_audio) != config.low_latency_audio
                 });
@@ -1835,8 +1838,12 @@ async fn handle_sdp_offer(
         let input_tx = ctx.input_tx.clone();
         let wc = Arc::clone(&ctx.wc);
         let cmd_tx = ctx.cmd_tx.clone();
+        // Shared by the input and fast channels of this peer connection: redundant copies are
+        // released once, in order (`crate::input_order`).
+        let order = Arc::new(Mutex::new(crate::input_order::InputOrder::default()));
         pc.on_data_channel(Box::new(move |dc: Arc<RTCDataChannel>| {
             let input_tx = input_tx.clone();
+            let order = Arc::clone(&order);
             let wc = Arc::clone(&wc);
             let cmd_tx = cmd_tx.clone();
             Box::pin(async move {
@@ -1859,7 +1866,7 @@ async fn handle_sdp_offer(
                     info!("relay client: media data channel open");
                     return;
                 }
-                if label != INPUT_CHANNEL && label != MOTION_CHANNEL {
+                if label != INPUT_CHANNEL && label != MOTION_CHANNEL && label != FAST_CHANNEL {
                     return;
                 }
                 dc.on_open(Box::new(move || {
@@ -1869,7 +1876,27 @@ async fn handle_sdp_offer(
                 dc.on_message(Box::new(move |msg: DataChannelMessage| {
                     let input_tx = input_tx.clone();
                     let dc_echo = Arc::clone(&dc_echo);
+                    let order = Arc::clone(&order);
                     Box::pin(async move {
+                        // A sequenced copy ("Redundant input"): released once, in order.
+                        if let Ok(mut v) = serde_json::from_slice::<serde_json::Value>(&msg.data) {
+                            if let Some(q) = v.get("q").and_then(|q| q.as_u64()) {
+                                if let Some(o) = v.as_object_mut() {
+                                    o.remove("q");
+                                }
+                                let ready =
+                                    order.lock().unwrap_or_else(|e| e.into_inner()).arrive(q, v);
+                                for ev in ready {
+                                    match serde_json::from_value::<InputEvent>(ev) {
+                                        Ok(ev) => {
+                                            let _ = input_tx.send(ev);
+                                        }
+                                        Err(e) => warn!("relay client: bad input event: {e}"),
+                                    }
+                                }
+                                return;
+                            }
+                        }
                         match serde_json::from_slice::<InputEvent>(&msg.data) {
                             // The input round-trip probe: answered straight back on the channel it
                             // came in on. Direct mode always did; relay mode did not, so the
