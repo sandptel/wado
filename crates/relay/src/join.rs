@@ -46,6 +46,8 @@ pub struct JoinQuery {
     name: Option<String>,
     /// `1`: a human tapped "use it here" — take the seat even from another device.
     takeover: Option<String>,
+    /// A pairing code from the host's QR, handed to the daemon's gate.
+    pair: Option<String>,
 }
 
 struct Joiner {
@@ -53,6 +55,7 @@ struct Joiner {
     client_key: String,
     name: String,
     takeover: bool,
+    pair: String,
 }
 
 pub async fn handle_join(
@@ -85,6 +88,13 @@ pub async fn handle_join(
             .take(48)
             .collect(),
         takeover: q.takeover.as_deref() == Some("1"),
+        pair: q
+            .pair
+            .unwrap_or_default()
+            .chars()
+            .filter(char::is_ascii_alphanumeric)
+            .take(64)
+            .collect(),
     };
     let peer = peer_ip(&headers, addr, state.config.trust_proxy);
     ws.on_upgrade(move |socket| join_loop(socket, remote_id, joiner, peer, state))
@@ -221,6 +231,7 @@ async fn join_loop(socket: WebSocket, remote_id: String, j: Joiner, peer: String
                     client_addr: peer.clone(),
                     client_key: j.client_key.clone(),
                     client_name: j.name.clone(),
+                    pair: j.pair.clone(),
                 };
                 send_to(&t.inbox_tx, &ask).await;
                 let v = wait_verdict(
@@ -281,6 +292,7 @@ async fn join_loop(socket: WebSocket, remote_id: String, j: Joiner, peer: String
         client_addr: peer.clone(),
         client_key: j.client_key.clone(),
         client_name: j.name.clone(),
+        pair: j.pair.clone(),
     };
     if !send_to(&server_inbox_tx, &hello).await {
         state.rooms.remove_if(&instance_id, &room_id);

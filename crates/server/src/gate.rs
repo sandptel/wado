@@ -35,6 +35,14 @@ use tracing::{info, warn};
 /// How long a request may wait for an answer. Matches the relay's own `APPROVAL_WAIT`.
 pub const APPROVAL_WAIT: Duration = Duration::from_secs(600);
 const POLL: Duration = Duration::from_millis(500);
+/// How long a QR pairing code works.
+const PAIR_TTL: Duration = Duration::from_secs(24 * 3600);
+
+fn now_s() -> u64 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+}
 
 /// A device waiting for approval, as other devices are shown it.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -158,6 +166,64 @@ impl Gate {
             return Decision::FirstDevice;
         }
         Decision::Unknown
+    }
+
+    /// A new pairing code for a connect link: single use, good for a day. The QR it goes into is
+    /// shown only on this computer, so a device presenting it was shown the host's screen.
+    pub fn mint_pair(&self) -> String {
+        use rand::Rng;
+        let code: String = rand::thread_rng()
+            .sample_iter(&rand::distributions::Alphanumeric)
+            .take(24)
+            .map(char::from)
+            .collect();
+        let until = now_s() + PAIR_TTL.as_secs();
+        let mut lines: Vec<String> = self
+            .pairs()
+            .into_iter()
+            .filter(|(_, t)| *t > now_s())
+            .map(|(c, t)| format!("{c}\t{t}"))
+            .collect();
+        lines.push(format!("{code}\t{until}"));
+        if let Err(e) = fs::create_dir_all(&self.dir)
+            .and_then(|_| fs::write(self.pairs_path(), lines.join("\n") + "\n"))
+        {
+            warn!("gate: could not save a pairing code: {e}");
+        }
+        code
+    }
+
+    /// Use up a pairing code: true once for a live code, false for anything else.
+    pub fn redeem(&self, code: &str) -> bool {
+        if code.is_empty() {
+            return false;
+        }
+        let all = self.pairs();
+        let ok = all.iter().any(|(c, t)| c == code && *t > now_s());
+        if ok {
+            let rest: Vec<String> = all
+                .into_iter()
+                .filter(|(c, t)| c != code && *t > now_s())
+                .map(|(c, t)| format!("{c}\t{t}"))
+                .collect();
+            let _ = fs::write(self.pairs_path(), rest.join("\n") + "\n");
+        }
+        ok
+    }
+
+    fn pairs_path(&self) -> PathBuf {
+        self.dir.join("pair_codes")
+    }
+
+    fn pairs(&self) -> Vec<(String, u64)> {
+        fs::read_to_string(self.pairs_path())
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|l| {
+                let (c, t) = l.split_once('\t')?;
+                Some((c.to_string(), t.parse().ok()?))
+            })
+            .collect()
     }
 
     /// Add a device to the trust list.
@@ -310,6 +376,16 @@ mod tests {
             !g.answer(&r.id, Verdict::Deny),
             "a withdrawn request cannot be answered"
         );
+    }
+
+    #[test]
+    fn a_pairing_code_works_once() {
+        let g = temp();
+        let c = g.mint_pair();
+        assert!(!g.redeem("nope"));
+        assert!(!g.redeem(""));
+        assert!(g.redeem(&c));
+        assert!(!g.redeem(&c), "a code must be single use");
     }
 
     #[test]

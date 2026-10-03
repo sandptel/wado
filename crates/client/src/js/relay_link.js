@@ -130,6 +130,7 @@ const toWsUrl = (relayUrl, id) => {
     "?client=" + encodeURIComponent(W.clientKey) + "&name=" + encodeURIComponent(W.deviceName) +
     (want ? "&instance=" + encodeURIComponent(want) : "");
 };
+const pairCode = () => { try { return localStorage.getItem("wado.pair") || ""; } catch (_) { return ""; } };
 // Has this browser ever been let in on this Remote ID? Decides how a "no computer online" wait
 // is worded: for an ID that has never worked, a typo is likelier than a computer still booting.
 W.knownRemoteId = (id) => !!instanceFor(String(id).replace(/[\s-]/g, ""));
@@ -207,7 +208,8 @@ function openLink() {
   if (!target) return;
   let ws;
   try {
-    ws = new WebSocket(target.wsUrl + (W._relayTakeover ? "&takeover=1" : ""));
+    ws = new WebSocket(target.wsUrl + (W._relayTakeover ? "&takeover=1" : "") +
+      (pairCode() ? "&pair=" + encodeURIComponent(pairCode()) : ""));
   } catch (_) {
     scheduleRelink();
     return;
@@ -265,6 +267,7 @@ function openLink() {
     }
 
     if (msg.type === "join_accepted") {
+      try { localStorage.removeItem("wado.pair"); } catch (_) {}
       W._relayTakeover = false;
       W.relayUp = true;
       W._relayUpAt = Date.now();

@@ -7,10 +7,11 @@
 //               start a session of its own (a dropped phone's seat must not fill the pool)
 //   tiles       each device's home page lists both sessions, with shape and apps
 //   watchdog    a crashed interface reloads itself straight back into the session
+//   pairing     a device nobody trusts, opening the QR's link (`wado qr`), is let straight in
 //
 //   dx build -p wado-client --platform web && cargo build --release -p wado -p wado-relay
 //   node scripts/pool-e2e.mjs        (needs a GPU and Chrome; run with the sandbox off)
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -45,7 +46,7 @@ for (const n of ["e2e-pool-a", "e2e-pool-b"]) {
 start("python3", ["-m", "http.server", String(HTTP), "--bind", "127.0.0.1", "-d", PUB]);
 
 class Browser {
-  constructor(name, port, key, mobile) { Object.assign(this, { name, port, key, mobile, id: 0, pend: new Map(), errors: [] }); }
+  constructor(name, port, key, mobile, extra = "") { Object.assign(this, { name, port, key, mobile, extra, id: 0, pend: new Map(), errors: [] }); }
   async open() {
     start("google-chrome-stable", ["--headless=new", "--remote-debugging-port=" + this.port,
       "--user-data-dir=" + join(T, "chrome-" + this.name), "--use-fake-ui-for-media-stream",
@@ -68,8 +69,8 @@ class Browser {
     } else {
       await this.cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
     }
-    await this.cdp("Page.addScriptToEvaluateOnNewDocument", { source: `localStorage.setItem("wado.client", ${JSON.stringify(this.key)});` });
-    await this.cdp("Page.navigate", { url: `http://127.0.0.1:${HTTP}/?relay=http://127.0.0.1:${PORT}&id=${RID}` });
+    await this.cdp("Page.addScriptToEvaluateOnNewDocument", { source: `try { localStorage.setItem("wado.client", ${JSON.stringify(this.key)}); } catch (_) {}` });
+    await this.cdp("Page.navigate", { url: `http://127.0.0.1:${HTTP}/?relay=http://127.0.0.1:${PORT}&id=${RID}${this.extra}` });
   }
   cdp(method, params = {}) { return new Promise((r) => { const i = ++this.id; this.pend.set(i, r); this.ws.send(JSON.stringify({ id: i, method, params })); }); }
   async ev(expr) { return (await this.cdp("Runtime.evaluate", { expression: expr, returnByValue: true, awaitPromise: true })).result?.result?.value; }
@@ -138,6 +139,16 @@ try {
   await phone.ev(`window.__wado.crashed("e2e: simulated crash"); true`);
   await sleep(1500);
   check("after a crash the phone is back in its session", await phone.inSession(25000));
+  const qr = execFileSync(ROOT + "target/release/wado", ["qr", "--relay", "http://x", "--id", RID],
+    { env: { ...process.env, XDG_CONFIG_HOME: join(T, "cfg") } }).toString();
+  const pair = (qr.match(/pair=([A-Za-z0-9]+)/) || [])[1];
+  check("wado qr puts a pairing code in the link", !!pair);
+  // A free daemon for it: the laptop closes its tab (its session was left running).
+  await laptop.cdp("Page.navigate", { url: "about:blank" });
+  await sleep(1500);
+  const fresh = new Browser("fresh", 9343, "Stranger-key", true, "&pair=" + pair);
+  await fresh.open();
+  check("an untrusted device with the QR's code gets straight in", await fresh.until(`!!window.__wado && window.__wado.relayUp`, 20000));
   check("no page exceptions", phone.errors.length + laptop.errors.length === 0, [...phone.errors, ...laptop.errors].join("\n        "));
 } finally {
   for (const p of procs) try { p.kill(); } catch {}

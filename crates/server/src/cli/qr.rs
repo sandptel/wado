@@ -1,7 +1,8 @@
 //! `wado qr [--relay URL] [--id ID]` — the connect link and a QR code of it, in the terminal.
 //!
 //! Scanning it opens the web client with the relay and Remote ID filled in; a device that has
-//! never seen this computer adds it, one that has is pointed at it again. Defaults come from
+//! never seen this computer adds it, one that has is pointed at it again. Each code carries a
+//! single-use pairing code (a day's validity) that trusts the device that scans it. Defaults come from
 //! the config (`server { public-relay }`) and the saved Remote ID.
 
 use qrcode::{QrCode, render::unicode};
@@ -41,7 +42,10 @@ pub fn print(relay: Option<&str>, id: Option<&str>) -> bool {
         );
         return false;
     };
-    let l = link(&cfg.server.client_url, &relay, &id);
+    // A fresh single-use pairing code: whoever scans this was shown this computer's screen,
+    // so their device is trusted without another device approving it.
+    let pair = crate::gate::Gate::default().mint_pair();
+    let l = format!("{}&pair={pair}", link(&cfg.server.client_url, &relay, &id));
     if let Some(q) = render(&l) {
         println!("{q}");
     }

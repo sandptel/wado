@@ -20,6 +20,14 @@
 
 ### Added
 
+**Pair a device by scanning the QR code.** The link in `wado qr` (and the one `rig.sh`
+prints) now carries a single-use pairing code that's valid for a day. A device that opens it is
+trusted straight away, because only the host's own screen shows that code. Before this, a new
+phone or a browser with cleared data had to wait for approval from another connected device,
+and with none connected it could never get in. **`wado approve`** (or `wado approve once`) lets
+in whichever device is waiting, from the computer itself. The relay passes the code through as
+a new optional `pair` field on `peer_connected` / `peer_check`.
+
 **The home page is where a reload lands.** A running session shows there as an
 **Active session** tile: its shape drawn to scale, its apps, who is watching, with **Rejoin**
 and **End**. The start button becomes **Join session**, with **New** beside it for a second
