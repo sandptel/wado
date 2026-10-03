@@ -6,8 +6,8 @@
 // ~0.5–1.9 Mbps cellular path, rtt 24→360 ms, jbuf ~270 ms, 22 of 90 fps). This lowers the
 // encoder's rate instead, through a session reconfigure that rebuilds only the encoder.
 //
-// Signals: round trip against its own recent floor, loss, playout buffer, and the rate that
-// actually arrived. Not `availableIncomingBitrate`: measured off by up to 76× (health.js).
+// Signals: round trip against its own recent floor and loss decide; the rate that actually
+// arrived sizes the step. Not `availableIncomingBitrate`: measured off by up to 76× (health.js).
 //
 //   down  3 congested seconds → ~90% of the best rate that got through, at most halving
 //   up    10 clean seconds   → +50%, until the full rate (the cap is then lifted)
@@ -32,8 +32,10 @@ W.autorate = {
     if (s.kbps != null) { this.recv.push(s.kbps); if (this.recv.length > 5) this.recv.shift(); }
     const floor = this.rtts.length ? Math.min(...this.rtts) : 0;
     const loss = s.lossPct || 0;
-    const congested = (s.ping != null && s.ping > floor + 60) || loss > 2 ||
-                      (s.jbuf != null && s.jbuf > 150 && s.ping != null && s.ping > floor + 30);
+    // Round trip over its floor, or loss: a path holding more than it can carry. Not the playout
+    // buffer — measured 2026-10-03, jbuf sat at 300–400 ms with rtt at its floor and no loss
+    // (arrival jitter, not capacity), and cutting the bitrate for it changed nothing.
+    const congested = (s.ping != null && s.ping > floor + 60) || loss > 2;
     const clean = !congested && (s.ping == null || s.ping <= floor + 25) && loss < 0.5 &&
                   (s.jbuf == null || s.jbuf < 80);
     this.bad = congested ? this.bad + 1 : 0;
