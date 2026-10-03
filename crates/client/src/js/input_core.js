@@ -36,8 +36,11 @@ W.sendInput = (obj) => {
   if (!motion && W.redundantInput && obj.t !== "ping" && fast && fast.readyState === "open" &&
       W.inputDC && W.inputDC.readyState === "open") {
     const msg = JSON.stringify({ ...obj, q: ++W.inputSeq });
-    try { W.inputDC.send(msg); } catch (_) {}
     try { fast.send(msg); } catch (_) {}
+    try { W.inputDC.send(msg); } catch (_) {}
+    // A second fast copy a few ms later: losing both is far rarer than losing one, and a lost
+    // fast copy is what made the strict events wait for their slow reliable copy.
+    setTimeout(() => { try { if (fast.readyState === "open") fast.send(msg); } catch (_) {} }, 4);
     W.latency && W.latency.onInputSent && W.latency.onInputSent(obj);
     return;
   }

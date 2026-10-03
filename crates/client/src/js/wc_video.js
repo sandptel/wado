@@ -30,6 +30,7 @@ W.wcVideo = {
     }
     if (!this.dec || this.dec.state !== "configured") return;
     this._sent.set(f.ts, performance.now());
+    this._fedAt = performance.now();
     try {
       this.dec.decode(new EncodedVideoChunk({ type: f.key ? "key" : "delta", timestamp: f.ts, data }));
     } catch (e) {
@@ -60,6 +61,7 @@ W.wcVideo = {
     if (this._wanted !== codec) return; // a newer keyframe asked for something else meanwhile
     this.codec = pick.codec;
     this._hw = pick.hardwareAcceleration;
+    this._configuredAt = performance.now();
     this.decMs = null;
     this.dec = new VideoDecoder({
       output: (fr) => this.out(fr),
@@ -78,6 +80,7 @@ W.wcVideo = {
     if (W.rlog) W.rlog(`wc: video decoder ${pick.codec} (stream says ${codec}, ${pick.hardwareAcceleration})`);
   },
   out(fr) {
+    this._outAt = performance.now();
     const t0 = this._sent.get(fr.timestamp);
     if (t0 !== undefined) {
       this._sent.delete(fr.timestamp);
@@ -108,8 +111,23 @@ W.wcVideo = {
     if (c) { this._wanted = c; this.configure(c); }
   },
 
+  // A decoder that takes frames and gives nothing back for a second has stalled (measured on the
+  // phone: no output at all, decode time climbing to 10 s). The hold-back check above only runs
+  // when a frame comes out, so it cannot see this — rebuild in software from here.
+  checkStall() {
+    if (!this.dec || this._hw === "no-preference" || this._forceSoftware) return;
+    const fed = this._fedAt || 0, out = this._outAt || 0, now = performance.now();
+    if (now - fed < 200 && now - Math.max(out, this._configuredAt || 0) > 1000) {
+      if (W.rlog) W.rlog("wc: hardware decoder stalled (no output for 1 s) — switching to software");
+      this._forceSoftware = true;
+      const c = this._wanted;
+      if (c) { this._wanted = c; this.configure(c); }
+    }
+  },
+
   // Every display refresh: the newest frame whose time has come.
   tick() {
+    this.checkStall();
     const now = W.wcAudio.clockUs();
     let show = null;
     while (this.queue.length) {
