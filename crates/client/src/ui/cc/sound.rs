@@ -8,7 +8,7 @@ use crate::{
     ui::{
         host::{self, act},
         pages::Page,
-        widgets::{Icon, Seg},
+        widgets::Icon,
     },
 };
 use wado_protocol::HostAction;
@@ -21,8 +21,20 @@ pub fn render(ui: Ui) -> Element {
     let phone = host::on_phone(&h);
     let speaker = host::speaker(&h).cloned();
     let playing = h.audio.streams.len();
-    let h2 = h.clone();
-    let h3 = h.clone();
+    // The phone first, then the computer's own outputs.
+    let outputs: Vec<(String, String, bool)> = h
+        .audio
+        .phone_sink
+        .iter()
+        .map(|p| (p.clone(), "This phone".to_string(), true))
+        .chain(
+            h.audio
+                .sinks
+                .iter()
+                .filter(|s| Some(&s.name) != h.audio.phone_sink.as_ref())
+                .map(|s| (s.name.clone(), s.label.clone(), false)),
+        )
+        .collect();
 
     rsx! {
         div { class: "soundcard",
@@ -31,11 +43,26 @@ pub fn render(ui: Ui) -> Element {
                 span { class: "why", if playing == 0 { " · nothing playing" } else if playing == 1 { " · 1 app playing" } else { " · {playing} apps playing" } }
                 button { class: "linkbtn", onclick: move |_| live.cc_page.set(Page::Sound), "Apps & outputs" Icon { name: "right" } }
             }
-            if h.audio.phone_sink.is_some() {
-                Seg {
-                    options: vec![("computer".to_string(), "On the computer".to_string()), ("phone".to_string(), "On this phone".to_string())],
-                    value: if phone { "phone" } else { "computer" },
-                    onpick: move |v: String| if v == "phone" { host::play_on_phone(&h2) } else { host::play_on_computer(&h3) },
+            // Every output, one tap each: this phone, the computer's speakers, headphones, HDMI…
+            div { class: "chips outs", role: "radiogroup", "aria-label": "Plays on",
+                for (name, label, is_phone) in outputs {
+                    button {
+                        key: "{name}",
+                        class: if name == h.audio.default_sink { "chip on" } else { "chip" },
+                        role: "radio",
+                        "aria-checked": "{name == h.audio.default_sink}",
+                        onclick: move |_| {
+                            host::act(HostAction::AllTo { sink: name.clone() });
+                            // Sound on the phone needs a peer connection carrying it; off it, none.
+                            crate::bridge::call(if is_phone {
+                                "window.__wado.listenStart(); window.__wado.audioUnlock();".to_string()
+                            } else {
+                                "window.__wado.listenStop();".to_string()
+                            });
+                        },
+                        Icon { name: if is_phone { "phone" } else { "monitor" } }
+                        "{label}"
+                    }
                 }
             }
             if let Some(s) = speaker {

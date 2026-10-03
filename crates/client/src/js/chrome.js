@@ -161,3 +161,19 @@ document.addEventListener("click", (e) => {
   document.addEventListener("pointerup", end, true);
   document.addEventListener("pointercancel", end, true);
 }
+
+// ── Keyboard buttons (dock, rail, quick tile) ────────────────────────────────
+// Toggled here, inside the tap: Android raises the soft keyboard only for a focus made in the
+// user gesture, and the Rust handler runs after it. A `<label for>` was meant to do this
+// natively and did not, reliably, on the phone (2026-10-03). The toggle is on `click` — for a
+// touch, the gesture is granted at pointerup — and pointerdown only keeps focus off the button,
+// which would otherwise blur the field the moment it was focused.
+document.addEventListener("pointerdown", (e) => {
+  const b = e.target && e.target.closest && e.target.closest("[data-osk]");
+  if (b && !b.disabled) e.preventDefault();
+}, true);
+document.addEventListener("click", (e) => {
+  const b = e.target && e.target.closest && e.target.closest("[data-osk]");
+  if (!b || b.disabled) return;
+  W.oskToggle();
+}, true);

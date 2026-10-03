@@ -41,7 +41,7 @@ pub fn render(ui: Ui) -> Element {
                         };
                         match t.act {
                             Act::Keyboard => rsx! {
-                                label { key: "{t.id}", r#for: "wado-osk", class, oncontextmenu: menu, {body} }
+                                button { key: "{t.id}", "data-osk": "1", class, disabled: off, "aria-pressed": "{on}", oncontextmenu: menu, {body} }
                             },
                             Act::PointerLock => rsx! {
                                 button { key: "{t.id}", id: "wado-lock", class, disabled: off, "aria-pressed": "{on}", oncontextmenu: menu, {body} }

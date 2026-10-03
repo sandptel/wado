@@ -43,13 +43,22 @@ use crate::state::Ui;
 /// hook order between renders. Dioxus then panics ("Unable to retrieve the hook that was
 /// initialized at this index"), the WASM UI is dead, and every button stops while the video
 /// plays on: the "all buttons go unresponsive mid-session" of 2026-10-03, caught by the
-/// watchdog's report. Keyed by the function, so a different page is a fresh scope.
-pub fn scoped(ui: Ui, f: fn(Ui) -> Element) -> Element {
-    let key = format!("{:p}", f as *const ());
-    rsx! { Scoped { key: "{key}", ui, f } }
+/// watchdog's report. Keyed by `name`, so a different page is a fresh scope.
+pub fn scoped(ui: Ui, name: &'static str, f: fn(Ui) -> Element) -> Element {
+    rsx! { Scoped { key: "{name}", ui, f: Render(f) } }
+}
+
+/// The render function, as a prop. Its identity is the scope's key, so props never differ by it.
+#[derive(Clone, Copy)]
+struct Render(fn(Ui) -> Element);
+
+impl PartialEq for Render {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
 }
 
 #[component]
-fn Scoped(ui: Ui, f: fn(Ui) -> Element) -> Element {
-    f(ui)
+fn Scoped(ui: Ui, f: Render) -> Element {
+    (f.0)(ui)
 }

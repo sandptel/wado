@@ -61,18 +61,18 @@ impl Page {
 pub fn render(ui: Ui, page: Page) -> Element {
     match page {
         Page::Root => rsx! {},
-        Page::Display => crate::ui::scoped(ui, display::render),
+        Page::Display => crate::ui::scoped(ui, "display", display::render),
         Page::Input => input::render(ui),
         Page::Switcher => switcher::render(ui),
         Page::Gamepad => gamepad::render(ui),
         Page::Appearance => appearance::render(ui),
         Page::Connection => connection::render(ui),
         Page::Diagnostics => diagnostics::render(ui),
-        Page::Host => crate::ui::scoped(ui, host::render),
+        Page::Host => crate::ui::scoped(ui, "host", host::render),
         Page::Tiles => tiles::render(ui),
         Page::Sound => sound::render(ui),
-        Page::Network => crate::ui::scoped(ui, network::render),
-        Page::Computers => crate::ui::scoped(ui, computers::render),
+        Page::Network => crate::ui::scoped(ui, "network", network::render),
+        Page::Computers => crate::ui::scoped(ui, "computers", computers::render),
     }
 }
 

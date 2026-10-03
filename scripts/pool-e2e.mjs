@@ -119,6 +119,12 @@ try {
     await phone.ev(`(document.querySelector(".landingstatus")?.textContent || "") + " | " + JSON.stringify({ sent: window.__sent, wanted: window.__wado._relayWanted, resuming: window.__wado._relayResuming, on: window.__wado.sessionOn })`));
 
   if (process.env.E2E_LOG) console.log(phone.logs.join("\n"));
+  await phone.press(".rail [data-osk]");
+  await sleep(400);
+  check("the rail's keyboard button focuses the keyboard field", (await phone.ev(`document.activeElement && document.activeElement.id`)) === "wado-osk");
+  await phone.press(".rail [data-osk]");
+  await sleep(400);
+  check("a second tap closes it", (await phone.ev(`document.activeElement && document.activeElement.id`)) !== "wado-osk");
   const crashedBefore = await phone.ev(`!!window.__wado._crashing`);
   await phone.ev(`(async () => {
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
