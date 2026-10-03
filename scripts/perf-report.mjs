@@ -29,12 +29,17 @@ const arg = (k) => { const i = process.argv.indexOf(k); return i > 0 ? process.a
 const label = arg("--label") || "unlabelled";
 const save = process.argv.includes("--save");
 
-const lines = readdirSync(LOGS).filter((f) => /^daemon-\d+\.log$/.test(f))
+const lines = readdirSync(LOGS).filter((f) => /^daemon-\d+\.log(\.\d)?$/.test(f))
   .flatMap((f) => readFileSync(join(LOGS, f), "utf8").replace(/\x1b\[[0-9;]*m/g, "").split("\n"))
   .filter((l) => /^\d{4}-\d\d-\d\dT/.test(l)).sort();
 if (!lines.length) { console.error("no rig logs in " + LOGS); process.exit(1); }
 const day = lines.at(-1).slice(0, 10);
-const at = (hm) => (hm ? new Date(`${day}T${hm.length === 5 ? hm + ":00" : hm}`) : null);
+// HH:MM[:SS] is local time like the rig's banner; a trailing Z means UTC, like the logs.
+const at = (hm) => {
+  if (!hm) return null;
+  const z = hm.endsWith("Z"), t = z ? hm.slice(0, -1) : hm;
+  return new Date(`${day}T${t.length === 5 ? t + ":00" : t}${z ? "Z" : ""}`);
+};
 const last = new Date(lines.at(-1).slice(0, 23) + "Z");
 // Local clock in, like the rig's own banner; logs are UTC.
 const since = at(arg("--since")) || new Date(last - 10 * 60e3);

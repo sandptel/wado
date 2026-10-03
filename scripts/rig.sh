@@ -54,6 +54,14 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 LOGS="${TMPDIR:-/tmp}/wado-rig"
+# Keep the last three logs of each daemon (daemon-N.log.1 … .3) instead of emptying it: a
+# restart mid-test used to wipe the very session being measured (2026-10-03). perf-report reads
+# the rotated ones too.
+keep_log() {
+  [ -s "$1" ] || { : > "$1"; return; }
+  for i in 2 1; do [ -f "$1.$i" ] && mv -f "$1.$i" "$1.$((i + 1))"; done
+  mv -f "$1" "$1.1"; : > "$1"
+}
 RELAY_PORT=4000
 INSTANCES="${WADO_INSTANCES:-2}"
 LANE="${WADO_RUN:-perf}"
@@ -113,7 +121,7 @@ add_daemons() {
   # number reused while its log is still the place someone is looking for it.
   first=$(( $(ls "$LOGS"/daemon-*.log 2>/dev/null | wc -l) + 1 ))
   for n in $(seq "$first" $((first + want - 1))); do
-    : > "$LOGS/daemon-$n.log"
+    keep_log "$LOGS/daemon-$n.log"
     setsid env WADO_RELAY_URL="ws://127.0.0.1:$RELAY_PORT" WADO_REMOTE_ID="$rid" \
       WADO_UDP_SLICE="$((n - 1))" WADO_INSTANCE="$n" WADO_RUN="$LANE" \
       nohup ./target/release/wado > "$LOGS/daemon-$n.log" 2>&1 < /dev/null &
@@ -201,7 +209,7 @@ done
 #
 # Logs are per instance: `watch.sh` keeps per-session state (target fps, last dropped count),
 # and two sessions interleaved into one file make it attribute one device's numbers to another.
-: > "$LOGS/daemon-1.log"
+keep_log "$LOGS/daemon-1.log"
 setsid env WADO_RELAY_URL="ws://127.0.0.1:$RELAY_PORT" WADO_UDP_SLICE=0 WADO_INSTANCE=1 \
   WADO_RUN="$LANE" \
   nohup ./target/release/wado > "$LOGS/daemon-1.log" 2>&1 < /dev/null &
@@ -217,7 +225,7 @@ grep -q "clients can connect" "$LOGS/daemon-1.log" 2>/dev/null \
   || echo "WARNING: daemon 1 has not reported ready — see $LOGS/daemon-1.log" >&2
 
 for n in $(seq 2 "$INSTANCES"); do
-  : > "$LOGS/daemon-$n.log"
+  keep_log "$LOGS/daemon-$n.log"
   # Its own UDP slice. Sharing one range is what made all four daemons fail ICE while each
   # log looked healthy — see `udp_port_range` in crates/server/src/webrtc_settings.rs.
   setsid env WADO_RELAY_URL="ws://127.0.0.1:$RELAY_PORT" WADO_REMOTE_ID="$RID" \
