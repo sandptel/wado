@@ -18,8 +18,8 @@
 // What it reads (all logged already): the browser's 5 s `stats` lines (fps, rtt, jbuf, jtarget,
 // dec, kbps, drops), its `latency` legs (capture/encode/queue/net/buf/decode/input), the pump's
 // write_sample distribution, shedding, auto-bitrate steps, verdicts by side, and the session's
-// shape. ANOMALY lines are counted but kept out of the distributions: they are logged *because*
-// they are bad, and mixing them in would skew every percentile.
+// shape. Samples are one per 5 s slot, normal or ANOMALY, so a bad stretch is neither
+// over-weighted nor dropped.
 import { readFileSync, readdirSync, appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
@@ -51,7 +51,15 @@ const pct = (xs, p) => { if (!xs.length) return null; const s = [...xs].sort((a,
 const dist = (xs) => ({ n: xs.length, p50: pct(xs, 0.5), p90: pct(xs, 0.9), max: xs.length ? Math.max(...xs) : null });
 const col = (rows, k) => rows.map((r) => r[k]).filter((v) => Number.isFinite(v) && v >= 0);
 
-const stats = inWin.filter((l) => l.includes("browser: stats ")).map(kv);
+// One sample per 5 s slot, normal or ANOMALY: ANOMALY lines come every second while things are
+// bad and `stats` lines every fifth second otherwise, so taking all of them over-weights bad
+// stretches and taking only `stats` empties a run that was bad throughout (2 samples of 7 min,
+// measured). The last sample in each slot stands for it.
+const slots = new Map();
+for (const l of inWin.filter((l) => l.includes("browser: stats ") || l.includes("browser: ANOMALY "))) {
+  slots.set(Math.floor(new Date(l.slice(0, 23) + "Z") / 5000), l);
+}
+const stats = [...slots.values()].map(kv);
 const lat = inWin.filter((l) => l.includes("browser: latency ")).map(kv);
 const ws = inWin.filter((l) => l.includes("write_sample distribution")).map(kv);
 const drops = col(stats, "framesDropped"), recv = col(stats, "framesReceived");
@@ -93,7 +101,7 @@ const report = {
 
 const f = (d) => (d && d.p50 != null ? `${d.p50}/${d.p90}/${d.max}` : "—");
 console.log(`\n${label}  ${report.since.slice(11, 19)}–${report.until.slice(11, 19)} UTC  ${shapes.join(" → ") || "(no session start in window)"}`);
-console.log(`  stats samples ${stats.length}, anomalies ${report.client.anomalies}, crashes ${report.crashes}`);
+console.log(`  samples ${stats.length} (one per 5 s), anomaly lines ${report.client.anomalies}, crashes ${report.crashes}`);
 console.log("  p50/p90/max   fps " + f(report.client.fps) + "  rtt " + f(report.client.rtt_ms) + "  jbuf " + f(report.client.jbuf_ms) +
   "  jtarget " + f(report.client.jtarget_ms) + "  decode " + f(report.client.decode_ms) + "  kbps " + f(report.client.kbps));
 console.log("  audio/sync    abuf " + f(report.client.audio_buf_ms) + "  atarget " + f(report.client.audio_target_ms) +
