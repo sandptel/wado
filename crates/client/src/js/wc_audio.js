@@ -16,8 +16,14 @@ class WadoPlayer extends AudioWorkletProcessor {
     this.port.onmessage = (e) => {
       const m = e.data;
       if (m.target) { this.target = m.target * 48; return; }
-      // Too late to play in order: drop it, never wait for it.
-      if (this.now !== null && m.ts + m.l.length * 1e6 / 48000 < this.now) return;
+      // Too late to play in order: drop it, never wait for it — but only while there is newer
+      // audio to play. With the queue empty the clock has run on through silence, and dropping
+      // every arrival as "late" would keep it silent for good (measured on the phone,
+      // 2026-10-03): re-sync to the packet and refill instead.
+      if (this.now !== null && m.ts + m.l.length * 1e6 / 48000 < this.now) {
+        if (this.q.length) return;
+        this.now = null; this.started = false; this.off = 0;
+      }
       this.q.push(m);
       // More queued than the target allows: skip the oldest — latency stays bounded.
       while (this.q.length > 1 && this.queued() > this.target + 960) { this.q.shift(); this.off = 0; }
