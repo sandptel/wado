@@ -14,7 +14,13 @@ W.crashed = (why) => {
   W._crashing = true;
   const text = String(why || "unknown").slice(0, 2000);
   try { localStorage.setItem("wado.lastCrash", JSON.stringify({ t: Date.now(), why: text })); } catch (_) {}
-  try { if (W.sessionOn) sessionStorage.setItem("wado.crashRejoin", "1"); } catch (_) {}
+  // Straight back into the session — unless it crashed there a minute ago too. A crash that
+  // repeats would otherwise be a reload loop; the home page and its Rejoin tile break it.
+  try {
+    const prev = Number(sessionStorage.getItem("wado.crashAt") || 0);
+    sessionStorage.setItem("wado.crashAt", String(Date.now()));
+    if (W.sessionOn && Date.now() - prev > 60000) sessionStorage.setItem("wado.crashRejoin", "1");
+  } catch (_) {}
   try { W.rlog("UI crashed — reloading: " + text.slice(0, 400)); } catch (_) {}
   setTimeout(() => location.reload(), 400);
 };
