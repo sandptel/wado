@@ -30,6 +30,14 @@
 
 ### Added
 
+**Auto bitrate.** When the link can't carry the stream (round trip climbing over its recent
+floor, loss, or a swelling playout buffer, for 3 seconds), the session lowers its bitrate to
+about what actually got through, at most halving each step. It climbs back 50% at a time after 10
+clean seconds. Each change is an ordinary reconfigure that rebuilds only the encoder, so windows
+and apps are untouched. On by default; the switch is on the Display page and shows the current
+cap. `scripts/autorate-check.mjs` checks the controller, and `scripts/pool-e2e.mjs` checks that a
+cap reaches the encoder.
+
 **The latency line names the culprit.** Its first entry now says which side of the trip is
 slowest (the computer, the network or the phone), which leg it is, and what to try, coloured by
 side. Legs are added up only within one clock, and the three sides are compared, never summed.

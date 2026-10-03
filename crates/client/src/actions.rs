@@ -18,6 +18,9 @@ pub fn start(ui: Ui) {
 
     live.session_on.set(true);
     live.clear_telemetry();
+    // A new session starts at the full rate; auto bitrate learns this link afresh.
+    live.auto_kbps.set(None);
+    bridge::call("window.__wado.autorate.reset();".to_string());
     live.status.set("starting session…".to_string());
     live.applied
         .set(serde_json::to_string(&config).unwrap_or_default());

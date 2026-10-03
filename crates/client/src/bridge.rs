@@ -127,6 +127,8 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/watchdog.js"),
     "\n",
+    include_str!("js/autorate.js"),
+    "\n",
     include_str!("js/lifecycle.js"),
 );
 
@@ -428,6 +430,15 @@ pub fn run(ui: Ui) {
                 "alive" => {
                     let n = msg.get("n").and_then(|v| v.as_u64()).unwrap_or(0);
                     call(format!("window.__wado.alive({n});"));
+                }
+                // Auto bitrate changed the cap: re-apply to the running session (encoder only —
+                // the output, its windows and apps stay as they are).
+                "autorate" => {
+                    let kbps = msg.get("kbps").and_then(|v| v.as_u64()).map(|v| v as u32);
+                    live.auto_kbps.set(kbps);
+                    if (live.session_on)() && (ui.set.auto_bitrate)() {
+                        crate::actions::apply(ui);
+                    }
                 }
                 "winMenu" => {
                     live.win_menu.set(msg.get("id").and_then(|v| v.as_u64()));

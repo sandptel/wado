@@ -112,6 +112,9 @@ const MAX_DIMENSION: u32 = 8192;
 /// encode (H.264 works in 16x16 macroblocks).
 const MIN_DIMENSION: u32 = 16;
 
+/// The floor under auto bitrate's cap.
+const MIN_CAP_KBPS: u32 = 300;
+
 pub fn to_encoder_config(config: &SessionConfig) -> EncoderConfig {
     let fps = config.fps.max(1);
     // Clamped before anything derives a buffer size, a bitrate or a texture from them.
@@ -139,6 +142,10 @@ pub fn to_encoder_config(config: &SessionConfig) -> EncoderConfig {
         Quality::Custom { bitrate_kbps } => bitrate_kbps,
         _ => bitrate::for_resolution(base_kbps, width, height),
     };
+    // Auto bitrate's cap: never below what still reads as video.
+    let bitrate_kbps = config
+        .bitrate_cap_kbps
+        .map_or(bitrate_kbps, |cap| bitrate_kbps.min(cap.max(MIN_CAP_KBPS)));
     EncoderConfig {
         width,
         height,

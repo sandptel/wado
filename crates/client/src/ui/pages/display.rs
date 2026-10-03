@@ -194,6 +194,25 @@ pub fn render(ui: Ui) -> Element {
         }
 
         div { class: "card",
+            SwitchRow {
+                title: "Auto bitrate",
+                sub: match (ui.live.auto_kbps)() {
+                    Some(k) if (s.auto_bitrate)() => format!("Capped at {k} kbps — the link can't carry more right now"),
+                    _ => "Lowers the bitrate when the link can't carry it, then climbs back".to_string(),
+                },
+                on: (s.auto_bitrate)(),
+                ontoggle: move |on| {
+                    s.auto_bitrate.set(on);
+                    super::super::live::apply(ui);
+                    // Off: the full rate again, now.
+                    if !on && (ui.live.auto_kbps)().is_some() && (ui.live.session_on)() {
+                        crate::actions::apply(ui);
+                    }
+                },
+            }
+        }
+
+        div { class: "card",
             div { class: "cardhead", "Encoder" WhenBadge { when: if limits.encoder.is_some() { When::Host } else { When::Restart } } }
             Seg {
                 options: opts(&[("auto", "Auto"), ("hardware", "GPU"), ("software", "x264")]),

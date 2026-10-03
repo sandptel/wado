@@ -127,6 +127,8 @@ pub struct Settings {
     /// What a finger is to the session: `pointer` (gestures translated to clicks, scrolls and
     /// drags — `js/input_tap.js`) or `touch` (raw `wl_touch` — `js/input_touch.js`).
     pub touch_mode: Signal<String>,
+    /// Auto bitrate: cap the encoder to what the link carries (`js/autorate.js`).
+    pub auto_bitrate: Signal<bool>,
     /// The dock stays on screen instead of fading when idle (`js/chrome.js`).
     pub dock_pin: Signal<bool>,
     /// The workspace bar at the dock's left (`ui/workspaces.rs`).
@@ -221,6 +223,7 @@ impl Settings {
             orientation: use_signal(|| "auto".to_string()),
             natural_scroll: use_signal(|| false),
             touch_mode: use_signal(|| "pointer".to_string()),
+            auto_bitrate: use_signal(|| true),
             dock_pin: use_signal(|| false),
             ws_bar: use_signal(|| true),
             rail: use_signal(|| "right".to_string()),
@@ -385,6 +388,8 @@ pub struct Live {
     pub drawer_open: Signal<bool>,
     /// Every window in the session and the workspace showing (`js/chrome.js`).
     pub windows: Signal<(Vec<wado_protocol::WindowInfo>, u32)>,
+    /// Auto bitrate's current cap, kbps; `None` while the link carries the full rate.
+    pub auto_kbps: Signal<Option<u32>>,
     /// The window whose action sheet is open — a long press on its icon in the workspace bar.
     pub win_menu: Signal<Option<u64>>,
 
@@ -468,6 +473,7 @@ impl Live {
             drawer_open: use_signal(|| false),
             windows: use_signal(|| (Vec::new(), 1)),
             win_menu: use_signal(|| None),
+            auto_kbps: use_signal(|| None),
             fps: use_signal(|| None),
             ping: use_signal(|| None),
             jbuf: use_signal(|| None),
