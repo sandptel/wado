@@ -39,6 +39,23 @@
 
 ### Added
 
+**Low-latency pipeline (WebCodecs)**, an experimental switch on Display & stream (latency phase 3,
+Decision Log 2026-10-03). Video and audio travel over an unreliable, unordered WebRTC data channel
+(`wado-media`, still peer-to-peer over UDP) instead of RTP. The device decodes them itself:
+H.264 through `VideoDecoder` (`optimizeForLatency`, hardware where present) painted to a canvas,
+and Opus through `AudioDecoder` into an AudioWorklet. Picture and sound are kept in sync on one
+daemon clock, with **a buffer we size**: it follows the measured arrival jitter, is capped at
+150 ms, and conceals late audio instead of growing. On a jittery link this replaces Chrome's
+audio buffer, which reached 450–600 ms and held the picture with it. While the switch is on,
+the daemon stops sending RTP; while it is off, or the browser has no WebCodecs, nothing changes.
+Loss handling for now is skip-to-keyframe; NACK and FEC come next. `scripts/pool-e2e.mjs`
+checks that frames decode and paint, audio arrives, the picture follows the audio clock within
+50 ms, input still maps, and RTP stops.
+
+**The sound output that plays where you are is named after your device.** "This device ·
+Android · Chrome" (or whatever it is) replaces "This phone" everywhere, and the computer's
+mixer shows it as "wado viewer".
+
 **Keyframes "On request"** (Display & stream, off by default). Instead of an IDR every 1–2 s, the
 encoder sends one when the phone asks (RTCP PLI/FIR), with a 10 s safety net. A keyframe measured
 22 KB against 2–3 KB for an ordinary frame, sent all at once. On a jittery link, that burst is

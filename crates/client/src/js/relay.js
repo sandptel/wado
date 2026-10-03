@@ -481,6 +481,8 @@ W._relayNegotiate = async (opts = {}) => {
   // Moves go unreliable: a lost one is superseded by the next, and must never hold up a tap
   // behind its retransmit (invariant #1). Direct mode always had this; relay mode did not.
   W.motionDC = pc.createDataChannel(MOTION_CHANNEL, { ordered: true, maxRetransmits: 0 });
+  // The low-latency pipeline's channel (js/wc_recv.js): idle unless the session asks for it.
+  if (W.wcSupported) W.wc.open(pc);
 
   pc.ontrack = (ev) => {
     if (ev.track && ev.track.kind === "audio") {

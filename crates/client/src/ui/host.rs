@@ -45,3 +45,14 @@ pub fn play_on_computer(h: &HostState) {
         bridge::call("window.__wado.listenStop();".to_string());
     }
 }
+
+/// The sound output that plays on the device in hand. Not "This phone": a laptop or a tablet
+/// viewing the session gets the same output, so it says which device it is.
+pub fn here(ui: crate::state::Ui) -> String {
+    let name = (ui.live.device_name)();
+    if name.is_empty() {
+        "This device".to_string()
+    } else {
+        format!("This device · {name}")
+    }
+}

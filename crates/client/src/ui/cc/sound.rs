@@ -19,6 +19,7 @@ pub fn render(ui: Ui) -> Element {
         return rsx! {};
     };
     let phone = host::on_phone(&h);
+    let here = host::here(ui);
     let speaker = host::speaker(&h).cloned();
     let playing = h.audio.streams.len();
     // The phone first, then the computer's own outputs.
@@ -26,7 +27,7 @@ pub fn render(ui: Ui) -> Element {
         .audio
         .phone_sink
         .iter()
-        .map(|p| (p.clone(), "This phone".to_string(), true))
+        .map(|p| (p.clone(), host::here(ui), true))
         .chain(
             h.audio
                 .sinks
@@ -43,7 +44,7 @@ pub fn render(ui: Ui) -> Element {
                 span { class: "why", if playing == 0 { " · nothing playing" } else if playing == 1 { " · 1 app playing" } else { " · {playing} apps playing" } }
                 button { class: "linkbtn", onclick: move |_| live.cc_page.set(Page::Sound), "Apps & outputs" Icon { name: "right" } }
             }
-            // Every output, one tap each: this phone, the computer's speakers, headphones, HDMI…
+            // Every output, one tap each: this device, the computer's speakers, headphones, HDMI…
             div { class: "chips outs", role: "radiogroup", "aria-label": "Plays on",
                 for (name, label, is_phone) in outputs {
                     button {
@@ -88,7 +89,7 @@ pub fn render(ui: Ui) -> Element {
                 div { class: "volrow",
                     button {
                         class: if (ui.set.muted)() { "iconbtn on" } else { "iconbtn" },
-                        "aria-label": "Mute this phone",
+                        "aria-label": "Mute this device",
                         onclick: move |_| {
                             let mut s = ui.set;
                             s.muted.set(!(s.muted)());
@@ -99,7 +100,7 @@ pub fn render(ui: Ui) -> Element {
                     }
                     div { class: "slide thin",
                         input {
-                            r#type: "range", min: "0", max: "1", step: "0.02", "aria-label": "Volume on this phone",
+                            r#type: "range", min: "0", max: "1", step: "0.02", "aria-label": "Volume on this device",
                             value: "{(ui.set.volume)()}",
                             oninput: move |e| if let Ok(v) = e.value().parse::<f64>() {
                                 let mut s = ui.set;
@@ -108,7 +109,7 @@ pub fn render(ui: Ui) -> Element {
                                 crate::ui::live::apply(ui);
                             },
                         }
-                        span { class: "slidelab", "This phone" }
+                        span { class: "slidelab", "{here}" }
                         span { class: "slideval", if (ui.set.muted)() { "muted" } else { "{((ui.set.volume)() * 100.0).round()}%" } }
                     }
                 }

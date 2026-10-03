@@ -194,6 +194,25 @@ pub fn render(ui: Ui) -> Element {
         }
 
         div { class: "card",
+            SwitchRow {
+                title: "Low-latency pipeline (WebCodecs)",
+                sub: if !(ui.live.wc_supported)() {
+                    "This browser has no WebCodecs — stays on the standard pipeline".to_string()
+                } else if (ui.live.wc_live)() {
+                    "On — this device decodes and syncs the stream itself".to_string()
+                } else {
+                    "Experimental: picture and sound kept in sync with a small buffer we size".to_string()
+                },
+                on: (s.webcodecs)(),
+                disabled: !(ui.live.wc_supported)(),
+                when: When::Apply,
+                ontoggle: move |on| {
+                    s.webcodecs.set(on);
+                    if (ui.live.session_on)() {
+                        crate::actions::apply(ui);
+                    }
+                },
+            }
             div { class: "cardhead", "Keyframes" WhenBadge { when: When::Apply } }
             Seg {
                 options: opts(&[("periodic", "Every 1–2 s"), ("on_request", "On request")]),

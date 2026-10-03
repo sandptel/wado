@@ -53,6 +53,7 @@ pub struct Saved {
     pub auto_bitrate: Option<bool>,
     pub low_latency_audio: Option<bool>,
     pub keyframe_mode: Option<String>,
+    pub webcodecs: Option<bool>,
     pub dock_pin: Option<bool>,
     pub ws_bar: Option<bool>,
     pub rail: Option<String>,
@@ -129,6 +130,7 @@ pub fn snapshot(ui: Ui) -> Saved {
         auto_bitrate: Some((s.auto_bitrate)()),
         low_latency_audio: Some((s.low_latency_audio)()),
         keyframe_mode: Some((s.keyframe_mode)()),
+        webcodecs: Some((s.webcodecs)()),
         dock_pin: Some((s.dock_pin)()),
         ws_bar: Some((s.ws_bar)()),
         rail: Some((s.rail)()),
@@ -218,6 +220,7 @@ pub fn restore(ui: Ui, saved: Saved) {
     put!(auto_bitrate);
     put!(low_latency_audio);
     put!(keyframe_mode);
+    put!(webcodecs);
     put!(dock_pin);
     put!(ws_bar);
     put!(rail);

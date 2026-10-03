@@ -135,6 +135,8 @@ pub struct Settings {
     /// Keyframes: `periodic` (the quality preset's 1–2 s) or `on_request` (10 s safety net, the
     /// rest on the phone's PLI). A Display & stream switch, opt-in (Decision Log 2026-10-03).
     pub keyframe_mode: Signal<String>,
+    /// "Low-latency pipeline (WebCodecs)": media over our own channel, decoded and synced here.
+    pub webcodecs: Signal<bool>,
     /// The dock stays on screen instead of fading when idle (`js/chrome.js`).
     pub dock_pin: Signal<bool>,
     /// The workspace bar at the dock's left (`ui/workspaces.rs`).
@@ -232,6 +234,7 @@ impl Settings {
             auto_bitrate: use_signal(|| true),
             low_latency_audio: use_signal(|| false),
             keyframe_mode: use_signal(|| "periodic".to_string()),
+            webcodecs: use_signal(|| false),
             dock_pin: use_signal(|| false),
             ws_bar: use_signal(|| true),
             rail: use_signal(|| "right".to_string()),
@@ -414,6 +417,12 @@ pub struct Live {
     pub vmin: Signal<Option<f64>>,
     /// Input round trip, ms: tap → daemon → back on the input channel. Always measured.
     pub input_rt: Signal<Option<f64>>,
+    /// This browser has WebCodecs (the low-latency pipeline can run), and it is painting now.
+    pub wc_supported: Signal<bool>,
+    pub wc_live: Signal<bool>,
+    /// What this browser is ("Android · Chrome") — the sound output that plays *here* is named
+    /// after it rather than always "This phone".
+    pub device_name: Signal<String>,
     pub dropped: Signal<Option<u64>>,
     /// The one-line verdict: which of the three machines in this picture is at fault.
     /// Computed in `js/health.js`; see there for why it is a verdict and not another number.
@@ -495,6 +504,9 @@ impl Live {
             abuf: use_signal(|| None),
             vmin: use_signal(|| None),
             input_rt: use_signal(|| None),
+            wc_supported: use_signal(|| false),
+            wc_live: use_signal(|| false),
+            device_name: use_signal(String::new),
             dropped: use_signal(|| None),
             health: use_signal(Health::default),
         }

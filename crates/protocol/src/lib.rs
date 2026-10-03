@@ -71,6 +71,11 @@ pub const INPUT_CHANNEL: &str = "wado-input";
 /// anything stateful onto this channel.
 pub const MOTION_CHANNEL: &str = "wado-motion";
 
+/// Label of the **media** data channel ("Low-latency pipeline (WebCodecs)"): video and audio
+/// chunks from the daemon, unordered and unreliable, decoded by the browser itself. Text
+/// messages the other way are control (`{"t":"kf"}`: send a keyframe). See `server::wcmedia`.
+pub const MEDIA_CHANNEL: &str = "wado-media";
+
 /// One input event from the remote client, sent as JSON over the input data channel.
 ///
 /// All coordinates are **normalized 0..1** relative to the *displayed video content*
@@ -336,6 +341,10 @@ pub struct SessionConfig {
     /// instead of 10. Video waits for sound (A/V sync is mandatory), so audio sets the pace.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub low_latency_audio: bool,
+    /// "Low-latency pipeline (WebCodecs)": video and audio over the media data channel instead of
+    /// RTP, decoded and synced by the viewer with a buffer it sizes. RTP stays the fallback.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub webcodecs: bool,
 }
 
 /// Isolated. See [`SessionConfig::isolate_apps`].
@@ -405,6 +414,7 @@ mod config_validation_tests {
             background: None,
             bitrate_cap_kbps: None,
             low_latency_audio: false,
+            webcodecs: false,
             width: 1280,
             height: 720,
             fps: 60,

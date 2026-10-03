@@ -68,7 +68,7 @@ pub static ALL: &[Tile] = &[
     Tile {
         id: "sound",
         icon: "sound",
-        label: "Phone sound",
+        label: "Sound here",
         on: Some(|ui| !(ui.set.muted)()),
         sub: ("Muted", "Playing"),
         act: Act::Run(|ui| {
@@ -105,7 +105,7 @@ pub static ALL: &[Tile] = &[
     Tile {
         id: "playhere",
         icon: "phone",
-        label: "Play on phone",
+        label: "Play here",
         on: Some(|ui| (ui.live.hoststate)().as_ref().is_some_and(host::on_phone)),
         sub: ("Computer speakers", "Sound comes here"),
         act: Act::Run(|ui| {
