@@ -1822,10 +1822,20 @@ async fn handle_sdp_offer(
                 dc.on_open(Box::new(move || {
                     Box::pin(async move { info!("relay client: {label} data channel open") })
                 }));
+                let dc_echo = Arc::clone(&dc);
                 dc.on_message(Box::new(move |msg: DataChannelMessage| {
                     let input_tx = input_tx.clone();
+                    let dc_echo = Arc::clone(&dc_echo);
                     Box::pin(async move {
                         match serde_json::from_slice::<InputEvent>(&msg.data) {
+                            // The input round-trip probe: answered straight back on the channel it
+                            // came in on. Direct mode always did; relay mode did not, so the
+                            // phone's "input" figure could never be measured (2026-10-03).
+                            Ok(InputEvent::Ping { seq }) => {
+                                let _ = dc_echo
+                                    .send_text(format!("{{\"t\":\"pong\",\"seq\":{seq}}}"))
+                                    .await;
+                            }
                             Ok(ev) => {
                                 let _ = input_tx.send(ev);
                             }

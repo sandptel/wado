@@ -2,6 +2,9 @@
 
 ### Fixed
 
+- **The input round trip is measurable on the relay path.** The daemon answered the latency
+  probe only in direct mode, so a phone's "input" figure stayed empty.
+
 - **Touch no longer stalls and jumps on a hiccuping link (relay mode).** The relay path never
   opened the unreliable motion channel, and the daemon refused it there. So every touch and
   pointer move rode the reliable, ordered input channel, and one lost packet held all input for
