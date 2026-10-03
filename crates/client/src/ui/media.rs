@@ -120,8 +120,15 @@ fn card(h: &HostState, p: &Player) -> Element {
         _ => "None",
     };
 
+    // The album art is the whole card's background; without it, the app's icon takes the art's
+    // place at the art's size, so the card keeps its shape either way.
+    let bg = p
+        .art
+        .as_ref()
+        .map(|a| format!("--art:url(\"{a}\")"))
+        .unwrap_or_default();
     rsx! {
-        div { class: "mediacard",
+        div { class: if p.art.is_some() { "mediacard hasart" } else { "mediacard" }, style: "{bg}",
             div { class: "mediatop",
                 span { class: "mediaapp", AppIcon { p: p.clone() } "{p.app}" }
                 if let (Some(st), Some(phone)) = (stream.clone(), phone) {
@@ -143,8 +150,10 @@ fn card(h: &HostState, p: &Player) -> Element {
                 }
             }
             div { class: "mediamid",
-                if let Some(art) = p.art.clone() {
-                    img { class: "mediaart", src: "{art}", alt: "" }
+                if p.art.is_none() {
+                    if let Some(icon) = p.icon.clone() {
+                        img { class: "mediaart appicon", src: "{icon}", alt: "" }
+                    }
                 }
                 div { class: "mediatext",
                     b { if p.title.is_empty() { "{p.app}" } else { "{p.title}" } }

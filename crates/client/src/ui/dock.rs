@@ -91,7 +91,7 @@ pub fn render(ui: Ui) -> Element {
                 if type_now {
                     // A `label`, not a `button`: Android raises the soft keyboard only for a focus
                     // inside the user gesture, and label activation focuses its target natively.
-                    label { r#for: "wado-osk", class: "barbtn nav", title: "Keyboard", "aria-label": "Keyboard",
+                    button { "data-osk": "1", class: "barbtn nav", title: "Keyboard", "aria-label": "Keyboard",
                         Icon { name: "kbd" }
                     }
                 } else {
@@ -116,7 +116,7 @@ pub fn render(ui: Ui) -> Element {
                 button { class: "barbtn", "data-fullscreen": "1", title: "Fullscreen", "aria-label": "Fullscreen",
                     Icon { name: "max" }
                 }
-                label { r#for: "wado-osk", class: "barbtn", title: "Keyboard", "aria-label": "Keyboard",
+                button { "data-osk": "1", class: "barbtn", title: "Keyboard", "aria-label": "Keyboard",
                     Icon { name: "kbd" }
                 }
             }

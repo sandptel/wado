@@ -48,6 +48,13 @@ W.startStats = (pc) => {
         // Milliseconds of receiver playout buffer: cumulative delay / frames emitted.
         // This is latency RTT cannot see, so it is the number that tells us whether the
         // browser is sitting on frames (see W.minimizePlayoutDelay in webrtc.js).
+        // Which decoder the browser picked, logged when it changes: a hardware decoder that
+        // refused this stream (an odd size, a portrait shape) falls back to software silently,
+        // and the only trace is a decode time no setting explains.
+        {
+          const d = `${r.decoderImplementation || "?"} powerEfficient=${r.powerEfficientDecoder} ${r.frameWidth || "?"}x${r.frameHeight || "?"}`;
+          if (d !== W._lastDecoder) { W._lastDecoder = d; if (W.rlog) W.rlog("decoder " + d); }
+        }
         if (typeof r.packetsLost === "number") lost = r.packetsLost;
         if (typeof r.packetsReceived === "number") precv = r.packetsReceived;
         if (typeof r.jitter === "number") jitter = r.jitter * 1000;

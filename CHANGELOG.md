@@ -2,6 +2,16 @@
 
 ### Fixed
 
+- **Opening a settings page no longer kills the interface.** Pages and cards that keep state
+  of their own (Wi-Fi, Display, This computer, Computers, the playback card, the session tiles,
+  the console) ran their hooks in their parent's scope, so switching pages changed the hook
+  order. Dioxus panicked, every button went dead, and the watchdog reloaded the page. Each now
+  renders in its own component scope (`ui::scoped`). A crash that repeats within a minute now
+  lands on the home page instead of looping.
+- **The keyboard buttons open the keyboard.** The dock, the quick rail and the quick tile now
+  toggle it from a click handler inside the tap, instead of a `<label for>` that Android didn't
+  reliably honour.
+
 - **A second device is no longer refused while the pool has room.** A phone that closed its
   tab kept its daemon's seat held for 30 minutes, so two such ghosts filled a two-daemon pool.
   Daemons now tell the relay when there is nothing to hold a seat for (new `seat_hold`), and
@@ -19,6 +29,11 @@
 ## Unreleased
 
 ### Added
+
+**Pick any output from the sound card.** This phone, the computer's speakers, headphones, HDMI:
+every output is one tap. **The playback card uses the album art as its whole background**, and
+when there is no art the app's icon takes its place at the same size. The client also logs which
+video decoder the phone picked, so a software fallback shows up in the daemon's log.
 
 **Pair a device by scanning the QR code.** The link in `wado qr` (and the one `rig.sh`
 prints) now carries a single-use pairing code that's valid for a day. A device that opens it is

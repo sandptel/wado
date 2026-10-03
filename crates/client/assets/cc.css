@@ -345,3 +345,9 @@ details.card > summary { cursor: pointer; font-weight: 600; color: var(--bright)
 .fetchblocks { display: flex; margin-top: 6px; }
 .fetchblocks i { width: 16px; height: 12px; }
 @media (max-width: 380px) { .fetchlogo { display: none; } }
+
+/* Album art as the whole card: the picture, darkened toward the controls so text stays legible. */
+.mediacard.hasart { background: linear-gradient(180deg, rgb(0 0 0 / .25), rgb(0 0 0 / .72)), var(--art) center / cover no-repeat;
+  color: #fff; text-shadow: 0 1px 3px rgb(0 0 0 / .5); }
+.mediacard.hasart .mediactl button, .mediacard.hasart .mediaplay { color: #fff; }
+.mediaart.appicon { object-fit: contain; padding: 8px; background: rgb(255 255 255 / .12); box-shadow: none; }
