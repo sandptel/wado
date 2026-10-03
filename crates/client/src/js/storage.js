@@ -24,6 +24,10 @@ W.loadSettings = () => {
   let q;
   try { q = new URLSearchParams(location.search); } catch (_) { return; }
   const relay = q.get("relay"), id = q.get("id");
+  // The QR's single-use pairing code: kept until a join is accepted, sent with every join until
+  // then, so the host's gate trusts this device without anyone approving it.
+  const pair = q.get("pair");
+  if (pair) { try { localStorage.setItem("wado.pair", pair); } catch (_) {} }
   if (!relay && !id) return;
   const s = W.loadSettings();
   s.conn_mode = "relay";

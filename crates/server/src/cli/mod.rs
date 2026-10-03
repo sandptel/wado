@@ -1,5 +1,6 @@
 //! `wado <subcommand>` — everything the binary does besides being the daemon.
 
+pub mod approve;
 pub mod msg;
 pub mod qr;
 pub mod validate;
@@ -8,6 +9,7 @@ pub mod validate;
 /// the daemon.
 pub fn dispatch(args: &[String]) -> Option<i32> {
     match args.first().map(String::as_str) {
+        Some("approve") => Some(approve::run(&args[1..])),
         Some("qr") => Some(qr::run(&args[1..])),
         Some("msg") => Some(msg::run(&args[1..])),
         Some("validate") => Some(validate::run(args.get(1).map(String::as_str))),

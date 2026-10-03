@@ -104,6 +104,10 @@ pub enum RelayMsg {
         /// A human label for the device ("Android · Chrome"), for prompts and logs only.
         #[serde(default)]
         client_name: String,
+        /// A pairing code from the connect link's QR (`wado qr`): proof the device was shown
+        /// the host's own screen, so the daemon trusts it without anyone approving.
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        pair: String,
     },
     /// Relay → daemon: *would* you let this device in? Asked before a takeover, so that a device
     /// the daemon does not trust can never displace a live viewer — it must be approved first,
@@ -117,6 +121,10 @@ pub enum RelayMsg {
         client_key: String,
         #[serde(default)]
         client_name: String,
+        /// A pairing code from the connect link's QR (`wado qr`): proof the device was shown
+        /// the host's own screen, so the daemon trusts it without anyone approving.
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        pair: String,
     },
     /// Daemon → relay: let the viewer of `room_id` in. Only a daemon that listed `"gate"` in
     /// its caps sends these, and only then does the relay wait for one.

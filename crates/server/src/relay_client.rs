@@ -988,6 +988,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 client_addr,
                 client_key,
                 client_name,
+                pair,
             } => {
                 // Remembered, not just logged: every WebRTC line below is tagged with it.
                 let short: String = room_id.chars().take(8).collect();
@@ -1023,6 +1024,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                                 key: client_key,
                                 name: client_name,
                                 addr: client_addr,
+                                pair,
                             },
                             move || *room.lock().unwrap_or_else(|e| e.into_inner()) == rid,
                             move |_| {
@@ -1042,6 +1044,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 client_addr,
                 client_key,
                 client_name,
+                pair,
             } => {
                 // A device asking to take the seat from the viewer here. Decided exactly like a
                 // join, but without touching `room` — the current viewer is still the current
@@ -1063,6 +1066,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                         key: client_key,
                         name: client_name,
                         addr: client_addr,
+                        pair,
                     },
                     move || {
                         checking
@@ -2025,6 +2029,8 @@ struct Join {
     key: String,
     name: String,
     addr: String,
+    /// A pairing code from the host's QR (`wado qr`), or empty.
+    pair: String,
 }
 
 /// Answer the relay's question about one join (or takeover check): trusted, first device, or
@@ -2043,13 +2049,21 @@ async fn decide_join(
         key,
         name,
         addr,
+        pair,
     } = j;
     let label = if name.is_empty() {
         addr.clone()
     } else {
         name.clone()
     };
-    let verdict: Result<(), String> = match gate.decide(&key, &name) {
+    let mut decision = gate.decide(&key, &name);
+    // Scanned the QR on the host's own screen: that is the owner's say-so.
+    if decision == Decision::Unknown && !key.is_empty() && gate.redeem(&pair) {
+        info!("gate: {label} paired with a QR code — trusted");
+        gate.trust(&key, &name);
+        decision = Decision::Trusted;
+    }
+    let verdict: Result<(), String> = match decision {
         Decision::Trusted => Ok(()),
         Decision::FirstDevice => {
             warn!("gate: no device was trusted yet — trusting the first one to connect, {label}");
@@ -2064,7 +2078,9 @@ async fn decide_join(
             if !gate.post(&req) {
                 Err("this computer could not ask for approval".into())
             } else {
-                info!("gate: {label} is waiting for a connected device to approve it");
+                info!(
+                    "gate: {label} is waiting for a connected device to approve it — or run `wado approve` on this computer"
+                );
                 let v = gate.wait(&room_id, still_wanted).await;
                 gate.withdraw(&room_id);
                 match v {

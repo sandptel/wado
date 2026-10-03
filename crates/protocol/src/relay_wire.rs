@@ -91,6 +91,10 @@ pub enum WireMsg {
         client_key: String,
         #[serde(default)]
         client_name: String,
+        /// A pairing code from the connect link's QR (`wado qr`): proof the device was shown
+        /// the host's own screen, so the daemon trusts it without anyone approving.
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        pair: String,
     },
     PeerCheck {
         room_id: String,
@@ -99,6 +103,10 @@ pub enum WireMsg {
         client_key: String,
         #[serde(default)]
         client_name: String,
+        /// A pairing code from the connect link's QR (`wado qr`): proof the device was shown
+        /// the host's own screen, so the daemon trusts it without anyone approving.
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        pair: String,
     },
     PeerAccept {
         room_id: String,
@@ -187,12 +195,14 @@ mod tests {
                 client_addr: "1.2.3.4".into(),
                 client_key: "k".into(),
                 client_name: "Android · Chrome".into(),
+                pair: "p".into(),
             },
             WireMsg::PeerCheck {
                 room_id: "r".into(),
                 client_addr: "1.2.3.4".into(),
                 client_key: "k".into(),
                 client_name: "Laptop".into(),
+                pair: String::new(),
             },
             WireMsg::PeerAccept {
                 room_id: "r".into(),
