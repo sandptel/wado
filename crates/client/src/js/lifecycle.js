@@ -90,6 +90,7 @@ W.stopSession = async () => {
   W.wake.release();
   W.stopStats();
   W.latency.stop();
+  W.latency.stopPing();
   W.resetInput();
   W.inputDC = null;
   W.motionDC = null;

@@ -2,6 +2,12 @@
 
 ### Fixed
 
+- **Touch no longer stalls and jumps on a hiccuping link (relay mode).** The relay path never
+  opened the unreliable motion channel, and the daemon refused it there. So every touch and
+  pointer move rode the reliable, ordered input channel, and one lost packet held all input for
+  a round trip while the picture kept its frame rate. Both ends now carry moves on `wado-motion`,
+  as direct mode always did (invariant #1).
+
 - **Opening a settings page no longer kills the interface.** Pages and cards that keep state
   of their own (Wi-Fi, Display, This computer, Computers, the playback card, the session tiles,
   the console) ran their hooks in their parent's scope, so switching pages changed the hook
@@ -29,6 +35,19 @@
 ## Unreleased
 
 ### Added
+
+**Latency work, phase 1 (Decision Log 2026-10-03, "latency compass").**
+- **The audio leg is measured.** The stats now log audio's playout buffer and target, and video's
+  minimum delay (`vmin`), which is the floor Chrome imposes to keep video level with sound. Audio
+  and video stay in sync, always, so audio sets the pace for both. The latency line gains
+  `audio` and `sync` legs and a new culprit side, **audio sync**, when that hold is most of the
+  buffer.
+- **Low-latency audio** (Display & stream, off by default): 5 ms Opus frames and a 5 ms PipeWire
+  capture quantum on the computer instead of 10, and no audio playout floor on the phone. It
+  applies to a running session.
+- **The input round trip is always measured** (a 1 Hz probe) and shown next to ping in the stats
+  pill. The latency line opens with an A/B badge: pipeline and the modes in force.
+- `scripts/perf-report.mjs` reports the audio buffer, the sync hold and the input round trip.
 
 **Auto bitrate.** When the link can't carry the stream (round trip climbing over its recent
 floor, loss, or a swelling playout buffer, for 3 seconds), the session lowers its bitrate to

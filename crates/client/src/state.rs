@@ -129,6 +129,9 @@ pub struct Settings {
     pub touch_mode: Signal<String>,
     /// Auto bitrate: cap the encoder to what the link carries (`js/autorate.js`).
     pub auto_bitrate: Signal<bool>,
+    /// "Low-latency audio": smaller audio frames on the computer, no audio playout floor here.
+    /// Off by default — new optimisations are opt-in switches (Decision Log 2026-10-03).
+    pub low_latency_audio: Signal<bool>,
     /// The dock stays on screen instead of fading when idle (`js/chrome.js`).
     pub dock_pin: Signal<bool>,
     /// The workspace bar at the dock's left (`ui/workspaces.rs`).
@@ -224,6 +227,7 @@ impl Settings {
             natural_scroll: use_signal(|| false),
             touch_mode: use_signal(|| "pointer".to_string()),
             auto_bitrate: use_signal(|| true),
+            low_latency_audio: use_signal(|| false),
             dock_pin: use_signal(|| false),
             ws_bar: use_signal(|| true),
             rail: use_signal(|| "right".to_string()),
@@ -401,6 +405,11 @@ pub struct Live {
     pub stages: Signal<Vec<(String, f64)>>,
     /// The video decoder the browser picked, as `getStats` names it (`js/latency.js`).
     pub decoder: Signal<String>,
+    /// Audio's playout buffer and the video's minimum (sync) delay, ms — see `js/stats.js`.
+    pub abuf: Signal<Option<f64>>,
+    pub vmin: Signal<Option<f64>>,
+    /// Input round trip, ms: tap → daemon → back on the input channel. Always measured.
+    pub input_rt: Signal<Option<f64>>,
     pub dropped: Signal<Option<u64>>,
     /// The one-line verdict: which of the three machines in this picture is at fault.
     /// Computed in `js/health.js`; see there for why it is a verdict and not another number.
@@ -479,6 +488,9 @@ impl Live {
             jbuf: use_signal(|| None),
             stages: use_signal(Vec::new),
             decoder: use_signal(String::new),
+            abuf: use_signal(|| None),
+            vmin: use_signal(|| None),
+            input_rt: use_signal(|| None),
             dropped: use_signal(|| None),
             health: use_signal(Health::default),
         }

@@ -28,8 +28,9 @@ pub fn apply(ui: Ui) {
         bridge::js(&(s.touch_mode)())
     ));
     bridge::call(format!(
-        "window.__wado.autorate.enabled = {};",
-        (s.auto_bitrate)()
+        "window.__wado.autorate.enabled = {}; window.__wado.setLowLatencyAudio({});",
+        (s.auto_bitrate)(),
+        (s.low_latency_audio)()
     ));
     bridge::call(format!(
         "window.__wado.setDockPin({}); window.__wado.setEdgeSwipe({});",

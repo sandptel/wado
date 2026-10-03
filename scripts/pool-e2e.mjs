@@ -9,6 +9,8 @@
 //   pages       every control-centre page opens and closes without the UI dying (hooks in a
 //               page used to land in the caller's scope; switching pages panicked Dioxus)
 //   autorate    a congested link caps the encoder: the server comes back at the capped rate
+//   motion      the unreliable motion channel opens on the relay path (invariant #1)
+//   lowaudio    the Low-latency audio switch reaches the daemon: 5 ms Opus frames
 //   watchdog    a crashed interface reloads itself straight back into the session
 //   pairing     a device nobody trusts, opening the QR's link (`wado qr`), is let straight in
 //
@@ -30,8 +32,15 @@ const check = (name, ok, detail = "") => {
   if (!ok) failures++;
   console.log(`${ok ? "  ok  " : "FAIL  "}${name}${ok || !detail ? "" : "\n        " + detail}`);
 };
+// Daemons log to a buffer the checks can read (and to the terminal with E2E_LOG=1).
+let daemonLog = "";
 const start = (cmd, args, env = {}) => {
-  const p = spawn(cmd, args, { env: { ...process.env, ...env }, stdio: process.env.E2E_LOG && cmd.endsWith("/wado") ? ["ignore", "inherit", "inherit"] : "ignore" });
+  const isDaemon = cmd.endsWith("/wado");
+  const p = spawn(cmd, args, { env: { ...process.env, ...env }, stdio: isDaemon ? ["ignore", "pipe", "pipe"] : "ignore" });
+  if (isDaemon) for (const s of [p.stdout, p.stderr]) s.on("data", (d) => {
+    daemonLog += d.toString().replace(/\x1b\[[0-9;]*m/g, "");
+    if (process.env.E2E_LOG) process.stdout.write(d);
+  });
   procs.push(p);
   return p;
 };
@@ -134,6 +143,18 @@ try {
     return W.autorate.cap; })()`);
   check("a congested link caps the encoder to the new rate", cap > 0 && (await phone.until(`window.__tk === ${cap}`, 10000)),
     JSON.stringify({ cap, server: await phone.ev(`window.__tk`) }));
+  check("the motion channel opens on the relay path", daemonLog.includes("wado-motion data channel open"));
+  // Display & stream → Low-latency audio, through the real UI.
+  await phone.ev(`(async () => {
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    document.querySelector('[aria-label="Control centre"]').click(); await sleep(400);
+    [...document.querySelectorAll("#cc .navrow")].find((b) => b.textContent.includes("Display & stream")).click(); await sleep(400);
+    document.querySelector('#cc [aria-label="Low-latency audio"]').click(); await sleep(300);
+    document.querySelector('#cc [aria-label="Back"]').click(); await sleep(200);
+    document.querySelector(".ccscrim")?.click(); return true; })()`);
+  const lowSeen = await (async () => { const t = Date.now(); while (Date.now() - t < 10000) { if (/streaming session audio.*frame_ms=5/.test(daemonLog)) return true; await sleep(250); } return false; })();
+  check("Low-latency audio reaches the daemon: 5 ms Opus frames", lowSeen,
+    (daemonLog.match(/streaming session audio[^\n]*/g) || []).join(" | ") || "audio never streamed");
   const crashedBefore = await phone.ev(`!!window.__wado._crashing`);
   await phone.ev(`(async () => {
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

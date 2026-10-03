@@ -15,7 +15,10 @@
 // the same reliable data channel real buttons and keys use, so a backed-up channel shows
 // up here immediately.
 
-const PING_EVERY_MS = 500; // input probe rate — cheap (a few bytes), no need to flood
+// Input probe rate. Always on (the user, 2026-10-03: "input round trip, always on" — it is the
+// latency a finger feels): ~40 bytes a second on the input channel, ordered behind nothing and
+// in front of nothing that matters, so invariant #1 is not at stake at this rate.
+const PING_EVERY_MS = 1000;
 
 W.latency = {
   _timer: null,
@@ -40,12 +43,11 @@ W.latency = {
   // timestamp later without touching input_core again.
   onInputSent(_obj) {},
 
-  start(pc) {
-    this.stop();
+  // The input probe: every session, whatever the debug switches say.
+  startPing() {
+    this.stopPing();
     this._inflight.clear();
     this._inMs = null;
-    this._dec = null;
-
     this._pingTimer = setInterval(() => {
       const dc = W.inputDC;
       if (!dc || dc.readyState !== "open") return;
@@ -58,6 +60,16 @@ W.latency = {
       }
       try { dc.send(JSON.stringify({ t: "ping", seq })); } catch (_) {}
     }, PING_EVERY_MS);
+  },
+
+  stopPing() {
+    if (this._pingTimer) { clearInterval(this._pingTimer); this._pingTimer = null; }
+  },
+
+  // The per-leg breakdown: only while the latency readout is on.
+  start(pc) {
+    this.stop();
+    this._dec = null;
 
     this._timer = setInterval(async () => {
       if (!W.pc || W.pc !== pc) { this.stop(); return; }
@@ -138,7 +150,6 @@ W.latency = {
 
   stop() {
     if (this._timer) { clearInterval(this._timer); this._timer = null; }
-    if (this._pingTimer) { clearInterval(this._pingTimer); this._pingTimer = null; }
   },
 };
 

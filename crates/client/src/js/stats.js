@@ -12,6 +12,10 @@ W.startStats = (pc) => {
   let lastLost = null, tick = 0, lastDropped = null, lastRecv = null, lastPrecv = null;
   let lastDecTime = null, lastDecFrames = null;
   let lastJDelay = null, lastJTarget = null, lastJCount = null;
+  // Audio's playout buffer and the video's minimum delay, windowed like jbuf. With audio and
+  // video in one sync group (A/V sync is mandatory — Decision Log 2026-10-03) Chrome holds video
+  // to audio: `vmin` is that floor, and `abuf` is the audio buffer that sets it.
+  let lastA = null, lastVMin = null;
   W.statsTimer = setInterval(async () => {
     if (!W.pc || W.pc !== pc) { W.stopStats(); return; } // pc replaced (reconnect)
     // Re-assert the stream against the stage. Free when it is already right, and the only
@@ -34,7 +38,23 @@ W.startStats = (pc) => {
     // says nothing about now), and availableIncomingBitrate is the only number the browser
     // has about how much link there actually is.
     let jitter = null, precv = null, avail = null;
+    let abuf = null, atarget = null, vmin = null;
     stats.forEach((r) => {
+      if (r.type === "inbound-rtp" && (r.kind === "audio" || r.mediaType === "audio") &&
+          typeof r.jitterBufferDelay === "number" && typeof r.jitterBufferEmittedCount === "number") {
+        const a = { d: r.jitterBufferDelay, t: r.jitterBufferTargetDelay || 0, n: r.jitterBufferEmittedCount };
+        if (lastA && a.n > lastA.n) {
+          abuf = ((a.d - lastA.d) / (a.n - lastA.n)) * 1000;
+          atarget = ((a.t - lastA.t) / (a.n - lastA.n)) * 1000;
+        }
+        lastA = a;
+      }
+      if (r.type === "inbound-rtp" && (r.kind === "video" || r.mediaType === "video") &&
+          typeof r.jitterBufferMinimumDelay === "number" && typeof r.jitterBufferEmittedCount === "number") {
+        const v = { d: r.jitterBufferMinimumDelay, n: r.jitterBufferEmittedCount };
+        if (lastVMin && v.n > lastVMin.n) vmin = ((v.d - lastVMin.d) / (v.n - lastVMin.n)) * 1000;
+        lastVMin = v;
+      }
       if (r.type === "inbound-rtp" && (r.kind === "video" || r.mediaType === "video")) {
         if (typeof r.framesPerSecond === "number") {
           fps = r.framesPerSecond;
@@ -132,7 +152,8 @@ W.startStats = (pc) => {
     }
     if (precv !== null) lastPrecv = precv;
 
-    emit({ type: "stats", fps, ping, jbuf, decodeDropPct });
+    const input = W.latency ? W.latency._inMs : null;
+    emit({ type: "stats", fps, ping, jbuf, decodeDropPct, abuf, vmin, input });
 
     // The verdict runs off the same snapshot rather than polling getStats a second time.
     W.health({ fps, ping, jbuf, dec, jitter, kbps, lossPct, decodeDropPct,
@@ -153,6 +174,8 @@ W.startStats = (pc) => {
         " (+" + lossDelta + ") framesDropped=" + (dropped === null ? "?" : dropped) +
         " framesReceived=" + (recv === null ? "?" : recv) +
         " jtarget=" + n(jtarget, 0) + "ms dec=" + n(dec, 2) + "ms" +
+        " abuf=" + n(abuf, 0) + "ms atarget=" + n(atarget, 0) + "ms vmin=" + n(vmin, 0) + "ms" +
+        " input=" + n(input, 0) + "ms" +
         // The panel's own refresh rate, and the session's frame rate as a multiple of it.
         // `js/refresh.js` has measured this since long before it mattered and it has never left
         // the browser — it feeds the fps picker as a hint and nothing else.

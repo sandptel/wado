@@ -268,6 +268,9 @@ pub fn run(ui: Ui) {
                         }
                     }
                     live.jbuf.set(num("jbuf"));
+                    live.abuf.set(num("abuf"));
+                    live.vmin.set(num("vmin"));
+                    live.input_rt.set(num("input"));
                     if let Some(p) = num("decodeDropPct") {
                         live.decode_drop_pct.set(p);
                     }

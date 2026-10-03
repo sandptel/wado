@@ -419,3 +419,5 @@ button.ctab { padding: 0 14px; }
 .latblame.side-phone { background: color-mix(in oklab, var(--base0A), transparent 70%); }
 .latblame.side-network { background: color-mix(in oklab, var(--base0D), transparent 70%); }
 .latblame.side-computer { background: color-mix(in oklab, var(--base08), transparent 70%); }
+.latblame.side-audio { background: color-mix(in oklab, var(--base0E), transparent 70%); }
+.latmode { color: var(--dim); font-style: italic; }

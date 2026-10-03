@@ -14,7 +14,13 @@ pub struct Capture {
 }
 
 impl Capture {
-    pub fn start(sink: &str) -> std::io::Result<Self> {
+    /// `quantum_ms`: PipeWire's processing period for the capture — one Opus frame, so samples
+    /// leave the graph as soon as a frame is full.
+    pub fn start(sink: &str, quantum_ms: u32) -> std::io::Result<Self> {
+        let props = format!(
+            "{{ stream.capture.sink=true node.latency={}/48000 }}",
+            RATE * quantum_ms / 1000
+        );
         let mut child = Command::new("pw-record")
             .args([
                 "--target",
@@ -27,11 +33,7 @@ impl Capture {
                 "s16",
             ])
             // Record what the sink *plays* (its monitor), not a microphone.
-            .args([
-                "-P",
-                "{ stream.capture.sink=true node.latency=480/48000 }",
-                "-",
-            ])
+            .args(["-P", &props, "-"])
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()?;

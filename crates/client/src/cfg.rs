@@ -86,6 +86,7 @@ pub fn build(ui: Ui) -> SessionConfig {
         x_server: (s.x_server)(),
         dark: Some(crate::theme::is_dark(&(s.theme)(), &(s.theme_custom)())),
         background: crate::theme::desktop(&(s.theme)(), &(s.theme_custom)(), &(s.accent)()),
+        low_latency_audio: (s.low_latency_audio)(),
         bitrate_cap_kbps: if (s.auto_bitrate)() {
             (ui.live.auto_kbps)()
         } else {

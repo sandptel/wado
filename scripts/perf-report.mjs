@@ -8,6 +8,7 @@
 //
 // THE PROTOCOL — keep every run comparable:
 //   1. `scripts/rig.sh` (release build, always), phone on the link under test, latency readout on.
+//      Record which Display & stream switches were on (low-latency audio, auto bitrate) in the label.
 //   2. Note the clock, then do the scenario, about a minute each:
 //        idle desktop · scroll a long page · drag a window · play a video with sound
 //   3. `node scripts/perf-report.mjs --since <clock> --label <phase>-<what changed> --save`
@@ -67,6 +68,8 @@ const report = {
   client: {
     fps: dist(col(stats, "fps")), rtt_ms: dist(col(stats, "rtt")), jbuf_ms: dist(col(stats, "jbuf")),
     jtarget_ms: dist(col(stats, "jtarget")), decode_ms: dist(col(stats, "dec")), kbps: dist(col(stats, "kbps")),
+    audio_buf_ms: dist(col(stats, "abuf")), audio_target_ms: dist(col(stats, "atarget")),
+    sync_hold_ms: dist(col(stats, "vmin")), input_rt_ms: dist(col(stats, "input")),
     frames_dropped: drops.length ? Math.max(...drops) - Math.min(...drops) : null,
     frames_received: recv.length ? Math.max(...recv) - Math.min(...recv) : null,
     anomalies: inWin.filter((l) => l.includes("browser: ANOMALY")).length,
@@ -88,6 +91,8 @@ console.log(`\n${label}  ${report.since.slice(11, 19)}–${report.until.slice(11
 console.log(`  stats samples ${stats.length}, anomalies ${report.client.anomalies}, crashes ${report.crashes}`);
 console.log("  p50/p90/max   fps " + f(report.client.fps) + "  rtt " + f(report.client.rtt_ms) + "  jbuf " + f(report.client.jbuf_ms) +
   "  jtarget " + f(report.client.jtarget_ms) + "  decode " + f(report.client.decode_ms) + "  kbps " + f(report.client.kbps));
+console.log("  audio/sync    abuf " + f(report.client.audio_buf_ms) + "  atarget " + f(report.client.audio_target_ms) +
+  "  sync hold " + f(report.client.sync_hold_ms) + "  input rt " + f(report.client.input_rt_ms));
 console.log(`  frames dropped ${report.client.frames_dropped ?? "—"} of ${report.client.frames_received ?? "—"} received`);
 console.log("  legs p50 (ms)  " + Object.entries(report.legs_ms).map(([k, v]) => `${k} ${v ?? "—"}`).join("  "));
 console.log(`  server: write_sample p99 max ${report.server.write_sample_p99_ms ?? "—"} ms, over budget ${report.server.over_budget}, shedding ${report.server.shedding_events}`);

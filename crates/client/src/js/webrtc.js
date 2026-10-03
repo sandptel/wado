@@ -31,6 +31,7 @@ W.connectWebRTC = async () => {
     W.reconnectAttempts = 0;
     W.startStats(pc);
     W.attachLatencyEcho();
+    W.latency.startPing();
     if (W.debugLatency) W.latency.start(pc);
     W.setupInputCapture();
   };
@@ -204,4 +205,20 @@ W.resync = async () => {
     status("resync failed: " + e);
     W.handleFailure();
   }
+};
+
+// "Low-latency audio" (Display & stream). Video is held level with sound — A/V sync is mandatory
+// (Decision Log 2026-10-03) — so the audio receiver's playout floor is also video's. On: ask for
+// none (`jitterBufferTarget = 0`; Chrome's own jitter model still keeps what the link needs).
+// Off: the browser default, as before this switch existed.
+W.lowLatencyAudio = false;
+W.applyAudioLatency = (recv) => {
+  if (!recv || !("jitterBufferTarget" in recv)) return;
+  try { recv.jitterBufferTarget = W.lowLatencyAudio ? 0 : null; } catch (_) {}
+};
+W.setLowLatencyAudio = (on) => {
+  W.lowLatencyAudio = !!on;
+  try {
+    for (const r of (W.pc && W.pc.getReceivers()) || []) if (r.track && r.track.kind === "audio") W.applyAudioLatency(r);
+  } catch (_) {}
 };
