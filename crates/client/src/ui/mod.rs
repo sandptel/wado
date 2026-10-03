@@ -30,3 +30,26 @@ pub mod stage;
 pub mod toast;
 pub mod widgets;
 pub mod workspaces;
+
+use dioxus::prelude::*;
+
+use crate::state::Ui;
+
+/// Render `f` in a component scope of its own.
+///
+/// **Any render function that calls a hook (`use_signal`, `use_effect`) goes through this.**
+/// Called as a plain function, its hooks land in the caller's scope, and a caller that only
+/// sometimes calls it — a control-centre page, a card shown while something plays — changes the
+/// hook order between renders. Dioxus then panics ("Unable to retrieve the hook that was
+/// initialized at this index"), the WASM UI is dead, and every button stops while the video
+/// plays on: the "all buttons go unresponsive mid-session" of 2026-10-03, caught by the
+/// watchdog's report. Keyed by the function, so a different page is a fresh scope.
+pub fn scoped(ui: Ui, f: fn(Ui) -> Element) -> Element {
+    let key = format!("{:p}", f as *const ());
+    rsx! { Scoped { key: "{key}", ui, f } }
+}
+
+#[component]
+fn Scoped(ui: Ui, f: fn(Ui) -> Element) -> Element {
+    f(ui)
+}

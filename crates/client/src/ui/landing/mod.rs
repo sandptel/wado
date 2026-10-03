@@ -29,9 +29,9 @@ pub fn render(ui: Ui) -> Element {
             div { class: "wordmark", "wado" span { "." } }
             p { class: "tag", "Your desktop, at this screen's own resolution." }
             {progress::render(ui)}
-            {sessions::render(ui)}
-            {profiles::render(ui)}
-            {crate::ui::media::render(ui)}
+            {crate::ui::scoped(ui, sessions::render)}
+            {crate::ui::scoped(ui, profiles::render)}
+            {crate::ui::scoped(ui, crate::ui::media::render)}
             button {
                 class: "shapecard",
                 onclick: move |_| { live.cc_page.set(Page::Display); live.cc_open.set(true); },

@@ -48,7 +48,7 @@ pub fn render(ui: Ui) -> Element {
                 // its scroll; the pushed page is mounted only while it is up.
                 div { class: if page == Page::Root { "page" } else { "page behind" },
                     {hero::render(ui)}
-                    {crate::ui::media::render(ui)}
+                    {crate::ui::scoped(ui, crate::ui::media::render)}
                     if !notes.is_empty() {
                         div { class: "sect",
                             span { "Notifications" }
