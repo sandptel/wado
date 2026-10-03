@@ -74,7 +74,15 @@ pub fn build(ui: Ui) -> SessionConfig {
             .unwrap_or(1.0),
         quality,
         preset: Some((s.preset)()).filter(|p| !p.is_empty()),
-        keyframe_interval: (s.keyframe)().trim().parse().ok(),
+        // An explicit interval (Advanced) wins. Otherwise "On request" stretches the periodic IDR to
+        // a 10 s safety net and leaves the rest to the phone's PLI (invariant #7): a ~22 KB
+        // keyframe every second, sent unpaced, was the leading suspect for the jitter that sizes
+        // the audio buffer, and video waits for audio (2026-10-03).
+        keyframe_interval: (s.keyframe)()
+            .trim()
+            .parse()
+            .ok()
+            .or_else(|| ((s.keyframe_mode)() == "on_request").then(|| (s.fps)().max(1) * 10)),
         input: InputConfig {
             repeat_rate: (s.repeat_rate)(),
             repeat_delay: (s.repeat_delay)(),

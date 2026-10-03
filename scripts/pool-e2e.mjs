@@ -11,6 +11,7 @@
 //   autorate    a congested link caps the encoder: the server comes back at the capped rate
 //   motion      the unreliable motion channel opens on the relay path (invariant #1)
 //   lowaudio    the Low-latency audio switch reaches the daemon: 5 ms Opus frames
+//   keyframes   "On request" stops the periodic IDR: the pump reports ≤ 1 keyframe per stretch
 //   watchdog    a crashed interface reloads itself straight back into the session
 //   pairing     a device nobody trusts, opening the QR's link (`wado qr`), is let straight in
 //
@@ -139,7 +140,7 @@ try {
     W.setTargetKbps = (n) => { window.__tk = n; o(n); };
     const t = Date.now() + 60000;
     for (let i = 0; i < 10; i++) W.autorate.feed({ ping: 30, jbuf: 10, kbps: 3000, lossPct: 0 }, t + i * 1000);
-    for (let i = 0; i < 4; i++) W.autorate.feed({ ping: 400, jbuf: 300, kbps: 500, lossPct: 0 }, t + 20000 + i * 1000);
+    for (let i = 0; i < 7; i++) W.autorate.feed({ ping: 400, jbuf: 300, kbps: 500, lossPct: 0 }, t + 20000 + i * 1000);
     return W.autorate.cap; })()`);
   check("a congested link caps the encoder to the new rate", cap > 0 && (await phone.until(`window.__tk === ${cap}`, 10000)),
     JSON.stringify({ cap, server: await phone.ev(`window.__tk`) }));
@@ -155,6 +156,20 @@ try {
   const lowSeen = await (async () => { const t = Date.now(); while (Date.now() - t < 10000) { if (/streaming session audio.*frame_ms=5/.test(daemonLog)) return true; await sleep(250); } return false; })();
   check("Low-latency audio reaches the daemon: 5 ms Opus frames", lowSeen,
     (daemonLog.match(/streaming session audio[^\n]*/g) || []).join(" | ") || "audio never streamed");
+  // Display & stream → Keyframes → On request; then the pump's next stretches carry ≤ 1 keyframe.
+  await phone.ev(`(async () => {
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    document.querySelector('[aria-label="Control centre"]').click(); await sleep(400);
+    [...document.querySelectorAll("#cc .navrow")].find((b) => b.textContent.includes("Display & stream")).click(); await sleep(400);
+    [...document.querySelectorAll("#cc .seg button")].find((b) => b.textContent.includes("On request")).click(); await sleep(300);
+    document.querySelector('#cc [aria-label="Back"]').click(); await sleep(200);
+    document.querySelector(".ccscrim")?.click(); return true; })()`);
+  const kfFrom = daemonLog.length;
+  const kfs = await (async () => { const t = Date.now(); let got = [];
+    while (Date.now() - t < 25000) { got = [...daemonLog.slice(kfFrom).matchAll(/pump: queue wait.*? frames=(\d+) keyframes=(\d+)/g)].map((m) => [+m[1], +m[2]]);
+      if (got.length >= 3) break; await sleep(500); } return got; })();
+  const later = kfs.slice(1); // the first stretch can straddle the switch
+  check("On request: the periodic keyframe stops (≤ 1 per stretch)", later.length >= 2 && later.every(([, k]) => k <= 1), JSON.stringify(kfs));
   const crashedBefore = await phone.ev(`!!window.__wado._crashing`);
   await phone.ev(`(async () => {
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
