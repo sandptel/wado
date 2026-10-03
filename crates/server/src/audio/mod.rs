@@ -55,7 +55,9 @@ pub async fn run(
                 .ok();
             let track = Arc::clone(&track);
             tokio::spawn(async move {
+                let mut spacing = Spacing::default();
                 while let Some(data) = rx.recv().await {
+                    spacing.tick(frame_ms);
                     let _ = track
                         .write_sample(&Sample {
                             data,
@@ -75,6 +77,46 @@ pub async fn run(
             break;
         }
         drop(stop_tx);
+    }
+}
+
+/// How evenly audio packets leave, logged every 5 s. Chrome sizes its audio jitter buffer to the
+/// unevenness of arrival, and video is held level with audio (A/V sync is mandatory), so a
+/// bursty sender costs the *picture* latency. Measured 2026-10-03: audio buffer 183 ms and video
+/// 188 ms on an 11 ms round trip — the question this answers is whether the bursts start here.
+#[derive(Default)]
+struct Spacing {
+    last: Option<std::time::Instant>,
+    gaps_ms: Vec<f64>,
+    since: Option<std::time::Instant>,
+}
+
+impl Spacing {
+    fn tick(&mut self, frame_ms: u32) {
+        let now = std::time::Instant::now();
+        if let Some(prev) = self.last.replace(now) {
+            self.gaps_ms
+                .push(now.duration_since(prev).as_secs_f64() * 1000.0);
+        }
+        let since = *self.since.get_or_insert(now);
+        if now.duration_since(since) >= Duration::from_secs(5) && !self.gaps_ms.is_empty() {
+            let g = &mut self.gaps_ms;
+            g.sort_by(f64::total_cmp);
+            let at = |q: f64| g[((g.len() - 1) as f64 * q) as usize];
+            // A "burst" packet left within 1 ms of the one before: it was waiting, not paced.
+            let burst = g.iter().filter(|&&x| x < 1.0).count();
+            tracing::info!(
+                frame_ms,
+                packets = g.len() + 1,
+                gap_p50_ms = format!("{:.1}", at(0.5)),
+                gap_p90_ms = format!("{:.1}", at(0.9)),
+                gap_max_ms = format!("{:.1}", at(1.0)),
+                burst_pct = format!("{:.0}", 100.0 * burst as f64 / g.len() as f64),
+                "audio send spacing"
+            );
+            g.clear();
+            self.since = Some(now);
+        }
     }
 }
 
