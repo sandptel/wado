@@ -20,6 +20,7 @@ W.autorate = {
     this.cap = null;       // kbps in force, or null for the full rate
     this.ceil = 0;         // the full rate, as the server last reported it uncapped
     this.rtts = [];        // last 30 s, for the floor
+    this.recent = [];      // last 5 s, whose median decides
     this.recv = [];        // last 5 s of received kbps
     this.bad = 0; this.good = 0; this.last = 0;
   },
@@ -35,7 +36,13 @@ W.autorate = {
     // Round trip over its floor, or loss: a path holding more than it can carry. Not the playout
     // buffer — measured 2026-10-03, jbuf sat at 300–400 ms with rtt at its floor and no loss
     // (arrival jitter, not capacity), and cutting the bitrate for it changed nothing.
-    const congested = (s.ping != null && s.ping > floor + 60) || loss > 2;
+    //
+    // The median of the last 5 samples, against a floor of at least 20 ms: a jittery link with a
+    // tiny floor (5 ms measured 2026-10-03) cleared "floor + 60" on single spikes, and the cap
+    // walked 2521 → 400 kbps with the buffers not moving at all — jitter, not capacity.
+    this.recent = [...(this.recent || []), s.ping].filter((v) => v != null).slice(-5);
+    const mid = this.recent.length ? [...this.recent].sort((a, b) => a - b)[this.recent.length >> 1] : null;
+    const congested = (mid != null && mid > Math.max(floor, 20) + 60) || loss > 2;
     const clean = !congested && (s.ping == null || s.ping <= floor + 25) && loss < 0.5 &&
                   (s.jbuf == null || s.jbuf < 80);
     this.bad = congested ? this.bad + 1 : 0;

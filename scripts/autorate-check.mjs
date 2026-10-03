@@ -13,7 +13,7 @@ let t = 0;
 const run = (n, s) => { let out; for (let i = 0; i < n; i++) { t += 1000; const r = a.feed(s, t); if (r !== undefined) out = r; } return out; };
 run(10, { ping: 30, jbuf: 20, kbps: 3800, lossPct: 0 });                 // a good link learns its floor
 check("a clean link is left alone", a.cap === null, a.cap);
-const down = run(4, { ping: 300, jbuf: 270, kbps: 900, lossPct: 0 });    // the cellular collapse
+const down = run(6, { ping: 300, jbuf: 270, kbps: 900, lossPct: 0 });    // the cellular collapse (median: ~5 s to call it)
 check("congestion caps it near what arrived, at most halving", down >= 1970 && down <= 2760 || down === Math.round(Math.max(3941 * 0.5, Math.min(3941 * 0.7, 900 * 0.9))), down);
 const first = a.cap;
 run(3, { ping: 300, jbuf: 270, kbps: 700, lossPct: 0 });
@@ -22,7 +22,11 @@ run(8, { ping: 300, jbuf: 270, kbps: 700, lossPct: 0 });
 check("still congested later: steps down again", a.cap < first, a.cap);
 run(80, { ping: 30, jbuf: 20, kbps: 600, lossPct: 0 });
 check("a clean link climbs back to the full rate", a.cap === null && emitted.at(-1) === null, [a.cap, emitted]);
-a.reset(); W.setTargetKbps(3941); a.enabled = false;
+a.reset(); W.setTargetKbps(3941);
+run(10, { ping: 6, jbuf: 200, kbps: 2000, lossPct: 0 });
+check("a jittery link with a tiny floor: single spikes are not congestion",
+  [94, 9, 11, 100, 8, 10, 90, 9, 12, 95].every((p) => { t += 1000; a.feed({ ping: p, jbuf: 230, kbps: 2000, lossPct: 0 }, t); return a.cap === null; }), a.cap);
+a.enabled = false;
 check("off: never touches it", run(10, { ping: 500, jbuf: 400, kbps: 100, lossPct: 9 }) === undefined && a.cap === null, a.cap);
 console.log(failures ? `\n${failures} failed` : "\nall passed");
 process.exit(failures ? 1 : 0);
