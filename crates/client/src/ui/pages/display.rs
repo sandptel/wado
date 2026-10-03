@@ -194,6 +194,20 @@ pub fn render(ui: Ui) -> Element {
         }
 
         div { class: "card",
+            div { class: "cardhead", "Keyframes" WhenBadge { when: When::Apply } }
+            Seg {
+                options: opts(&[("periodic", "Every 1–2 s"), ("on_request", "On request")]),
+                value: (s.keyframe_mode)(),
+                onpick: move |v| {
+                    s.keyframe_mode.set(v);
+                    if (ui.live.session_on)() {
+                        crate::actions::apply(ui);
+                    }
+                },
+            }
+            p { class: "hint",
+                "A keyframe is ~8× an ordinary frame. On request sends one only when the phone asks (and every 10 s as a safety net) — fewer bursts on a jittery link."
+            }
             SwitchRow {
                 title: "Low-latency audio",
                 sub: "Smaller sound packets and no audio cushion — video waits for sound, so this speeds both",

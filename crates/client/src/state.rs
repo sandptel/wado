@@ -132,6 +132,9 @@ pub struct Settings {
     /// "Low-latency audio": smaller audio frames on the computer, no audio playout floor here.
     /// Off by default — new optimisations are opt-in switches (Decision Log 2026-10-03).
     pub low_latency_audio: Signal<bool>,
+    /// Keyframes: `periodic` (the quality preset's 1–2 s) or `on_request` (10 s safety net, the
+    /// rest on the phone's PLI). A Display & stream switch, opt-in (Decision Log 2026-10-03).
+    pub keyframe_mode: Signal<String>,
     /// The dock stays on screen instead of fading when idle (`js/chrome.js`).
     pub dock_pin: Signal<bool>,
     /// The workspace bar at the dock's left (`ui/workspaces.rs`).
@@ -228,6 +231,7 @@ impl Settings {
             touch_mode: use_signal(|| "pointer".to_string()),
             auto_bitrate: use_signal(|| true),
             low_latency_audio: use_signal(|| false),
+            keyframe_mode: use_signal(|| "periodic".to_string()),
             dock_pin: use_signal(|| false),
             ws_bar: use_signal(|| true),
             rail: use_signal(|| "right".to_string()),

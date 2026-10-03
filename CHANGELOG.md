@@ -39,6 +39,14 @@
 
 ### Added
 
+**Keyframes "On request"** (Display & stream, off by default). Instead of an IDR every 1–2 s, the
+encoder sends one when the phone asks (RTCP PLI/FIR), with a 10 s safety net. A keyframe measured
+22 KB against 2–3 KB for an ordinary frame, sent all at once. On a jittery link, that burst is
+what the audio jitter buffer, and so the picture, was suspected of absorbing. The daemon now also
+logs how evenly audio leaves (`audio send spacing`): measured 10.6 ms p50 and 0% bursts, so audio
+unevenness is not made by the sender. `rig.sh` keeps the last three logs per daemon instead of
+emptying them on restart.
+
 **Latency work, phase 1 (Decision Log 2026-10-03, "latency compass").**
 - **The audio leg is measured.** The stats now log audio's playout buffer and target, and video's
   minimum delay (`vmin`), which is the floor Chrome imposes to keep video level with sound. Audio

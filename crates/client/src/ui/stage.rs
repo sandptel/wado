@@ -164,6 +164,9 @@ fn pipeline_mode(ui: Ui) -> String {
     if (s.low_latency_audio)() {
         m.push("low-latency audio".into());
     }
+    if (s.keyframe_mode)() == "on_request" {
+        m.push("keyframes on request".into());
+    }
     if (s.auto_bitrate)() {
         m.push(match (ui.live.auto_kbps)() {
             Some(k) => format!("auto bitrate {k}k"),
