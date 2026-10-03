@@ -38,7 +38,9 @@ W.sendInput = (obj) => {
 // Normalize a client point to 0..1 within the video's rendered (letterboxed) content rect.
 W.normPoint = (clientX, clientY, video) => {
   const r = video.getBoundingClientRect();
-  const vw = video.videoWidth, vh = video.videoHeight;
+  // The low-latency pipeline paints a canvas over an empty <video>: its frame size stands in.
+  const wcs = !video.videoWidth && W.wc && W.wc.live && W.wc.size;
+  const vw = wcs ? wcs.w : video.videoWidth, vh = wcs ? wcs.h : video.videoHeight;
   if (!vw || !vh || !r.width || !r.height) return null;
   const scale = Math.min(r.width / vw, r.height / vh); // object-fit: contain
   const cw = vw * scale, ch = vh * scale;

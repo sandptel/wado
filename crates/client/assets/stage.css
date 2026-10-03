@@ -421,3 +421,9 @@ button.ctab { padding: 0 14px; }
 .latblame.side-computer { background: color-mix(in oklab, var(--base08), transparent 70%); }
 .latblame.side-audio { background: color-mix(in oklab, var(--base0E), transparent 70%); }
 .latmode { color: var(--dim); font-style: italic; }
+
+/* The low-latency pipeline's picture: over the (empty) video, same letterboxing, and inert so
+ * every touch still reaches the video element the input code listens on. */
+#wado-canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;
+  background: #000; pointer-events: none; display: none; }
+#wado-canvas.on { display: block; }

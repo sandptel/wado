@@ -153,6 +153,17 @@ W.startStats = (pc) => {
     if (precv !== null) lastPrecv = precv;
 
     const input = W.latency ? W.latency._inMs : null;
+    // The low-latency pipeline has no RTP video: its own numbers stand in — frames painted,
+    // our audio buffer (the one sync waits on), and the decoder's time.
+    if (W.wc && W.wc.live) {
+      const shown = W.wcVideo.shown;
+      fps = W._wcShown === undefined ? null : shown - W._wcShown;
+      W._wcShown = shown;
+      jbuf = W.wcAudio.queuedMs !== null ? W.wcAudio.queuedMs : null;
+      abuf = jbuf;
+      dec = W.wcVideo.decMs;
+      vmin = null;
+    }
     emit({ type: "stats", fps, ping, jbuf, decodeDropPct, abuf, vmin, input });
 
     // The verdict runs off the same snapshot rather than polling getStats a second time.

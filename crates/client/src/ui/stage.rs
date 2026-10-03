@@ -139,6 +139,8 @@ pub fn render(ui: Ui) -> Element {
             }
         }
         video { id: "wado-video", autoplay: true, playsinline: true, muted: true }
+        // The low-latency pipeline paints here (js/wc_video.js); input still lands on the video.
+        canvas { id: "wado-canvas", class: if (live.wc_live)() { "on" } else { "" } }
         // An empty, stable mount point that `js/gamepad.js` builds the on-screen pad inside.
         //
         // A *portal*, and deliberately: the pad is ~30 absolutely-positioned elements that
@@ -160,7 +162,12 @@ pub fn render(ui: Ui) -> Element {
 /// The A/B badge: the media pipeline and the optional modes in force.
 fn pipeline_mode(ui: Ui) -> String {
     let s = ui.set;
-    let mut m = vec!["webrtc".to_string()];
+    let mut m = vec![if (ui.live.wc_live)() {
+        "webcodecs"
+    } else {
+        "webrtc"
+    }
+    .to_string()];
     if (s.low_latency_audio)() {
         m.push("low-latency audio".into());
     }

@@ -3,7 +3,7 @@
 //!
 //! The first player is the full card: its cover (as it is, unblurred), its app's own icon,
 //! title and artist, play/pause, previous/next, a progress bar to drag, shuffle, repeat, its
-//! volume, and where its sound comes out (*This phone* / *Computer*, a tap moves it). Every other
+//! volume, and where its sound comes out (*This device* / *Computer*, a tap moves it). Every other
 //! player gets a compact row with its own play/pause; tapping a row makes it the card.
 //!
 //! The bar runs on a CSS animation between polls — and polls quicken while something plays —
@@ -145,7 +145,7 @@ fn card(h: &HostState, p: &Player) -> Element {
                             }
                         },
                         Icon { name: if on_phone { "phone" } else { "monitor" } }
-                        if on_phone { "This phone" } else { "Computer" }
+                        if on_phone { "This device" } else { "Computer" }
                     }
                 }
             }

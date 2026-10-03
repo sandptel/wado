@@ -95,6 +95,8 @@ pub fn build(ui: Ui) -> SessionConfig {
         dark: Some(crate::theme::is_dark(&(s.theme)(), &(s.theme_custom)())),
         background: crate::theme::desktop(&(s.theme)(), &(s.theme_custom)(), &(s.accent)()),
         low_latency_audio: (s.low_latency_audio)(),
+        // Only where it can run: a browser without WebCodecs stays on RTP whatever the switch says.
+        webcodecs: (s.webcodecs)() && (ui.live.wc_supported)(),
         bitrate_cap_kbps: if (s.auto_bitrate)() {
             (ui.live.auto_kbps)()
         } else {

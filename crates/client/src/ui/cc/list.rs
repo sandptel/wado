@@ -68,7 +68,7 @@ pub fn render(ui: Ui) -> Element {
         Some(h) => format!(
             "{} · {}",
             if crate::ui::host::on_phone(h) {
-                "On this phone"
+                "On this device"
             } else {
                 "On the computer"
             },

@@ -12,6 +12,8 @@
 //   motion      the unreliable motion channel opens on the relay path (invariant #1)
 //   lowaudio    the Low-latency audio switch reaches the daemon: 5 ms Opus frames
 //   keyframes   "On request" stops the periodic IDR: the pump reports ≤ 1 keyframe per stretch
+//   webcodecs   Low-latency pipeline: frames arrive on the media channel, decode, paint the
+//               canvas; audio packets arrive; input still maps; RTP video stops
 //   watchdog    a crashed interface reloads itself straight back into the session
 //   pairing     a device nobody trusts, opening the QR's link (`wado qr`), is let straight in
 //
@@ -33,6 +35,9 @@ const check = (name, ok, detail = "") => {
   if (!ok) failures++;
   console.log(`${ok ? "  ok  " : "FAIL  "}${name}${ok || !detail ? "" : "\n        " + detail}`);
 };
+// Killed or interrupted (a timeout, ^C), the daemons and relay must go too: left running they
+// hold the instance keys and the next run's daemons are refused registration.
+for (const sig of ["SIGTERM", "SIGINT", "SIGHUP"]) process.on(sig, () => { for (const p of procs) try { p.kill(); } catch {} process.exit(1); });
 // Daemons log to a buffer the checks can read (and to the terminal with E2E_LOG=1).
 let daemonLog = "";
 const start = (cmd, args, env = {}) => {
@@ -52,7 +57,7 @@ await sleep(400);
 for (const n of ["e2e-pool-a", "e2e-pool-b"]) {
   start(ROOT + "target/release/wado", [], {
     WADO_RELAY_URL: "ws://127.0.0.1:" + PORT, WADO_REMOTE_ID: RID, WADO_INSTANCE: n,
-    XDG_CONFIG_HOME: join(T, "cfg"), WADO_UDP_SLICE: n.endsWith("a") ? "4" : "5",
+    XDG_CONFIG_HOME: join(T, "cfg"), WADO_UDP_SLICE: n.endsWith("a") ? "2" : "3", // 0–1 belong to the rig; 4+ are past the port ceiling
   });
   await sleep(300);
 }
@@ -170,6 +175,28 @@ try {
       if (got.length >= 3) break; await sleep(500); } return got; })();
   const later = kfs.slice(1); // the first stretch can straddle the switch
   check("On request: the periodic keyframe stops (≤ 1 per stretch)", later.length >= 2 && later.every(([, k]) => k <= 1), JSON.stringify(kfs));
+  await phone.ev(`(async () => {
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    document.querySelector('[aria-label="Control centre"]').click(); await sleep(400);
+    [...document.querySelectorAll("#cc .navrow")].find((b) => b.textContent.includes("Display & stream")).click(); await sleep(400);
+    document.querySelector('#cc [aria-label="Low-latency pipeline (WebCodecs)"]').click(); await sleep(300);
+    document.querySelector('#cc [aria-label="Back"]').click(); await sleep(200);
+    document.querySelector(".ccscrim")?.click(); return true; })()`);
+  check("the media channel opens on the daemon", await (async () => { const t = Date.now(); while (Date.now() - t < 8000) { if (daemonLog.includes("media data channel open")) return true; await sleep(200); } return false; })());
+  const wcOk = await phone.until(`window.__wado.wcVideo.shown > 30 && document.getElementById("wado-canvas").classList.contains("on")`, 20000);
+  check("WebCodecs: frames decode and paint the canvas", wcOk,
+    await phone.ev(`(() => { const w = window.__wado.wc; const r = [...w.ready.values()][0]; const head = r ? Array.from(r.parts[0].slice(0, 12)).map((b) => b.toString(16).padStart(2, "0")).join(" ") : null;
+      return JSON.stringify({ shown: window.__wado.wcVideo.shown, codecWas: window.__wado.wcVideo._lastCodec, codec: window.__wado.wcVideo.codec, live: w.live, lost: w.lost, partial: w.partial.size, ready: w.ready.size, next: w.next, needKey: w.needKey, anyKey: [...w.ready.values()].some((f) => f.key), head, dec: window.__wado.wcVideo.dec && window.__wado.wcVideo.dec.state }); })()`));
+  check("WebCodecs: audio packets arrive on the same channel", await phone.until(`window.__wado.wcAudio._off.length > 20`, 10000));
+  // Sync: the picture shows the frame whose time the sound is at — within about a frame.
+  const sync = await (async () => { const t = Date.now(); let r = null; while (Date.now() - t < 10000) {
+      r = await phone.ev(`(() => { const a = window.__wado.wcAudio, v = window.__wado.wcVideo; const c = a.clockUs(); return c === null ? null : { offMs: (c - v.lastTs) / 1000, targetMs: a.targetMs, queuedMs: a.queuedMs }; })()`);
+      if (r) break; await sleep(300); } return r; })();
+  check("WebCodecs: picture follows the audio clock (|A/V offset| < 50 ms)", sync && Math.abs(sync.offMs) < 50, JSON.stringify(sync));
+  check("WebCodecs: input still maps onto the picture", await phone.ev(`(() => { const v = document.getElementById("wado-video"); const r = v.getBoundingClientRect(); return !!window.__wado.normPoint(r.left + r.width / 2, r.top + r.height / 2, v); })()`));
+  const rtp = await phone.ev(`(async () => { const g = async () => { let n = 0; (await window.__wado.pc.getStats()).forEach((r) => { if (r.type === "inbound-rtp" && r.kind === "video") n = r.framesReceived || 0; }); return n; };
+    const a = await g(); await new Promise((r) => setTimeout(r, 2000)); return (await g()) - a; })()`);
+  check("WebCodecs: RTP video has stopped (no double send)", rtp === 0, "RTP frames in 2 s: " + rtp);
   const crashedBefore = await phone.ev(`!!window.__wado._crashing`);
   await phone.ev(`(async () => {
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

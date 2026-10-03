@@ -40,6 +40,7 @@ pub async fn run(
     mut listening: watch::Receiver<bool>,
     mut low: watch::Receiver<bool>,
     track: Arc<TrackLocalStaticSample>,
+    wc: crate::wcmedia::SharedHub,
 ) {
     loop {
         let on = *listening.borrow_and_update();
@@ -54,10 +55,16 @@ pub async fn run(
                 .spawn(move || pump(&name, frame_ms, tx, stop_rx))
                 .ok();
             let track = Arc::clone(&track);
+            let wc = Arc::clone(&wc);
             tokio::spawn(async move {
                 let mut spacing = Spacing::default();
                 while let Some(data) = rx.recv().await {
                     spacing.tick(frame_ms);
+                    // The low-latency path takes audio too: one clock with video is the point.
+                    if wc.active() {
+                        wc.send_audio(&data, wc.now_us()).await;
+                        continue;
+                    }
                     let _ = track
                         .write_sample(&Sample {
                             data,

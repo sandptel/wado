@@ -31,7 +31,14 @@ pub fn render(ui: Ui) -> Element {
     let chips: Vec<(String, String)> = a
         .sinks
         .iter()
-        .map(|s| (s.name.clone(), short(&s.label)))
+        .map(|s| {
+            let label = if a.phone_sink.as_deref() == Some(s.name.as_str()) {
+                crate::ui::host::here(ui)
+            } else {
+                short(&s.label)
+            };
+            (s.name.clone(), label)
+        })
         .collect();
 
     rsx! {
@@ -81,7 +88,7 @@ pub fn render(ui: Ui) -> Element {
                                     }
                                     act(HostAction::StreamTo { id: st.id, sink: name.clone() })
                                 },
-                                Icon { name: if label == "This phone" { "phone" } else { "monitor" } }
+                                Icon { name: if a.phone_sink.as_deref() == Some(name.as_str()) { "phone" } else { "monitor" } }
                                 "{label}"
                             }
                         }
@@ -120,6 +127,6 @@ pub fn render(ui: Ui) -> Element {
                 }
             }
         }
-        p { class: "why", "\"This phone\" plays on the device you are holding. Moving an app there sends its sound here instead of out of the computer." }
+        p { class: "why", "\"This device\" plays on the device you are holding. Moving an app there sends its sound here instead of out of the computer." }
     }
 }

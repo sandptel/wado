@@ -53,7 +53,7 @@ pub fn start() -> Option<AudioSink> {
     };
     let create = format!(
         "create-node adapter {{ factory.name=support.null-audio-sink node.name={name} \
-         node.description=\"This phone (wado)\" media.class=Audio/Sink audio.position=[FL FR] \
+         node.description=\"wado viewer\" media.class=Audio/Sink audio.position=[FL FR] \
          object.linger=false }}\n"
     );
     // stdin is kept open: closing it would end pw-cli, and with it the node.
