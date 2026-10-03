@@ -8,11 +8,19 @@
 // reads as "the button did nothing". So polls are counted, the ones in flight at an action are
 // dropped, and no poll goes out until the action's own answer is back.
 let hostGets = 0, hostDos = 0, hostDrop = 0;
+const hostPics = {};
 W.relayOn("host_state", (msg) => {
   if (hostDrop > 0) { hostDrop--; hostGets = Math.max(0, hostGets - 1); return; }
   if (hostDos > 0) hostDos--;
   else hostGets = Math.max(0, hostGets - 1);
   W.hostState = msg.state || null;
+  // Pictures come once per viewer (server::host::trim); a repeat says `*_same` — keep ours.
+  for (const p of (W.hostState && W.hostState.media) || []) {
+    const had = hostPics[p.bus] || {};
+    if (p.art_same) p.art = had.art || null;
+    if (p.icon_same) p.icon = had.icon || null;
+    hostPics[p.bus] = { art: p.art, icon: p.icon };
+  }
   emit({ type: "hostState", state: W.hostState });
   const fast = !!(W.hostState && (W.hostState.media || []).some((p) => p.playing));
   if (fast !== hostFast) { hostFast = fast; hostArm(); }
@@ -36,7 +44,8 @@ W.hostDo = (action) => {
 let hostTimer = 0, hostOn = false, hostFast = false;
 const hostArm = () => {
   clearInterval(hostTimer);
-  if (hostOn) hostTimer = setInterval(W.hostGet, hostFast ? 1200 : 2500);
+  // During a session the downlink belongs to the picture: a slower refresh, whatever plays.
+  if (hostOn) hostTimer = setInterval(W.hostGet, W.sessionOn ? 3000 : hostFast ? 1200 : 2500);
 };
 W.hostWatch = (on) => { hostOn = !!on; if (on) W.hostGet(); hostArm(); };
 

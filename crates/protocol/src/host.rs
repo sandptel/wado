@@ -60,6 +60,9 @@ pub struct Player {
     /// Cover art: an `https:` URL as the player gives it, or a `data:` URI for a local file.
     #[serde(default)]
     pub art: Option<String>,
+    /// The art is what this viewer was last sent; keep that copy (`server::host::trim`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub art_same: bool,
     pub playing: bool,
     pub position_ms: u64,
     /// 0 when the player does not say (a live stream).
@@ -75,6 +78,9 @@ pub struct Player {
     /// The app's own icon, as a `data:` URI, when its desktop entry names one.
     #[serde(default)]
     pub icon: Option<String>,
+    /// Likewise for the icon.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub icon_same: bool,
     /// MPRIS `LoopStatus`: `None`, `Track` or `Playlist`; absent when the player has none.
     #[serde(default)]
     pub loop_status: Option<String>,

@@ -46,8 +46,14 @@ pub fn render(ui: Ui) -> Element {
         .filter(|i| !i.hostname.is_empty());
 
     // Probe the computers this page is not dialled to; re-armed whenever the list changes.
+    // Never during a session: its bandwidth belongs to the picture.
     use_effect(move || {
-        let list = s.profiles.read().clone();
+        let streaming = (live.session_on)();
+        let list = if streaming {
+            Vec::new()
+        } else {
+            s.profiles.read().clone()
+        };
         let cur = (s.profile)();
         let targets: Vec<(String, String)> = list
             .iter()

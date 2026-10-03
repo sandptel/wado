@@ -17,6 +17,7 @@ pub mod cmd;
 pub mod media;
 pub mod phone_sink;
 pub mod sysinfo;
+pub mod trim;
 pub mod wifi;
 
 use std::sync::OnceLock;

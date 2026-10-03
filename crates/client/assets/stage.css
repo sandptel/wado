@@ -413,3 +413,9 @@ button.ctab { padding: 0 14px; }
 .wado-prompt { z-index: 45; }
 .sheettitle { padding: 10px 16px 8px; color: var(--base05); font: 600 16px/1.35 system-ui, sans-serif; }
 .menurow.cancel { justify-content: center; margin-top: 6px; background: var(--base01); font-weight: 600; }
+
+/* The culprit, first: which side of the trip is slowest, and what to do about it. */
+.latblame { font-weight: 600; color: var(--bright); }
+.latblame.side-phone { background: color-mix(in oklab, var(--base0A), transparent 70%); }
+.latblame.side-network { background: color-mix(in oklab, var(--base0D), transparent 70%); }
+.latblame.side-computer { background: color-mix(in oklab, var(--base08), transparent 70%); }

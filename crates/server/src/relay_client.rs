@@ -142,6 +142,8 @@ struct RelayCtx {
     /// The device key and name of the viewer in `room` — what its config edits and saved
     /// settings are filed under (see [`crate::config::link`]).
     viewer: Arc<Mutex<(String, String)>>,
+    /// The cover art and icons this viewer already has — see [`crate::host::trim`].
+    media_sent: Arc<crate::host::trim::Sent>,
     /// The accessibility-tree client that answers `TargetsRequest` — see [`crate::a11y`].
     /// Shared, because each question runs as its own task.
     a11y: Arc<crate::a11y::A11y>,
@@ -451,6 +453,7 @@ async fn run(
         checking: Arc::default(),
         approved: Arc::default(),
         viewer: Arc::default(),
+        media_sent: Arc::default(),
         audio_track,
         listening: listening_tx,
         a11y: Arc::new(crate::a11y::A11y::default()),
@@ -997,6 +1000,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 *ctx.room.lock().unwrap_or_else(|e| e.into_inner()) = room_id.clone();
                 *ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()) =
                     (client_key.clone(), client_name.clone());
+                ctx.media_sent.clear();
                 ctx.viewer_ok.store(!relay_gates, Ordering::SeqCst);
                 info!(room_id = %room_id, client = %client_addr, device = %client_name, "relay client: peer connected");
                 if relay_gates {
@@ -1428,8 +1432,10 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
 
             RelayMsg::HostGet => {
                 let out_tx = out_tx.clone();
+                let sent = Arc::clone(&ctx.media_sent);
                 tokio::spawn(async move {
-                    let state = crate::host::state().await;
+                    let mut state = crate::host::state().await;
+                    sent.trim(&mut state);
                     send_relay(&out_tx, &RelayMsg::HostState { state })
                         .await
                         .ok();
@@ -1452,6 +1458,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     Ok(())
                 };
                 let out_tx = out_tx.clone();
+                let sent = Arc::clone(&ctx.media_sent);
                 tokio::spawn(async move {
                     info!(device, ?action, "host action");
                     if let Err(message) = match allowed {
@@ -1465,7 +1472,8 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     }
                     // A moment for the change to land before reading it back.
                     tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-                    let state = crate::host::state().await;
+                    let mut state = crate::host::state().await;
+                    sent.trim(&mut state);
                     send_relay(&out_tx, &RelayMsg::HostState { state })
                         .await
                         .ok();

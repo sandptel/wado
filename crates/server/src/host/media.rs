@@ -151,6 +151,7 @@ async fn player(
         title: text("xesam:title"),
         artist,
         art: art(&text("mpris:artUrl")),
+        art_same: false,
         playing: status == "Playing",
         position_ms: (position_us.max(0) / 1000) as u64,
         length_ms: (length_us.max(0) / 1000) as u64,
@@ -160,6 +161,7 @@ async fn player(
         can_seek: flag(p.get_property("CanSeek").await) && length_us > 0,
         stream,
         icon,
+        icon_same: false,
         loop_status: p.get_property("LoopStatus").await.ok(),
     })
 }

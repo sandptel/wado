@@ -22,6 +22,7 @@ pub mod gesture;
 pub mod health;
 pub mod host;
 pub mod landing;
+pub mod latency;
 pub mod live;
 pub mod media;
 pub mod pages;
