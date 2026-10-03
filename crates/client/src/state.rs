@@ -515,3 +515,11 @@ pub struct Ui {
     pub set: Settings,
     pub live: Live,
 }
+
+/// One app, one set of signals: every `Ui` is the same `Ui`. Lets it be a component prop
+/// ([`crate::ui::scoped`]); a component re-renders on the signals it reads, not on this.
+impl PartialEq for Ui {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}

@@ -6,6 +6,8 @@
 //   parallel    the computer, joining while the phone is on, gets the *other* daemon and can
 //               start a session of its own (a dropped phone's seat must not fill the pool)
 //   tiles       each device's home page lists both sessions, with shape and apps
+//   pages       every control-centre page opens and closes without the UI dying (hooks in a
+//               page used to land in the caller's scope; switching pages panicked Dioxus)
 //   watchdog    a crashed interface reloads itself straight back into the session
 //   pairing     a device nobody trusts, opening the QR's link (`wado qr`), is let straight in
 //
@@ -117,6 +119,20 @@ try {
     await phone.ev(`(document.querySelector(".landingstatus")?.textContent || "") + " | " + JSON.stringify({ sent: window.__sent, wanted: window.__wado._relayWanted, resuming: window.__wado._relayResuming, on: window.__wado.sessionOn })`));
 
   if (process.env.E2E_LOG) console.log(phone.logs.join("\n"));
+  const crashedBefore = await phone.ev(`!!window.__wado._crashing`);
+  await phone.ev(`(async () => {
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    document.querySelector('[aria-label="Control centre"]').click(); await sleep(400);
+    for (const t of ["Wi-Fi & Bluetooth", "Display & stream", "This computer", "Computers & relays", "Sound", "Workspaces & windows", "Display & stream", "Wi-Fi & Bluetooth"]) {
+      const row = [...document.querySelectorAll("#cc .navrow")].find((b) => b.textContent.includes(t));
+      if (row) { row.click(); await sleep(300); }
+      const back = document.querySelector('#cc [aria-label="Back"]'); if (back) { back.click(); await sleep(300); }
+    }
+    return true; })()`);
+  await sleep(1500);
+  check("every control-centre page opens and closes without the UI dying",
+    !crashedBefore && !(await phone.ev(`!!window.__wado._crashing`)) && (await phone.ev(`!!document.getElementById("wado-bar")`)),
+    phone.errors.join("\n        "));
   // The phone drops without a goodbye (a closed tab): its seat must not keep the pool full.
   await laptop.open();
   check("computer gets on while the phone streams", await laptop.until(`!!window.__wado && window.__wado.relayUp`, 20000));
