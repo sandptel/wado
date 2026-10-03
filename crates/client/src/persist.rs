@@ -54,6 +54,8 @@ pub struct Saved {
     pub low_latency_audio: Option<bool>,
     pub keyframe_mode: Option<String>,
     pub webcodecs: Option<bool>,
+    pub redundant_input: Option<bool>,
+    pub audio_redundancy: Option<bool>,
     pub dock_pin: Option<bool>,
     pub ws_bar: Option<bool>,
     pub rail: Option<String>,
@@ -131,6 +133,8 @@ pub fn snapshot(ui: Ui) -> Saved {
         low_latency_audio: Some((s.low_latency_audio)()),
         keyframe_mode: Some((s.keyframe_mode)()),
         webcodecs: Some((s.webcodecs)()),
+        redundant_input: Some((s.redundant_input)()),
+        audio_redundancy: Some((s.audio_redundancy)()),
         dock_pin: Some((s.dock_pin)()),
         ws_bar: Some((s.ws_bar)()),
         rail: Some((s.rail)()),
@@ -221,6 +225,8 @@ pub fn restore(ui: Ui, saved: Saved) {
     put!(low_latency_audio);
     put!(keyframe_mode);
     put!(webcodecs);
+    put!(redundant_input);
+    put!(audio_redundancy);
     put!(dock_pin);
     put!(ws_bar);
     put!(rail);

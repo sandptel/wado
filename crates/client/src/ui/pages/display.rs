@@ -213,6 +213,28 @@ pub fn render(ui: Ui) -> Element {
                     }
                 },
             }
+            SwitchRow {
+                title: "Redundant audio",
+                sub: "Low-latency pipeline: every sound packet sent three times (~0.3 Mbit/s) so a delayed one never stretches the buffer",
+                on: (s.audio_redundancy)(),
+                disabled: !(s.webcodecs)(),
+                when: When::Apply,
+                ontoggle: move |on| {
+                    s.audio_redundancy.set(on);
+                    if (ui.live.session_on)() {
+                        crate::actions::apply(ui);
+                    }
+                },
+            }
+            SwitchRow {
+                title: "Redundant input",
+                sub: "Taps and keys also sent on a fast lane — the first copy to arrive counts, so a stuck packet never stalls touch",
+                on: (s.redundant_input)(),
+                ontoggle: move |on| {
+                    s.redundant_input.set(on);
+                    super::super::live::apply(ui);
+                },
+            }
             div { class: "cardhead", "Keyframes" WhenBadge { when: When::Apply } }
             Seg {
                 options: opts(&[("periodic", "Every 1–2 s"), ("on_request", "On request")]),

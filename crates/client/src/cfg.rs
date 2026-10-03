@@ -97,6 +97,7 @@ pub fn build(ui: Ui) -> SessionConfig {
         low_latency_audio: (s.low_latency_audio)(),
         // Only where it can run: a browser without WebCodecs stays on RTP whatever the switch says.
         webcodecs: (s.webcodecs)() && (ui.live.wc_supported)(),
+        audio_redundancy: (s.audio_redundancy)(),
         bitrate_cap_kbps: if (s.auto_bitrate)() {
             (ui.live.auto_kbps)()
         } else {

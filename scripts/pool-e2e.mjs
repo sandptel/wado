@@ -14,6 +14,8 @@
 //   keyframes   "On request" stops the periodic IDR: the pump reports ≤ 1 keyframe per stretch
 //   webcodecs   Low-latency pipeline: frames arrive on the media channel, decode, paint the
 //               canvas; audio packets arrive; input still maps; RTP video stops
+//   redundancy  Redundant input: the fast channel opens and input still parses; Redundant audio:
+//               the receiver sees the repeated copies and keeps one
 //   watchdog    a crashed interface reloads itself straight back into the session
 //   pairing     a device nobody trusts, opening the QR's link (`wado qr`), is let straight in
 //
@@ -197,6 +199,22 @@ try {
   const rtp = await phone.ev(`(async () => { const g = async () => { let n = 0; (await window.__wado.pc.getStats()).forEach((r) => { if (r.type === "inbound-rtp" && r.kind === "video") n = r.framesReceived || 0; }); return n; };
     const a = await g(); await new Promise((r) => setTimeout(r, 2000)); return (await g()) - a; })()`);
   check("WebCodecs: RTP video has stopped (no double send)", rtp === 0, "RTP frames in 2 s: " + rtp);
+  // Redundant input + Redundant audio, through the real UI.
+  await phone.ev(`(async () => {
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    document.querySelector('[aria-label="Control centre"]').click(); await sleep(400);
+    [...document.querySelectorAll("#cc .navrow")].find((b) => b.textContent.includes("Display & stream")).click(); await sleep(400);
+    document.querySelector('#cc [aria-label="Redundant input"]').click(); await sleep(200);
+    document.querySelector('#cc [aria-label="Redundant audio"]').click(); await sleep(300);
+    document.querySelector('#cc [aria-label="Back"]').click(); await sleep(200);
+    document.querySelector(".ccscrim")?.click(); return true; })()`);
+  check("Redundant input: the fast channel is open", daemonLog.includes("wado-fast data channel open"));
+  const badBefore = (daemonLog.match(/bad input event/g) || []).length;
+  await phone.ev(`(() => { const W = window.__wado; for (let i = 0; i < 20; i++) { W.sendInput({ t: "key", code: 42, pressed: true }); W.sendInput({ t: "key", code: 42, pressed: false }); } return W.inputSeq; })()`);
+  await sleep(1500);
+  check("Redundant input: sequenced copies parse on the daemon (no bad input events)", (daemonLog.match(/bad input event/g) || []).length === badBefore);
+  check("Redundant audio: repeated copies arrive and one is kept", await phone.until(`(window.__wado.wcAudio.dups || 0) > 50`, 10000),
+    await phone.ev(`String(window.__wado.wcAudio.dups)`));
   const crashedBefore = await phone.ev(`!!window.__wado._crashing`);
   await phone.ev(`(async () => {
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

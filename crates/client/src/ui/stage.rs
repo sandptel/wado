@@ -171,6 +171,12 @@ fn pipeline_mode(ui: Ui) -> String {
     if (s.low_latency_audio)() {
         m.push("low-latency audio".into());
     }
+    if (s.redundant_input)() {
+        m.push("redundant input".into());
+    }
+    if (s.audio_redundancy)() && (ui.live.wc_live)() {
+        m.push("redundant audio".into());
+    }
     if (s.keyframe_mode)() == "on_request" {
         m.push("keyframes on request".into());
     }

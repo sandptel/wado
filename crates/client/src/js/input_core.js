@@ -10,6 +10,7 @@
 
 const INPUT_CHANNEL = "wado-input";   // must match wado_protocol::INPUT_CHANNEL
 const MOTION_CHANNEL = "wado-motion"; // must match wado_protocol::MOTION_CHANNEL
+const FAST_CHANNEL = "wado-fast";     // must match wado_protocol::FAST_CHANNEL
 
 // Event types that ride the zero-retransmit motion channel. Everything else
 // goes reliable+ordered. Keep this list in sync with MOTION_CHANNEL's docs in the protocol
@@ -23,8 +24,23 @@ const MOVE_THRESHOLD = 8;           // client-px movement that commits a touch t
 
 // Send one input event on whichever channel suits its delivery needs. Falls back to the
 // reliable channel if the motion channel isn't up yet — better a late motion than none.
+// "Redundant input" (Display & stream): discrete events go on the reliable channel *and* as an
+// unordered, unreliable copy on the fast one, both numbered; the daemon uses whichever arrives
+// first, in order (server::input_order). A reliable packet stuck behind a retransmit then no
+// longer holds the touch behind it for a round trip.
+W.redundantInput = false;
+W.setRedundantInput = (on) => { W.redundantInput = !!on; };
 W.sendInput = (obj) => {
   const motion = isMotion(obj);
+  const fast = W.fastDC;
+  if (!motion && W.redundantInput && obj.t !== "ping" && fast && fast.readyState === "open" &&
+      W.inputDC && W.inputDC.readyState === "open") {
+    const msg = JSON.stringify({ ...obj, q: ++W.inputSeq });
+    try { W.inputDC.send(msg); } catch (_) {}
+    try { fast.send(msg); } catch (_) {}
+    W.latency && W.latency.onInputSent && W.latency.onInputSent(obj);
+    return;
+  }
   let dc = motion ? W.motionDC : W.inputDC;
   if (motion && !(dc && dc.readyState === "open")) dc = W.inputDC;
   if (dc && dc.readyState === "open") {

@@ -12,6 +12,7 @@ pub mod error;
 pub mod gate;
 pub mod host;
 pub mod ice;
+pub mod input_order;
 pub mod instance;
 pub mod menu_sheet;
 pub mod nat;
