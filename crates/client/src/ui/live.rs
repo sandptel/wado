@@ -28,6 +28,10 @@ pub fn apply(ui: Ui) {
         bridge::js(&(s.touch_mode)())
     ));
     bridge::call(format!(
+        "window.__wado.autorate.enabled = {};",
+        (s.auto_bitrate)()
+    ));
+    bridge::call(format!(
         "window.__wado.setDockPin({}); window.__wado.setEdgeSwipe({});",
         (s.dock_pin)(),
         (s.edge_swipe)()

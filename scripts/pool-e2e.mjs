@@ -8,6 +8,7 @@
 //   tiles       each device's home page lists both sessions, with shape and apps
 //   pages       every control-centre page opens and closes without the UI dying (hooks in a
 //               page used to land in the caller's scope; switching pages panicked Dioxus)
+//   autorate    a congested link caps the encoder: the server comes back at the capped rate
 //   watchdog    a crashed interface reloads itself straight back into the session
 //   pairing     a device nobody trusts, opening the QR's link (`wado qr`), is let straight in
 //
@@ -125,6 +126,14 @@ try {
   await phone.press(".rail [data-osk]");
   await sleep(400);
   check("a second tap closes it", (await phone.ev(`document.activeElement && document.activeElement.id`)) !== "wado-osk");
+  const cap = await phone.ev(`(() => { const W = window.__wado; const o = W.setTargetKbps;
+    W.setTargetKbps = (n) => { window.__tk = n; o(n); };
+    const t = Date.now() + 60000;
+    for (let i = 0; i < 10; i++) W.autorate.feed({ ping: 30, jbuf: 10, kbps: 3000, lossPct: 0 }, t + i * 1000);
+    for (let i = 0; i < 4; i++) W.autorate.feed({ ping: 400, jbuf: 300, kbps: 500, lossPct: 0 }, t + 20000 + i * 1000);
+    return W.autorate.cap; })()`);
+  check("a congested link caps the encoder to the new rate", cap > 0 && (await phone.until(`window.__tk === ${cap}`, 10000)),
+    JSON.stringify({ cap, server: await phone.ev(`window.__tk`) }));
   const crashedBefore = await phone.ev(`!!window.__wado._crashing`);
   await phone.ev(`(async () => {
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

@@ -137,6 +137,7 @@ W.startStats = (pc) => {
     // The verdict runs off the same snapshot rather than polling getStats a second time.
     W.health({ fps, ping, jbuf, dec, jitter, kbps, lossPct, decodeDropPct,
                availableKbps: avail, targetFps });
+    W.autorate.feed({ ping, jbuf, kbps, lossPct });
 
     // The UI wants 1 Hz; the relay does not — a log line a second per viewer buries the
     // events worth reading. Ship every fifth tick, and immediately on anything anomalous so

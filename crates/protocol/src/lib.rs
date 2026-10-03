@@ -327,6 +327,11 @@ pub struct SessionConfig {
     /// session matches the shell around it. `None`: wado's own default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub background: Option<String>,
+    /// Auto bitrate's ceiling, in kbps: the encoder runs at the lower of this and what `quality`
+    /// gives. Set by the viewer when its link cannot carry the stream (`js/autorate.js`), cleared
+    /// when it can again. `None`: no cap.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bitrate_cap_kbps: Option<u32>,
 }
 
 /// Isolated. See [`SessionConfig::isolate_apps`].
@@ -394,6 +399,7 @@ mod config_validation_tests {
             x_server: false,
             dark: None,
             background: None,
+            bitrate_cap_kbps: None,
             width: 1280,
             height: 720,
             fps: 60,
