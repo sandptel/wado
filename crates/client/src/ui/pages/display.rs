@@ -195,6 +195,19 @@ pub fn render(ui: Ui) -> Element {
 
         div { class: "card",
             SwitchRow {
+                title: "Low-latency audio",
+                sub: "Smaller sound packets and no audio cushion — video waits for sound, so this speeds both",
+                on: (s.low_latency_audio)(),
+                when: When::Apply,
+                ontoggle: move |on| {
+                    s.low_latency_audio.set(on);
+                    super::super::live::apply(ui);
+                    if (ui.live.session_on)() {
+                        crate::actions::apply(ui);
+                    }
+                },
+            }
+            SwitchRow {
                 title: "Auto bitrate",
                 sub: match (ui.live.auto_kbps)() {
                     Some(k) if (s.auto_bitrate)() => format!("Capped at {k} kbps — the link can't carry more right now"),

@@ -332,6 +332,10 @@ pub struct SessionConfig {
     /// when it can again. `None`: no cap.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bitrate_cap_kbps: Option<u32>,
+    /// "Low-latency audio" (Display & stream): 5 ms Opus frames and a 5 ms capture quantum
+    /// instead of 10. Video waits for sound (A/V sync is mandatory), so audio sets the pace.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub low_latency_audio: bool,
 }
 
 /// Isolated. See [`SessionConfig::isolate_apps`].
@@ -400,6 +404,7 @@ mod config_validation_tests {
             dark: None,
             background: None,
             bitrate_cap_kbps: None,
+            low_latency_audio: false,
             width: 1280,
             height: 720,
             fps: 60,

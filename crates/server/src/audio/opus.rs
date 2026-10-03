@@ -5,17 +5,26 @@ use ffmpeg_the_third as ff;
 
 use super::capture::{CHANNELS, RATE};
 
-/// Samples per channel in one frame: 10 ms. Half Opus's default 20 ms, because audio that
-/// arrives late against the picture is the thing people notice.
-pub const FRAME: usize = (RATE / 100) as usize;
+/// Samples per channel in a frame of `ms` milliseconds (10 by default, 5 for "Low-latency
+/// audio" — both well under Opus's default 20, because audio late against the picture is the
+/// thing people notice, and with A/V sync video waits for it).
+pub fn frame(ms: u32) -> usize {
+    (RATE * ms / 1000) as usize
+}
+
+/// Bytes of interleaved s16 PCM in one frame.
+pub fn frame_bytes(ms: u32) -> usize {
+    frame(ms) * CHANNELS * 2
+}
 
 pub struct Opus {
     enc: ff::encoder::Audio,
     pts: i64,
+    frame: usize,
 }
 
 impl Opus {
-    pub fn new(kbps: u32) -> Result<Self, ff::Error> {
+    pub fn new(kbps: u32, frame_ms: u32) -> Result<Self, ff::Error> {
         ff::init()?;
         let codec = ff::encoder::find_by_name("libopus").ok_or(ff::Error::EncoderNotFound)?;
         let mut enc = ff::codec::Context::new_with_codec(codec)
@@ -28,25 +37,26 @@ impl Opus {
         enc.set_time_base((1, RATE as i32));
         let mut opts = ff::Dictionary::new();
         opts.set("application", "lowdelay");
-        opts.set("frame_duration", "10");
+        opts.set("frame_duration", &frame_ms.to_string());
         Ok(Self {
             enc: enc.open_as_with(codec, opts)?,
             pts: 0,
+            frame: frame(frame_ms),
         })
     }
 
-    /// Encode one frame of interleaved s16 PCM (`FRAME * CHANNELS * 2` bytes), handing each
+    /// Encode one frame of interleaved s16 PCM (`frame_bytes(ms)` bytes), handing each
     /// packet that comes out to `out`.
     pub fn encode(&mut self, pcm: &[u8], mut out: impl FnMut(&[u8])) -> Result<(), ff::Error> {
         let mut frame = ff::frame::Audio::new(
             Sample::I16(Type::Packed),
-            FRAME,
+            self.frame,
             ff::ChannelLayoutMask::STEREO,
         );
         frame.set_rate(RATE);
         frame.data_mut(0)[..pcm.len()].copy_from_slice(pcm);
         frame.set_pts(Some(self.pts));
-        self.pts += FRAME as i64;
+        self.pts += self.frame as i64;
         self.enc.send_frame(&frame)?;
         let mut pkt = ff::Packet::empty();
         while self.enc.receive_packet(&mut pkt).is_ok() {
@@ -57,6 +67,3 @@ impl Opus {
         Ok(())
     }
 }
-
-/// Bytes of PCM in one frame.
-pub const FRAME_BYTES: usize = FRAME * CHANNELS * 2;

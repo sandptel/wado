@@ -38,10 +38,12 @@ pub fn track() -> Arc<TrackLocalStaticSample> {
 pub async fn run(
     sink: String,
     mut listening: watch::Receiver<bool>,
+    mut low: watch::Receiver<bool>,
     track: Arc<TrackLocalStaticSample>,
 ) {
     loop {
         let on = *listening.borrow_and_update();
+        let frame_ms = if *low.borrow_and_update() { 5 } else { 10 };
         // A stop flag the capture thread checks once per frame; dropping the sender stops it.
         let (stop_tx, stop_rx) = std::sync::mpsc::channel::<()>();
         if on {
@@ -49,7 +51,7 @@ pub async fn run(
             let name = sink.clone();
             std::thread::Builder::new()
                 .name("wado-audio".into())
-                .spawn(move || pump(&name, tx, stop_rx))
+                .spawn(move || pump(&name, frame_ms, tx, stop_rx))
                 .ok();
             let track = Arc::clone(&track);
             tokio::spawn(async move {
@@ -57,32 +59,40 @@ pub async fn run(
                     let _ = track
                         .write_sample(&Sample {
                             data,
-                            duration: Duration::from_millis(10),
+                            duration: Duration::from_millis(frame_ms.into()),
                             ..Default::default()
                         })
                         .await;
                 }
             });
         }
-        if listening.changed().await.is_err() {
+        // Either changing restarts the pump: listening on/off, or a new frame size.
+        let changed = tokio::select! {
+            r = listening.changed() => r,
+            r = low.changed() => r,
+        };
+        if changed.is_err() {
             break;
         }
         drop(stop_tx);
     }
 }
 
-fn pump(sink: &str, tx: mpsc::Sender<Bytes>, stop: std::sync::mpsc::Receiver<()>) {
+fn pump(sink: &str, frame_ms: u32, tx: mpsc::Sender<Bytes>, stop: std::sync::mpsc::Receiver<()>) {
     let kbps = wado_config::live::current()
         .session
         .audio_bitrate
         .clamp(16, 256);
-    let (mut cap, mut enc) = match (capture::Capture::start(sink), opus::Opus::new(kbps)) {
+    let (mut cap, mut enc) = match (
+        capture::Capture::start(sink, frame_ms),
+        opus::Opus::new(kbps, frame_ms),
+    ) {
         (Ok(c), Ok(e)) => (c, e),
         (Err(e), _) => return tracing::warn!("no session audio: pw-record did not start ({e})"),
         (_, Err(e)) => return tracing::warn!("no session audio: Opus encoder did not open ({e})"),
     };
-    tracing::info!(sink, kbps, "streaming session audio");
-    let mut pcm = vec![0u8; opus::FRAME_BYTES];
+    tracing::info!(sink, kbps, frame_ms, "streaming session audio");
+    let mut pcm = vec![0u8; opus::frame_bytes(frame_ms)];
     while matches!(stop.try_recv(), Err(std::sync::mpsc::TryRecvError::Empty))
         && cap.read_frame(&mut pcm)
     {

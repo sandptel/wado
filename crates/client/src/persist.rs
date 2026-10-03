@@ -51,6 +51,7 @@ pub struct Saved {
     pub natural_scroll: Option<bool>,
     pub touch_mode: Option<String>,
     pub auto_bitrate: Option<bool>,
+    pub low_latency_audio: Option<bool>,
     pub dock_pin: Option<bool>,
     pub ws_bar: Option<bool>,
     pub rail: Option<String>,
@@ -125,6 +126,7 @@ pub fn snapshot(ui: Ui) -> Saved {
         natural_scroll: Some((s.natural_scroll)()),
         touch_mode: Some((s.touch_mode)()),
         auto_bitrate: Some((s.auto_bitrate)()),
+        low_latency_audio: Some((s.low_latency_audio)()),
         dock_pin: Some((s.dock_pin)()),
         ws_bar: Some((s.ws_bar)()),
         rail: Some((s.rail)()),
@@ -212,6 +214,7 @@ pub fn restore(ui: Ui, saved: Saved) {
     put!(natural_scroll);
     put!(touch_mode);
     put!(auto_bitrate);
+    put!(low_latency_audio);
     put!(dock_pin);
     put!(ws_bar);
     put!(rail);

@@ -478,11 +478,15 @@ W._relayNegotiate = async (opts = {}) => {
   // leaves this transceiver unused.
   pc.addTransceiver("audio", { direction: "recvonly" });
   W.inputDC = pc.createDataChannel(INPUT_CHANNEL, { ordered: true });
+  // Moves go unreliable: a lost one is superseded by the next, and must never hold up a tap
+  // behind its retransmit (invariant #1). Direct mode always had this; relay mode did not.
+  W.motionDC = pc.createDataChannel(MOTION_CHANNEL, { ordered: true, maxRetransmits: 0 });
 
   pc.ontrack = (ev) => {
     if (ev.track && ev.track.kind === "audio") {
       W.audio.attach(ev.track);
       try { if (ev.receiver && "playoutDelayHint" in ev.receiver) ev.receiver.playoutDelayHint = 0; } catch (_) {}
+      W.applyAudioLatency(ev.receiver);
       return;
     }
     // A track arrives with the answer, before any network path exists — so this is not "media
@@ -508,6 +512,7 @@ W._relayNegotiate = async (opts = {}) => {
     // Relay mode used to stop here, so it reported no latency breakdown at all — an absent
     // reading that was easy to misread as a good one. Same wiring as the direct path.
     W.attachLatencyEcho();
+    W.latency.startPing();
     if (W.debugLatency) W.latency.start(pc);
     W.setupInputCapture();
   };

@@ -47,7 +47,7 @@ use webrtc::track::track_local::TrackLocal;
 use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
 
 use wado_compositor::{CommandSender, CompositorCommand, FrameMsg, InputEvent, InputSender};
-use wado_protocol::{INPUT_CHANNEL, relay::RelayMsg, relay::display_remote_id};
+use wado_protocol::{INPUT_CHANNEL, MOTION_CHANNEL, relay::RelayMsg, relay::display_remote_id};
 
 use crate::website::logbus::LogBus;
 
@@ -139,6 +139,9 @@ struct RelayCtx {
     audio_track: Arc<TrackLocalStaticSample>,
     /// A peer connection with audio is up: the phone sink is being listened to.
     listening: tokio::sync::watch::Sender<bool>,
+    /// The viewer's "Low-latency audio" switch, from its session config. The audio pump restarts
+    /// with the new frame size when it changes (`crate::audio::run`).
+    audio_low: tokio::sync::watch::Sender<bool>,
     /// The device key and name of the viewer in `room` — what its config edits and saved
     /// settings are filed under (see [`crate::config::link`]).
     viewer: Arc<Mutex<(String, String)>>,
@@ -239,9 +242,15 @@ async fn run(
     // are pointed at the sink from the start, so a session plays on the phone by default.
     let audio_track = crate::audio::track();
     let (listening_tx, listening) = tokio::sync::watch::channel(false);
+    let (audio_low_tx, audio_low) = tokio::sync::watch::channel(false);
     if let Some(sink) = crate::host::start() {
         let _ = cmd_tx.send(CompositorCommand::AudioSink(Some(sink.clone())));
-        tokio::spawn(crate::audio::run(sink, listening, Arc::clone(&audio_track)));
+        tokio::spawn(crate::audio::run(
+            sink,
+            listening,
+            audio_low,
+            Arc::clone(&audio_track),
+        ));
     }
 
     // What actually leaves this process, measured at the track. Published for the viewer, which
@@ -456,6 +465,7 @@ async fn run(
         media_sent: Arc::default(),
         audio_track,
         listening: listening_tx,
+        audio_low: audio_low_tx,
         a11y: Arc::new(crate::a11y::A11y::default()),
         relay_url,
         remote_id,
@@ -1170,6 +1180,9 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             }
 
             RelayMsg::SessionStart { config } => {
+                ctx.audio_low.send_if_modified(|v| {
+                    std::mem::replace(v, config.low_latency_audio) != config.low_latency_audio
+                });
                 if let Err(why) = config.validate() {
                     warn!("relay client: refusing an invalid session config: {why}");
                     send_relay(
@@ -1287,6 +1300,9 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             }
 
             RelayMsg::SessionReconfigure { config } => {
+                ctx.audio_low.send_if_modified(|v| {
+                    std::mem::replace(v, config.low_latency_audio) != config.low_latency_audio
+                });
                 *ctx.session_shape.lock().unwrap_or_else(|e| e.into_inner()) =
                     (config.width, config.height, config.fps);
                 // Same guard as `SessionStart`, from the same `SessionConfig::validate` — the
@@ -1789,17 +1805,22 @@ async fn handle_sdp_offer(
             .await?;
     }
 
-    // Input data channel: forward JSON InputEvents to the compositor.
+    // Input data channels: forward JSON InputEvents to the compositor. Both of them — the
+    // reliable INPUT_CHANNEL and the unreliable MOTION_CHANNEL for pointer/touch moves. The
+    // relay path accepted only the first until 2026-10-03, so on a phone every touch-move rode
+    // the reliable channel and one lost packet held all input for a round trip: touches that
+    // stall then jump while the frame rate stays perfect (invariant #1).
     {
         let input_tx = ctx.input_tx.clone();
         pc.on_data_channel(Box::new(move |dc: Arc<RTCDataChannel>| {
             let input_tx = input_tx.clone();
             Box::pin(async move {
-                if dc.label() != INPUT_CHANNEL {
+                let label = dc.label().to_string();
+                if label != INPUT_CHANNEL && label != MOTION_CHANNEL {
                     return;
                 }
-                dc.on_open(Box::new(|| {
-                    Box::pin(async { info!("relay client: input data channel open") })
+                dc.on_open(Box::new(move || {
+                    Box::pin(async move { info!("relay client: {label} data channel open") })
                 }));
                 dc.on_message(Box::new(move |msg: DataChannelMessage| {
                     let input_tx = input_tx.clone();

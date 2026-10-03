@@ -41,6 +41,10 @@ pub fn render(ui: Ui) -> Element {
             if let Some(b) = (live.jbuf)() {
                 parts.push(format!("{b:.0} ms buf"));
             }
+            // What a finger feels: tap → daemon → back, measured always.
+            if let Some(i) = (live.input_rt)() {
+                parts.push(format!("{i:.0} ms input"));
+            }
         }
         parts.join(" · ")
     };
@@ -53,7 +57,17 @@ pub fn render(ui: Ui) -> Element {
     // Deliberately NOT summed into one total: the server legs and the browser legs are
     // measured on clocks that were never synchronised, and `input` is a round trip while the
     // rest are one-way. Adding them would produce a confident number that means nothing.
-    let stages = (live.stages)();
+    // The audio legs ride along: video waits for sound (A/V sync is mandatory), so the audio
+    // buffer and the sync floor it imposes belong in the same row.
+    let mut stages = (live.stages)();
+    if !stages.is_empty() {
+        if let Some(a) = (live.abuf)() {
+            stages.push(("audio".into(), a));
+        }
+        if let Some(v) = (live.vmin)() {
+            stages.push(("sync".into(), v));
+        }
+    }
     let show_lat = on && debug::on(ui, "latency") && !stages.is_empty();
     let dropped = (live.dropped)().unwrap_or(0);
 
@@ -101,6 +115,8 @@ pub fn render(ui: Ui) -> Element {
         {super::health::render(ui)}
         if show_lat {
             div { id: "wado-latency",
+                // Which pipeline and modes produced these numbers, so test reports compare.
+                span { class: "latstage latmode", "{pipeline_mode(ui)}" }
                 if let Some((side, text)) = crate::ui::latency::blame(&stages, &(live.decoder)(), (ui.set.fps)()) {
                     span { class: "latstage latblame side-{side}", "{text}" }
                 }
@@ -139,4 +155,20 @@ pub fn render(ui: Ui) -> Element {
         // Same reason as the console: over the picture, never a sibling that steals its height.
         {super::drawer::render(ui)}
     }
+}
+
+/// The A/B badge: the media pipeline and the optional modes in force.
+fn pipeline_mode(ui: Ui) -> String {
+    let s = ui.set;
+    let mut m = vec!["webrtc".to_string()];
+    if (s.low_latency_audio)() {
+        m.push("low-latency audio".into());
+    }
+    if (s.auto_bitrate)() {
+        m.push(match (ui.live.auto_kbps)() {
+            Some(k) => format!("auto bitrate {k}k"),
+            None => "auto bitrate".into(),
+        });
+    }
+    m.join(" · ")
 }

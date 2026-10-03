@@ -5,9 +5,25 @@
 //! browser's (buffer + decode). The network leg is half the round trip. The three are compared,
 //! never summed; that would invent a glass-to-glass figure the clocks cannot support.
 
-/// `(side, text)`: `side` is `computer`, `network` or `phone`, for the colour.
+/// `(side, text)`: `side` is `computer`, `network`, `phone` or `audio`, for the colour.
+///
+/// `audio` is its own side because A/V sync is mandatory (Decision Log 2026-10-03): when most of
+/// the playout buffer is the minimum delay Chrome imposes to keep video level with sound
+/// (`sync`), the fix is in the audio path, not the video one.
 pub fn blame(stages: &[(String, f64)], decoder: &str, fps: u32) -> Option<(&'static str, String)> {
     let get = |k: &str| stages.iter().find(|(n, _)| n == k).map(|(_, v)| *v);
+    if let (Some(sync), Some(buf)) = (get("sync"), get("buf")) {
+        if sync > 40.0 && sync >= 0.6 * buf {
+            let audio =
+                get("audio").map_or(String::new(), |a| format!(" (audio buffer {a:.0} ms)"));
+            return Some((
+                "audio",
+                format!(
+                    "slowest: audio sync — video held {sync:.0} ms to stay level with sound{audio}"
+                ),
+            ));
+        }
+    }
     let leg = |ks: &[&'static str]| -> (f64, &'static str, f64) {
         let mut sum = 0.0;
         let (mut top, mut top_v) = ("", -1.0);
@@ -101,5 +117,23 @@ mod tests {
         .unwrap();
         assert_eq!(side, "network");
         assert!(blame(&[], "", 60).is_none());
+        // Most of the buffer is the sync floor: the audio path is the culprit.
+        let (side, text) = blame(
+            &s(&[
+                ("net", 20.0),
+                ("buf", 300.0),
+                ("decode", 9.0),
+                ("audio", 280.0),
+                ("sync", 290.0),
+            ]),
+            "",
+            60,
+        )
+        .unwrap();
+        assert_eq!(side, "audio", "{text}");
+        assert!(
+            text.contains("held 290 ms") && text.contains("audio buffer 280"),
+            "{text}"
+        );
     }
 }
