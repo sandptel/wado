@@ -1884,8 +1884,26 @@ async fn handle_sdp_offer(
                                 if let Some(o) = v.as_object_mut() {
                                     o.remove("q");
                                 }
-                                let ready =
-                                    order.lock().unwrap_or_else(|e| e.into_inner()).arrive(q, v);
+                                let ready = {
+                                    let mut o = order.lock().unwrap_or_else(|e| e.into_inner());
+                                    let r = o.arrive(q, v);
+                                    // Every 500 released: how often a copy was a duplicate, a move
+                                    // stale, or a strict event held for a gap.
+                                    if !r.is_empty()
+                                        && o.stats.released / 500
+                                            != (o.stats.released - r.len() as u64) / 500
+                                    {
+                                        let st = o.stats;
+                                        info!(
+                                            released = st.released,
+                                            duplicates = st.duplicates,
+                                            stale_moves = st.stale_moves,
+                                            held = st.held,
+                                            "redundant input"
+                                        );
+                                    }
+                                    r
+                                };
                                 for ev in ready {
                                     match serde_json::from_value::<InputEvent>(ev) {
                                         Ok(ev) => {

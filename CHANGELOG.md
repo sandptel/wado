@@ -2,6 +2,18 @@
 
 ### Fixed
 
+- **Redundant input no longer stalls and jumps.** Releasing every copy in strict order meant one
+  lost fast copy held everything after it until its slow reliable copy came, then dumped it all
+  at once. Now scroll steps (which add up) apply the moment either copy lands. Moves (absolute
+  positions) apply if they are newer and are dropped if stale. Only presses, lifts, keys and a
+  scroll's end keep strict order. The fast copy goes twice, 4 ms apart. The daemon logs released,
+  duplicate, stale and held counts.
+- **Low-latency pipeline (WebCodecs) is marked as slower on phones.** Measured on the phone: 0–83
+  fps and 2–10 s of decoder hold-back, with touch glitching, against a steady 90–120 fps on the
+  standard path. The first version decodes and paints on the page's main thread, which is also the
+  thread that handles touch. It stays opt-in and off by default while it is rebuilt around a
+  worker and OffscreenCanvas. Software fallback and stall detection for the hardware decoder are in.
+
 - **The input round trip is measurable on the relay path.** The daemon answered the latency
   probe only in direct mode, so a phone's "input" figure stayed empty.
 
