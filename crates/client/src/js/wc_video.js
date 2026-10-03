@@ -47,7 +47,7 @@ W.wcVideo = {
     const p = codec.slice(5, 7), l = codec.slice(9, 11);
     const names = [...new Set([codec, `avc1.${p}00${l}`, "avc1.640033", "avc1.42e01f"])];
     let pick = null;
-    for (const hw of ["prefer-hardware", "no-preference"]) {
+    for (const hw of this._forceSoftware ? ["prefer-software", "no-preference"] : ["prefer-hardware", "no-preference"]) {
       for (const c of names) {
         try {
           const r = await VideoDecoder.isConfigSupported({ codec: c, optimizeForLatency: true, hardwareAcceleration: hw });
@@ -59,6 +59,8 @@ W.wcVideo = {
     if (!pick) { if (W.rlog) W.rlog("wc: no decoder accepts " + names.join(", ")); return; }
     if (this._wanted !== codec) return; // a newer keyframe asked for something else meanwhile
     this.codec = pick.codec;
+    this._hw = pick.hardwareAcceleration;
+    this.decMs = null;
     this.dec = new VideoDecoder({
       output: (fr) => this.out(fr),
       error: (e) => {
@@ -81,11 +83,31 @@ W.wcVideo = {
       this._sent.delete(fr.timestamp);
       const d = performance.now() - t0;
       this.decMs = this.decMs === null ? d : this.decMs * 0.9 + d * 0.1;
+      this.checkHoldBack();
     }
     this.queue.push(fr);
     // Never a backlog: past a handful, the oldest are late by definition.
     while (this.queue.length > 6) { this.queue.shift().close(); this.late++; }
   },
+  // A hardware decoder that holds frames back. Measured on the phone (2026-10-03): 300–600 ms
+  // from decode() to output — MediaCodec buffering for reordering the stream never does.
+  // Software decoding releases each frame as it is decoded, so past ~4 frame times for 2 s the
+  // decoder is rebuilt in software, once, and the swap is logged.
+  checkHoldBack() {
+    if (this._hw === "no-preference" || this.decMs === null) return;
+    const limit = 4 * 1000 / Math.max(30, this._fps || 60);
+    const now = performance.now();
+    if (this.decMs < limit) { this._slowSince = null; return; }
+    this._slowSince = this._slowSince || now;
+    if (now - this._slowSince < 2000) return;
+    if (W.rlog) W.rlog(`wc: hardware decoder holds frames ${this.decMs.toFixed(0)} ms — switching to software`);
+    this._forceSoftware = true;
+    this._slowSince = null;
+    const c = this._wanted;
+    this._wanted = "";
+    if (c) { this._wanted = c; this.configure(c); }
+  },
+
   // Every display refresh: the newest frame whose time has come.
   tick() {
     const now = W.wcAudio.clockUs();
