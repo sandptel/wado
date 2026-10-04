@@ -38,6 +38,26 @@
     app. Web pages and SVG files are only ever shown as text or as a plain image, never run as a
     page, since they come from the computer. Files over 300 MB ask before loading, since they
     must arrive in full before they play.
+  - **Video and music stream in any format.** A film starts in seconds and you can seek
+    anywhere in it. The computer converts what the browser can't play (MKV, AVI, WMV, HEVC, WMA…)
+    with `ffmpeg`, and passes through unchanged what it can. The player has VLC's essentials:
+    audio-track choice; subtitles from inside the file, from a `.srt` beside it, or from a file on
+    your device (with delay and size); aspect ratio, zoom and rotation; speed; and VLC's keys
+    (space, ←/→, [ ], v, b, a, z, g/h, f, m). A film reopened carries on where you left it, and
+    songs play on through the folder. Conversions run at the lowest CPU priority, at most two at
+    once, and stop the moment you close the player, so a live session is never starved.
+  - **Photos zoom**: pinch, double-tap, the mouse wheel, or + − 0.
+  - **A revised file manager.**
+    - **Overview:** it opens on search, Photos / Videos / Music / Documents / Archives /
+      Downloads, a strip of recent files with thumbnails, your folders, and how full the disk is.
+    - **Search** filters a folder as you type; Enter searches its subfolders, or the whole computer
+      from the overview.
+    - **Grid view** works on phones too, with a one-tap toggle in the header, and video
+      thumbnails.
+    - **Per file:** Open on the computer (in the running session), Share to another app on this
+      device, Copy path, and Properties.
+    - **Also new:** Take a photo or video straight into a folder; a Trash view with Restore;
+      right-click menus; a "show hidden files" switch; and a path bar on phones.
   - **Transfers stay out of the way of input.** They travel on a second, separate connection,
     secured by the end-to-end handshake, so they never share a channel with input. While a
     session's video is live, downloads are held to `files { rate-with-video }`, and that cap

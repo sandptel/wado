@@ -120,6 +120,56 @@ pub enum FileReq {
         key: String,
         level: String,
     },
+    /// Search under `path`: names containing `query` (any case), and/or files of a `kind`
+    /// (`image`, `video`, `audio`, `doc`, `archive`). Bounded — a few thousand folders at most —
+    /// and newest first. `path` empty searches every root.
+    Find {
+        #[serde(default)]
+        path: String,
+        #[serde(default)]
+        query: String,
+        #[serde(default)]
+        kind: String,
+    },
+    /// Put a trashed item (a path inside the Trash's `files/`) back where it came from.
+    Restore {
+        path: String,
+    },
+    /// What a video or audio file holds: duration, tracks, subtitles (embedded and beside it).
+    Probe {
+        path: String,
+    },
+    /// Play a video or audio file from `start` seconds as fragmented MP4 for Media Source
+    /// Extensions: remuxed when the browser can play its codecs, transcoded otherwise. Answered
+    /// `{mime}`, then binary frames, then `{done}`. It sends only as far as the device's credit —
+    /// [`FileReq::Credit`] — so a film is not transcoded faster than it is watched.
+    Stream {
+        path: String,
+        #[serde(default)]
+        start: f64,
+        /// Which audio track (0-based among audio tracks).
+        #[serde(default)]
+        audio: u32,
+        /// The browser can decode HEVC, so it is copied rather than transcoded.
+        #[serde(default)]
+        hevc: bool,
+        /// Bytes the device will take before it asks for more.
+        #[serde(default)]
+        credit: u64,
+    },
+    /// More room for a stream: `bytes` more may be sent.
+    Credit {
+        xfer: u32,
+        bytes: u64,
+    },
+    /// A subtitle track as WebVTT: embedded track `track`, or the subtitle file `sidecar`.
+    Subs {
+        path: String,
+        #[serde(default)]
+        track: Option<u32>,
+        #[serde(default)]
+        sidecar: Option<String>,
+    },
 }
 
 #[cfg(test)]
