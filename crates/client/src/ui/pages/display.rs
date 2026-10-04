@@ -201,7 +201,7 @@ pub fn render(ui: Ui) -> Element {
                 } else if (ui.live.wc_live)() {
                     "On — this device decodes and syncs the stream itself".to_string()
                 } else {
-                    "Experimental — slower than the standard path on phones for now (decoding runs on the touch thread); being rebuilt".to_string()
+                    "Experimental (v2): decoding runs in a background worker, off the touch thread — compare it with the standard path".to_string()
                 },
                 on: (s.webcodecs)(),
                 disabled: !(ui.live.wc_supported)(),
