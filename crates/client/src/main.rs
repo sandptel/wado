@@ -127,6 +127,7 @@ fn App() -> Element {
         document::Stylesheet { href: asset!("/assets/landing.css") }
         document::Stylesheet { href: asset!("/assets/stage.css") }
         document::Stylesheet { href: asset!("/assets/gamepad.css") }
+        document::Stylesheet { href: asset!("/assets/files.css") }
 
         // The stage is the whole screen, always. Everything else floats over it and never
         // takes space from the picture — the control centre included (Decision Log 2026-10-02).

@@ -1,0 +1,177 @@
+/* The file manager (js/files_ui.js, js/files_panels.js). One overlay, two layouts:
+ * narrow (< 600 px) is a full-height sheet in the Google Files manner; wide is a Nautilus-style
+ * window with a sidebar, over the stream or the landing page. Colours are the base16 tokens. */
+
+.files { position: fixed; inset: 0; z-index: 56; display: grid; background: color-mix(in oklab, #000, transparent 55%); font-family: var(--body); color: var(--text); }
+.files[hidden] { display: none; }
+/* Entrance animations run once, on open — not on every re-render of the panel. */
+.files.opening { animation: fade var(--dur) both; }
+/* Sheets and prompts asked from inside the window go over it. */
+.files-open .wado-menusheet { z-index: 62; }
+
+.fpanel { position: relative; display: grid; grid-template-rows: auto 1fr auto; min-height: 0; background: var(--s0); overflow: hidden; }
+.files.opening[data-layout="narrow"] .fpanel { animation: sheetup var(--dur-sheet) var(--spring) both; }
+.files[data-layout="narrow"] .fpanel { padding-bottom: env(safe-area-inset-bottom); padding-top: env(safe-area-inset-top); }
+.files[data-layout="wide"] { padding: clamp(12px, 3vw, 40px); }
+.files[data-layout="wide"] .fpanel { width: min(1180px, 100%); height: min(820px, 100%); place-self: center;
+  border-radius: var(--r3); border: 1px solid var(--line); box-shadow: 0 30px 80px rgb(0 0 0 / .45); }
+@keyframes sheetup { from { translate: 0 40px; opacity: 0; } }
+
+.fi { display: inline-grid; place-items: center; }
+.fi .i { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ── header ── */
+.fhead { display: flex; align-items: center; gap: 4px; padding: 8px 8px 8px 6px; border-bottom: 1px solid var(--line); min-width: 0; }
+.fbtn { position: relative; width: 40px; height: 40px; border-radius: var(--r1); display: grid; place-items: center; color: var(--text); flex: none; }
+.fbtn:hover { background: var(--s2); }
+.fbtn:active { scale: .94; }
+.fcrumbs { flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px; overflow-x: auto; scrollbar-width: none; white-space: nowrap; }
+.ftitle { font: 700 19px var(--display); color: var(--bright); padding-left: 4px; overflow: hidden; text-overflow: ellipsis; }
+.fcrumb { padding: 6px 8px; border-radius: var(--r1); font-weight: 600; color: var(--dim); }
+.fcrumb:last-child { color: var(--bright); }
+.fcrumb:hover { background: var(--s2); }
+.fsep { color: var(--dim); }
+.fchip { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 99px; background: var(--s2); color: var(--warn); flex: none; }
+.fbadge { position: absolute; top: 3px; right: 3px; min-width: 16px; height: 16px; border-radius: 8px; padding: 0 4px;
+  font: 700 10px/16px var(--body); font-style: normal; background: var(--accent); color: var(--on-accent); }
+.fxbtn.busy .fi { color: var(--accent); }
+
+/* ── body ── */
+.fbody { display: grid; grid-template-columns: 1fr; min-height: 0; }
+.files[data-layout="wide"] .fbody { grid-template-columns: 220px 1fr; }
+.fside { display: grid; align-content: start; gap: 2px; padding: 10px 8px; border-right: 1px solid var(--line); overflow-y: auto; background: var(--s1); }
+.fsidehead { margin: 12px 10px 4px; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
+.fplace { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--r1); text-align: left; color: var(--text); min-width: 0; }
+.fplace span:not(.fi) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.fplace:hover { background: var(--s2); }
+.fplace.on { background: color-mix(in oklab, var(--accent), transparent 82%); color: var(--bright); }
+.fplace.on .fi { color: var(--accent); }
+.funpin { opacity: 0; padding: 0 4px; color: var(--dim); font-size: 16px; }
+.fplace:hover .funpin { opacity: 1; }
+
+.fmain { overflow-y: auto; min-height: 0; padding: 6px 8px 96px; overscroll-behavior: contain; }
+.fsec { margin: 16px 6px 8px; font: 700 13px var(--display); color: var(--dim); letter-spacing: .02em; }
+.fchips { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.fchips .fplace { background: var(--s1); border-radius: var(--r2); padding: 14px 12px; }
+.fchips .fplace .fi { color: var(--accent); }
+.fdim { color: var(--dim); padding: 6px 8px; font-size: 13px; }
+.fwarn { margin: 6px; padding: 8px 12px; border-radius: var(--r1); background: color-mix(in oklab, var(--warn), transparent 85%); color: var(--bright); font-size: 12px; }
+.fempty { display: grid; justify-items: center; gap: 8px; padding: 18vh 24px; text-align: center; color: var(--dim); }
+.fempty .fi .i { width: 40px; height: 40px; stroke-width: 1.4; }
+.fempty b { color: var(--bright); font: 700 17px var(--display); }
+.fempty p { margin: 0; max-width: 46ch; overflow-wrap: anywhere; }
+.fspin { width: 28px; height: 28px; border-radius: 50%; border: 3px solid var(--s3); border-top-color: var(--accent); animation: spin .8s linear infinite; }
+@keyframes spin { to { rotate: 1turn; } }
+
+/* ── list ── */
+.flist { display: grid; }
+.frow { display: grid; grid-template-columns: 44px 1fr auto; align-items: center; gap: 10px; padding: 6px 6px; border-radius: var(--r1);
+  cursor: default; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; min-height: 56px; }
+.frow:hover { background: var(--s1); }
+.frow.sel, .ftile.sel { background: color-mix(in oklab, var(--accent), transparent 80%); }
+.frow:focus-visible, .ftile:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.frow .c-size, .frow .c-mtime { display: none; }
+.fname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; color: var(--bright); }
+.fname small { display: block; font-weight: 400; font-size: 12px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; }
+.flink { color: var(--dim); font-style: normal; }
+.fdisc { width: 40px; height: 40px; border-radius: var(--r1); display: grid; place-items: center; color: var(--hue);
+  background: color-mix(in oklab, var(--hue), transparent 85%) center / cover no-repeat; }
+.fdisc.thumb > .fi { visibility: hidden; }
+.fmore { width: 36px; height: 36px; color: var(--dim); }
+.files[data-layout="wide"] .frow { grid-template-columns: 36px minmax(0, 1fr) 90px 120px 36px; min-height: 40px; padding: 3px 8px; }
+.files[data-layout="wide"] .frow .fdisc { width: 30px; height: 30px; }
+.files[data-layout="wide"] .frow .fi .i { width: 18px; height: 18px; }
+.files[data-layout="wide"] .frow .fname small { display: none; }
+.files[data-layout="wide"] .frow .c-size, .files[data-layout="wide"] .frow .c-mtime { display: block; font-size: 13px; color: var(--dim); text-align: right; white-space: nowrap; }
+.files[data-layout="wide"] .fmore { opacity: 0; }
+.files[data-layout="wide"] .frow:hover .fmore, .files[data-layout="wide"] .frow.sel .fmore { opacity: 1; }
+.fhd { position: sticky; top: -6px; z-index: 1; background: var(--s0); min-height: 34px !important; border-bottom: 1px solid var(--line); border-radius: 0; }
+.fhd:hover { background: var(--s0); }
+.fcol { font-size: 12px; font-weight: 700; color: var(--dim); text-align: left; padding: 4px 0; }
+.fcol.c-size, .fcol.c-mtime { text-align: right; }
+.fcol.on { color: var(--bright); }
+.fshowmore { margin: 12px auto; }
+
+/* ── grid ── */
+.fgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 6px; padding-top: 6px; }
+.ftile { display: grid; justify-items: center; gap: 6px; padding: 12px 6px 8px; border-radius: var(--r2); user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.ftile:hover { background: var(--s1); }
+.ftile .fdisc { width: 72px; height: 72px; border-radius: var(--r2); }
+.ftile .fi .i { width: 32px; height: 32px; stroke-width: 1.5; }
+.ftile .fname { font-size: 12px; text-align: center; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+
+/* ── bars at the bottom ── */
+.fselbar, .fpickbar { display: flex; align-items: center; gap: 4px; padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+  background: var(--s2); border-top: 1px solid var(--line); }
+.fselbar b { padding-left: 4px; color: var(--bright); white-space: nowrap; }
+.fpickbar { padding-left: 14px; }
+.fpickbar > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fgrow { flex: 1; }
+.fgo { min-height: 40px; padding: 0 16px; border-radius: var(--r1); background: var(--accent); color: var(--on-accent); font-weight: 700; white-space: nowrap; }
+.fgo.ghost { background: transparent; color: var(--text); }
+.fgo.ghost:hover { background: var(--s3); }
+.fgo:disabled { opacity: .45; }
+.ffab { position: absolute; right: 18px; bottom: calc(18px + env(safe-area-inset-bottom)); width: 58px; height: 58px; border-radius: var(--r3);
+  display: grid; place-items: center; background: var(--accent); color: var(--on-accent);
+  box-shadow: 0 10px 28px color-mix(in oklab, var(--accent), transparent 60%); }
+.files.opening .ffab { animation: sheetup var(--dur-sheet) var(--pop) both; }
+.ffab .fi .i { width: 26px; height: 26px; stroke-width: 2.2; }
+
+/* ── drag and drop ── */
+.fdrop { display: none; }
+.files.dropping .fdrop { position: absolute; inset: 0; z-index: 3; display: grid; place-content: center; justify-items: center; gap: 10px;
+  pointer-events: none; font: 700 20px var(--display); color: var(--bright);
+  background: color-mix(in oklab, var(--accent), transparent 82%); outline: 3px dashed var(--accent); outline-offset: -14px; }
+.files.dropping .fdrop .fi .i { width: 44px; height: 44px; }
+
+/* ── transfers ── */
+.fxfers { position: absolute; left: 0; right: 0; bottom: 0; z-index: 4; max-height: min(60%, 520px); overflow-y: auto;
+  background: var(--s1); border-top: 1px solid var(--line); border-radius: var(--r3) var(--r3) 0 0;
+  padding: 4px 8px calc(10px + env(safe-area-inset-bottom)); box-shadow: 0 -16px 40px rgb(0 0 0 / .35); }
+.files[data-layout="wide"] .fxfers { left: auto; width: 440px; right: 16px; bottom: 16px; border-radius: var(--r3); border: 1px solid var(--line); }
+.fxhead { position: sticky; top: -4px; z-index: 1; display: flex; align-items: center; gap: 6px; padding: 8px 4px 6px 8px; background: var(--s1); }
+.fxhead b { font: 700 16px var(--display); color: var(--bright); }
+.fxrow { display: grid; grid-template-columns: 40px 1fr auto auto; align-items: center; gap: 10px; padding: 8px 4px; }
+.fxmid { min-width: 0; display: grid; gap: 4px; }
+.fxmid b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--bright); font-weight: 600; font-size: 14px; }
+.fxmid small { color: var(--dim); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.fbar { height: 5px; border-radius: 3px; background: var(--s3); overflow: hidden; }
+.fbar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; transition: width .25s linear; }
+.fxrow.s-done .fbar i { background: var(--good); }
+.fxrow.s-error .fbar i, .fxrow.s-error small { background: none; color: var(--bad); }
+.fxrow.s-error .fbar i { background: var(--bad); }
+.fxrow.s-paused .fbar i, .fxrow.s-waiting .fbar i { background: var(--warn); }
+.fxrow.s-verifying .fbar i { animation: pulse 1s ease-in-out infinite alternate; }
+@keyframes pulse { to { opacity: .4; } }
+
+/* The pill: transfers in flight while the window is closed. */
+#wado-files-pill { position: fixed; z-index: 57; top: calc(10px + env(safe-area-inset-top)); left: 50%; translate: -50% 0;
+  display: flex; align-items: center; gap: 8px; padding: 8px 14px 8px 10px; border-radius: 99px; overflow: hidden;
+  background: color-mix(in srgb, var(--base00) 88%, transparent); color: var(--bright); border: 1px solid var(--line);
+  backdrop-filter: blur(12px); font: 600 13px var(--body); font-variant-numeric: tabular-nums;
+  box-shadow: 0 8px 24px rgb(0 0 0 / .35); animation: sheetup var(--dur) var(--pop) both; }
+#wado-files-pill[hidden] { display: none; }
+#wado-files-pill .fi { color: var(--accent); }
+#wado-files-pill .fi .i { width: 18px; height: 18px; }
+#wado-files-pill > i { position: absolute; left: 0; bottom: 0; height: 2px; background: var(--accent); transition: width .25s linear; }
+
+/* ── dialogs, toasts ── */
+.fmodal { position: fixed; inset: 0; z-index: 64; display: grid; place-items: center; padding: 16px; background: rgb(0 0 0 / .45); animation: fade var(--dur) both; }
+.fdialog { width: min(400px, 100%); display: grid; gap: 12px; padding: 18px; border-radius: var(--r3); background: var(--s1);
+  border: 1px solid var(--line); box-shadow: 0 30px 70px rgb(0 0 0 / .5); animation: sheetup var(--dur) var(--pop) both; }
+.fdialog.wide { width: min(560px, 100%); max-height: 80vh; overflow-y: auto; }
+.fdialog > b { font: 700 18px var(--display); color: var(--bright); }
+.finput { min-height: 46px; padding: 0 14px; border-radius: var(--r1); border: 1px solid var(--line); background: var(--s0); color: var(--bright); font: 500 16px var(--body); }
+.finput:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.fdbtns { display: flex; justify-content: flex-end; gap: 8px; }
+.fdev { display: grid; gap: 8px; padding: 10px 0; border-top: 1px solid var(--line); }
+.fdev b { color: var(--bright); }
+.fdev small { display: block; color: var(--dim); font-size: 12px; }
+.fseg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 3px; border-radius: var(--r2); background: var(--s0); }
+.fseg button { min-height: 36px; border-radius: calc(var(--r2) - 3px); font-size: 13px; font-weight: 600; color: var(--dim); }
+.fseg button.on { background: var(--accent); color: var(--on-accent); }
+.fseg button:disabled:not(.on) { opacity: .4; }
+.ftoast { position: fixed; z-index: 66; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); translate: -50% 0; max-width: min(90vw, 480px);
+  padding: 10px 16px; border-radius: var(--r2); background: var(--base05); color: var(--base00); font-weight: 600; font-size: 14px;
+  box-shadow: 0 12px 30px rgb(0 0 0 / .4); animation: sheetup var(--dur) var(--pop) both; }
+.ftoast.bad { background: var(--bad); color: var(--base00); }

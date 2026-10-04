@@ -74,6 +74,14 @@ pub fn render(ui: Ui) -> Element {
                     {tiles::render(ui)}
                     {sound::render(ui)}
                     div { class: "sect",
+                        span { "Files" }
+                        button {
+                            disabled: !relay,
+                            onclick: move |_| { live.cc_open.set(false); bridge::call("window.__wado.filesOpen();".to_string()); },
+                            "Open"
+                        }
+                    }
+                    div { class: "sect",
                         span { "Shells" }
                         button {
                             disabled: !relay,

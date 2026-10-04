@@ -85,6 +85,7 @@ mod tests {
             stream { encoder "software"; max-fps 90 }
             session { env { GDK_SCALE "2" }; autostart "foot"; autostart "firefox" }
             shells { enabled #false }
+            files { root "~"; root "/mnt/data"; deny "~/Private" }
             "#,
         )
         .unwrap();
@@ -95,6 +96,8 @@ mod tests {
         assert_eq!(c.session.env["GDK_SCALE"], "2");
         assert_eq!(c.session.autostart, ["foot", "firefox"]);
         assert!(!c.shells.enabled);
+        assert_eq!(c.files.roots(), ["~", "/mnt/data"]);
+        assert_eq!(c.files.deny, ["~/Private"]);
     }
 
     #[test]

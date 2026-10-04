@@ -11,7 +11,7 @@ mod sessions;
 use dioxus::prelude::*;
 
 use crate::{
-    actions,
+    actions, bridge,
     state::Ui,
     ui::{pages::Page, widgets::Icon},
 };
@@ -57,6 +57,16 @@ pub fn render(ui: Ui) -> Element {
                         title: "Open a shell — no video",
                         onclick: move |_| crate::ui::console::open_shells(ui),
                         Icon { name: "term" }
+                    }
+                }
+                // The file manager: browse, upload, download — no session needed either.
+                if (s.conn_mode)() == "relay" {
+                    button {
+                        class: "iconbtn",
+                        "aria-label": "Files on the computer",
+                        title: "Files on the computer",
+                        onclick: move |_| bridge::call("window.__wado.filesOpen();".to_string()),
+                        Icon { name: "folder" }
                     }
                 }
                 if has_sessions {

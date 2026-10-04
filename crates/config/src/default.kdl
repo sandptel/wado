@@ -41,6 +41,17 @@ shells {
     // program "/run/current-system/sw/bin/fish"
 }
 
+files {
+    // enabled #true
+    // root "~"                        // one per tree a device may browse; "/" only if written
+    // deny "~/Private"                // refused inside a root (plus ~/.ssh ~/.gnupg ~/.config/wado
+    //                                 // ~/.local/share/keyrings, always)
+    // hidden #false                   // list dotfiles
+    // follow-symlinks "inside"        // "inside" (while they stay in the root) | "never"
+    // rate-with-video 40              // Mbps cap on downloads while video is live; 0 = none
+    // reserve-mib 1024                // refuse an upload that would leave less free
+}
+
 binds {
     // mod "super"                     // what Mod means: super | alt | ctrl | ctrl+alt
     // Mod+Q "close-window"            // actions: close-window maximize minimize focus-next back

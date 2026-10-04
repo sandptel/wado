@@ -1,5 +1,42 @@
 # Changelog
 
+### Added
+
+- **A file manager for the computer's files: browse, download, upload, organise.** Open it from
+  the folder button on the home page (no session needed) or from **Files** in the control centre
+  during a session.
+  - **Layout.** On a phone it looks like Google Files: your folders and recent files first, tap to
+    open, long-press to select, and a + button to add. On a wider screen it looks like Nautilus:
+    a sidebar, breadcrumbs, a list or grid you can sort, Ctrl/Shift selection, double-click, and
+    drag-and-drop uploads.
+  - **Downloads** have live progress bars showing speed and time left. Two run at once and the
+    rest queue. Each can be paused and resumed, and a dropped connection resumes by itself.
+    Downloads are saved to the device's disk as they arrive, so a reload or a lost connection
+    keeps what already came, and finished files go to the browser's Downloads. A folder
+    downloads as a zip. Every file is checked against the computer's SHA-256 before it is saved.
+  - **Uploads** go into the open folder: files, or whole folders with their structure. An upload
+    resumes after a drop, is checked by hash before it appears, and is refused up front when the
+    computer's disk is too full. If a name is already taken you choose Replace, Keep both or
+    Skip, optionally for all.
+  - **Organise:** new folder, rename, copy, move, and delete. Delete moves items to the computer's
+    Trash and never removes them outright; Replace also sends the old file to the Trash.
+  - **Quick access.** Pinned folders are the same bookmarks Nautilus shows, so a pin made on the
+    phone appears on the desktop and the other way round. Recent files come from the desktop's
+    own recent list plus what changed in your pinned folders. Images get thumbnails.
+  - **Who may use it.** A device needs to be paired with the computer's QR code and granted
+    access: `wado files grant <device> ro|rw|none` on the computer, or from a device that has
+    read-write access. `wado files` lists the grants. Devices let in "once" never get access.
+  - **What it may reach** is set in `config.kdl` `files { root …; deny … }`: home by default, and
+    `/` only if you write it. `~/.ssh`, `~/.gnupg`, `~/.config/wado` and `~/.local/share/keyrings`
+    are always refused. The kernel enforces this with `openat2(RESOLVE_BENEATH)`, so a symlink or
+    a `..` cannot lead out.
+  - **Recorded.** Every operation is written to `~/.local/state/wado/files.log`, and the
+    computer's other connected devices get a notification.
+  - **Transfers stay out of the way of input.** They travel on a second, separate connection,
+    secured by the end-to-end handshake, so they never share a channel with input. While a
+    session's video is live, downloads are held to `files { rate-with-video }`, and that cap
+    halves when the video reports loss.
+
 ### Security
 
 - **The relay can no longer read or forge anything between your device and your computer.**

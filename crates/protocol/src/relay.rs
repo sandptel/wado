@@ -616,6 +616,26 @@ pub enum RelayMsg {
         candidate: String,
     },
 
+    // ── File manager: its own peer connection (see `crate::files`) ────────────
+    /// Client → server: the offer for the files peer connection — separate from the session's,
+    /// so a transfer never shares an SCTP association with input (invariant #1). Needs no session.
+    FilesOffer {
+        sdp: String,
+    },
+    /// Server → client: the answer, or `err` when this device may not use files.
+    FilesAnswer {
+        #[serde(default)]
+        sdp: String,
+        #[serde(default)]
+        err: String,
+    },
+    /// Server → client: another device of this computer did something to its files — a toast.
+    FilesNote {
+        device: String,
+        op: String,
+        path: String,
+    },
+
     // ── Device approval: daemon ↔ an already-connected client (relay forwards) ──
     /// A device the daemon does not trust is waiting to join (it may be waiting on another
     /// daemon of the same pool — they share one trust list). Shown to a connected viewer.

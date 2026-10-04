@@ -43,6 +43,7 @@ use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 use webrtc::rtcp::payload_feedbacks::full_intra_request::FullIntraRequest;
 use webrtc::rtcp::payload_feedbacks::picture_loss_indication::PictureLossIndication;
+use webrtc::rtcp::receiver_report::ReceiverReport;
 use webrtc::track::track_local::TrackLocal;
 use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
 
@@ -75,6 +76,9 @@ struct RelayCtx {
     log_bus: LogBus,
     /// The single active viewer's peer connection (generation-guarded).
     active_pc: Arc<Mutex<Option<Arc<RTCPeerConnection>>>>,
+    /// The viewer's files peer connection — a second one, so transfers never share an SCTP
+    /// association with input. See [`crate::files::channel`].
+    files_pc: Arc<Mutex<Option<Arc<RTCPeerConnection>>>>,
     /// Bumped on every accepted offer; lets a stale viewer's teardown be ignored.
     generation: Arc<AtomicU64>,
     relay_url: String,
@@ -477,6 +481,7 @@ async fn run(
             &crate::remote_id::config_dir(),
         )?),
         viewer: Arc::default(),
+        files_pc: Arc::default(),
         media_sent: Arc::default(),
         audio_track,
         listening: listening_tx,
@@ -848,6 +853,28 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     break;
                 }
             }
+        })
+    };
+
+    // What other devices of this computer did to its files — a toast for this viewer.
+    let files_note_task = {
+        let out_tx_f = out_tx.clone();
+        let ok = Arc::clone(&ctx.viewer_ok);
+        tokio::spawn(async move {
+            let (tx, mut rx) = mpsc::channel(16);
+            // Joined, not spawned: aborting this task stops the follower with it.
+            let forward = async move {
+                while let Some((device, op, path)) = rx.recv().await {
+                    if ok.load(Ordering::SeqCst)
+                        && send_relay(&out_tx_f, &RelayMsg::FilesNote { device, op, path })
+                            .await
+                            .is_err()
+                    {
+                        break;
+                    }
+                }
+            };
+            tokio::join!(crate::files::audit::follow(tx), forward);
         })
     };
 
@@ -1247,6 +1274,8 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
                     .take();
+                // Files go with the device: no transfer outlives the link that authorised it.
+                close_files(&ctx.files_pc);
                 if let Some(pc) = dead {
                     tokio::spawn(async move {
                         if let Err(e) = pc.close().await {
@@ -1500,6 +1529,51 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 // only when its settled verdict changes, and the render loop reads it once per
                 // decision window rather than per message.
                 let _ = ctx.cmd_tx.send(CompositorCommand::ViewerStrain(strained));
+                crate::files::pace::strained(strained);
+            }
+
+            RelayMsg::FilesOffer { sdp } => {
+                let (key, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                let who = crate::files::channel::Who { key, name };
+                let room = ctx.room.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                let once = ctx
+                    .once
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .contains(&room);
+                let refused = if ctx.viewer_ok.load(Ordering::SeqCst) {
+                    crate::files::channel::refused(&ctx.gate, &who, once)
+                } else {
+                    Some("this device has not been approved yet".into())
+                };
+                let reply = match refused {
+                    Some(err) => {
+                        info!(device = %who.name, "files: refused — {err}");
+                        RelayMsg::FilesAnswer {
+                            sdp: String::new(),
+                            err,
+                        }
+                    }
+                    None => {
+                        match crate::files::channel::open(&ctx.api, &sdp, who, ctx.gate.clone())
+                            .await
+                        {
+                            Ok((pc, sdp)) => {
+                                close_files(&ctx.files_pc);
+                                *ctx.files_pc.lock().unwrap_or_else(|e| e.into_inner()) = Some(pc);
+                                RelayMsg::FilesAnswer {
+                                    sdp,
+                                    err: String::new(),
+                                }
+                            }
+                            Err(e) => RelayMsg::FilesAnswer {
+                                sdp: String::new(),
+                                err: e.to_string(),
+                            },
+                        }
+                    }
+                };
+                send_relay(&out_tx, &reply).await.ok();
             }
 
             RelayMsg::SessionLaunch { command } => {
@@ -1792,6 +1866,8 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     shells_task.abort();
     clipboard_task.abort();
     notify_task.abort();
+    files_note_task.abort();
+    close_files(&ctx.files_pc);
     menu_task.abort();
     write_task.abort();
     Ok(())
@@ -1892,6 +1968,7 @@ async fn handle_sdp_offer(
     // Each track only when the offer asked for it: an older client offers video alone, and a
     // shell-only "play on this phone" offers audio alone (no session, nothing to encode).
     let has_audio = offer_has(&offer.sdp, "audio");
+    let has_video = offer_has(&offer.sdp, "video");
     let rtp_sender = if offer_has(&offer.sdp, "video") {
         Some(
             pc.add_track(Arc::clone(&ctx.track) as Arc<dyn TrackLocal + Send + Sync>)
@@ -2031,6 +2108,12 @@ async fn handle_sdp_offer(
                             {
                                 let _ = cmd_tx.send(CompositorCommand::ForceKeyframe);
                             }
+                            // Loss on the video path: downloads back off (`files::pace`).
+                            if let Some(rr) = a.downcast_ref::<ReceiverReport>() {
+                                for r in &rr.reports {
+                                    crate::files::pace::loss(r.fraction_lost);
+                                }
+                            }
                         }
                     }
                     Err(_) => break,
@@ -2059,6 +2142,7 @@ async fn handle_sdp_offer(
                     // still needs something its decoder can start from.
                     let _ = cmd_tx.send(CompositorCommand::ViewerAttached(true));
                     let _ = cmd_tx.send(CompositorCommand::ForceKeyframe);
+                    crate::files::pace::video(has_video);
                 }
                 // NOT a teardown. A peer connection dying is a *transport* event — a cell
                 // handoff, a tunnel change, a few seconds in a lift — and killing the session
@@ -2074,6 +2158,7 @@ async fn handle_sdp_offer(
                 | RTCPeerConnectionState::Disconnected => {
                     if generation.load(Ordering::SeqCst) == my_gen {
                         let _ = listening.send(false);
+                        crate::files::pace::video(false);
                         // Stop rendering for a viewer that is not receiving. `Disconnected` is
                         // included on purpose: it is the transient case — a lift, a handoff —
                         // and it is precisely when there is no point encoding into a dead path.
@@ -2168,6 +2253,16 @@ async fn handle_sdp_offer(
 
     send_relay(&out_tx, &RelayMsg::SdpAnswer { sdp: answer_json }).await?;
     Ok(())
+}
+
+/// Close the files peer connection, if there is one. Closed, not dropped: webrtc-rs frees its ICE
+/// sockets only on `close()` (see the session's peer connection).
+fn close_files(slot: &Mutex<Option<Arc<RTCPeerConnection>>>) {
+    if let Some(pc) = slot.lock().unwrap_or_else(|e| e.into_inner()).take() {
+        tokio::spawn(async move {
+            let _ = pc.close().await;
+        });
+    }
 }
 
 /// The session the compositor is actually running, if any.
