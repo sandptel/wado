@@ -38,4 +38,9 @@ qrcode = { version = "0.14", default-features = false }
 # The end-to-end envelope over the relay (`e2e/`): Ed25519, X25519, HKDF, AES-GCM, HMAC.
 # Already in the tree via webrtc/rustls, so no new crate.
 ring = "0.17"
+# The file manager (`files/`): CRC-32 for folder zips, MD5 for freedesktop thumbnail names,
+# percent-encoding for file URIs. All already in the tree.
+crc = "3"
+md-5 = "0.10"
+percent-encoding = "2"
 zbus = { version = "5", default-features = false, features = ["tokio"] }

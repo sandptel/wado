@@ -16,7 +16,7 @@
 //! daemon can see and show to its own viewer, and the answer is a file next to it.
 //!
 //! ```text
-//!   <config>/wado/trusted_clients        <client_key>\t<name>[\t<device pk>\t<pinned>]
+//!   <config>/wado/trusted_clients        <client_key>\t<name>[\t<device pk>\t<pinned>[\t<files>]]
 //!   <config>/wado/pending/<id>.json      a device waiting for approval
 //!   <config>/wado/pending/<id>.verdict   once | always | deny
 //! ```
@@ -25,7 +25,8 @@
 //! [`Gate::decide`] uses it to park or let in a join, and [`Gate::admit`] makes the decision that
 //! counts, once the device has proven its key. A line without a key (older than the envelope,
 //! or trusted a moment ago) takes the first key proven for it; `pinned` is 1 when that key was
-//! proven with a QR pairing code, which F1's file access requires.
+//! proven with a QR pairing code, which file access requires. `files` is that device's grant —
+//! `none` (the default, also when absent), `ro` or `rw` — set by `wado files grant`.
 //!
 //! ponytail: polled every 500 ms rather than watched with inotify — a prompt that appears half a
 //! second late costs nothing, and polling a tiny directory costs less than the dependency.
@@ -261,7 +262,7 @@ impl Gate {
     }
 
     /// `(device pk, pinned)` on file for `key`; the pk is empty for a line from before keys.
-    fn entry(&self, key: &str) -> Option<(String, bool)> {
+    pub fn entry(&self, key: &str) -> Option<(String, bool)> {
         fs::read_to_string(self.trusted_path())
             .unwrap_or_default()
             .lines()
@@ -273,10 +274,15 @@ impl Gate {
             })
     }
 
-    /// Write `key`'s line with its proven key, in place or appended.
+    /// Write `key`'s line with its proven key, in place or appended. Its file grant is kept.
     fn set(&self, key: &str, name: &str, pk: &str, pinned: bool) {
+        let files = self.files_level(key);
+        self.write_line(key, name, pk, pinned, &files);
+    }
+
+    fn write_line(&self, key: &str, name: &str, pk: &str, pinned: bool, files: &str) {
         let name = name.replace(['\t', '\n'], " ");
-        let line = format!("{key}\t{name}\t{pk}\t{}", u8::from(pinned));
+        let line = format!("{key}\t{name}\t{pk}\t{}\t{files}", u8::from(pinned));
         let mut lines: Vec<String> = fs::read_to_string(self.trusted_path())
             .unwrap_or_default()
             .lines()
@@ -292,6 +298,69 @@ impl Gate {
         {
             warn!("gate: could not write the trust list: {e}");
         }
+    }
+
+    /// Every trusted device: `(key, name, pinned, files level)`, oldest first.
+    pub fn devices(&self) -> Vec<(String, String, bool, String)> {
+        fs::read_to_string(self.trusted_path())
+            .unwrap_or_default()
+            .lines()
+            .map(|l| l.split('\t').map(str::trim).collect::<Vec<_>>())
+            .filter(|f| !f[0].is_empty())
+            .map(|f| {
+                let get = |i: usize| f.get(i).copied().unwrap_or("");
+                let lvl = match get(4) {
+                    "ro" | "rw" => get(4),
+                    _ => "none",
+                };
+                (get(0).into(), get(1).into(), get(3) == "1", lvl.into())
+            })
+            .collect()
+    }
+
+    fn files_level(&self, key: &str) -> String {
+        self.devices()
+            .into_iter()
+            .find(|d| d.0 == key)
+            .map_or_else(|| "none".into(), |d| d.3)
+    }
+
+    /// What `key` may do with files: `none`, `ro` or `rw`. A grant counts only on a line whose
+    /// key was proven with a QR code — a device trusted on first use, or a legacy line, gets
+    /// nothing until it is re-paired.
+    pub fn files_access(&self, key: &str) -> &'static str {
+        match self.devices().into_iter().find(|d| d.0 == key) {
+            Some((_, _, true, l)) if l == "rw" => "rw",
+            Some((_, _, true, l)) if l == "ro" => "ro",
+            _ => "none",
+        }
+    }
+
+    /// Set a device's file grant. `who` is its key, a prefix of it, or its exact name; it must
+    /// name exactly one device. Returns the device's name.
+    pub fn grant(&self, who: &str, level: &str) -> Result<String, String> {
+        if !matches!(level, "none" | "ro" | "rw") {
+            return Err(format!("`{level}` is not a level — use none, ro or rw"));
+        }
+        let all = self.devices();
+        let hits: Vec<_> = all
+            .iter()
+            .filter(|d| !who.is_empty() && (d.0.starts_with(who) || d.1 == who))
+            .collect();
+        let (key, name, pinned, _) = match hits.as_slice() {
+            [one] => (*one).clone(),
+            [] => return Err(format!("no trusted device matches `{who}`")),
+            _ => {
+                return Err(format!(
+                    "`{who}` matches {} devices — use more of the key",
+                    hits.len()
+                ));
+            }
+        };
+        let pk = self.entry(&key).map(|e| e.0).unwrap_or_default();
+        self.write_line(&key, &name, &pk, pinned, level);
+        info!("gate: files access for {name} set to {level}");
+        Ok(name)
     }
 
     /// The decision that counts: may the device that proved `pk` in, as `key`?
@@ -492,6 +561,32 @@ mod tests {
             "single use"
         );
         assert_eq!(g.trusted().len(), 1, "rewritten in place, not appended");
+    }
+
+    #[test]
+    fn file_access_needs_a_grant_and_a_qr_pinned_key() {
+        let g = temp();
+        g.trust("phone", "Phone");
+        assert!(g.admit("phone", "Phone", "PK1", false, None).is_ok());
+        assert_eq!(g.files_access("phone"), "none", "no grant yet");
+        assert_eq!(g.grant("pho", "rw").unwrap(), "Phone");
+        assert_eq!(
+            g.files_access("phone"),
+            "none",
+            "trusted on first use, not pinned"
+        );
+        let c = g.mint_pair();
+        assert!(g.admit("phone", "Phone", "PK1", false, Some(&c)).is_ok());
+        assert_eq!(g.files_access("phone"), "rw", "a re-pair keeps the grant");
+        assert!(g.grant("phone", "root").is_err());
+        assert!(g.grant("nobody", "ro").is_err());
+        g.trust("phone2", "Phone 2");
+        assert!(
+            g.grant("phone", "ro").is_err(),
+            "a prefix of two keys is ambiguous"
+        );
+        assert!(g.grant("Phone 2", "ro").is_ok(), "by exact name");
+        assert_eq!(g.files_access("laptop"), "none");
     }
 
     #[test]

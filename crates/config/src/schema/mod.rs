@@ -7,6 +7,7 @@
 pub mod binds;
 pub mod de;
 pub mod device;
+pub mod files;
 pub mod gestures;
 pub mod input;
 pub mod rules;
@@ -22,6 +23,7 @@ use std::collections::BTreeMap;
 
 pub use binds::Binds;
 pub use device::Device;
+pub use files::Files;
 pub use input::Input;
 pub use rules::WindowRule;
 pub use security::Security;
@@ -38,6 +40,7 @@ pub struct Config {
     pub stream: Stream,
     pub session: Session,
     pub shells: Shells,
+    pub files: Files,
     pub input: Input,
     /// Keyed by the device's client key.
     pub device: BTreeMap<String, Device>,
@@ -55,6 +58,7 @@ impl Default for Config {
             stream: Stream::default(),
             session: Session::default(),
             shells: Shells::default(),
+            files: Files::default(),
             input: Input::default(),
             device: BTreeMap::new(),
             binds: Binds::default(),
@@ -75,7 +79,7 @@ impl Config {
 }
 
 /// Node names that may repeat and collect into a list, in any section.
-pub const LIST_NODES: &[&str] = &["autostart", "window-rule"];
+pub const LIST_NODES: &[&str] = &["autostart", "window-rule", "root", "deny"];
 
 /// Node names whose first argument is a key: `device "abc" { … }` → `device.abc`.
 pub const KEYED_NODES: &[&str] = &["device"];

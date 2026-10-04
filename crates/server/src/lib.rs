@@ -10,6 +10,7 @@ pub mod cli;
 pub mod config;
 pub mod e2e;
 pub mod error;
+pub mod files;
 pub mod gate;
 pub mod host;
 pub mod ice;
