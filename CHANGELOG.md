@@ -54,6 +54,15 @@
   - **Photos zoom**: pinch, double-tap, the mouse wheel, or + − 0. On a phone, a camera photo now
     fits the screen. Double-tap zooms and stays zoomed (it used to zoom in and straight out), a
     single tap hides the bars, and a swipe goes to the next photo.
+    **The space a photo does not use now does something.**
+    - **Under the picture:** a zoom bar (previous, −, the zoom percentage to tap for "fit", +,
+      next) and a filmstrip of the folder's photos.
+    - **Actions:** Download, Share, Open on the computer, Copy path.
+    - **Details:** the folder (tap to open it), size, pixel dimensions, type and date.
+    - **From the camera:** for a camera photo, when it was taken, camera, lens, exposure, and where
+      it was taken, with a map link.
+    - **Wide screens:** the details sit beside the picture.
+    - **Small photos** are scaled up to fill their space instead of sitting small in the middle.
   - **A revised file manager.**
     - **Overview:** it opens on search, Photos / Videos / Music / Documents / Archives /
       Downloads, a strip of recent files with thumbnails, your folders, and how full the disk is.

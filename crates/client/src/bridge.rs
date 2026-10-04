@@ -142,6 +142,8 @@ pub const JS: &str = concat!(
     "`;\n",
     include_str!("js/files_player.js"),
     "\n",
+    include_str!("js/files_exif.js"),
+    "\n",
     include_str!("js/files_view.js"),
     "\n",
     include_str!("js/capture.js"),

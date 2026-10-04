@@ -24,6 +24,7 @@ import { spawn, execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, symlinkSync, readdirSync } from "node:fs";
 import { createHash, randomBytes } from "node:crypto";
 import { deflateSync } from "node:zlib";
+import { withExif } from "./lib/exif-jpeg.mjs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -72,6 +73,7 @@ writeFileSync(join(HOME, "Pictures/p.png"), png);
 writeFileSync(join(HOME, "Pictures/q.png"), png);
 // A camera-sized photo, for fitting and zooming on a phone.
 execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=4000x3000", "-frames:v", "1", join(HOME, "Pictures/zbig.jpg")]);
+writeFileSync(join(HOME, "Pictures/zbig.jpg"), withExif(readFileSync(join(HOME, "Pictures/zbig.jpg"))));
 writeFileSync(join(HOME, "Pictures/page.html"), "<script>window.__pwned = 1</script><b>hi</b>");
 writeFileSync(join(HOME, "Pictures/notes.json"), '{"a":1,"b":[2,3]}');
 // One second of a 440 Hz tone, 8 kHz mono 16-bit WAV.
@@ -457,9 +459,17 @@ try {
   await sleep(400);
   const fit = await phone.ev(`(() => { const s = document.querySelector(".fview .fvstage").getBoundingClientRect(), z = document.querySelector(".fview .fvzoom").getBoundingClientRect();
     return { stage: [s.width, s.height], layer: [z.width, z.height], vw: innerWidth }; })()`);
-  check("phone photo: it fits the screen", Math.abs(fit.layer[0] - fit.stage[0]) < 2 && Math.abs(fit.layer[1] - fit.stage[1]) < 2 && fit.stage[0] <= fit.vw + 1, JSON.stringify(fit));
+  check("phone photo: the picture takes its own shape, full width", Math.abs(fit.layer[0] - fit.vw) < 2 && Math.abs(fit.layer[1] - fit.vw * 0.75) < 3, JSON.stringify(fit));
+  check("phone photo: below it, zoom and next/previous, a filmstrip, the details", await phone.until(`!!document.querySelector(".fview .fvtools") && document.querySelectorAll(".fview .fvthumb").length >= 3
+    && (document.querySelector(".fview .fvmeta")?.textContent || "").includes("4000 × 3000")`, 8000));
+  check("phone photo: what the camera recorded", await phone.until(`(() => { const t = document.querySelector(".fview .fvmeta")?.textContent || ""; return t.includes("Google Pixel 8") && t.includes("ƒ/1.7") && t.includes("1/250 s") && t.includes("ISO 160") && t.includes("48.85820"); })()`, 8000),
+    await phone.ev(`document.querySelector(".fview .fvmeta")?.textContent`));
+  await phone.ev(`document.querySelector(".fview .fvtools [aria-label='Zoom in']").click(); true`);
+  check("phone photo: the zoom buttons zoom, and say how much", await phone.until(`/%$/.test(document.querySelector(".fview .fvpct").textContent)`, 3000));
+  await phone.ev(`document.querySelector(".fview .fvpctbtn").click(); true`);
+  check("phone photo: …and the percentage fits it back", await phone.until(`document.querySelector(".fview .fvpct").textContent === "Fit"`, 3000));
   await phone.shot("files-phone-photo.png");
-  const centre = await phone.ev(`(() => { const b = document.querySelector(".fview .fvstage").getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`);
+  const centre = await phone.ev(`(() => { const b = document.querySelector(".fview .fvphoto").getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`);
   const touchTap = async () => { await phone.cdp("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [centre] }); await phone.cdp("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] }); };
   await touchTap(); await sleep(90); await touchTap();
   await sleep(900);

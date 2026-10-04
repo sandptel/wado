@@ -269,7 +269,7 @@
 .fvbar.done i { opacity: 0; transition: opacity .4s; }
 .fvstage { min-height: 0; display: grid; place-items: center; overflow: hidden; position: relative; }
 .fvzoom { position: absolute; inset: 0; touch-action: none; }
-.fvimg { display: block; width: 100%; height: 100%; object-fit: scale-down; user-select: none; -webkit-user-drag: none;
+.fvimg { display: block; width: 100%; height: 100%; object-fit: contain; user-select: none; -webkit-user-drag: none;
   -webkit-touch-callout: none; pointer-events: none; image-rendering: auto; }
 /* A single tap: the photo alone, the bars gone (and back on the next tap). */
 .fview.bare { grid-template-rows: 1fr; padding: 0; background: #000; }
@@ -359,3 +359,39 @@
 .fplayer.touch .plyr__video-wrapper { touch-action: none; -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
 /* Over the viewer, toasts drop from the top: at the bottom they covered the seek bar. */
 body:has(.fview) .ftoast { bottom: auto; top: calc(64px + env(safe-area-inset-top)); }
+
+/* ── a photo: picture, then the space it does not use ── */
+.fvstage.photo { display: flex; flex-direction: column; place-items: initial; overflow-y: auto; overscroll-behavior: contain; }
+.fvphoto { position: relative; flex: none; height: 62%; min-height: 160px; overflow: hidden; background: #000; }
+.fvstage.photo.side { display: grid; grid-template-columns: minmax(0, 1fr) 340px; overflow: hidden; }
+.fvstage.photo.side .fvphoto { height: 100% !important; }
+.fvstage.photo.side .fvpanel { overflow-y: auto; border-left: 1px solid rgb(255 255 255 / .08); }
+.fvpanel { display: grid; gap: 12px; align-content: start; padding: 10px 12px calc(16px + env(safe-area-inset-bottom)); }
+.fview.bare .fvpanel { display: none; }
+.fview.bare .fvphoto { height: 100% !important; }
+.fview.bare .fvstage.photo { overflow: hidden; }
+.fvtools { display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 4px; border-radius: 99px; background: rgb(255 255 255 / .06); }
+.fvtools .fbtn { width: 46px; height: 46px; }
+.fvtools .fbtn:disabled { opacity: .3; }
+.fvpctbtn { min-width: 74px; height: 40px; border-radius: 99px; color: #eee; font: 700 14px var(--body); font-variant-numeric: tabular-nums; }
+.fvpctbtn:hover { background: rgb(255 255 255 / .08); }
+.fvstrip { display: flex; gap: 6px; overflow-x: auto; padding: 2px; scrollbar-width: none; scroll-snap-type: x proximity; }
+.fvstrip::-webkit-scrollbar { display: none; }
+.fvthumb { flex: none; width: 58px; height: 58px; border-radius: 12px; background: #222 center / cover no-repeat; color: #888; display: grid; place-items: center;
+  opacity: .55; scroll-snap-align: center; transition: opacity var(--dur), outline-color var(--dur); outline: 2px solid transparent; outline-offset: 1px; }
+.fvthumb.on { opacity: 1; outline-color: var(--accent); }
+.fvmeta { display: grid; gap: 12px; }
+.fvacts { display: grid; grid-template-columns: repeat(auto-fit, minmax(76px, 1fr)); gap: 6px; }
+.fvact { display: grid; justify-items: center; gap: 6px; padding: 10px 4px; border-radius: 16px; background: rgb(255 255 255 / .06); color: #eee; font-size: 12px; font-weight: 600; }
+.fvact .fi { color: var(--accent); }
+.fvact:active { scale: .96; }
+.fvcard { display: grid; gap: 2px; padding: 12px 14px; border-radius: 18px; background: rgb(255 255 255 / .05); }
+.fvname { font: 700 15px var(--display); color: #fff; overflow-wrap: anywhere; margin-bottom: 6px; }
+.fvrowi { display: grid; grid-template-columns: 22px 1fr; gap: 12px; align-items: start; padding: 7px 0; border-top: 1px solid rgb(255 255 255 / .06); }
+.fvrowi > .fi { color: #8a8a8a; margin-top: 3px; }
+.fvrowi .fi .i { width: 18px; height: 18px; }
+.fvrowi small { display: block; color: #8a8a8a; font-size: 11px; font-weight: 600; }
+.fvrowi span { color: #e8e8e8; font-size: 14px; overflow-wrap: anywhere; }
+.fvlink { margin-left: 10px; color: var(--accent); font-weight: 700; font-size: 13px; text-decoration: none; }
+/* Beside the details panel the floating arrows would sit on it; the panel has its own. */
+.fview:has(.fvstage.side) .fvnav { display: none; }

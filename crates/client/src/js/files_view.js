@@ -141,7 +141,7 @@
   // Swipe left/right between files (not while zoomed into an image).
   function swipe(node) {
     let x0 = null, y0 = 0;
-    node.addEventListener("touchstart", (e) => { if (e.touches.length === 1 && !node.classList.contains("zoomed") && !(e.target.closest && e.target.closest(".plyr__controls, input, .fpanel-vlc")) && !(e.target.closest && e.target.closest(".fplayer.touch") && !(live && live.media && live.media.paused))) { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; } }, { passive: true });
+    node.addEventListener("touchstart", (e) => { if (e.touches.length === 1 && !node.classList.contains("zoomed") && !(e.target.closest && e.target.closest(".plyr__controls, input, .fpanel-vlc, .fvpanel")) && !(e.target.closest && e.target.closest(".fplayer.touch") && !(live && live.media && live.media.paused))) { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; } }, { passive: true });
     node.addEventListener("touchend", (e) => {
       if (x0 === null) return;
       const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0;
@@ -180,7 +180,8 @@
       }, abort).then((v) => {
         if (abort !== mine || !el) return;
         bar.classList.add("done");
-        render(kind, e, v, stage);
+        try { render(kind, e, v, stage); }
+        catch (err) { stage.replaceChildren(fallback(e, "This file could not be shown here: " + (err.message || err))); }
         prefetch();
       }, (err) => {
         if (abort !== mine || !el || err.message === "stopped") return;
@@ -219,12 +220,12 @@
   // index.html); +, - and 0 on a keyboard. While zoomed, a swipe pans instead of changing photo.
   //
   // What is zoomed is a layer exactly the size of the screen with the photo fitted inside it
-  // (`object-fit: scale-down`), not the photo itself: Panzoom's "keep it covering the screen"
+  // (`object-fit: contain`), not the photo itself: Panzoom's "keep it covering the screen"
   // rule then holds for any photo, where a photo smaller than the screen fought it (2026-10-05,
   // "the image viewer breaks on phone"). One double-tap path: touch double-taps are detected here
   // and the browser's synthesized dblclick after them is ignored, or each tap zoomed in and out.
   // A single tap hides the bars, for the photo alone on the screen.
-  function zoomable(img, stage) {
+  function zoomable(img, stage, onScale) {
     const layer = h("div", { class: "fvzoom" }, img);
     stage.replaceChildren(layer);
     const bare = () => el && el.classList.toggle("bare");
@@ -235,7 +236,7 @@
     const pz = window.Panzoom(layer, { maxScale: 12, minScale: 1, step: 0.35, contain: "outside", panOnlyWhenZoomed: true, cursor: "default", touchAction: "none" });
     const wheel = (ev) => pz.zoomWithWheel(ev);
     stage.addEventListener("wheel", wheel, { passive: false });
-    layer.addEventListener("panzoomchange", (ev) => { if (el) el.classList.toggle("zoomed", ev.detail.scale > 1.02); });
+    layer.addEventListener("panzoomchange", (ev) => { if (el) el.classList.toggle("zoomed", ev.detail.scale > 1.02); if (onScale) onScale(ev.detail.scale); });
     const flip = (x, y) => {
       if (pz.getScale() > 1.02) pz.reset({ animate: true });
       else pz.zoomToPoint(3, { clientX: x, clientY: y }, { animate: true });
@@ -257,7 +258,101 @@
       else if (ev.key === "0") { ev.preventDefault(); pz.reset(); }
     };
     addEventListener("keydown", keys);
-    return { destroy() { clearTimeout(tapTimer); removeEventListener("keydown", keys); stage.removeEventListener("wheel", wheel); try { pz.destroy(); } catch (_) {} if (el) el.classList.remove("bare", "zoomed"); } };
+    return { pz, destroy() { clearTimeout(tapTimer); removeEventListener("keydown", keys); stage.removeEventListener("wheel", wheel); try { pz.destroy(); } catch (_) {} if (el) el.classList.remove("bare", "zoomed"); } };
+  }
+
+  // ── a photo: the picture, then what the rest of the screen is for ──
+  //
+  // The picture takes the height its shape needs (fitted to the width — a small photo is scaled
+  // up, so it is never a postage stamp in an empty screen — at most ~70% of the
+  // screen) and the space it does not use holds: a zoom and next/previous bar, a filmstrip of the
+  // folder's photos, and the details — where it is, size, dimensions, type, dates, and what the
+  // camera recorded (files_exif.js), with Download / Share / Open on the computer / Copy path.
+  // On a wide screen the details sit beside the picture instead. One tap: the picture alone.
+  function photo(e, v, stage) {
+    stage.classList.add("photo");
+    const side = matchMedia("(min-width: 900px)").matches;
+    stage.classList.toggle("side", side);
+    const area = h("div", { class: "fvphoto" });
+    const img = h("img", { class: "fvimg", src: v.url, alt: e.name, draggable: "false" });
+    const pct = h("span", { class: "fvpct" }, "Fit");
+    // On the page first: Panzoom refuses an element that is not attached yet.
+    stage.replaceChildren(area);
+    const z = zoomable(img, area, (sc) => { pct.textContent = sc > 1.02 ? Math.round(sc * 100) + "%" : "Fit"; });
+    const pz = z && z.pz;
+    const tb = (icon, label, run, dis) => h("button", { class: "fbtn", "aria-label": label, title: label, disabled: dis || null, onclick: run }, ico(icon));
+    const tools = h("div", { class: "fvtools" },
+      tb("back", "Previous", () => step(-1), at === 0),
+      pz ? tb("minus", "Zoom out", () => pz.zoomOut({ animate: true })) : null,
+      pz ? h("button", { class: "fvpctbtn", title: "Fit to screen", onclick: () => pz.reset({ animate: true }) }, pct) : null,
+      pz ? tb("plus", "Zoom in", () => pz.zoomIn({ animate: true })) : null,
+      tb("next", "Next", () => step(1), at >= list.length - 1));
+    const strip = filmstrip();
+    const meta = h("div", { class: "fvmeta" });
+    const fill = () => {
+      // The picture's box: its own shape, fitted to the width, never more than ~70% of the stage.
+      if (side || !img.naturalWidth) return;
+      const w = stage.clientWidth, hmax = stage.clientHeight * 0.7;
+      area.style.height = Math.max(160, Math.min(hmax, (w * img.naturalHeight) / img.naturalWidth)) + "px";
+    };
+    img.onload = () => { fill(); details(e, v, img, meta); };
+    img.onerror = () => stage.replaceChildren(fallback(e, "This browser cannot show this image format."));
+    const panel = h("div", { class: "fvpanel" }, tools, strip, meta);
+    stage.append(panel);
+    addEventListener("resize", fill);
+    return { pz, destroy() { removeEventListener("resize", fill); if (z) z.destroy(); stage.classList.remove("photo", "side"); } };
+  }
+
+  // The folder's photos as thumbnails; the open one is marked and scrolled into view.
+  const thumbCache = new Map();
+  function filmstrip() {
+    const pics = list.map((x, i) => [x, i]).filter(([x]) => F.viewable(x.name) === "image");
+    if (pics.length < 2) return null;
+    const strip = h("div", { class: "fvstrip" });
+    for (const [x, i] of pics) {
+      const b = h("button", { class: "fvthumb" + (i === at ? " on" : ""), "aria-label": x.name, title: x.name, onclick: () => { at = i; show(); } });
+      const key = x.path + "@" + x.mtime;
+      if (!thumbCache.has(key)) thumbCache.set(key, F.req("thumb", { path: x.path }).then((r) => "data:image/png;base64," + r.png).catch(() => null));
+      thumbCache.get(key).then((u) => { if (u) b.style.backgroundImage = `url("${u}")`; else b.append(ico("image")); });
+      strip.append(b);
+    }
+    requestAnimationFrame(() => strip.querySelector(".on")?.scrollIntoView({ inline: "center", block: "nearest" }));
+    return strip;
+  }
+
+  async function details(e, v, img, box) {
+    const A = F.act || {};
+    const x = ext(e.name).toUpperCase();
+    const row = (icon, a, b, extra) => b ? h("div", { class: "fvrowi" }, ico(icon), h("div", {}, h("small", {}, a), h("span", {}, b, extra || null))) : null;
+    const folder = e.path.slice(0, e.path.lastIndexOf("/")) || "/";
+    const home = F.info && F.info.home;
+    const where = home && folder.startsWith(home) ? "~" + folder.slice(home.length) : folder;
+    const mp = img.naturalWidth * img.naturalHeight >= 1e5 ? ` · ${(img.naturalWidth * img.naturalHeight / 1e6).toFixed(1)} MP` : "";
+    const act = (icon, label, run) => h("button", { class: "fvact", onclick: run }, ico(icon), h("span", {}, label));
+    const actions = h("div", { class: "fvacts" },
+      act("download", "Download", () => { F.download(e.path, e.name, false); F.toast("Downloading " + e.name); }),
+      A.canShare && A.canShare(e) ? act("share", "Share", () => A.share(e)) : null,
+      A.canOpenThere && A.canOpenThere() ? act("monitor", "On computer", () => A.openThere(e.path)) : null,
+      A.copyPath ? act("copy", "Copy path", () => A.copyPath(e.path)) : null);
+    box.replaceChildren(
+      actions,
+      h("div", { class: "fvcard" },
+        h("b", { class: "fvname" }, e.name),
+        row("folder", "Folder", where, A.showIn ? h("button", { class: "fvlink", onclick: () => A.showIn(e.path) }, "Open") : null),
+        row("image", "Picture", `${img.naturalWidth} × ${img.naturalHeight}${mp} · ${x}`),
+        row("archive", "Size", `${F.fmtSize(e.size)} (${(e.size || 0).toLocaleString()} bytes)`),
+        row("clock", "Modified", e.mtime ? new Date(e.mtime * 1000).toLocaleString() : "")));
+    const c = F.exif ? await F.exif(v.blob) : null;
+    if (!c || !el) return;
+    const shot = [c.fnumber, c.exposure, c.iso, c.focal].filter(Boolean).join(" · ");
+    const place = c.lat != null && c.lon != null ? `${c.lat.toFixed(5)}, ${c.lon.toFixed(5)}` : "";
+    box.append(h("div", { class: "fvcard" },
+      h("b", { class: "fvname" }, "From the camera"),
+      row("clock", "Taken", c.taken ? c.taken.toLocaleString() : ""),
+      row("camera", "Camera", c.camera),
+      row("eye", "Lens", c.lens),
+      row("sliders", "Exposure", shot),
+      row("pin", "Place", place, place ? h("a", { class: "fvlink", target: "_blank", rel: "noopener noreferrer", href: `https://www.openstreetmap.org/?mlat=${c.lat}&mlon=${c.lon}#map=16/${c.lat}/${c.lon}` }, "Map") : null)));
   }
 
   function fallback(e, why) {
@@ -267,9 +362,7 @@
 
   function render(kind, e, v, stage) {
     if (kind === "image") {
-      const img = h("img", { class: "fvimg", src: v.url, alt: e.name, draggable: "false" });
-      img.onerror = () => stage.replaceChildren(fallback(e, "This browser cannot show this image format."));
-      live = zoomable(img, stage);
+      live = photo(e, v, stage);
     } else if (kind === "video" || kind === "audio") {
       const m = h(kind, { class: "fv" + kind, src: v.url, controls: true, autoplay: true, playsinline: true });
       m.onerror = () => stage.replaceChildren(fallback(e, `This browser cannot play this ${kind} format (${ext(e.name)}).`));
