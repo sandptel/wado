@@ -46,7 +46,14 @@
     (space, ←/→, [ ], v, b, a, z, g/h, f, m). A film reopened carries on where you left it, and
     songs play on through the folder. Conversions run at the lowest CPU priority, at most two at
     once, and stop the moment you close the player, so a live session is never starved.
-  - **Photos zoom**: pinch, double-tap, the mouse wheel, or + − 0.
+    **On a phone** the player is laid out for a thumb. The seek bar has its own full-width row
+    above one row of large buttons. Double-tap the left or right to skip 10 s (tap again to skip
+    further), double-tap the middle to pause, hold for 2×, and pinch to fill the screen. Turning
+    the phone sideways goes edge to edge, and the fullscreen button turns wide videos to
+    landscape.
+  - **Photos zoom**: pinch, double-tap, the mouse wheel, or + − 0. On a phone, a camera photo now
+    fits the screen. Double-tap zooms and stays zoomed (it used to zoom in and straight out), a
+    single tap hides the bars, and a swipe goes to the next photo.
   - **A revised file manager.**
     - **Overview:** it opens on search, Photos / Videos / Music / Documents / Archives /
       Downloads, a strip of recent files with thumbnails, your folders, and how full the disk is.
