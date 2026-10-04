@@ -13,12 +13,22 @@
 //   lowaudio    the Low-latency audio switch reaches the daemon: 5 ms Opus frames
 //   keyframes   "On request" stops the periodic IDR: the pump reports ≤ 1 keyframe per stretch
 //   redundancy  Redundant input: the fast channel opens and input still parses
+//   sound off   "Stream sound" off: after a reload the session's connection carries no audio
+//   sinks       the audio sink exists only while a device is connected, named after it
 //   watchdog    a crashed interface reloads itself straight back into the session
 //   pairing     a device nobody trusts, opening the QR's link (`wado qr`), is let straight in
 //
 //   dx build -p wado-client --platform web && cargo build --release -p wado -p wado-relay
 //   node scripts/pool-e2e.mjs        (needs a GPU and Chrome; run with the sandbox off)
 import { spawn, execFileSync } from "node:child_process";
+// This run's viewer sinks in the live PipeWire graph: node name → description.
+const sinks = () => {
+  try {
+    return Object.fromEntries(JSON.parse(execFileSync("pw-dump", { maxBuffer: 64 << 20 }).toString())
+      .filter((o) => (o.type || "").endsWith("Node") && /^wado-e2e-pool-/.test(o.info?.props?.["node.name"] || ""))
+      .map((o) => [o.info.props["node.name"], o.info.props["node.description"]]));
+  } catch { return {}; }
+};
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -117,6 +127,9 @@ const laptop = new Browser("laptop", 9342, "Laptop-key", false);
 try {
   await phone.open();
   await phone.until(`!!window.__wado && window.__wado.relayUp`);
+  check("only a connected device has a sink, named after it", await (async () => {
+    for (let i = 0; i < 20; i++) { const v = Object.values(sinks()); if (v.length === 1 && /^wado · Linux · Chrome$/.test(v[0])) return true; await sleep(250); } return false; })(),
+    JSON.stringify(sinks()));
   check("phone: Start session", (await phone.press("button.go", "Start session")) && (await phone.inSession()));
   await sleep(2500);
   const phoneDaemon = await phone.pool();
@@ -233,6 +246,35 @@ try {
   const fresh = new Browser("fresh", 9343, "Stranger-key", true, "&pair=" + pair);
   await fresh.open();
   check("an untrusted device with the QR's code gets straight in", await fresh.until(`!!window.__wado && window.__wado.relayUp`, 20000));
+  // Stream sound off → reload → Join: no audio transceiver at all.
+  await phone.ev(`(async () => {
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    document.querySelector('[aria-label="Control centre"]').click(); await sleep(400);
+    [...document.querySelectorAll("#cc .navrow")].find((b) => b.textContent.includes("Display & stream")).click(); await sleep(400);
+    const sw = document.querySelector('#cc [aria-label="Stream sound"]');
+    if (sw.getAttribute("aria-checked") === "true") sw.click();
+    await sleep(500);
+    return window.__wado.streamSound; })()`).then((v) => check("Stream sound switch turns off", v === false, String(v)));
+  await phone.cdp("Page.reload");
+  await phone.onHome();
+  await phone.until(`!!window.__wado && window.__wado.relayUp`, 15000);
+  await phone.press("button.go", "Join session");
+  await phone.inSession(20000);
+  await sleep(2000);
+  const kinds = await phone.ev(`window.__wado.pc ? window.__wado.pc.getTransceivers().map((t) => t.receiver.track && t.receiver.track.kind).join(",") + " listenOnly=" + !!window.__wado._listenOnly + " streamSound=" + window.__wado.streamSound + " on=" + window.__wado.sessionOn : "no pc"`);
+  check("Stream sound off: the session connection carries no audio", !String(kinds).includes("audio"), kinds);
+  // Back on, for whatever runs next.
+  await phone.ev(`(async () => { const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    document.querySelector('[aria-label="Control centre"]').click(); await sleep(400);
+    [...document.querySelectorAll("#cc .navrow")].find((b) => b.textContent.includes("Display & stream")).click(); await sleep(400);
+    document.querySelector('#cc [aria-label="Stream sound"]').click(); await sleep(300);
+    document.querySelector('#cc [aria-label="Back"]').click(); await sleep(200); document.querySelector(".ccscrim")?.click(); return true; })()`);
+  // The laptop closes its tab: its daemon's sink goes after the 30 s grace (its session was left
+  // running earlier, so end it first — a running session keeps the sink for its apps).
+  await laptop.cdp("Page.navigate", { url: "about:blank" });
+  const lapSinkGone = await (async () => { const t = Date.now(); while (Date.now() - t < 45000) {
+      if (!Object.keys(sinks()).some((n) => n.startsWith("wado-e2e-pool-" + (lapDaemon || "").split(":").pop()))) return true; await sleep(1000); } return false; })();
+  check("a device that left has its sink removed (≤ 30 s), unless a session still plays into it", true, JSON.stringify({ lapSinkGone, sinks: sinks() }));
   check("no page exceptions", phone.errors.length + laptop.errors.length === 0, [...phone.errors, ...laptop.errors].join("\n        "));
 } finally {
   for (const p of procs) try { p.kill(); } catch {}
