@@ -99,6 +99,12 @@
     (navigator.clipboard ? navigator.clipboard.writeText(p) : Promise.reject(new Error("no clipboard"))).then(() => F.toast("Path copied"), () => F.toast(p));
   }
 
+  // For the viewer's details panel: the same actions the item sheet offers.
+  F.act = {
+    openThere, canOpenThere, share, canShare, copyPath,
+    showIn: (p) => { if (F.viewClose) F.viewClose(); go(parentOf(p)); },
+  };
+
   // ── the overlay ──────────────────────────────────────────────────────────────
   let root = null;
   function mount() {
