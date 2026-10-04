@@ -100,7 +100,7 @@ tunnel_is_live() {
   local u code
   u="$(grep -om1 'https://[a-z0-9-]*\.trycloudflare\.com' "$LOGS/tunnel.log" 2>/dev/null || true)"
   [ -n "$u" ] || return 1
-  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "$u/health" || echo 000)"
+  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "$u/health" || true)"  # curl already prints 000 on failure; `|| echo 000` made it 000000, which read as live
   # 530 is Cloudflare itself answering "tunnel not found" (error 1033) — the tunnel is gone even
   # though the edge replied. Treating it as live reused a dead URL right after --stop (2026-10-04).
   [ "$code" != "000" ] && [ "$code" != "530" ]
