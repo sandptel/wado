@@ -159,7 +159,7 @@ W.startStats = (pc) => {
       const shown = W.wcVideo.shown;
       fps = W._wcShown === undefined ? null : shown - W._wcShown;
       W._wcShown = shown;
-      jbuf = W.wcAudio.queuedMs !== null ? W.wcAudio.queuedMs : null;
+      jbuf = W.wcAudio.queuedMs;
       abuf = jbuf;
       dec = W.wcVideo.decMs;
       vmin = null;
@@ -189,7 +189,7 @@ W.startStats = (pc) => {
         " input=" + n(input, 0) + "ms" +
         // The low-latency pipeline's own state: decoder input queue (a backlog when > ~3),
         // frames dropped as late, audio copies discarded, hardware or software decoding.
-        (W.wc && W.wc.live ? " wc_q=" + (W.wcVideo.dec ? W.wcVideo.dec.decodeQueueSize : "?") +
+        (W.wc && W.wc.live ? " wc_q=" + W.wcVideo.q + " wc_sync=" + (W.wc.syncMs === null ? "?" : W.wc.syncMs.toFixed(0)) +
           " wc_late=" + W.wcVideo.late + " wc_hw=" + (W.wcVideo._hw || "?") +
           " wc_lost=" + W.wc.lost + " wc_dups=" + (W.wcAudio.dups || 0) : "") +
         // The panel's own refresh rate, and the session's frame rate as a multiple of it.

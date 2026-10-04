@@ -51,6 +51,15 @@
 
 ### Added
 
+**Low-latency pipeline v2: everything heavy in a worker.** Reassembly, H.264 decode (hardware,
+with a software fallback when the hardware decoder holds or stalls), painting, and Opus decode now
+run in a dedicated worker on an OffscreenCanvas. Decoded audio goes from the worker straight to
+the AudioWorklet through a MessageChannel, and the worklet reports the "now heard" clock back the
+same way. The main thread, which also handles touch, only forwards each chunk (transferred, not
+copied) and reads four small stats messages a second. Measured in the e2e: 5.8% main-thread busy
+during playback. v1 decoded and painted every frame there, and on the phone touch glitched.
+Still opt-in on Display & stream.
+
 **Redundant input and redundant audio** (Display & stream, off by default): spare bandwidth
 spent on smoothness. With **redundant input**, taps, keys and lifts go on the reliable channel
 and also as an unordered, unreliable copy on a new `wado-fast` channel, under one sequence
