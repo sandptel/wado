@@ -1012,6 +1012,8 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 *ctx.room.lock().unwrap_or_else(|e| e.into_inner()) = room_id.clone();
                 *ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()) =
                     (client_key.clone(), client_name.clone());
+                // The audio sink appears for this device, named after it.
+                tokio::spawn(crate::host::viewer(Some(client_name.clone())));
                 ctx.media_sent.clear();
                 ctx.viewer_ok.store(!relay_gates, Ordering::SeqCst);
                 info!(room_id = %room_id, client = %client_addr, device = %client_name, "relay client: peer connected");
@@ -1133,6 +1135,19 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     room.clear();
                 }
                 ctx.viewer_ok.store(false, Ordering::SeqCst);
+                // Nobody back within 30 s and no session to keep playing into it: the sink goes,
+                // so the computer's mixer shows no output for a device that is not there.
+                {
+                    let room = Arc::clone(&ctx.room);
+                    let started = Arc::clone(&ctx.session_started);
+                    tokio::spawn(async move {
+                        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                        let empty = room.lock().unwrap_or_else(|e| e.into_inner()).is_empty();
+                        if empty && !started.load(Ordering::SeqCst) {
+                            crate::host::viewer(None).await;
+                        }
+                    });
+                }
                 // Deliberately *not* a teardown. See `RelayMsg::PeerDisconnected`: the relay used
                 // to synthesize a `SessionStop` here, which made every dropped socket cost the
                 // viewer their windows and their applications. The session stays up and

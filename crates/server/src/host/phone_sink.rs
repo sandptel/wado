@@ -1,7 +1,8 @@
 //! "This phone": a PipeWire null sink whose sound goes to the viewer instead of a speaker.
 //!
-//! One per daemon, for its whole life — not per session — so the computer's own playback can be
-//! routed to the phone over a shell-only connection too. Session apps are pointed at it
+//! It exists only while a device is connected, and is described after that device ("wado ·
+//! Android · Chrome"), so the computer's mixer shows who it plays to — not a "wado viewer" per
+//! daemon left standing with nobody connected (reported 2026-10-04). See `crate::host::viewer`. Session apps are pointed at it
 //! (`PULSE_SINK`, via `CompositorCommand::AudioSink`), so a session plays on the phone by
 //! default; host apps play where they always did until moved here from the Sound page.
 //! `crate::audio` captures its monitor while a viewer is listening.
@@ -22,15 +23,20 @@ pub struct AudioSink {
     child: Child,
 }
 
-/// Create the sink, or `None` (logged) when PipeWire is not reachable or audio is off.
-pub fn start() -> Option<AudioSink> {
+/// The sink's node name for this daemon run, or `None` when audio is off. Fixed for the run, so
+/// apps pointed at it (`PULSE_SINK`) and the capture keep one target while the sink itself comes
+/// and goes. The pid makes it unique: a sink left by a daemon that died never shares it.
+pub fn name() -> Option<String> {
     let cfg = wado_config::live::current();
-    if !cfg.session.audio {
-        return None;
-    }
-    // The pid makes it unique per daemon run: a sink left by a daemon that died would otherwise
-    // share the name, and player and capture could each pick a different one.
-    let name = format!("wado-{}-{}", cfg.server.instance, std::process::id());
+    cfg.session
+        .audio
+        .then(|| format!("wado-{}-{}", cfg.server.instance, std::process::id()))
+}
+
+/// Create the sink as `description`, or `None` (logged) when PipeWire is not reachable.
+pub fn start(name: &str, description: &str) -> Option<AudioSink> {
+    let name = name.to_string();
+    let description = description.replace(['"', '\\', '\n'], " ");
     let mut cmd = Command::new("pw-cli");
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::null())
@@ -53,7 +59,7 @@ pub fn start() -> Option<AudioSink> {
     };
     let create = format!(
         "create-node adapter {{ factory.name=support.null-audio-sink node.name={name} \
-         node.description=\"wado viewer\" media.class=Audio/Sink audio.position=[FL FR] \
+         node.description=\"{description}\" media.class=Audio/Sink audio.position=[FL FR] \
          object.linger=false }}\n"
     );
     // stdin is kept open: closing it would end pw-cli, and with it the node.
@@ -66,7 +72,7 @@ pub fn start() -> Option<AudioSink> {
         let _ = child.kill();
         return None;
     }
-    info!(sink = name, "phone audio sink created");
+    info!(sink = name, description, "viewer audio sink created");
     Some(AudioSink { name, child })
 }
 

@@ -2,6 +2,17 @@
 
 ### Fixed
 
+- **The computer's audio sink exists only while a device is connected, and is named after it.**
+  Every daemon in the pool used to create a "wado viewer" sink at startup and keep it for life,
+  so the mixer showed generic, stale outputs with nobody connected. Now the sink appears when a
+  device connects, as "wado · Android · Chrome" for example. A different device gets it recreated
+  under its own name, with the apps that were playing moved back onto it. It is removed 30 s after
+  the device leaves, unless a session is still playing into it.
+- **A setting changed just before a reload no longer reverts.** Settings reach the daemon 1.5 s
+  after a change, and on every connect the daemon's copy won, so a quick toggle and reload brought
+  the old value back ("Stream sound" off came back on). Each save is now timestamped and the newer
+  copy wins in both directions; a pending save is also sent at once when the page hides or unloads.
+
 - **Redundant input no longer makes input sluggish.** All data channels on a connection share one
   SCTP association with one congestion controller. Copying every scroll step and move, twice,
   added hundreds of messages a second, and on a lossy moment the whole association backed off:

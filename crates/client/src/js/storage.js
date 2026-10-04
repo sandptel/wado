@@ -54,6 +54,12 @@ W.loadSettings = () => {
   try { history.replaceState(null, "", location.pathname); } catch (_) {}
 })();
 
+// Every save carries when it was made (`_at`), so the daemon's copy of these settings and this
+// browser's can be told apart by age — see config.js.
 W.saveSettings = (obj) => {
+  obj._at = Date.now();
   try { localStorage.setItem(STORE_KEY, JSON.stringify(obj)); } catch (_) {}
+};
+W.settingsAt = () => {
+  try { return (JSON.parse(localStorage.getItem(STORE_KEY) || "{}")._at) || 0; } catch (_) { return 0; }
 };

@@ -25,18 +25,70 @@ use std::sync::OnceLock;
 use wado_protocol::{HostAction, HostState};
 
 static PHONE: OnceLock<Option<String>> = OnceLock::new();
-static SINK: std::sync::Mutex<Option<phone_sink::AudioSink>> = std::sync::Mutex::new(None);
+/// The viewer's sink while one is connected, with the description it was created under.
+static SINK: std::sync::Mutex<Option<(phone_sink::AudioSink, String)>> =
+    std::sync::Mutex::new(None);
 
-/// Create the phone sink, once per daemon. Returns its name.
+/// The viewer sink's node name for this daemon run (the sink itself exists only while a device
+/// is connected — see [`viewer`]).
 pub fn start() -> Option<String> {
-    PHONE
-        .get_or_init(|| {
-            let sink = phone_sink::start()?;
-            let name = sink.name.clone();
-            *SINK.lock().unwrap_or_else(|e| e.into_inner()) = Some(sink);
-            Some(name)
-        })
-        .clone()
+    PHONE.get_or_init(phone_sink::name).clone()
+}
+
+/// A device connected (`Some(name)`) or the last one went (`None`).
+///
+/// Connected: the sink exists, described after the device. A different device than the sink was
+/// made for gets it recreated under its own name — PipeWire cannot rename a node — and the apps
+/// that were playing to it are moved back onto it. Gone: the sink is removed.
+pub async fn viewer(device: Option<String>) {
+    let Some(name) = start() else { return };
+    let Some(device) = device else {
+        if let Some((sink, _)) = SINK.lock().unwrap_or_else(|e| e.into_inner()).take() {
+            phone_sink::terminate(sink);
+            tracing::info!(
+                sink = name,
+                "viewer audio sink removed — no device connected"
+            );
+        }
+        return;
+    };
+    let description = format!(
+        "wado · {}",
+        if device.is_empty() {
+            "viewer"
+        } else {
+            device.as_str()
+        }
+    );
+    if SINK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+        .is_some_and(|(_, d)| *d == description)
+    {
+        return;
+    }
+    // Who plays to it now, to put back after the swap.
+    let playing: Vec<u32> = audio::state(Some(&name))
+        .await
+        .streams
+        .iter()
+        .filter(|s| s.sink.as_deref() == Some(name.as_str()))
+        .map(|s| s.id)
+        .collect();
+    if let Some((old, _)) = SINK.lock().unwrap_or_else(|e| e.into_inner()).take() {
+        phone_sink::terminate(old);
+    }
+    let Some(sink) = phone_sink::start(&name, &description) else {
+        return;
+    };
+    *SINK.lock().unwrap_or_else(|e| e.into_inner()) = Some((sink, description));
+    if !playing.is_empty() {
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        for id in playing {
+            let _ = audio::move_stream(id, &name).await;
+        }
+    }
 }
 
 pub fn phone() -> Option<String> {
