@@ -70,6 +70,8 @@ const png = (() => {
 })();
 writeFileSync(join(HOME, "Pictures/p.png"), png);
 writeFileSync(join(HOME, "Pictures/q.png"), png);
+// A camera-sized photo, for fitting and zooming on a phone.
+execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=4000x3000", "-frames:v", "1", join(HOME, "Pictures/zbig.jpg")]);
 writeFileSync(join(HOME, "Pictures/page.html"), "<script>window.__pwned = 1</script><b>hi</b>");
 writeFileSync(join(HOME, "Pictures/notes.json"), '{"a":1,"b":[2,3]}');
 // One second of a 440 Hz tone, 8 kHz mono 16-bit WAV.
@@ -358,7 +360,8 @@ try {
   await laptop.ev(`document.querySelector(".fvnav.next").click(); true`);
   check("viewer: JSON is pretty-printed", await laptop.until(`(document.querySelector(".fvtext")?.textContent || "").includes('\n  "b": [')`));
   await laptop.ev(`document.querySelector(".fvnav.next").click(); true`);
-  await laptop.ev(`document.querySelector(".fvnav.next").click(); true`);
+  await laptop.ev(`(async () => { const F = window.__wado.files; const l = await F.req("list", { path: ${JSON.stringify(H("Pictures"))} });
+    const all = l.entries.map((e) => ({ ...e, path: ${JSON.stringify(H("Pictures"))} + "/" + e.name })); F.view(all.find((e) => e.name === "tone.wav"), all); return true; })()`);
   check("viewer: audio plays", await laptop.until(`(document.querySelector(".fview audio") || {}).duration > 0.9`), await laptop.ev(`document.querySelector(".fvtitle b")?.textContent`));
   await laptop.ev(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); true`);
   check("viewer: Esc closes it", await laptop.until(`!document.querySelector(".fview")`));
@@ -403,13 +406,84 @@ try {
   check("closing the player stops the computer's ffmpeg", ffNice().length === 0, JSON.stringify(ffNice()));
   const vthumb = await laptop.req("thumb", { path: V("film.mp4") });
   check("a video gets a thumbnail (a frame)", !!vthumb.png && Buffer.from(vthumb.png, "base64").subarray(1, 4).toString() === "PNG", JSON.stringify(vthumb).slice(0, 160));
+  // the player on a phone: slider on its own row above the buttons, gestures, landscape
+  await phone.ev(`(async () => { const F = window.__wado.files; const l = await F.req("list", { path: ${JSON.stringify(H("Videos"))} });
+    const all = l.entries.map((e) => ({ ...e, path: ${JSON.stringify(H("Videos"))} + "/" + e.name })); F.view(all.find((e) => e.name === "film.mp4"), all); return true; })()`);
+  check("phone player: portrait is not mistaken for landscape", await phone.until(`!!document.querySelector(".fview .fplayer")`, 15000) && !(await phone.ev(`!!document.querySelector(".fview.land")`)));
+  check("phone player: plays", await phone.until(`(() => { const v = document.querySelector(".fview video"); return v && v.readyState >= 3 && !v.paused; })()`, 25000));
+  const geo = await phone.ev(`(() => { const q = (s) => document.querySelector(".fview " + s)?.getBoundingClientRect();
+    const bar = q(".plyr__progress__container"), play = q(".plyr__controls [data-plyr='play']");
+    return { barTop: bar && bar.top, playTop: play && play.top, barW: bar && bar.width, vw: innerWidth, vol: !!document.querySelector(".fview .plyr__volume input") }; })()`);
+  check("phone player: the slider is a full-width row above the buttons, no volume slider",
+    geo.barTop < geo.playTop - 10 && geo.barW > geo.vw * 0.85 && !geo.vol, JSON.stringify(geo));
+  await sleep(500);
+  await phone.ev(`(() => { const p = document.querySelector(".fview .plyr"); p.classList.remove("plyr--hide-controls"); return true; })()`);
+  await sleep(700); // Plyr slides the controls in
+  await phone.shot("files-phone-player.png");
+  const tapAt = async (fx, n = 2) => {
+    const r = await phone.ev(`(() => { const b = document.querySelector(".fview .plyr__video-wrapper").getBoundingClientRect(); return { x: b.left + b.width * ${fx}, y: b.top + b.height * 0.4 }; })()`);
+    for (let i = 0; i < n; i++) {
+      await phone.cdp("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [r] });
+      await phone.cdp("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      await sleep(80);
+    }
+  };
+  const t0 = await phone.ev(`document.querySelector(".fview video").currentTime`);
+  await tapAt(0.85);
+  check("phone player: double-tap on the right skips 10 s", await phone.until(`document.querySelector(".fview video").currentTime > ${t0 + 8}`, 8000),
+    `${t0} → ${await phone.ev(`document.querySelector(".fview video").currentTime`)}`);
+  {
+    const r = await phone.ev(`(() => { const b = document.querySelector(".fview .plyr__video-wrapper").getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height * 0.4 }; })()`);
+    await phone.cdp("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [r] });
+    await sleep(900);
+    check("phone player: hold plays at 2×", await phone.ev(`document.querySelector(".fview video").playbackRate === 2`), String(await phone.ev(`document.querySelector(".fview video").playbackRate + " " + document.querySelector(".fpripple")?.className `)));
+    await phone.cdp("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    check("phone player: …and lets go back to 1×", await phone.until(`document.querySelector(".fview video").playbackRate === 1`, 3000));
+  }
+  await phone.cdp("Emulation.setDeviceMetricsOverride", { width: 915, height: 412, deviceScaleFactor: 2, mobile: true, screenOrientation: { type: "landscapePrimary", angle: 90 } });
+  check("phone player: turned to landscape it goes edge to edge", await phone.until(`!!document.querySelector(".fview.land") && getComputedStyle(document.querySelector(".fview .fvhead")).display === "none"
+    && document.querySelector(".fview .plyr__video-wrapper").getBoundingClientRect().height > innerHeight * 0.9`, 5000),
+    await phone.ev(`JSON.stringify(document.querySelector(".fview .plyr__video-wrapper")?.getBoundingClientRect())`));
+  await sleep(600);
+  await phone.shot("files-phone-landscape.png");
+  await phone.cdp("Emulation.setDeviceMetricsOverride", { width: 412, height: 915, deviceScaleFactor: 2, mobile: true, screenOrientation: { type: "portraitPrimary", angle: 0 } });
+  check("phone player: …and back in portrait", await phone.until(`!document.querySelector(".fview.land")`, 5000));
+  await phone.ev(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); true`);
+  // photos on a phone: a camera photo fits the screen; double-tap zooms (once, not in and out);
+  // a single tap hides the bars; a swipe moves to the next photo
+  await phone.ev(`(async () => { const F = window.__wado.files; const l = await F.req("list", { path: ${JSON.stringify(H("Pictures"))} });
+    const all = l.entries.map((e) => ({ ...e, path: ${JSON.stringify(H("Pictures"))} + "/" + e.name })); F.view(all.find((e) => e.name === "zbig.jpg"), all); return true; })()`);
+  check("phone photo: a 4000×3000 photo opens", await phone.until(`(document.querySelector(".fview .fvimg") || {}).naturalWidth === 4000`, 20000));
+  await sleep(400);
+  const fit = await phone.ev(`(() => { const s = document.querySelector(".fview .fvstage").getBoundingClientRect(), z = document.querySelector(".fview .fvzoom").getBoundingClientRect();
+    return { stage: [s.width, s.height], layer: [z.width, z.height], vw: innerWidth }; })()`);
+  check("phone photo: it fits the screen", Math.abs(fit.layer[0] - fit.stage[0]) < 2 && Math.abs(fit.layer[1] - fit.stage[1]) < 2 && fit.stage[0] <= fit.vw + 1, JSON.stringify(fit));
+  await phone.shot("files-phone-photo.png");
+  const centre = await phone.ev(`(() => { const b = document.querySelector(".fview .fvstage").getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`);
+  const touchTap = async () => { await phone.cdp("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [centre] }); await phone.cdp("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] }); };
+  await touchTap(); await sleep(90); await touchTap();
+  await sleep(900);
+  check("phone photo: double-tap zooms in and stays zoomed", await phone.ev(`document.querySelector(".fview").classList.contains("zoomed")`),
+    await phone.ev(`document.querySelector(".fview .fvzoom").style.transform`));
+  await touchTap(); await sleep(90); await touchTap();
+  check("phone photo: double-tap again fits it back", await phone.until(`!document.querySelector(".fview").classList.contains("zoomed")`, 3000));
+  await sleep(400);
+  await touchTap();
+  check("phone photo: a single tap hides the bars", await phone.until(`document.querySelector(".fview").classList.contains("bare")`, 2000));
+  await phone.shot("files-phone-photo-bare.png");
+  const title0 = await phone.ev(`document.querySelector(".fvtitle b").textContent`);
+  await phone.cdp("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: centre.x + 120, y: centre.y }] });
+  for (const dx of [80, 20, -40, -100]) await phone.cdp("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: centre.x + dx, y: centre.y }] });
+  await phone.cdp("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  check("phone photo: a swipe moves to the next one", await phone.until(`document.querySelector(".fvtitle b").textContent !== ${JSON.stringify(title0)}`, 4000), title0);
+  await phone.ev(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); true`);
   // photo zoom
   await laptop.ev(`(async () => { const F = window.__wado.files; const l = await F.req("list", { path: ${JSON.stringify(H("Pictures"))} });
     const all = l.entries.map((e) => ({ ...e, path: ${JSON.stringify(H("Pictures"))} + "/" + e.name })); F.view(all.find((e) => e.name === "p.png"), all); return true; })()`);
   await laptop.until(`(document.querySelector(".fview .fvimg") || {}).naturalWidth === 64`);
-  await laptop.ev(`document.querySelector(".fview .fvimg").dispatchEvent(new MouseEvent("dblclick", { bubbles: true, clientX: 720, clientY: 450 })); true`);
-  check("photos: double-click zooms in (Panzoom)", await laptop.until(`document.querySelector(".fview").classList.contains("zoomed") && /scale\((?!1\))/.test(document.querySelector(".fview .fvimg").style.transform)`),
-    await laptop.ev(`document.querySelector(".fview .fvimg").style.transform + " panzoom=" + !!window.Panzoom`));
+  await laptop.ev(`document.querySelector(".fview .fvzoom").dispatchEvent(new MouseEvent("dblclick", { bubbles: true, clientX: 720, clientY: 450 })); true`);
+  check("photos: double-click zooms in (Panzoom)", await laptop.until(`document.querySelector(".fview").classList.contains("zoomed") && /scale\((?!1\))/.test(document.querySelector(".fview .fvzoom").style.transform)`),
+    await laptop.ev(`document.querySelector(".fview .fvzoom").style.transform + " panzoom=" + !!window.Panzoom`));
   await laptop.ev(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); true`);
   check("no script errors", !phone.errors.length && !laptop.errors.length, [...phone.errors, ...laptop.errors].join("\n        "));
 

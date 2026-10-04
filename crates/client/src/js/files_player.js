@@ -80,10 +80,21 @@
     if (dead) { stream.destroy(); return { destroy() {} }; }
     st.info = stream.info;
 
+    // On a touch screen the controls are laid out for a thumb (files.css, `.fplayer.touch`): the
+    // seek bar gets a full-width row above the buttons, and taps are ours (see `gestures`).
+    const touch = matchMedia("(pointer: coarse)").matches;
+    if (touch) box.classList.add("touch");
     if (window.Plyr) {
       try {
         plyr = new window.Plyr(media, {
-          controls: ["play-large", "rewind", "play", "fast-forward", "progress", "current-time", "duration", "mute", "volume", "settings", "pip", "fullscreen"],
+          // A phone gets one row of buttons: ±10 s is a double-tap there, picture-in-picture and
+          // the volume slider are the phone's own; everything else stays.
+          controls: touch
+            ? ["play-large", "play", "progress", "current-time", "duration", "mute", "settings", "fullscreen"]
+            : ["play-large", "rewind", "play", "fast-forward", "progress", "current-time", "duration", "mute", "volume", "settings", "pip", "fullscreen"],
+          displayDuration: true,
+          clickToPlay: !touch,
+          hideControls: true,
           settings: ["speed", "loop"],
           speed: { selected: 1, options: SPEEDS },
           seekTime: 10,
@@ -219,6 +230,111 @@
       else if (k === "i") { did(); togglePanel(); }
     }
     addEventListener("keydown", keys, true);
+    const ungesture = touch && !audioOnly ? gestures() : () => {};
+
+    // ── touch: the gestures a phone video player is expected to have ──
+    //   tap               show / hide the controls
+    //   double-tap ← / →  10 s back / forward (taps in a row add up: 20 s, 30 s…)
+    //   double-tap middle play / pause
+    //   hold              2× speed while held
+    //   pinch out / in    fill the screen (crop) / fit
+    //   turn to landscape fullscreen
+    function gestures() {
+      const wrap = (plyr && plyr.elements && plyr.elements.wrapper) || box;
+      const ripple = h("div", { class: "fpripple" });
+      container().append(ripple);
+      let tapAt = 0, tapX = 0, single = null, hold = null, held = false, streak = 0, pinch0 = 0;
+      const flash = (side, text) => {
+        ripple.className = "fpripple " + side;
+        ripple.textContent = text;
+        void ripple.offsetWidth;
+        ripple.classList.add("show");
+      };
+      const seek = (d) => {
+        media.currentTime = Math.max(0, Math.min((media.duration || 1e9) - 0.3, media.currentTime + d));
+      };
+      const down = (e) => {
+        if (e.touches && e.touches.length === 2) {
+          clearTimeout(hold);
+          pinch0 = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+          return;
+        }
+        held = false;
+        clearTimeout(hold);
+        hold = setTimeout(() => { held = true; media.dataset.rate = media.playbackRate; media.playbackRate = 2; flash("mid", "2× ▸▸"); }, 400);
+      };
+      const move = (e) => {
+        if (!(e.touches && e.touches.length === 2 && pinch0)) return;
+        const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+        if (Math.abs(d - pinch0) < 60) return;
+        st.aspect = d > pinch0 ? 1 : 0;
+        applyPicture(); renderPanel();
+        flash("mid", d > pinch0 ? "Fill" : "Fit");
+        pinch0 = 0;
+      };
+      const up = (e) => {
+        clearTimeout(hold);
+        if (held) { held = false; media.playbackRate = Number(media.dataset.rate) || 1; ripple.classList.remove("show"); e.preventDefault(); return; }
+        if (e.touches && e.touches.length) return;
+        const t = e.changedTouches && e.changedTouches[0];
+        if (!t || e.target.closest(".plyr__controls, .fpanel-vlc, .plyr__control--overlaid")) return;
+        const r = wrap.getBoundingClientRect();
+        const x = (t.clientX - r.left) / r.width;
+        const now = Date.now();
+        if (now - tapAt < 300 && Math.abs(t.clientX - tapX) < 80) {
+          clearTimeout(single);
+          single = null;
+          if (x < 0.38) { streak = Math.min(streak + 1, 9); seek(-10); flash("left", `◂◂ ${streak * 10} s`); }
+          else if (x > 0.62) { streak = Math.min(streak + 1, 9); seek(10); flash("right", `${streak * 10} s ▸▸`); }
+          else { media.paused ? media.play().catch(() => {}) : media.pause(); flash("mid", media.paused ? "❚❚" : "▶"); }
+          tapAt = now; // a third tap continues the streak
+        } else {
+          streak = 0;
+          tapAt = now; tapX = t.clientX;
+          single = setTimeout(() => { single = null; if (plyr) plyr.toggleControls(); }, 300);
+        }
+        e.preventDefault();
+      };
+      wrap.addEventListener("touchstart", down, { passive: true });
+      wrap.addEventListener("touchmove", move, { passive: true });
+      wrap.addEventListener("touchend", up);
+      // A held finger is our 2× — not the browser's "save video" menu, which would also cancel it.
+      const noMenu = (e) => e.preventDefault();
+      wrap.addEventListener("contextmenu", noMenu);
+      wrap.addEventListener("touchcancel", () => { clearTimeout(hold); if (held) { held = false; media.playbackRate = Number(media.dataset.rate) || 1; } });
+      // Landscape → fullscreen, and back, while this is playing.
+      // The browser may refuse real fullscreen without a tap, so landscape also makes the viewer
+      // itself edge to edge (`.fview.land`: no title bar, the picture fills the screen).
+      const view = box.closest(".fview");
+      const orient = screen.orientation;
+      const landQ = matchMedia("(orientation: landscape)");
+      const turn = () => {
+        // The viewport's own shape: `screen.orientation` describes the device, which a desktop
+        // browser emulating a phone (and some foldables) report as landscape when it is not.
+        const land = landQ.matches;
+        if (view) view.classList.toggle("land", land);
+        if (!plyr) return;
+        // Real fullscreen is asked for, and a refusal (no tap behind it) is fine — Plyr follows
+        // `fullscreenchange`, so its button stays in step either way.
+        const c = container();
+        if (land && !media.paused && !document.fullscreenElement && c.requestFullscreen) c.requestFullscreen({ navigationUI: "hide" }).catch(() => {});
+        else if (!land && document.fullscreenElement) document.exitFullscreen().catch(() => {});
+      };
+      turn();
+      landQ.addEventListener("change", turn);
+      // Fullscreen on a phone: turn the screen to the video's own shape, where the browser lets us.
+      const fs = () => {
+        if (!plyr || !plyr.fullscreen.active || !orient || !orient.lock) return;
+        try { orient.lock(media.videoWidth >= media.videoHeight ? "landscape" : "portrait").catch(() => {}); } catch (_) {}
+      };
+      if (plyr) plyr.on("enterfullscreen", fs);
+      return () => {
+        clearTimeout(hold); clearTimeout(single);
+        if (view) view.classList.remove("land");
+        landQ.removeEventListener("change", turn);
+        try { if (orient && orient.unlock) orient.unlock(); } catch (_) {}
+      };
+    }
     applyPicture();
 
     return {
@@ -231,6 +347,7 @@
         clearInterval(posTimer);
         cancelAnimationFrame(raf);
         removeEventListener("keydown", keys, true);
+        ungesture();
         if (stream) stream.destroy();
         try { if (plyr) plyr.destroy(); } catch (_) {}
       },

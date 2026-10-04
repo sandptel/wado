@@ -141,7 +141,7 @@
   // Swipe left/right between files (not while zoomed into an image).
   function swipe(node) {
     let x0 = null, y0 = 0;
-    node.addEventListener("touchstart", (e) => { if (e.touches.length === 1 && !node.classList.contains("zoomed") && !(e.target.closest && e.target.closest(".plyr__controls, input, .fpanel-vlc"))) { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; } }, { passive: true });
+    node.addEventListener("touchstart", (e) => { if (e.touches.length === 1 && !node.classList.contains("zoomed") && !(e.target.closest && e.target.closest(".plyr__controls, input, .fpanel-vlc")) && !(e.target.closest && e.target.closest(".fplayer.touch") && !(live && live.media && live.media.paused))) { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; } }, { passive: true });
     node.addEventListener("touchend", (e) => {
       if (x0 === null) return;
       const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0;
@@ -217,32 +217,47 @@
 
   // Pinch, wheel, double-tap and drag to zoom and pan a photo (Panzoom, SRI-pinned in
   // index.html); +, - and 0 on a keyboard. While zoomed, a swipe pans instead of changing photo.
+  //
+  // What is zoomed is a layer exactly the size of the screen with the photo fitted inside it
+  // (`object-fit: scale-down`), not the photo itself: Panzoom's "keep it covering the screen"
+  // rule then holds for any photo, where a photo smaller than the screen fought it (2026-10-05,
+  // "the image viewer breaks on phone"). One double-tap path: touch double-taps are detected here
+  // and the browser's synthesized dblclick after them is ignored, or each tap zoomed in and out.
+  // A single tap hides the bars, for the photo alone on the screen.
   function zoomable(img, stage) {
+    const layer = h("div", { class: "fvzoom" }, img);
+    stage.replaceChildren(layer);
+    const bare = () => el && el.classList.toggle("bare");
     if (!window.Panzoom) {
-      img.addEventListener("dblclick", () => el.classList.toggle("zoomed"));
+      img.addEventListener("click", bare);
       return null;
     }
-    const pz = window.Panzoom(img, { maxScale: 12, minScale: 1, step: 0.35, contain: "outside", panOnlyWhenZoomed: true, cursor: "grab" });
+    const pz = window.Panzoom(layer, { maxScale: 12, minScale: 1, step: 0.35, contain: "outside", panOnlyWhenZoomed: true, cursor: "default", touchAction: "none" });
     const wheel = (ev) => pz.zoomWithWheel(ev);
     stage.addEventListener("wheel", wheel, { passive: false });
-    img.addEventListener("panzoomchange", (ev) => { if (el) el.classList.toggle("zoomed", ev.detail.scale > 1.02); });
-    let lastTap = 0;
-    const dbl = (ev) => {
-      const t = Date.now();
-      if (ev.type === "pointerup" && t - lastTap > 300) { lastTap = t; return; }
-      lastTap = 0;
-      if (pz.getScale() > 1.02) pz.reset();
-      else pz.zoomToPoint(3, { clientX: ev.clientX, clientY: ev.clientY });
+    layer.addEventListener("panzoomchange", (ev) => { if (el) el.classList.toggle("zoomed", ev.detail.scale > 1.02); });
+    const flip = (x, y) => {
+      if (pz.getScale() > 1.02) pz.reset({ animate: true });
+      else pz.zoomToPoint(3, { clientX: x, clientY: y }, { animate: true });
     };
-    img.addEventListener("dblclick", dbl);
-    img.addEventListener("pointerup", (ev) => { if (ev.pointerType === "touch") dbl(ev); });
+    let lastTouch = 0, tapAt = 0, tapTimer = null, x0 = 0, y0 = 0, moved = false;
+    layer.addEventListener("pointerdown", (ev) => { x0 = ev.clientX; y0 = ev.clientY; moved = false; });
+    layer.addEventListener("pointermove", (ev) => { if (Math.abs(ev.clientX - x0) + Math.abs(ev.clientY - y0) > 10) moved = true; });
+    layer.addEventListener("pointerup", (ev) => {
+      if (ev.pointerType === "mouse" || moved || !ev.isPrimary) return;
+      lastTouch = Date.now();
+      if (lastTouch - tapAt < 300) { clearTimeout(tapTimer); tapAt = 0; flip(ev.clientX, ev.clientY); return; }
+      tapAt = lastTouch;
+      tapTimer = setTimeout(bare, 300);
+    });
+    layer.addEventListener("dblclick", (ev) => { if (Date.now() - lastTouch > 700) flip(ev.clientX, ev.clientY); });
     const keys = (ev) => {
       if (ev.key === "+" || ev.key === "=") { ev.preventDefault(); pz.zoomIn(); }
       else if (ev.key === "-") { ev.preventDefault(); pz.zoomOut(); }
       else if (ev.key === "0") { ev.preventDefault(); pz.reset(); }
     };
     addEventListener("keydown", keys);
-    return { destroy() { removeEventListener("keydown", keys); stage.removeEventListener("wheel", wheel); try { pz.destroy(); } catch (_) {} } };
+    return { destroy() { clearTimeout(tapTimer); removeEventListener("keydown", keys); stage.removeEventListener("wheel", wheel); try { pz.destroy(); } catch (_) {} if (el) el.classList.remove("bare", "zoomed"); } };
   }
 
   function fallback(e, why) {
@@ -254,7 +269,6 @@
     if (kind === "image") {
       const img = h("img", { class: "fvimg", src: v.url, alt: e.name, draggable: "false" });
       img.onerror = () => stage.replaceChildren(fallback(e, "This browser cannot show this image format."));
-      stage.replaceChildren(img);
       live = zoomable(img, stage);
     } else if (kind === "video" || kind === "audio") {
       const m = h(kind, { class: "fv" + kind, src: v.url, controls: true, autoplay: true, playsinline: true });

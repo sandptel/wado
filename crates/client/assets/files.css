@@ -268,9 +268,13 @@
 .fvbar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s linear; }
 .fvbar.done i { opacity: 0; transition: opacity .4s; }
 .fvstage { min-height: 0; display: grid; place-items: center; overflow: hidden; position: relative; }
-.fvimg { max-width: 100%; max-height: 100%; object-fit: contain; user-select: none; -webkit-user-drag: none; touch-action: pinch-zoom; }
-.fview.zoomed .fvstage { overflow: auto; place-items: start; }
-.fview.zoomed .fvimg { max-width: none; max-height: none; cursor: zoom-out; }
+.fvzoom { position: absolute; inset: 0; touch-action: none; }
+.fvimg { display: block; width: 100%; height: 100%; object-fit: scale-down; user-select: none; -webkit-user-drag: none;
+  -webkit-touch-callout: none; pointer-events: none; image-rendering: auto; }
+/* A single tap: the photo alone, the bars gone (and back on the next tap). */
+.fview.bare { grid-template-rows: 1fr; padding: 0; background: #000; }
+.fview.bare .fvhead, .fview.bare .fvbar, .fview.bare .fvnav { display: none; }
+
 .fvvideo { max-width: 100%; max-height: 100%; width: 100%; background: #000; }
 .fvaudio { display: grid; justify-items: center; gap: 16px; width: min(480px, 92%); text-align: center; }
 .fvaudio .fi .i { width: 64px; height: 64px; stroke-width: 1.2; color: var(--base0C); }
@@ -314,4 +318,44 @@
 .fvopts button { min-height: 32px; padding: 0 10px; border-radius: 99px; background: rgb(255 255 255 / .08); color: #ddd; font-size: 13px; font-weight: 600; }
 .fvopts button.on { background: var(--accent); color: var(--on-accent); }
 .fvinfo { margin: 8px 0 0; color: #888; font-size: 11px; font-family: var(--mono); }
-.fvstage:has(.fvimg) { touch-action: none; }
+
+
+/* ── the player on a touch screen: laid out for a thumb ──
+ * The seek bar is a row of its own, full width, above the buttons — the one control used most
+ * gets the most room. Bigger handle, bigger targets; no volume slider (a phone has keys for it). */
+.fplayer.touch .plyr { --plyr-control-icon-size: 22px; --plyr-control-spacing: 8px; --plyr-range-thumb-height: 18px;
+  --plyr-range-track-height: 5px; --plyr-font-size-time: 13px; }
+.fplayer.touch .plyr__controls { flex-wrap: wrap; gap: 0; padding: 22px 8px calc(8px + env(safe-area-inset-bottom));
+  background: linear-gradient(transparent, rgb(0 0 0 / .78) 40%); }
+.fplayer.touch .plyr__controls .plyr__progress__container { order: -1; flex: 1 0 100%; margin: 0 0 2px; padding: 0 10px; }
+.fplayer.touch .plyr__progress input[type="range"] { height: 32px; }
+.fplayer.touch .plyr__progress__buffer { height: var(--plyr-range-track-height); margin-top: calc(var(--plyr-range-track-height) / -2); }
+.fplayer.touch .plyr__control { padding: 11px; border-radius: 50%; }
+.fplayer.touch .plyr__time { padding: 0 2px; }
+/* Plyr pushes its first item's neighbours apart with auto margins; on a phone the row is
+ * play + time on the left, the rest on the right. */
+.fplayer.touch .plyr__controls > .plyr__controls__item, .fplayer.touch .plyr__controls > .plyr__control { margin-left: 0; margin-right: 0; }
+.fplayer.touch .plyr__controls > [data-plyr="mute"], .fplayer.touch .plyr__controls > .plyr__volume { margin-left: auto; }
+.fplayer.touch .plyr__time + .plyr__time::before { margin-right: 4px; }
+.fplayer.touch .plyr__control--overlaid { padding: 22px; }
+.fplayer.touch .plyr__control--overlaid svg { width: 26px; height: 26px; }
+.fplayer.touch .fpsubs { bottom: 128px; }
+.fplayer.touch .plyr--hide-controls ~ .fpsubs, .fplayer.touch .plyr--hide-controls .fpsubs { bottom: 30px; }
+.fplayer.touch .fpanel-vlc { left: 8px; right: 8px; width: auto; bottom: 120px; max-height: calc(100% - 140px); }
+/* Double-tap and hold feedback. */
+.fpripple { position: absolute; top: 50%; translate: 0 -50%; z-index: 4; pointer-events: none; opacity: 0;
+  padding: 14px 20px; border-radius: 99px; background: rgb(0 0 0 / .5); color: #fff; font: 700 16px var(--body); }
+.fpripple.left { left: 8%; } .fpripple.right { right: 8%; } .fpripple.mid { left: 50%; translate: -50% -50%; }
+.fpripple.show { animation: ripple .7s ease-out both; }
+@keyframes ripple { 0% { opacity: 0; scale: .8; } 20% { opacity: 1; scale: 1; } 70% { opacity: 1; } 100% { opacity: 0; } }
+/* Landscape on a phone: the viewer goes edge to edge, even without real fullscreen. One row:
+ * with the bars hidden the stage is the only grid item, and a 0-height first row squashed it. */
+.fview.land { grid-template-rows: 1fr; padding: 0; }
+.fview.land .fvhead, .fview.land .fvbar, .fview.land .fvnav { display: none; }
+.fview.land .fplayer.touch .plyr__controls { padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
+.fview.land .fplayer.touch .fpsubs { bottom: 110px; }
+/* The picture is a gesture surface on a phone: no long-press callout or selection, no browser
+ * pan/zoom — those cancel a held finger (2×) and steal double-taps. */
+.fplayer.touch .plyr__video-wrapper { touch-action: none; -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
+/* Over the viewer, toasts drop from the top: at the bottom they covered the seek bar. */
+body:has(.fview) .ftoast { bottom: auto; top: calc(64px + env(safe-area-inset-top)); }
