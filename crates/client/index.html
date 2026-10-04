@@ -25,6 +25,12 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" />
     <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.js" integrity="sha384-M169f14mRZOXm3hD/v2Ti0ThIT/RnAQagXA9nlE15yHAtrW19gdePJh/HaTzUOe/" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.js" integrity="sha384-iF+jqbuti4XlB64clWgFWYEscb+UnSRv3VgVikGYZu+otNFnSHr7y7NcKfBnGizn" crossorigin="anonymous"></script>
+    <!-- The file viewer's two libraries, both MIT, both pinned by SRI like xterm above: Plyr, the
+         media player's controls (its icon sprite is vendored in js/vendor, not fetched), and
+         Panzoom, pinch/wheel zoom for photos. Deferred: nothing needs them until a file opens. -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/plyr@3.7.8/dist/plyr.css" integrity="sha384-FDFJN4eDoTbFzL8KHLAOmtAicPaFc44D0JrdAwgO91ZDgGmAHrcpMWLCwTxBSVI7" crossorigin="anonymous" />
+    <script defer src="https://cdn.jsdelivr.net/npm/plyr@3.7.8/dist/plyr.min.js" integrity="sha384-1r2GCX3Eml88xgbJb7kOe51vEASmv6hbqDRcK55GxMiwWy/5xX1xFlC6z7saa8Ct" crossorigin="anonymous"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/@panzoom/panzoom@4.6.0/dist/panzoom.min.js" integrity="sha384-p/V9q47QHNmBI0EG7lJPLVHC5WN1mgpLtNpFykf0IX8iJ4xDCYPWEXcigFOvYW52" crossorigin="anonymous"></script>
   </head>
   <body>
     <div id="main"></div>

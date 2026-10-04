@@ -7,7 +7,7 @@
 //! `wado files grant <device> none` applies to the next request of a channel already open.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -102,6 +102,8 @@ pub struct Chan {
     stops: Mutex<HashMap<u32, Arc<AtomicBool>>>,
     /// Uploads, by transfer id.
     pub ups: Mutex<HashMap<u32, super::recv::Upload>>,
+    /// Media streams' credit — bytes the device has said it will take — by transfer id.
+    credits: Mutex<HashMap<u32, Arc<AtomicU64>>>,
 }
 
 impl Chan {
@@ -177,6 +179,7 @@ fn serve(dc: Arc<RTCDataChannel>, who: Who, gate: Gate) {
         gate,
         stops: Mutex::new(HashMap::new()),
         ups: Mutex::new(HashMap::new()),
+        credits: Mutex::new(HashMap::new()),
     });
     // Weak in the channel's own callbacks: `Chan` holds the channel, and a strong reference
     // back would keep both alive forever.
@@ -214,7 +217,15 @@ fn allowed(req: &FileReq, have: &str) -> bool {
     use FileReq::*;
     match req {
         Hello | Cancel { .. } => true,
-        List { .. } | Get { .. } | Zip { .. } | Quick | Thumb { .. } => have != "none",
+        List { .. }
+        | Get { .. }
+        | Zip { .. }
+        | Quick
+        | Thumb { .. }
+        | Probe { .. }
+        | Stream { .. }
+        | Credit { .. }
+        | Subs { .. } => have != "none",
         _ => have == "rw",
     }
 }
@@ -251,7 +262,22 @@ async fn dispatch(chan: Arc<Chan>, id: u32, req: FileReq) {
                     .map(|r| r.to_string_lossy().into_owned())
                     .collect();
                 let home = super::scope::home().to_string_lossy().into_owned();
-                chan.reply(id, json!({ "roots": roots, "home": home, "access": have, "device": chan.who.name }))
+                // Room on each root's disk, for the storage meter.
+                let space: Vec<_> = sc
+                    .roots()
+                    .iter()
+                    .filter_map(|r| {
+                        let (free, total) = super::space(r)?;
+                        Some(json!({ "root": r.to_string_lossy(), "free": free, "total": total }))
+                    })
+                    .collect();
+                // The Trash, when the scope reaches it, for "Trash" in the sidebar.
+                let trash = super::trash::home_trash().join("files");
+                let trash = sc
+                    .dir(&trash.to_string_lossy())
+                    .ok()
+                    .map(|_| trash.to_string_lossy().into_owned());
+                chan.reply(id, json!({ "roots": roots, "home": home, "access": have, "device": chan.who.name, "space": space, "trash": trash }))
                     .await;
             }
             List { path } => match super::list::list(&sc, &path) {
@@ -340,6 +366,74 @@ async fn dispatch(chan: Arc<Chan>, id: u32, req: FileReq) {
                 )
                 .await
             }
+            Find { path, query, kind } => {
+                let r = tokio::task::spawn_blocking(move || {
+                    super::find::find(&sc, &path, &query, &kind)
+                })
+                .await;
+                match r {
+                    Ok(v) => chan.reply(id, v).await,
+                    Err(e) => chan.fail(id, e.to_string()).await,
+                }
+            }
+            Restore { path } => {
+                let r = super::trash::restore(&sc, &path);
+                chan.audit(
+                    "restore",
+                    &path,
+                    0,
+                    &r.as_ref().map(|_| ()).map_err(Clone::clone),
+                );
+                match r {
+                    Ok(to) => chan.reply(id, json!({ "to": to })).await,
+                    Err(e) => chan.fail(id, e).await,
+                }
+            }
+            Probe { path } => match super::media::probe(&sc, &path).await {
+                Ok(v) => chan.reply(id, v).await,
+                Err(e) => chan.fail(id, e).await,
+            },
+            Stream {
+                path,
+                start,
+                audio,
+                hevc,
+                credit,
+            } => {
+                let c = Arc::new(AtomicU64::new(credit.max(1 << 20)));
+                chan.credits
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .insert(id, Arc::clone(&c));
+                super::media::stream(&chan, &sc, id, &path, start, audio, hevc, c).await;
+                chan.credits
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .remove(&id);
+                // Watching is not worth a line per seek: once per file, at its start.
+                if start == 0.0 {
+                    chan.audit("play", &path, 0, &Ok(()));
+                }
+            }
+            Credit { xfer, bytes } => {
+                if let Some(c) = chan
+                    .credits
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .get(&xfer)
+                {
+                    c.fetch_add(bytes, Ordering::SeqCst);
+                }
+                chan.reply(id, json!({})).await;
+            }
+            Subs {
+                path,
+                track,
+                sidecar,
+            } => match super::media::subs(&sc, &path, track, sidecar.as_deref()).await {
+                Ok(vtt) => chan.reply(id, json!({ "vtt": vtt })).await,
+                Err(e) => chan.fail(id, e).await,
+            },
             Put { .. } => unreachable!("answered above"),
         }
     });

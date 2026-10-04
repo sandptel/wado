@@ -2,7 +2,8 @@
 //
 // Everything here is the browser's own renderer — <img>, <video>, <audio>, the PDF viewer, a
 // <pre> — fed the file's bytes over the files channel (checked against the host's SHA-256 like
-// any download). No viewer library, so nothing new to trust.
+// any download). Video and audio stream instead (js/files_player.js, js/files_stream.js); photos
+// zoom with Panzoom. Both libraries are SRI-pinned in index.html and only ever handle bytes.
 //
 // **Security, load-bearing:** the bytes come from the computer, and a blob: URL has *this page's*
 // origin — the origin that holds the device key. So nothing that can run script is ever handed
@@ -18,8 +19,9 @@
 
   const KINDS = {
     image: ["png", "jpg", "jpeg", "gif", "webp", "avif", "bmp", "ico", "svg"],
-    video: ["mp4", "m4v", "webm", "mov", "mkv", "ogv"],
-    audio: ["mp3", "m4a", "aac", "ogg", "oga", "opus", "flac", "wav", "weba"],
+    // Any format ffmpeg reads: the computer converts what the browser cannot play.
+    video: ["mp4", "m4v", "webm", "mov", "mkv", "ogv", "avi", "wmv", "flv", "mpg", "mpeg", "ts", "m2ts", "mts", "3gp", "vob", "divx", "rmvb", "asf"],
+    audio: ["mp3", "m4a", "aac", "ogg", "oga", "opus", "flac", "wav", "weba", "wma", "ape", "alac", "aiff", "aif", "mka", "ac3", "dts", "amr"],
     pdf: ["pdf"],
     text: ["txt", "md", "markdown", "log", "json", "csv", "tsv", "xml", "yaml", "yml", "toml", "ini", "conf", "cfg", "kdl", "nix",
       "rs", "js", "mjs", "ts", "tsx", "jsx", "py", "go", "c", "h", "cc", "cpp", "hpp", "java", "kt", "rb", "php", "sh", "fish",
@@ -93,10 +95,16 @@
     }));
   }
 
+  // A file's bytes as a Blob (hash-checked), for sharing it to another app on this device.
+  F.fetchFile = (e) => fetchFile(e, MIME[ext(e.name)] || "application/octet-stream", 0, () => {}, {});
+
   // ── the viewer ───────────────────────────────────────────────────────────────
-  let el = null, list = [], at = 0, abort = {};
+  let el = null, list = [], at = 0, abort = {}, live = null;
+  // The player or zoom of the file on screen: torn down before the next one, and on close.
+  const endLive = () => { if (live) { try { live.destroy(); } catch (_) {} live = null; } };
   const close = () => {
     if (abort.stop) abort.stop();
+    endLive();
     if (el) el.remove();
     el = null;
     removeEventListener("keydown", keys, true);
@@ -120,8 +128,9 @@
   function keys(e) {
     if (!el) return;
     if (e.key === "Escape") { e.stopPropagation(); e.preventDefault(); close(); }
-    else if (e.key === "ArrowRight" && !e.target.closest("video, audio")) { e.preventDefault(); step(1); }
-    else if (e.key === "ArrowLeft" && !e.target.closest("video, audio")) { e.preventDefault(); step(-1); }
+    // While a video or song plays, ←/→ seek (the player's keys); n / p move through the folder.
+    else if (e.key === "n" || (e.key === "ArrowRight" && !(live && live.media))) { e.preventDefault(); step(1); }
+    else if (e.key === "p" || (e.key === "ArrowLeft" && !(live && live.media))) { e.preventDefault(); step(-1); }
   }
   function step(d) {
     const n = at + d;
@@ -132,7 +141,7 @@
   // Swipe left/right between files (not while zoomed into an image).
   function swipe(node) {
     let x0 = null, y0 = 0;
-    node.addEventListener("touchstart", (e) => { if (e.touches.length === 1 && !node.classList.contains("zoomed")) { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; } }, { passive: true });
+    node.addEventListener("touchstart", (e) => { if (e.touches.length === 1 && !node.classList.contains("zoomed") && !(e.target.closest && e.target.closest(".plyr__controls, input, .fpanel-vlc"))) { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; } }, { passive: true });
     node.addEventListener("touchend", (e) => {
       if (x0 === null) return;
       const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0;
@@ -143,6 +152,7 @@
 
   function show() {
     if (abort.stop) abort.stop();
+    endLive();
     abort = {};
     const e = list[at];
     const kind = F.viewable(e.name);
@@ -177,6 +187,20 @@
         stage.replaceChildren(fallback(e, String(err.message || err)));
       });
     };
+    // Video and audio stream: they play as they arrive, whatever their size or format.
+    if (kind === "video" || kind === "audio") {
+      bar.classList.add("done");
+      stage.replaceChildren(h("div", { class: "fspin" }));
+      const mine = abort;
+      const playing = F.player(e, stage, {
+        onEnded: () => { const n = list[at + 1]; if (n && F.viewable(n.name) === kind) step(1); },
+        onError: (why) => { if (abort === mine && el) { endLive(); stage.replaceChildren(fallback(e, why)); } },
+      });
+      // Shown until it is ready; one that becomes ready after the viewer moved on is ended.
+      live = { destroy: () => playing.then((p) => p.destroy()) };
+      playing.then((p) => { if (abort === mine && el) live = p; else p.destroy(); });
+      return;
+    }
     if (e.size > ASK_OVER && !cache.has(e.path + "@" + e.mtime)) {
       stage.replaceChildren(h("div", { class: "fvask" }, ico(F.kind(e.name).icon),
         h("p", {}, `${F.fmtSize(e.size)} — it has to come over in full before it plays here.`),
@@ -191,6 +215,36 @@
     if (n && F.viewable(n.name) === "image" && n.size < (16 << 20)) fetchFile(n, MIME[ext(n.name)], 0, () => {}, {}).catch(() => {});
   }
 
+  // Pinch, wheel, double-tap and drag to zoom and pan a photo (Panzoom, SRI-pinned in
+  // index.html); +, - and 0 on a keyboard. While zoomed, a swipe pans instead of changing photo.
+  function zoomable(img, stage) {
+    if (!window.Panzoom) {
+      img.addEventListener("dblclick", () => el.classList.toggle("zoomed"));
+      return null;
+    }
+    const pz = window.Panzoom(img, { maxScale: 12, minScale: 1, step: 0.35, contain: "outside", panOnlyWhenZoomed: true, cursor: "grab" });
+    const wheel = (ev) => pz.zoomWithWheel(ev);
+    stage.addEventListener("wheel", wheel, { passive: false });
+    img.addEventListener("panzoomchange", (ev) => { if (el) el.classList.toggle("zoomed", ev.detail.scale > 1.02); });
+    let lastTap = 0;
+    const dbl = (ev) => {
+      const t = Date.now();
+      if (ev.type === "pointerup" && t - lastTap > 300) { lastTap = t; return; }
+      lastTap = 0;
+      if (pz.getScale() > 1.02) pz.reset();
+      else pz.zoomToPoint(3, { clientX: ev.clientX, clientY: ev.clientY });
+    };
+    img.addEventListener("dblclick", dbl);
+    img.addEventListener("pointerup", (ev) => { if (ev.pointerType === "touch") dbl(ev); });
+    const keys = (ev) => {
+      if (ev.key === "+" || ev.key === "=") { ev.preventDefault(); pz.zoomIn(); }
+      else if (ev.key === "-") { ev.preventDefault(); pz.zoomOut(); }
+      else if (ev.key === "0") { ev.preventDefault(); pz.reset(); }
+    };
+    addEventListener("keydown", keys);
+    return { destroy() { removeEventListener("keydown", keys); stage.removeEventListener("wheel", wheel); try { pz.destroy(); } catch (_) {} } };
+  }
+
   function fallback(e, why) {
     return h("div", { class: "fvask" }, ico(F.kind(e.name).icon), h("p", {}, why),
       h("button", { class: "fgo", onclick: () => F.download(e.path, e.name, false) }, "Download it"));
@@ -200,9 +254,8 @@
     if (kind === "image") {
       const img = h("img", { class: "fvimg", src: v.url, alt: e.name, draggable: "false" });
       img.onerror = () => stage.replaceChildren(fallback(e, "This browser cannot show this image format."));
-      // Double-tap / double-click: actual size, scrollable; again to fit.
-      img.addEventListener("dblclick", () => { el.classList.toggle("zoomed"); });
       stage.replaceChildren(img);
+      live = zoomable(img, stage);
     } else if (kind === "video" || kind === "audio") {
       const m = h(kind, { class: "fv" + kind, src: v.url, controls: true, autoplay: true, playsinline: true });
       m.onerror = () => stage.replaceChildren(fallback(e, `This browser cannot play this ${kind} format (${ext(e.name)}).`));

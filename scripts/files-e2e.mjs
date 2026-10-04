@@ -14,6 +14,9 @@
 //   revoke      `wado files grant <device> none` applies to an open channel's next request
 //   ui          the window opens in both layouts and lists the folder, no script errors
 //   viewer      images, a gallery, text/JSON, audio; HTML shown as source and never run
+//   streaming   MP4 played directly and MKV converted, as they arrive; seek; captions from a file
+//               beside it and from inside it; audio tracks; VLC keys; photo zoom; video
+//               thumbnails; ffmpeg runs at nice 19 and stops when the player closes
 //
 //   dx build -p wado-client --platform web && cargo build -p wado -p wado-relay
 //   node scripts/files-e2e.mjs [target/debug]      (needs Chrome; run with the sandbox off)
@@ -77,6 +80,17 @@ writeFileSync(join(HOME, "Pictures/tone.wav"), (() => {
   b.write("data", 36); b.writeUInt32LE(n * 2, 40);
   for (let i = 0; i < n; i++) b.writeInt16LE(Math.round(8000 * Math.sin((2 * Math.PI * 440 * i) / 8000)), 44 + i * 2);
   return b; })());
+// Media, made by ffmpeg: H.264/AAC MP4 (played directly) with a subtitle file beside it, and an
+// MKV of MPEG-4 Part 2 + MP3 with two audio tracks and an embedded subtitle (converted).
+mkdirSync(join(HOME, "Videos"));
+writeFileSync(join(T, "s.srt"), "1\n00:00:01,000 --> 00:00:30,000\nembedded words\n");
+writeFileSync(join(HOME, "Videos/film.en.srt"), "1\n00:00:00,500 --> 00:00:40,000\nhello from the side file\n");
+const ff = (...a) => execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", ...a]);
+ff("-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30", "-f", "lavfi", "-i", "sine=frequency=440", "-t", "40",
+  "-c:v", "libx264", "-profile:v", "high", "-pix_fmt", "yuv420p", "-g", "30", "-c:a", "aac", join(HOME, "Videos/film.mp4"));
+ff("-f", "lavfi", "-i", "testsrc=size=640x360:rate=25", "-f", "lavfi", "-i", "sine=frequency=330", "-f", "lavfi", "-i", "sine=frequency=550",
+  "-i", join(T, "s.srt"), "-t", "300", "-map", "0", "-map", "1", "-map", "2", "-map", "3", "-c:v", "mpeg4", "-q:v", "5",
+  "-c:a", "libmp3lame", "-c:s", "srt", "-metadata:s:a:0", "language=eng", "-metadata:s:a:1", "language=fra", join(HOME, "Videos/other.mkv"));
 writeFileSync(join(HOME, ".config/wado/config.kdl"), `files { hidden #true; deny "~/outside"; }\n`);
 writeFileSync(join(HOME, ".config/wado/trusted_clients"), "");
 
@@ -102,7 +116,7 @@ class Browser {
   constructor(name, port, key, mobile, extra) { Object.assign(this, { name, port, key, mobile, extra, id: 0, pend: new Map(), errors: [] }); }
   async open() {
     start("google-chrome-stable", ["--headless=new", "--remote-debugging-port=" + this.port,
-      "--user-data-dir=" + join(T, "chrome-" + this.name), "--no-first-run", "about:blank"]);
+      "--user-data-dir=" + join(T, "chrome-" + this.name), "--no-first-run", "--autoplay-policy=no-user-gesture-required", "about:blank"]);
     let list;
     for (let i = 0; i < 50 && !list; i++) { await sleep(200); try { list = await (await fetch(`http://127.0.0.1:${this.port}/json/list`)).json(); } catch {} }
     this.ws = new WebSocket(list.find((t) => t.type === "page").webSocketDebuggerUrl);
@@ -293,11 +307,40 @@ try {
   await phone.ev(`[...document.querySelectorAll("#wado-files .fplace")].find((b) => b.textContent.includes("Home")).click(); true`);
   check("phone: a folder lists", await phone.until(`[...document.querySelectorAll("#wado-files .frow .fname")].some((n) => n.textContent.startsWith("docs"))`));
   await phone.shot("files-phone.png");
+  // the revision: grid in the narrow layout, search, categories, storage, trash restore, properties
+  await phone.ev(`document.querySelector("#wado-files .fviewbtn").click(); true`);
+  check("phone: one tap switches to the grid", await phone.until(`document.querySelectorAll("#wado-files .fgrid .ftile").length > 3`));
+  await sleep(1200);
+  await phone.shot("files-phone-grid.png");
+  await phone.ev(`document.querySelector("#wado-files .fviewbtn").click(); true`);
+  check("phone: …and back to the list", await phone.until(`document.querySelectorAll("#wado-files .flist .frow").length > 3`));
+  await phone.ev(`document.querySelector("#wado-files .fhrow .fbtn").click(); true`);
+  check("phone: back from Home is the overview, with categories and storage", await phone.until(`!!document.querySelector("#wado-files .fcats") && !!document.querySelector("#wado-files .fstore")`));
+  await phone.shot("files-phone-home.png");
+  await phone.ev(`[...document.querySelectorAll("#wado-files .fcat")].find((b) => b.textContent.includes("Photos")).click(); true`);
+  check("category: Photos finds the pictures", await phone.until(`[...document.querySelectorAll("#wado-files .ftile .fname")].some((n) => n.textContent.startsWith("p.png"))`, 20000));
+  const found = await phone.req("find", { path: HOME, query: "BIG" });
+  check("search: by name, any case, in subfolders", (found.entries || []).some((e) => e.name === "big.bin"), JSON.stringify(found).slice(0, 200));
+  const hello2 = await phone.req("hello");
+  check("hello: storage and the Trash", (hello2.space || []).length > 0 && hello2.space[0].total > 0 && hello2.trash === H(".local/share/Trash/files"), JSON.stringify(hello2));
+  const rest = await phone.req("restore", { path: H(".local/share/Trash/files/renamed") });
+  check("restore from the Trash puts it back", !rest.err && existsSync(H("Downloads/renamed/a.txt")) && !existsSync(H(".local/share/Trash/info/renamed.trashinfo")), JSON.stringify(rest));
   await phone.ev(`window.__wado.files.showTransfers(true); true`);
   await sleep(500);
   await phone.shot("files-phone-transfers.png");
   await laptop.ev(`window.__wado.filesOpen(); true`);
-  check("laptop: the window opens wide, with a sidebar", await laptop.until(`!!document.querySelector('#wado-files[data-layout="wide"] .fside') && document.querySelectorAll("#wado-files .frow").length > 3`));
+  check("laptop: the window opens wide, on the overview, with a sidebar", await laptop.until(`!!document.querySelector('#wado-files[data-layout="wide"] .fside') && !!document.querySelector("#wado-files .fcats")`));
+  await laptop.shot("files-laptop-home.png");
+  await laptop.ev(`[...document.querySelectorAll("#wado-files .fside .fplace")].find((b) => b.textContent.includes("Home")).click(); true`);
+  check("laptop: Home lists", await laptop.until(`document.querySelectorAll("#wado-files .frow").length > 3`));
+  await laptop.ev(`(() => { const r = [...document.querySelectorAll("#wado-files .frow")].find((x) => x.textContent.includes("docs")); r.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true })); return true; })()`);
+  check("laptop: right-click offers the actions", await laptop.until(`[...document.querySelectorAll(".wado-prompt .menurow")].some((b) => b.textContent === "Properties")`));
+  await laptop.ev(`[...document.querySelectorAll(".wado-prompt .menurow")].find((b) => b.textContent === "Properties").click(); true`);
+  check("laptop: Properties", await laptop.until(`(document.querySelector(".fmodal .fdialog")?.textContent || "").includes("Folder")`));
+  await laptop.ev(`document.querySelector(".fmodal").remove(); true`);
+  await laptop.ev(`(() => { const S = window.__wado.files.ui; S.searching = true; window.__wado.files.render(); const i = document.querySelector("#wado-files .fsearch input"); i.value = "doc"; i.dispatchEvent(new Event("input")); return true; })()`);
+  check("laptop: the search box filters the folder as you type", await laptop.until(`[...document.querySelectorAll("#wado-files .frow .fname")].map((n) => n.textContent).every((t) => /doc/i.test(t)) && document.querySelectorAll("#wado-files .frow:not(.fhd)").length >= 1`));
+  await laptop.ev(`(() => { const S = window.__wado.files.ui; S.searching = false; S.filter = ""; window.__wado.files.render(); return true; })()`);
   await laptop.ev(`window.__wado.files.ui.grid = true; window.__wado.files.render(); true`);
   await sleep(300);
   await laptop.shot("files-laptop-grid.png");
@@ -319,6 +362,55 @@ try {
   check("viewer: audio plays", await laptop.until(`(document.querySelector(".fview audio") || {}).duration > 0.9`), await laptop.ev(`document.querySelector(".fvtitle b")?.textContent`));
   await laptop.ev(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); true`);
   check("viewer: Esc closes it", await laptop.until(`!document.querySelector(".fview")`));
+  // streaming
+  const V = (n) => H("Videos/" + n);
+  const pmkv = await laptop.req("probe", { path: V("other.mkv") });
+  check("probe: tracks and embedded subtitles", (pmkv.audio || []).length === 2 && (pmkv.subs || []).some((x) => x.text) && Math.round(pmkv.duration) === 300, JSON.stringify(pmkv));
+  const pmp4 = await laptop.req("probe", { path: V("film.mp4") });
+  check("probe: a subtitle file beside it", (pmp4.sidecars || []).some((x) => x.name === "film.en.srt" && x.lang === "en"), JSON.stringify(pmp4.sidecars));
+  const openMedia = (name) => laptop.ev(`(async () => { const F = window.__wado.files; const l = await F.req("list", { path: ${JSON.stringify(H("Videos"))} });
+    const all = l.entries.map((e) => ({ ...e, path: ${JSON.stringify(H("Videos"))} + "/" + e.name }));
+    F.view(all.find((e) => e.name === ${JSON.stringify(name)}), all); return true; })()`);
+  const vstate = () => laptop.ev(`(() => { const v = document.querySelector(".fview video, .fview audio"); if (!v) return document.querySelector(".fvstage")?.innerText; const b = []; for (let i = 0; i < v.buffered.length; i++) b.push(v.buffered.start(i).toFixed(1) + "-" + v.buffered.end(i).toFixed(1));
+    return JSON.stringify({ title: document.querySelector(".fvtitle b")?.textContent, rs: v.readyState, t: v.currentTime, paused: v.paused, err: v.error && v.error.message, buffered: b, src: v.src.slice(0, 30) }); })()`);
+  const playing = (ms = 25000) => laptop.until(`(() => { const v = document.querySelector(".fview video, .fview audio"); if (!v) return false; window.__t0 ??= v.currentTime; return v.readyState >= 3 && !v.paused && v.currentTime > 0.5; })()`, ms);
+  await openMedia("film.mp4");
+  check("stream: an MP4 plays as it arrives", await playing(), JSON.stringify(await laptop.ev(`(() => { const v = document.querySelector(".fview video"); return v && { rs: v.readyState, t: v.currentTime, p: v.paused, err: v.error && v.error.message, stage: document.querySelector(".fvstage")?.innerText }; })()`)));
+  check("stream: Plyr's controls are on it", await laptop.until(`!!document.querySelector(".fview .plyr .plyr__controls")`));
+  check("captions: the file beside it turns on by itself", await laptop.until(`(document.querySelector(".fpsubs")?.textContent || "").includes("hello from the side file")`));
+  await laptop.shot("files-player.png");
+  await laptop.ev(`(() => { const v = document.querySelector(".fview video"); v.currentTime = 30; return true; })()`);
+  check("stream: a seek past the buffer restarts it there", await laptop.until(`(() => { const v = document.querySelector(".fview video"); return v.currentTime > 30.2 && v.readyState >= 3; })()`, 20000),
+    String(await laptop.ev(`document.querySelector(".fview video").currentTime`)));
+  await laptop.ev(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "]", bubbles: true })); true`);
+  check("VLC keys: ] speeds up", await laptop.until(`document.querySelector(".fview video").playbackRate === 1.25`));
+  await laptop.ev(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "a", bubbles: true })); true`);
+  check("VLC keys: a cycles the aspect", await laptop.until(`document.querySelector(".fview video").style.objectFit === "cover"`));
+  const ffNice = () => { try { return execFileSync("sh", ["-c", "for p in $(pgrep -x ffmpeg); do grep -q wado-files-e2e /proc/$p/environ 2>/dev/null && ps -o ni= -p $p; done"]).toString().trim().split(/\s+/).filter(Boolean); } catch { return []; } };
+  await laptop.ev(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "n", bubbles: true })); true`);
+  check("stream: an MKV the browser cannot play is converted and plays", await playing(30000), await vstate());
+  const nice = ffNice();
+  check("ffmpeg runs at the lowest priority (nice 19)", nice.length > 0 && nice.every((n) => n === "19"), JSON.stringify(nice));
+  await laptop.ev(`document.querySelector(".fpvlcbtn").click(); true`);
+  check("VLC menu: two audio tracks offered", await laptop.until(`[...document.querySelectorAll(".fpanel-vlc .fvopts button")].filter((b) => /English|French|eng|fra/.test(b.textContent)).length === 2`));
+  await laptop.ev(`[...document.querySelectorAll(".fpanel-vlc .fvopts button")].find((b) => /French|fra/.test(b.textContent)).click(); true`);
+  check("VLC menu: switching the audio track keeps playing", (await laptop.until(`(() => { const v = document.querySelector(".fview video"); return v.readyState >= 3 && !v.paused; })()`, 20000) || (console.log("        " + await vstate()), false))
+    && await laptop.until(`[...document.querySelectorAll(".fpanel-vlc .fvopts button.on")].some((b) => /French|fra/.test(b.textContent))`));
+  await laptop.ev(`[...document.querySelectorAll(".fpanel-vlc .fvopts button")].find((b) => b.textContent.includes("(in the file)")).click(); true`);
+  check("captions: an embedded track", await laptop.until(`(document.querySelector(".fpsubs")?.textContent || "").includes("embedded words")`, 15000));
+  await laptop.ev(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); true`);
+  await sleep(2500);
+  check("closing the player stops the computer's ffmpeg", ffNice().length === 0, JSON.stringify(ffNice()));
+  const vthumb = await laptop.req("thumb", { path: V("film.mp4") });
+  check("a video gets a thumbnail (a frame)", !!vthumb.png && Buffer.from(vthumb.png, "base64").subarray(1, 4).toString() === "PNG", JSON.stringify(vthumb).slice(0, 160));
+  // photo zoom
+  await laptop.ev(`(async () => { const F = window.__wado.files; const l = await F.req("list", { path: ${JSON.stringify(H("Pictures"))} });
+    const all = l.entries.map((e) => ({ ...e, path: ${JSON.stringify(H("Pictures"))} + "/" + e.name })); F.view(all.find((e) => e.name === "p.png"), all); return true; })()`);
+  await laptop.until(`(document.querySelector(".fview .fvimg") || {}).naturalWidth === 64`);
+  await laptop.ev(`document.querySelector(".fview .fvimg").dispatchEvent(new MouseEvent("dblclick", { bubbles: true, clientX: 720, clientY: 450 })); true`);
+  check("photos: double-click zooms in (Panzoom)", await laptop.until(`document.querySelector(".fview").classList.contains("zoomed") && /scale\((?!1\))/.test(document.querySelector(".fview .fvimg").style.transform)`),
+    await laptop.ev(`document.querySelector(".fview .fvimg").style.transform + " panzoom=" + !!window.Panzoom`));
+  await laptop.ev(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); true`);
   check("no script errors", !phone.errors.length && !laptop.errors.length, [...phone.errors, ...laptop.errors].join("\n        "));
 
   // revoke

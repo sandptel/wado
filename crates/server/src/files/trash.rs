@@ -31,7 +31,7 @@ const URI: &AsciiSet = &CONTROLS
     .add(b'|')
     .add(b'}');
 
-fn home_trash() -> PathBuf {
+pub fn home_trash() -> PathBuf {
     std::env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| super::scope::home().join(".local/share"))
@@ -119,6 +119,7 @@ pub fn trash(sc: &Scope, path: &str) -> Result<(), Refusal> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wado_config::schema::files::Files;
 
     #[test]
     fn trashing_moves_it_and_records_where_from() {
@@ -140,5 +141,61 @@ mod tests {
             "a second one does not clobber"
         );
         assert!(trash(&sc, &t.join("root/secret").to_string_lossy()).is_err());
+        // Restore puts it back; the second one, its name now taken, comes back renamed.
+        let a_s = a.to_string_lossy().into_owned();
+        let trashed = |n: &str| {
+            t.join("data/Trash/files")
+                .join(n)
+                .to_string_lossy()
+                .into_owned()
+        };
+        let cfg = Files {
+            root: vec![t.to_string_lossy().into()],
+            ..Files::default()
+        };
+        let wide = Scope::new(&cfg);
+        assert_eq!(restore(&wide, &trashed("a.txt")).unwrap(), a_s);
+        assert!(a.exists());
+        assert!(
+            restore(&wide, &trashed("a.txt.1"))
+                .unwrap()
+                .ends_with("a (1).txt")
+        );
     }
+}
+
+/// Put a trashed item back where its `.trashinfo` says it came from — under another name if
+/// that one is taken. The original location goes through the scope like any destination.
+pub fn restore(sc: &Scope, path: &str) -> Result<String, Refusal> {
+    let (files, name) = sc.parent(path)?;
+    if files.real.file_name().and_then(|n| n.to_str()) != Some("files") {
+        return Err("that is not in a Trash".into());
+    }
+    let bin = files
+        .real
+        .parent()
+        .ok_or("that is not in a Trash")?
+        .to_path_buf();
+    let info_path = bin.join("info").join(format!("{name}.trashinfo"));
+    let info =
+        std::fs::read_to_string(&info_path).map_err(|_| "no record of where this came from")?;
+    let orig = info
+        .lines()
+        .find_map(|l| l.strip_prefix("Path="))
+        .ok_or("no record of where this came from")?;
+    let orig = percent_encoding::percent_decode_str(orig)
+        .decode_utf8_lossy()
+        .into_owned();
+    // A relative Path= is relative to the volume holding this Trash.
+    let orig = if orig.starts_with('/') {
+        orig
+    } else {
+        format!("{}/{orig}", bin.parent().unwrap_or(&bin).display())
+    };
+    let (back_dir, back_name) = orig.rsplit_once('/').ok_or("bad record")?;
+    let to = sc.dir(if back_dir.is_empty() { "/" } else { back_dir })?;
+    let target = to.free_name(back_name);
+    files.rename_at(&name, &to, &target, false).map_err(say)?;
+    let _ = std::fs::remove_file(info_path);
+    Ok(format!("{}/{target}", back_dir))
 }
