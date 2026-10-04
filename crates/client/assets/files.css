@@ -175,3 +175,37 @@
   padding: 10px 16px; border-radius: var(--r2); background: var(--base05); color: var(--base00); font-weight: 600; font-size: 14px;
   box-shadow: 0 12px 30px rgb(0 0 0 / .4); animation: sheetup var(--dur) var(--pop) both; }
 .ftoast.bad { background: var(--bad); color: var(--base00); }
+
+/* ── the viewer (js/files_view.js): over the file manager, full screen, dark like a lightbox ── */
+.fview { position: fixed; inset: 0; z-index: 63; display: grid; grid-template-rows: auto 3px 1fr; background: #0b0b0c; color: #eee;
+  animation: fade var(--dur) both; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+.fvhead { display: flex; align-items: center; gap: 4px; padding: 6px 8px; background: rgb(0 0 0 / .4); z-index: 2; }
+.fview .fbtn { color: #eee; }
+.fview .fbtn:hover { background: rgb(255 255 255 / .1); }
+.fvtitle { flex: 1; min-width: 0; display: grid; }
+.fvtitle b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.fvtitle small { color: #aaa; font-size: 12px; }
+.fvbar { background: transparent; }
+.fvbar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s linear; }
+.fvbar.done i { opacity: 0; transition: opacity .4s; }
+.fvstage { min-height: 0; display: grid; place-items: center; overflow: hidden; position: relative; }
+.fvimg { max-width: 100%; max-height: 100%; object-fit: contain; user-select: none; -webkit-user-drag: none; touch-action: pinch-zoom; }
+.fview.zoomed .fvstage { overflow: auto; place-items: start; }
+.fview.zoomed .fvimg { max-width: none; max-height: none; cursor: zoom-out; }
+.fvvideo { max-width: 100%; max-height: 100%; width: 100%; background: #000; }
+.fvaudio { display: grid; justify-items: center; gap: 16px; width: min(480px, 92%); text-align: center; }
+.fvaudio .fi .i { width: 64px; height: 64px; stroke-width: 1.2; color: var(--base0C); }
+.fvaudio audio { width: 100%; }
+.fvpdf { width: 100%; height: 100%; border: 0; background: #fff; }
+.fvtext { align-self: stretch; justify-self: stretch; margin: 0; padding: 14px 16px; overflow: auto; font: 13px/1.5 var(--mono);
+  color: #ddd; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 4; }
+.fvstage .fwarn { position: absolute; top: 6px; left: 6px; right: 6px; z-index: 1; }
+.fvask { display: grid; justify-items: center; gap: 12px; padding: 24px; text-align: center; color: #bbb; }
+.fvask .fi .i { width: 52px; height: 52px; stroke-width: 1.3; }
+.fvask p { margin: 0; max-width: 40ch; }
+.fvnav { position: absolute; top: 50%; translate: 0 -50%; width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center;
+  background: rgb(0 0 0 / .45); color: #fff; z-index: 2; }
+.fvnav.prev { left: 10px; }
+.fvnav.next { right: 10px; }
+.fvnav.next .fi { rotate: 180deg; }
+@media (pointer: coarse) { .fvnav { display: none; } }

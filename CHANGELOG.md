@@ -32,6 +32,12 @@
     a `..` cannot lead out.
   - **Recorded.** Every operation is written to `~/.local/state/wado/files.log`, and the
     computer's other connected devices get a notification.
+  - **Open files without downloading them.** Tap a photo, video, song, PDF or text file to view it
+    in place. Photos form a gallery you swipe or arrow through; double-tap shows actual size.
+    Text, code, logs and JSON are shown as text, JSON pretty-printed. On phones, PDFs open in an
+    app. Web pages and SVG files are only ever shown as text or as a plain image, never run as a
+    page, since they come from the computer. Files over 300 MB ask before loading, since they
+    must arrive in full before they play.
   - **Transfers stay out of the way of input.** They travel on a second, separate connection,
     secured by the end-to-end handshake, so they never share a channel with input. While a
     session's video is live, downloads are held to `files { rate-with-video }`, and that cap
