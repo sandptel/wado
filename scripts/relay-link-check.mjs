@@ -32,6 +32,22 @@ const check = (name, got, want) => {
     (ok ? "" : `\n        got  ${JSON.stringify(got)}\n        want ${JSON.stringify(want)}`));
 };
 
+// ── 0. Nothing writes to the relay socket but the envelope ────────────────────
+// Since 2026-10-04 the computer drops every unsealed frame, so a direct `ws.send` is a feature
+// that silently does nothing (six of them did, until this check). Only relay_link.js (its own
+// `pong`) and the e2e_* files may write to the socket; everything else goes through
+// W.relaySendMsg.
+{
+  const { readdirSync } = await import("node:fs");
+  const dir = new URL("../crates/client/src/js/", import.meta.url);
+  const bad = readdirSync(dir)
+    .filter((f) => f.endsWith(".js") && f !== "relay_link.js" && !f.startsWith("e2e_"))
+    .flatMap((f) => read(f).split("\n").map((l, i) => [f, i + 1, l]))
+    .filter(([, , l]) => /\b(ws|relayWs)\.send\(/.test(l))
+    .map(([f, n]) => `${f}:${n}`);
+  check("no client file writes to the relay socket around the envelope", bad, []);
+}
+
 // ── The fake socket ───────────────────────────────────────────────────────────
 // Every instance is recorded, so a test can assert *which* socket a send landed on — the
 // question a captured-`ws` closure gets wrong and cannot be asked about.
@@ -52,7 +68,14 @@ function makeWorld() {
     close() { this.readyState = 3; if (this.onclose) this.onclose({ code: 1000 }); }
     // — test drivers —
     open() { this.readyState = 1; if (this.onopen) this.onopen(); }
-    deliver(msg) { if (this.onmessage) this.onmessage({ data: JSON.stringify(msg) }); }
+    // The computer's messages arrive sealed since the envelope (2026-10-04); the relay's own
+    // stay in the clear. The envelope is stubbed as a pass-through (see `W` below) — it has its
+    // own checks against the real binaries in relay-seat-e2e.mjs.
+    deliver(msg) {
+      const relays = ["ping", "waiting", "taken_over", "join_accepted", "join_denied", "error"];
+      const m = relays.includes(msg.type) ? msg : { type: "sealed", inner: msg };
+      if (this.onmessage) this.onmessage({ data: JSON.stringify(m) });
+    }
     drop(code = 1006) { this.readyState = 3; if (this.onclose) this.onclose({ code }); }
     accept() { this.open(); this.deliver({ type: "join_accepted", remote_id: "1", room_id: "r" }); }
   }
@@ -75,6 +98,17 @@ function makeWorld() {
     setupInputCapture: () => {}, attachLatencyEcho: () => {},
     minimizePlayoutDelay: () => "", latency: { start() {}, stop() {} },
     dial: { clear() {} }, // switcher.js, loaded later in the bundle
+    // The envelope, as a pass-through: up at once, sends in the clear on the joined socket.
+    e2eBegin: (ws, room, id, onUp) => { W._e2eWs = ws; onUp(); },
+    e2eSend: (o) => {
+      const ws = W._e2eWs;
+      if (!ws || ws.readyState !== 1) return false;
+      ws.send(JSON.stringify(o));
+      return true;
+    },
+    e2eOnSealed: (m, dispatch) => dispatch(m.inner),
+    e2eOnReply: () => {}, e2eOnFail: () => {},
+    e2eClose: (ws, code, reason) => ws.close(code, reason),
     // Negotiation needs a browser; the cases here are all about signalling, so it is stubbed
     // after the eval (relay.js defines the real one).
   };

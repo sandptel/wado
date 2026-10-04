@@ -13,15 +13,18 @@
          job, not something to hand-roll. Pinned exactly; the fit addon must match the
          xterm it was built against. Loaded here rather than through the JS bridge because
          the bridge is one concatenated eval and cannot await a script tag; js/pty.js
-         waits for `window.Terminal` instead of assuming this has finished. -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.css" />
+         waits for `window.Terminal` instead of assuming this has finished.
+         Integrity-pinned (SRI): this page holds the device's key, so a CDN that served other
+         bytes must fail to load rather than run. A version bump needs new hashes:
+         curl -sL <url> | openssl dgst -sha384 -binary | openssl base64 -A -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.css" integrity="sha384-8Xk9wy/gzEDUKrXtrmCFa2bBuK3BpjpDuL/p0SeKQX19Khl/M+lHOgD/CyYf7efP" crossorigin="anonymous" />
     <!-- The shell's faces: a characterful display face for headings, a quiet body face, and a
          mono for numbers and terminals. Every use has a system fallback, so offline is fine. -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" />
-    <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.js" integrity="sha384-M169f14mRZOXm3hD/v2Ti0ThIT/RnAQagXA9nlE15yHAtrW19gdePJh/HaTzUOe/" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.js" integrity="sha384-iF+jqbuti4XlB64clWgFWYEscb+UnSRv3VgVikGYZu+otNFnSHr7y7NcKfBnGizn" crossorigin="anonymous"></script>
   </head>
   <body>
     <div id="main"></div>

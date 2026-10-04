@@ -34,11 +34,9 @@ W.targets = {
     const seq = ++W.targets.seq & 0xffffffff;
     const entry = { done: false, value: null, resolve: null };
     W.targets.pending.set(seq, entry);
-    const ws = W.relayWs;
-    if (!n || !c || !W.relayMode || !ws || ws.readyState !== WebSocket.OPEN) {
+    if (!n || !c || !W.relayMode ||
+        !W.relaySendMsg({ type: "targets_request", seq, x: n.x, y: n.y, r: FINGER_CSS / c.w })) {
       entry.done = true; // nothing to ask with: "no tree"
-    } else {
-      ws.send(JSON.stringify({ type: "targets_request", seq, x: n.x, y: n.y, r: FINGER_CSS / c.w }));
     }
     // Old tickets are never awaited once their tap is over; keep the map from growing.
     if (W.targets.pending.size > 16) W.targets.pending.delete(W.targets.pending.keys().next().value);

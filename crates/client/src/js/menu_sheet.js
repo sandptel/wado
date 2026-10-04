@@ -27,9 +27,7 @@ W.menuSheet = {
       b.textContent = item.name || "…";
       if (item.submenu) b.dataset.more = "›";
       b.addEventListener("click", () => {
-        if (W.relayWs && W.relayWs.readyState === WebSocket.OPEN) {
-          W.relayWs.send(JSON.stringify({ type: "menu_activate", id: item.id }));
-        }
+        W.relaySendMsg({ type: "menu_activate", id: item.id });
       });
       return b;
     });

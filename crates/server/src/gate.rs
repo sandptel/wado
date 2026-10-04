@@ -16,10 +16,16 @@
 //! daemon can see and show to its own viewer, and the answer is a file next to it.
 //!
 //! ```text
-//!   <config>/wado/trusted_clients        <client_key>\t<name>   one per line
+//!   <config>/wado/trusted_clients        <client_key>\t<name>[\t<device pk>\t<pinned>]
 //!   <config>/wado/pending/<id>.json      a device waiting for approval
 //!   <config>/wado/pending/<id>.verdict   once | always | deny
 //! ```
+//!
+//! **Since the envelope (`crate::e2e`, `2026-10-04`)** the relay's `client_key` is only a claim:
+//! [`Gate::decide`] uses it to park or let in a join, and [`Gate::admit`] makes the decision that
+//! counts, once the device has proven its key. A line without a key (older than the envelope,
+//! or trusted a moment ago) takes the first key proven for it; `pinned` is 1 when that key was
+//! proven with a QR pairing code, which F1's file access requires.
 //!
 //! ponytail: polled every 500 ms rather than watched with inotify — a prompt that appears half a
 //! second late costs nothing, and polling a tiny directory costs less than the dependency.
@@ -245,6 +251,82 @@ impl Gate {
         }
     }
 
+    /// The pairing codes still live, for checking a device's proof against.
+    pub fn live_pairs(&self) -> Vec<String> {
+        self.pairs()
+            .into_iter()
+            .filter(|(_, t)| *t > now_s())
+            .map(|(c, _)| c)
+            .collect()
+    }
+
+    /// `(device pk, pinned)` on file for `key`; the pk is empty for a line from before keys.
+    fn entry(&self, key: &str) -> Option<(String, bool)> {
+        fs::read_to_string(self.trusted_path())
+            .unwrap_or_default()
+            .lines()
+            .map(|l| l.split('\t').collect::<Vec<_>>())
+            .find(|f| f[0].trim() == key)
+            .map(|f| {
+                let pk = f.get(2).map_or("", |s| s.trim()).to_string();
+                (pk, f.get(3).is_some_and(|s| s.trim() == "1"))
+            })
+    }
+
+    /// Write `key`'s line with its proven key, in place or appended.
+    fn set(&self, key: &str, name: &str, pk: &str, pinned: bool) {
+        let name = name.replace(['\t', '\n'], " ");
+        let line = format!("{key}\t{name}\t{pk}\t{}", u8::from(pinned));
+        let mut lines: Vec<String> = fs::read_to_string(self.trusted_path())
+            .unwrap_or_default()
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(String::from)
+            .collect();
+        match lines.iter_mut().find(|l| l.split('\t').next() == Some(key)) {
+            Some(l) => *l = line,
+            None => lines.push(line),
+        }
+        if let Err(e) = fs::create_dir_all(&self.dir)
+            .and_then(|_| fs::write(self.trusted_path(), lines.join("\n") + "\n"))
+        {
+            warn!("gate: could not write the trust list: {e}");
+        }
+    }
+
+    /// The decision that counts: may the device that proved `pk` in, as `key`?
+    ///
+    /// `once` — it was let in for this visit only. `pair` — the code it proved it holds.
+    pub fn admit(
+        &self,
+        key: &str,
+        name: &str,
+        pk: &str,
+        once: bool,
+        pair: Option<&str>,
+    ) -> Result<(), &'static str> {
+        // A QR code is the owner's say-so, and it pins whatever key proved it — a re-pair is
+        // how a device that lost its key comes back.
+        if pair.is_some_and(|c| self.redeem(c)) {
+            info!("gate: {name} paired with a QR code — trusted and pinned");
+            self.set(key, name, pk, true);
+            return Ok(());
+        }
+        match self.entry(key) {
+            Some((on_file, _)) if on_file == pk => Ok(()),
+            Some((on_file, _)) if !on_file.is_empty() => {
+                Err("this device's key is not the one this computer trusts for it")
+            }
+            Some(_) => {
+                info!("gate: {name} proved a key for the first time — remembered (not pinned)");
+                self.set(key, name, pk, false);
+                Ok(())
+            }
+            None if once => Ok(()),
+            None => Err("this device is not trusted here — scan the computer's QR code again"),
+        }
+    }
+
     /// Post a request for the pool's connected devices to answer.
     pub fn post(&self, req: &Request) -> bool {
         let Some(path) = self.request_path(&req.id, "json") else {
@@ -386,6 +468,30 @@ mod tests {
         assert!(!g.redeem(""));
         assert!(g.redeem(&c));
         assert!(!g.redeem(&c), "a code must be single use");
+    }
+
+    #[test]
+    fn the_proven_key_decides_not_the_claimed_id() {
+        let g = temp();
+        // A line from before keys takes the first key proven for it…
+        g.trust("phone", "Phone");
+        assert!(g.admit("phone", "Phone", "PK1", false, None).is_ok());
+        assert!(g.admit("phone", "Phone", "PK1", false, None).is_ok());
+        // …and after that a relay naming "phone" with any other key gets nothing.
+        assert!(g.admit("phone", "Phone", "EVIL", false, None).is_err());
+        // Unknown and not "once": refused, even though the relay let it in on a pair claim.
+        assert!(g.admit("laptop", "Laptop", "PK2", false, None).is_err());
+        assert!(g.admit("laptop", "Laptop", "PK2", true, None).is_ok());
+        assert_eq!(g.entry("laptop"), None, "once is not remembered");
+        // A proven QR code trusts and pins, and replaces a lost key.
+        let c = g.mint_pair();
+        assert!(g.admit("phone", "Phone", "PK3", false, Some(&c)).is_ok());
+        assert_eq!(g.entry("phone"), Some(("PK3".into(), true)));
+        assert!(
+            g.admit("phone", "Phone", "PK1", false, Some(&c)).is_err(),
+            "single use"
+        );
+        assert_eq!(g.trusted().len(), 1, "rewritten in place, not appended");
     }
 
     #[test]

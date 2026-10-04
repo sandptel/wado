@@ -97,9 +97,9 @@ W.rememberInstance = (id, instance) => {
   } catch (_) {} // private mode: stickiness is an optimisation, never a requirement
 };
 
-// This browser's own random id. The relay holds a dropped device's seat for it, and the
-// daemon's trust list remembers approved devices by it — so it is a bearer token: it never
-// leaves this browser except on the join URL. Lost with site data, which costs an approval.
+// This browser's own random id: the seat the relay holds for a dropped device, and the line in
+// the computer's trust list. Not a secret since the envelope (2026-10-04) — the device's key
+// (e2e_keys.js) is what proves who it is. Lost with site data, which costs a re-pair.
 const CLIENT_KEY = "wado.client";
 W.clientKey = (() => {
   try {
@@ -155,10 +155,15 @@ function fire(type, msg) {
   try { h(msg); } catch (e) { if (W.rlog) W.rlog("relay handler " + type + " threw: " + e); }
 }
 
+// Everything for the computer goes sealed (e2e_handshake.js); only the relay's own `pong` is
+// sent in the clear. False until the secure link is up.
 W.relaySendMsg = (obj) => {
   const ws = W.relayWs;
   if (!ws || ws.readyState !== WebSocket.OPEN) return false;
-  try { ws.send(JSON.stringify(obj)); return true; } catch (_) { return false; }
+  if (obj && obj.type === "pong") {
+    try { ws.send(JSON.stringify(obj)); return true; } catch (_) { return false; }
+  }
+  return W.e2eSend(obj);
 };
 
 W.relayDial = (url, id) => {
@@ -171,6 +176,8 @@ W.relayDial = (url, id) => {
     return true;
   }
   W.relayDrop(true);
+  // A dial someone asked for clears a refusal: they have seen it and are trying again.
+  W._e2eBlocked = false;
   W._relayTarget = { url, id, wsUrl };
   W._relayTries = 0;
   W.relayMode = true;
@@ -187,12 +194,15 @@ W.relayDrop = (silent) => {
   W.relayWs = null;
   W.relayUp = false;
   // 4001 = leave (`LEAVE_CLOSE_CODE`): the relay frees this device's seat instead of holding it.
-  if (ws) { try { ws.onclose = null; ws.close(4001, "leave"); } catch (_) {} }
+  if (ws) { ws.onclose = null; W.e2eClose(ws, 4001, "leave"); }
   if (!silent) W.relayMode = false;
 };
 
 function scheduleRelink() {
   if (!W._relayTarget || W._relayRetry) return;
+  // The secure handshake refused the computer (or it refused us): redialling would just repeat
+  // it — or, for a changed identity, keep talking to an impostor. A human decides.
+  if (W._e2eBlocked) return;
   // Taken over by another device with a deliberate tap: redialling would be this device
   // reaching to take the seat straight back — the I17 steal-war. A human tap here ends it.
   if (W._relayTakenOver) return;
@@ -209,7 +219,8 @@ function openLink() {
   let ws;
   try {
     ws = new WebSocket(target.wsUrl + (W._relayTakeover ? "&takeover=1" : "") +
-      (pairCode() ? "&pair=" + encodeURIComponent(pairCode()) : ""));
+      // Only "I hold a code": the code itself is proven inside the envelope, never sent.
+      (pairCode() ? "&pair=1" : ""));
   } catch (_) {
     scheduleRelink();
     return;
@@ -267,9 +278,7 @@ function openLink() {
     }
 
     if (msg.type === "join_accepted") {
-      try { localStorage.removeItem("wado.pair"); } catch (_) {}
       W._relayTakeover = false;
-      W.relayUp = true;
       W._relayUpAt = Date.now();
       if (W._relayStage !== undefined) W._relayStage = 2;
       if (W.relayPhase) W.relayPhase(2, "");
@@ -302,12 +311,21 @@ function openLink() {
             W.poolTag() + ", " + p.busy + " of " + p.size + " session(s) in use"
           : "relay link up — a daemon is registered for this Remote ID");
       }
-      // `__up` reads `_relayDeniedOccupied` to decide whether getting in was our reconnect or
-      // us displacing somebody, so it is cleared *after* the handler, not before.
-      fire("__up");
-      W._relayDeniedOccupied = false;
+      // The relay let us through; the computer has not yet. `__up` waits for the secure link,
+      // and so does `relayUp` — every sender reads it as "may send". `__up` reads
+      // `_relayDeniedOccupied` to decide whether getting in was our reconnect or us displacing
+      // somebody, so it is cleared *after* the handler, not before.
+      W.e2eBegin(ws, msg.room_id, W._relayTarget ? W._relayTarget.id : "", () => {
+        if (W.relayWs !== ws) return;
+        W.relayUp = true;
+        fire("__up");
+        W._relayDeniedOccupied = false;
+      });
       return;
     }
+    if (msg.type === "e2e_reply") { W.e2eOnReply(msg); return; }
+    if (msg.type === "e2e_fail") { W.e2eOnFail(msg); return; }
+    if (msg.type === "sealed") { W.e2eOnSealed(msg, (m) => fire(m.type, m)); return; }
     if (msg.type === "join_denied") {
       W._relayTakeover = false;
       if (msg.retry_ms) W._relayRetryAfter = msg.retry_ms;
@@ -340,8 +358,11 @@ function openLink() {
       if (W.rlog) W.rlog("join denied: " + (msg.reason || "?") + " — will keep trying");
       return;
     }
+    if (msg.type === "error") { fire(msg.type, msg); return; }
 
-    fire(msg.type, msg);
+    // Anything else in the clear claims to be the computer but is not sealed by it: the relay,
+    // or something in front of it, wrote it. Never acted on.
+    if (W.rlog) W.rlog("secure link: ignored an unsealed \"" + msg.type + "\" message");
   };
 
   // A socket error is always followed by a close, so there is nothing to do here that `onclose`
@@ -354,6 +375,7 @@ function openLink() {
     if (W._relayUpAt && Date.now() - W._relayUpAt >= LINK_STABLE_MS) W._relayTries = 0;
     W._relayUpAt = 0;
     if (W.relayWs === ws) { W.relayWs = null; W.relayUp = false; }
+    if (W._e2e && W._e2e.ws === ws) { W._e2e = null; W.e2eReady = false; }
     if (W.rlog) W.rlog("relay link closed — code " + (ev && ev.code));
     fire("__down");
     scheduleRelink();

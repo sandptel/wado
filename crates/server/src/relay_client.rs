@@ -51,6 +51,7 @@ use wado_protocol::{
     FAST_CHANNEL, INPUT_CHANNEL, MOTION_CHANNEL, relay::RelayMsg, relay::display_remote_id,
 };
 
+use crate::e2e::link::Inbound;
 use crate::website::logbus::LogBus;
 
 /// Reconnect backoff bounds.
@@ -137,6 +138,13 @@ struct RelayCtx {
     checking: Arc<Mutex<std::collections::HashSet<String>>>,
     /// Rooms a takeover check approved. Their `PeerConnected` is let in without asking twice.
     approved: Arc<Mutex<std::collections::HashSet<String>>>,
+    /// Rooms let in "once" — admitted at the envelope's finish without joining the trust list.
+    once: Arc<Mutex<std::collections::HashSet<String>>>,
+    /// The end-to-end envelope with the device on the seat — see [`crate::e2e`]. Every frame
+    /// in or out of the relay link passes through it.
+    link: Arc<Mutex<crate::e2e::link::Link>>,
+    /// This computer's identity, shared by every daemon of the pool.
+    host_key: Arc<crate::e2e::host_key::HostKey>,
     /// The Opus track, added to every peer connection that asks for audio.
     audio_track: Arc<TrackLocalStaticSample>,
     /// A peer connection with audio is up: the phone sink is being listened to.
@@ -463,6 +471,11 @@ async fn run(
         gate: crate::gate::Gate::default(),
         checking: Arc::default(),
         approved: Arc::default(),
+        once: Arc::default(),
+        link: Arc::default(),
+        host_key: Arc::new(crate::e2e::host_key::HostKey::load_or_create(
+            &crate::remote_id::config_dir(),
+        )?),
         viewer: Arc::default(),
         media_sent: Arc::default(),
         audio_track,
@@ -603,11 +616,22 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
 
     // All outbound relay WS messages go through this channel so multiple tasks
     // can write without fighting over the SplitSink.
+    //
+    // This writer is also the envelope's one sealing point (`crate::e2e::link`): a frame for the
+    // device leaves sealed, in counter order, or is held until the handshake finishes.
+    ctx.link.lock().unwrap_or_else(|e| e.into_inner()).clear();
     let (out_tx, mut out_rx) = mpsc::channel::<String>(128);
+    let link = Arc::clone(&ctx.link);
     let write_task = tokio::spawn(async move {
         while let Some(text) = out_rx.recv().await {
-            if ws_sink.send(WsMsg::Text(text)).await.is_err() {
-                break;
+            let frames = link
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .outbound(text);
+            for f in frames {
+                if ws_sink.send(WsMsg::Text(f)).await.is_err() {
+                    return;
+                }
             }
         }
     });
@@ -977,6 +1001,42 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             ctx.last_relay_msg.store(now_ms(), Ordering::Relaxed);
         }
 
+        // The envelope: the relay's own frames pass, the device's arrive sealed and are opened,
+        // and nothing else from the device side is acted on. See `crate::e2e`.
+        let sorted = ctx
+            .link
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .inbound(&text);
+        let text = match sorted {
+            Inbound::Relay => text,
+            Inbound::Msg(m) => m,
+            Inbound::Hello { v, eph } => {
+                let reply = ctx.link.lock().unwrap_or_else(|e| e.into_inner()).hello(
+                    &ctx.host_key,
+                    v,
+                    &eph,
+                );
+                if let Some(m) = reply {
+                    out_tx.send(serde_json::to_string(&m)?).await.ok();
+                }
+                continue;
+            }
+            Inbound::Finish {
+                dev_pk,
+                sig,
+                pair_mac,
+            } => {
+                e2e_finish(ctx, &out_tx, &dev_pk, &sig, &pair_mac).await;
+                continue;
+            }
+            Inbound::Drop(why) => {
+                let kind = crate::e2e::link::kind(&text).unwrap_or("?");
+                warn!("e2e: dropped a frame from the relay link ({kind}) — {why}");
+                continue;
+            }
+        };
+
         let msg = match serde_json::from_str::<RelayMsg>(&text) {
             Ok(m) => m,
             Err(e) => {
@@ -1010,6 +1070,10 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 *ctx.peer.lock().unwrap_or_else(|e| e.into_inner()) =
                     format!("{client_addr} room={short}");
                 *ctx.room.lock().unwrap_or_else(|e| e.into_inner()) = room_id.clone();
+                ctx.link
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .reset(&room_id, &client_key);
                 *ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()) =
                     (client_key.clone(), client_name.clone());
                 // The audio sink appears for this device, named after it.
@@ -1032,6 +1096,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                         let room = Arc::clone(&ctx.room);
                         let room_now = Arc::clone(&ctx.room);
                         let ok = Arc::clone(&ctx.viewer_ok);
+                        let once = Arc::clone(&ctx.once);
                         let rid = room_id.clone();
                         let rid_now = room_id.clone();
                         tokio::spawn(decide_join(
@@ -1044,8 +1109,14 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                                 addr: client_addr,
                                 pair,
                             },
+                            false,
                             move || *room.lock().unwrap_or_else(|e| e.into_inner()) == rid,
-                            move |_| {
+                            move |_, just_once| {
+                                if just_once {
+                                    once.lock()
+                                        .unwrap_or_else(|e| e.into_inner())
+                                        .insert(rid_now.clone());
+                                }
                                 // Only if it is still the viewer here — it may have left while
                                 // it waited.
                                 if *room_now.lock().unwrap_or_else(|e| e.into_inner()) == rid_now {
@@ -1075,6 +1146,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 let checking = Arc::clone(&ctx.checking);
                 let checking_done = Arc::clone(&ctx.checking);
                 let approved = Arc::clone(&ctx.approved);
+                let once = Arc::clone(&ctx.once);
                 let rid = room_id.clone();
                 tokio::spawn(decide_join(
                     ctx.gate.clone(),
@@ -1086,13 +1158,19 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                         addr: client_addr,
                         pair,
                     },
+                    true,
                     move || {
                         checking
                             .lock()
                             .unwrap_or_else(|e| e.into_inner())
                             .contains(&rid)
                     },
-                    move |room_id| {
+                    move |room_id, just_once| {
+                        if just_once {
+                            once.lock()
+                                .unwrap_or_else(|e| e.into_inner())
+                                .insert(room_id.to_string());
+                        }
                         checking_done
                             .lock()
                             .unwrap_or_else(|e| e.into_inner())
@@ -1134,6 +1212,11 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     }
                     room.clear();
                 }
+                ctx.link.lock().unwrap_or_else(|e| e.into_inner()).clear();
+                ctx.once
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .remove(&room_id);
                 ctx.viewer_ok.store(false, Ordering::SeqCst);
                 // Nobody back within 30 s and no session to keep playing into it: the sink goes,
                 // so the computer's mixer shows no output for a device that is not there.
@@ -2134,12 +2217,57 @@ struct Join {
 /// Answer the relay's question about one join (or takeover check): trusted, first device, or
 /// ask a connected one. `still_wanted` turns false when the device gives up waiting;
 /// `on_accept` runs before the relay is told yes.
+/// The device's `e2e_finish`: check its proof, then let `Gate::admit` decide on the key it
+/// proved — not on the id the relay named.
+async fn e2e_finish(
+    ctx: &RelayCtx,
+    out_tx: &mpsc::Sender<String>,
+    dev_pk: &str,
+    sig: &str,
+    pair_mac: &str,
+) {
+    let codes = ctx.gate.live_pairs();
+    let (key, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let once = {
+        let room = ctx.room.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        ctx.once
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains(&room)
+    };
+    let done = ctx
+        .link
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .finish(dev_pk, sig, pair_mac, &codes);
+    let verdict = done.and_then(|d| {
+        ctx.gate
+            .admit(&key, &name, dev_pk, once, d.pair.as_deref())
+            .map(|()| d)
+    });
+    let mut link = ctx.link.lock().unwrap_or_else(|e| e.into_inner());
+    let out = match verdict {
+        Ok(d) => {
+            info!("e2e: {name} proved its key — the link is end-to-end sealed");
+            link.open(d.sealer, d.opener);
+            crate::e2e::link::WAKE.to_string()
+        }
+        Err(why) => {
+            warn!("e2e: refused {name} — {why}");
+            serde_json::to_string(&link.fail(why)).unwrap_or_default()
+        }
+    };
+    drop(link);
+    out_tx.send(out).await.ok();
+}
+
 async fn decide_join(
     gate: crate::gate::Gate,
     out_tx: mpsc::Sender<String>,
     j: Join,
+    takeover: bool,
     still_wanted: impl Fn() -> bool + Send + 'static,
-    on_accept: impl FnOnce(&str) + Send + 'static,
+    on_accept: impl FnOnce(&str, bool) + Send + 'static,
 ) {
     use crate::gate::{Decision, Request, Verdict};
     let Join {
@@ -2154,17 +2282,21 @@ async fn decide_join(
     } else {
         name.clone()
     };
-    let mut decision = gate.decide(&key, &name);
-    // Scanned the QR on the host's own screen: that is the owner's say-so.
-    if decision == Decision::Unknown && !key.is_empty() && gate.redeem(&pair) {
-        info!("gate: {label} paired with a QR code — trusted");
-        gate.trust(&key, &name);
-        decision = Decision::Trusted;
-    }
+    // Everything here is the relay's claim. It only decides whether the join is parked or let
+    // through to the envelope, where the device proves its key and `Gate::admit` decides.
+    let decision = gate.decide(&key, &name);
+    let mut once = false;
     let verdict: Result<(), String> = match decision {
         Decision::Trusted => Ok(()),
         Decision::FirstDevice => {
             warn!("gate: no device was trusted yet — trusting the first one to connect, {label}");
+            Ok(())
+        }
+        // Holds a QR code, it says: let through to prove it in the envelope, where a code that
+        // does not check out gets nothing. Never for a takeover — a claim alone must not
+        // displace a live viewer.
+        Decision::Unknown if !pair.is_empty() && !key.is_empty() && !takeover => {
+            info!("gate: {label} says it holds a pairing code — it must prove it");
             Ok(())
         }
         Decision::Unknown => {
@@ -2182,7 +2314,10 @@ async fn decide_join(
                 let v = gate.wait(&room_id, still_wanted).await;
                 gate.withdraw(&room_id);
                 match v {
-                    Some(Verdict::Once) => Ok(()),
+                    Some(Verdict::Once) => {
+                        once = true;
+                        Ok(())
+                    }
                     Some(Verdict::Always) => {
                         gate.trust(&key, &name);
                         Ok(())
@@ -2197,7 +2332,7 @@ async fn decide_join(
     };
     let msg = match verdict {
         Ok(()) => {
-            on_accept(&room_id);
+            on_accept(&room_id, once);
             info!("gate: let {label} in");
             RelayMsg::PeerAccept { room_id }
         }

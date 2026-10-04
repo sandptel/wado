@@ -5170,6 +5170,7 @@ dependencies = [
  "portable-pty",
  "qrcode",
  "rand 0.8.8",
+ "ring",
  "serde",
  "serde_json",
  "thiserror 1.0.69",

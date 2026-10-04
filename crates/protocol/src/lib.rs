@@ -9,6 +9,7 @@
 pub mod apps;
 pub mod config;
 pub mod control;
+pub mod envelope;
 pub mod host;
 pub mod menu;
 pub mod relay;

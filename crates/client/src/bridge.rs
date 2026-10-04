@@ -45,6 +45,13 @@ pub const JS: &str = concat!(
     // Before `relay.js`: that file calls `W.relayOn(...)` at load to register its handlers, and
     // this is what defines it. The dial at the bottom of `relay_link` is safe here — opening a
     // socket takes at least a tick, and `relay.js` registers synchronously in the same eval.
+    // The envelope (`e2e_*`) before `relay_link.js`, whose hooks call into it.
+    include_str!("js/e2e_keys.js"),
+    "\n",
+    include_str!("js/e2e_seal.js"),
+    "\n",
+    include_str!("js/e2e_handshake.js"),
+    "\n",
     include_str!("js/relay_link.js"),
     "\n",
     include_str!("js/relay.js"),

@@ -29,7 +29,7 @@ const sinks = () => {
       .map((o) => [o.info.props["node.name"], o.info.props["node.description"]]));
   } catch { return {}; }
 };
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -230,7 +230,8 @@ try {
   await laptop.ev(`document.querySelectorAll("#landing").length`);
   check("computer's home page lists both sessions with shape and apps",
     await laptop.until(`document.querySelectorAll(".sessioncard").length === 2 && document.querySelectorAll(".sessionshape span").length === 2`, 15000),
-    await laptop.ev(`document.querySelector(".sessions")?.innerText`));
+    (await laptop.ev(`document.querySelector(".sessions")?.innerText`)) + "\n        on disk: " +
+      (() => { try { const d = join(T, "cfg/wado/sessions"); return readdirSync(d).map((f) => f + " " + readFileSync(join(d, f), "utf8").slice(0, 160)).join(" | "); } catch (e) { return String(e); } })());
 
   // Watchdog: a dead interface reloads itself back into the session it was showing.
   await phone.ev(`window.__wado.crashed("e2e: simulated crash"); true`);
