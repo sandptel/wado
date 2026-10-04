@@ -28,10 +28,11 @@ pub fn apply(ui: Ui) {
         bridge::js(&(s.touch_mode)())
     ));
     bridge::call(format!(
-        "window.__wado.autorate.enabled = {}; window.__wado.setLowLatencyAudio({}); window.__wado.setRedundantInput({});",
+        "window.__wado.autorate.enabled = {}; window.__wado.setLowLatencyAudio({}); window.__wado.setRedundantInput({}); window.__wado.setStreamSound({});",
         (s.auto_bitrate)(),
         (s.low_latency_audio)(),
-        (s.redundant_input)()
+        (s.redundant_input)(),
+        (s.stream_sound)()
     ));
     bridge::call(format!(
         "window.__wado.setDockPin({}); window.__wado.setEdgeSwipe({});",

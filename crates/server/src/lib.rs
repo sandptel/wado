@@ -26,7 +26,6 @@ pub mod runlane;
 pub mod sched;
 pub mod sessions;
 pub mod shells;
-pub mod wcmedia;
 pub mod webrtc_settings;
 pub mod website;
 

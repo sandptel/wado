@@ -212,6 +212,8 @@ W.resync = async () => {
 // none (`jitterBufferTarget = 0`; Chrome's own jitter model still keeps what the link needs).
 // Off: the browser default, as before this switch existed.
 W.lowLatencyAudio = false;
+W.streamSound = true;
+W.setStreamSound = (on) => { W.streamSound = !!on; };
 W.applyAudioLatency = (recv) => {
   if (!recv || !("jitterBufferTarget" in recv)) return;
   try { recv.jitterBufferTarget = W.lowLatencyAudio ? 0 : null; } catch (_) {}

@@ -48,8 +48,7 @@ use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSampl
 
 use wado_compositor::{CommandSender, CompositorCommand, FrameMsg, InputEvent, InputSender};
 use wado_protocol::{
-    FAST_CHANNEL, INPUT_CHANNEL, MEDIA_CHANNEL, MOTION_CHANNEL, relay::RelayMsg,
-    relay::display_remote_id,
+    FAST_CHANNEL, INPUT_CHANNEL, MOTION_CHANNEL, relay::RelayMsg, relay::display_remote_id,
 };
 
 use crate::website::logbus::LogBus;
@@ -145,8 +144,6 @@ struct RelayCtx {
     /// The viewer's "Low-latency audio" switch, from its session config. The audio pump restarts
     /// with the new frame size when it changes (`crate::audio::run`).
     audio_low: tokio::sync::watch::Sender<bool>,
-    /// The low-latency media path (`crate::wcmedia`).
-    wc: crate::wcmedia::SharedHub,
     /// The device key and name of the viewer in `room` — what its config edits and saved
     /// settings are filed under (see [`crate::config::link`]).
     viewer: Arc<Mutex<(String, String)>>,
@@ -246,8 +243,6 @@ async fn run(
     // The "This phone" output and its track (see `crate::host`, `crate::audio`). Session apps
     // are pointed at the sink from the start, so a session plays on the phone by default.
     let audio_track = crate::audio::track();
-    // The low-latency media path; RTP is the fallback whenever it is off or has no channel.
-    let wc: crate::wcmedia::SharedHub = Arc::default();
     let (listening_tx, listening) = tokio::sync::watch::channel(false);
     let (audio_low_tx, audio_low) = tokio::sync::watch::channel(false);
     if let Some(sink) = crate::host::start() {
@@ -257,7 +252,6 @@ async fn run(
             listening,
             audio_low,
             Arc::clone(&audio_track),
-            Arc::clone(&wc),
         ));
     }
 
@@ -268,7 +262,6 @@ async fn run(
     {
         let track_pump = Arc::clone(&track);
         let queue_us = Arc::clone(&queue_us);
-        let wc = Arc::clone(&wc);
         tokio::spawn(async move {
             // The frame channel is two slots deep, so a write_sample that takes longer than
             // two frame times is enough to start dropping. Whether it does is the difference
@@ -366,13 +359,7 @@ async fn run(
                 };
                 let t0 = std::time::Instant::now();
                 let runq0 = crate::sched::run_delay_ns();
-                if wc.active() {
-                    // The low-latency path: chunks on the media channel, stamped with the clock
-                    // audio shares. A frame it could not take is a gap the viewer asks a
-                    // keyframe for.
-                    wc.send_video(&sample.data, key, wc.at_us(frame.queued_at))
-                        .await;
-                } else if let Err(e) = track_pump.write_sample(&sample).await {
+                if let Err(e) = track_pump.write_sample(&sample).await {
                     warn!("relay client: write_sample: {e}");
                 }
                 let took = t0.elapsed();
@@ -481,7 +468,6 @@ async fn run(
         audio_track,
         listening: listening_tx,
         audio_low: audio_low_tx,
-        wc,
         a11y: Arc::new(crate::a11y::A11y::default()),
         relay_url,
         remote_id,
@@ -1196,8 +1182,6 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             }
 
             RelayMsg::SessionStart { config } => {
-                ctx.wc.set_wanted(config.webcodecs);
-                ctx.wc.set_audio_redundancy(config.audio_redundancy);
                 ctx.audio_low.send_if_modified(|v| {
                     std::mem::replace(v, config.low_latency_audio) != config.low_latency_audio
                 });
@@ -1318,12 +1302,6 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             }
 
             RelayMsg::SessionReconfigure { config } => {
-                if config.webcodecs && !ctx.wc.active() {
-                    // Switching on mid-session: the viewer's decoder needs a keyframe to start.
-                    let _ = ctx.cmd_tx.send(CompositorCommand::ForceKeyframe);
-                }
-                ctx.wc.set_wanted(config.webcodecs);
-                ctx.wc.set_audio_redundancy(config.audio_redundancy);
                 ctx.audio_low.send_if_modified(|v| {
                     std::mem::replace(v, config.low_latency_audio) != config.low_latency_audio
                 });
@@ -1836,36 +1814,14 @@ async fn handle_sdp_offer(
     // stall then jump while the frame rate stays perfect (invariant #1).
     {
         let input_tx = ctx.input_tx.clone();
-        let wc = Arc::clone(&ctx.wc);
-        let cmd_tx = ctx.cmd_tx.clone();
         // Shared by the input and fast channels of this peer connection: redundant copies are
         // released once, in order (`crate::input_order`).
         let order = Arc::new(Mutex::new(crate::input_order::InputOrder::default()));
         pc.on_data_channel(Box::new(move |dc: Arc<RTCDataChannel>| {
             let input_tx = input_tx.clone();
             let order = Arc::clone(&order);
-            let wc = Arc::clone(&wc);
-            let cmd_tx = cmd_tx.clone();
             Box::pin(async move {
                 let label = dc.label().to_string();
-                if label == MEDIA_CHANNEL {
-                    // The low-latency media path's channel: frames go out on it while the session
-                    // asks for that path; the viewer's text messages are control.
-                    wc.set_channel(Some(Arc::clone(&dc)));
-                    let gone = Arc::clone(&wc);
-                    dc.on_close(Box::new(move || {
-                        gone.set_channel(None);
-                        Box::pin(async {})
-                    }));
-                    dc.on_message(Box::new(move |msg: DataChannelMessage| {
-                        if msg.is_string && msg.data.as_ref() == br#"{"t":"kf"}"# {
-                            let _ = cmd_tx.send(CompositorCommand::ForceKeyframe);
-                        }
-                        Box::pin(async {})
-                    }));
-                    info!("relay client: media data channel open");
-                    return;
-                }
                 if label != INPUT_CHANNEL && label != MOTION_CHANNEL && label != FAST_CHANNEL {
                     return;
                 }
