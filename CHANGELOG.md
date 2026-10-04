@@ -2,6 +2,12 @@
 
 ### Fixed
 
+- **Redundant input no longer makes input sluggish.** All data channels on a connection share one
+  SCTP association with one congestion controller. Copying every scroll step and move, twice,
+  added hundreds of messages a second, and on a lossy moment the whole association backed off:
+  input round trips of 0.2–4.2 s against a 6–17 ms network round trip (measured on the phone).
+  Now only presses, lifts, keys and a scroll's end get a fast copy, and only one.
+
 - **Redundant input no longer stalls and jumps.** Releasing every copy in strict order meant one
   lost fast copy held everything after it until its slow reliable copy came, then dumped it all
   at once. Now scroll steps (which add up) apply the moment either copy lands. Moves (absolute

@@ -29,18 +29,26 @@ const MOVE_THRESHOLD = 8;           // client-px movement that commits a touch t
 // first, in order (server::input_order). A reliable packet stuck behind a retransmit then no
 // longer holds the touch behind it for a round trip.
 W.redundantInput = false;
+// Press/lift/key/button/end-of-scroll: the ones worth a fast copy. Not moves, not scroll steps.
+const isDiscrete = (o) =>
+  o.t === "key" || o.t === "button" || o.t === "cancel_touch" ||
+  (o.t === "touch" && o.phase !== "motion") ||
+  (o.t === "scroll" && o.stop === true) ||
+  (o.t === "window_drag" && o.phase !== "motion");
 W.setRedundantInput = (on) => { W.redundantInput = !!on; };
 W.sendInput = (obj) => {
   const motion = isMotion(obj);
   const fast = W.fastDC;
-  if (!motion && W.redundantInput && obj.t !== "ping" && fast && fast.readyState === "open" &&
+  // Only the few events where a stall is felt most — press, lift, key, a scroll's end — and one
+  // copy each. Every channel shares one SCTP association with one congestion controller, so
+  // copying every scroll step and move (and twice) added hundreds of messages a second, and on a
+  // lossy moment the whole association backed off: input round trips of 0.2–4.2 s against a
+  // 6–17 ms network round trip, measured 2026-10-04. Steps and moves stay on their usual channel.
+  if (!motion && W.redundantInput && isDiscrete(obj) && fast && fast.readyState === "open" &&
       W.inputDC && W.inputDC.readyState === "open") {
     const msg = JSON.stringify({ ...obj, q: ++W.inputSeq });
     try { fast.send(msg); } catch (_) {}
     try { W.inputDC.send(msg); } catch (_) {}
-    // A second fast copy a few ms later: losing both is far rarer than losing one, and a lost
-    // fast copy is what made the strict events wait for their slow reliable copy.
-    setTimeout(() => { try { if (fast.readyState === "open") fast.send(msg); } catch (_) {} }, 4);
     W.latency && W.latency.onInputSent && W.latency.onInputSent(obj);
     return;
   }
