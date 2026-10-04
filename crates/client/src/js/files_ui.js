@@ -108,6 +108,8 @@
     if (!root) return;
     root.hidden = true;
     document.documentElement.classList.remove("files-open");
+    if (F.viewClose) F.viewClose();
+    if (F.viewerForget) F.viewerForget();
     F.showTransfers(false);
     if (F.pill) F.pill();
   };
@@ -343,8 +345,14 @@
   }
   function activate(e) {
     if (e.dir) return go(pathOf(e));
+    if (F.viewable(e.name)) return openViewer(e);
     if (lastPointer === "mouse" && wide()) return F.download(pathOf(e), e.name, false);
     itemSheet(e);
+  }
+  // The viewer, with the folder's other viewable files to swipe through.
+  function openViewer(e) {
+    const withPath = (x) => ({ ...x, path: pathOf(x) });
+    F.view(withPath(e), shown.map(withPath));
   }
 
   // Thumbnails: lazily, as rows come into view; cached by path and mtime.
@@ -444,6 +452,7 @@
     const p = pathOf(e);
     const opts = [{ label: e.dir ? "Download as .zip" : "Download", run: () => { F.download(p, e.name, e.dir); F.showTransfers(true); } }];
     if (e.dir) opts.unshift({ label: "Open", run: () => go(p) });
+    else if (F.viewable(e.name)) opts.unshift({ label: "Open", run: () => openViewer(e) });
     if (e.recent) opts.push({ label: "Show in folder", run: () => go(parentOf(p)) });
     if (rw()) {
       opts.push({ label: "Rename", run: () => rename(p) });

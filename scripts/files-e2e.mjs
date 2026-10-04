@@ -13,6 +13,7 @@
 //   audit       every operation is in files.log
 //   revoke      `wado files grant <device> none` applies to an open channel's next request
 //   ui          the window opens in both layouts and lists the folder, no script errors
+//   viewer      images, a gallery, text/JSON, audio; HTML shown as source and never run
 //
 //   dx build -p wado-client --platform web && cargo build -p wado -p wado-relay
 //   node scripts/files-e2e.mjs [target/debug]      (needs Chrome; run with the sandbox off)
@@ -65,6 +66,17 @@ const png = (() => {
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
 })();
 writeFileSync(join(HOME, "Pictures/p.png"), png);
+writeFileSync(join(HOME, "Pictures/q.png"), png);
+writeFileSync(join(HOME, "Pictures/page.html"), "<script>window.__pwned = 1</script><b>hi</b>");
+writeFileSync(join(HOME, "Pictures/notes.json"), '{"a":1,"b":[2,3]}');
+// One second of a 440 Hz tone, 8 kHz mono 16-bit WAV.
+writeFileSync(join(HOME, "Pictures/tone.wav"), (() => {
+  const n = 8000, b = Buffer.alloc(44 + n * 2);
+  b.write("RIFF", 0); b.writeUInt32LE(36 + n * 2, 4); b.write("WAVEfmt ", 8); b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20);
+  b.writeUInt16LE(1, 22); b.writeUInt32LE(8000, 24); b.writeUInt32LE(16000, 28); b.writeUInt16LE(2, 32); b.writeUInt16LE(16, 34);
+  b.write("data", 36); b.writeUInt32LE(n * 2, 40);
+  for (let i = 0; i < n; i++) b.writeInt16LE(Math.round(8000 * Math.sin((2 * Math.PI * 440 * i) / 8000)), 44 + i * 2);
+  return b; })());
 writeFileSync(join(HOME, ".config/wado/config.kdl"), `files { hidden #true; deny "~/outside"; }\n`);
 writeFileSync(join(HOME, ".config/wado/trusted_clients"), "");
 
@@ -293,6 +305,20 @@ try {
   await laptop.ev(`(() => { const r = [...document.querySelectorAll("#wado-files .frow")].find((x) => x.textContent.includes("Pictures")); r.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })); return true; })()`);
   await sleep(1200);
   await laptop.shot("files-laptop.png");
+  // viewer
+  await laptop.ev(`(() => { const r = [...document.querySelectorAll("#wado-files .frow")].find((x) => x.textContent.includes("p.png")); r.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })); return true; })()`);
+  check("viewer: an image opens", await laptop.until(`(document.querySelector(".fview .fvimg") || {}).naturalWidth === 64`));
+  await laptop.shot("files-viewer.png");
+  await laptop.ev(`document.querySelector(".fvnav.next").click(); true`);
+  check("viewer: next goes through the folder's viewable files", await laptop.until(`document.querySelector(".fvtitle b")?.textContent === "page.html"`));
+  check("viewer: HTML is shown as its source, never run", await laptop.until(`(document.querySelector(".fvtext")?.textContent || "").includes("<script>")`) && !(await laptop.ev(`!!window.__pwned`)));
+  await laptop.ev(`document.querySelector(".fvnav.next").click(); true`);
+  check("viewer: JSON is pretty-printed", await laptop.until(`(document.querySelector(".fvtext")?.textContent || "").includes('\n  "b": [')`));
+  await laptop.ev(`document.querySelector(".fvnav.next").click(); true`);
+  await laptop.ev(`document.querySelector(".fvnav.next").click(); true`);
+  check("viewer: audio plays", await laptop.until(`(document.querySelector(".fview audio") || {}).duration > 0.9`), await laptop.ev(`document.querySelector(".fvtitle b")?.textContent`));
+  await laptop.ev(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); true`);
+  check("viewer: Esc closes it", await laptop.until(`!document.querySelector(".fview")`));
   check("no script errors", !phone.errors.length && !laptop.errors.length, [...phone.errors, ...laptop.errors].join("\n        "));
 
   // revoke

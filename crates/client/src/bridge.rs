@@ -134,6 +134,8 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/files_panels.js"),
     "\n",
+    include_str!("js/files_view.js"),
+    "\n",
     include_str!("js/capture.js"),
     "\n",
     include_str!("js/audio.js"),
