@@ -476,7 +476,9 @@ W._relayNegotiate = async (opts = {}) => {
   if (!opts.audioOnly) pc.addTransceiver("video", { direction: "recvonly" });
   // The session's sound on its own track (server::audio). A daemon too old to send any simply
   // leaves this transceiver unused.
-  pc.addTransceiver("audio", { direction: "recvonly" });
+  // "Stream sound" (Display & stream): off sets up no audio at all, so there is no audio track for
+  // Chrome to hold the picture in sync with — the A/B for the audio-sync buffer (2026-10-04).
+  if (opts.audioOnly || W.streamSound !== false) pc.addTransceiver("audio", { direction: "recvonly" });
   W.inputDC = pc.createDataChannel(INPUT_CHANNEL, { ordered: true });
   // Moves go unreliable: a lost one is superseded by the next, and must never hold up a tap
   // behind its retransmit (invariant #1). Direct mode always had this; relay mode did not.
@@ -484,8 +486,6 @@ W._relayNegotiate = async (opts = {}) => {
   // "Redundant input": fast unordered copies of discrete events (input_core.js, server::input_order).
   W.fastDC = pc.createDataChannel(FAST_CHANNEL, { ordered: false, maxRetransmits: 0 });
   W.inputSeq = 0;
-  // The low-latency pipeline's channel (js/wc_recv.js): idle unless the session asks for it.
-  if (W.wcSupported) W.wc.open(pc);
 
   pc.ontrack = (ev) => {
     if (ev.track && ev.track.kind === "audio") {

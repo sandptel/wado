@@ -153,17 +153,6 @@ W.startStats = (pc) => {
     if (precv !== null) lastPrecv = precv;
 
     const input = W.latency ? W.latency._inMs : null;
-    // The low-latency pipeline has no RTP video: its own numbers stand in — frames painted,
-    // our audio buffer (the one sync waits on), and the decoder's time.
-    if (W.wc && W.wc.live) {
-      const shown = W.wcVideo.shown;
-      fps = W._wcShown === undefined ? null : shown - W._wcShown;
-      W._wcShown = shown;
-      jbuf = W.wcAudio.queuedMs;
-      abuf = jbuf;
-      dec = W.wcVideo.decMs;
-      vmin = null;
-    }
     emit({ type: "stats", fps, ping, jbuf, decodeDropPct, abuf, vmin, input });
 
     // The verdict runs off the same snapshot rather than polling getStats a second time.
@@ -187,11 +176,6 @@ W.startStats = (pc) => {
         " jtarget=" + n(jtarget, 0) + "ms dec=" + n(dec, 2) + "ms" +
         " abuf=" + n(abuf, 0) + "ms atarget=" + n(atarget, 0) + "ms vmin=" + n(vmin, 0) + "ms" +
         " input=" + n(input, 0) + "ms" +
-        // The low-latency pipeline's own state: decoder input queue (a backlog when > ~3),
-        // frames dropped as late, audio copies discarded, hardware or software decoding.
-        (W.wc && W.wc.live ? " wc_q=" + W.wcVideo.q + " wc_sync=" + (W.wc.syncMs === null ? "?" : W.wc.syncMs.toFixed(0)) +
-          " wc_late=" + W.wcVideo.late + " wc_hw=" + (W.wcVideo._hw || "?") +
-          " wc_lost=" + W.wc.lost + " wc_dups=" + (W.wcAudio.dups || 0) : "") +
         // The panel's own refresh rate, and the session's frame rate as a multiple of it.
         // `js/refresh.js` has measured this since long before it mattered and it has never left
         // the browser — it feeds the fps picker as a hint and nothing else.

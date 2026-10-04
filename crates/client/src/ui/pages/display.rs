@@ -195,35 +195,13 @@ pub fn render(ui: Ui) -> Element {
 
         div { class: "card",
             SwitchRow {
-                title: "Low-latency pipeline (WebCodecs)",
-                sub: if !(ui.live.wc_supported)() {
-                    "This browser has no WebCodecs — stays on the standard pipeline".to_string()
-                } else if (ui.live.wc_live)() {
-                    "On — this device decodes and syncs the stream itself".to_string()
-                } else {
-                    "Experimental (v2): decoding runs in a background worker, off the touch thread — compare it with the standard path".to_string()
-                },
-                on: (s.webcodecs)(),
-                disabled: !(ui.live.wc_supported)(),
-                when: When::Apply,
+                title: "Stream sound",
+                sub: "Off: no audio at all, so the picture is never held back to stay in sync with it — applies when you reconnect",
+                on: (s.stream_sound)(),
+                when: When::Restart,
                 ontoggle: move |on| {
-                    s.webcodecs.set(on);
-                    if (ui.live.session_on)() {
-                        crate::actions::apply(ui);
-                    }
-                },
-            }
-            SwitchRow {
-                title: "Redundant audio",
-                sub: "Low-latency pipeline: every sound packet sent three times (~0.3 Mbit/s) so a delayed one never stretches the buffer",
-                on: (s.audio_redundancy)(),
-                disabled: !(s.webcodecs)(),
-                when: When::Apply,
-                ontoggle: move |on| {
-                    s.audio_redundancy.set(on);
-                    if (ui.live.session_on)() {
-                        crate::actions::apply(ui);
-                    }
+                    s.stream_sound.set(on);
+                    super::super::live::apply(ui);
                 },
             }
             SwitchRow {

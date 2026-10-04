@@ -57,6 +57,19 @@
 
 ### Added
 
+**"Stream sound"** (Display & stream, on by default; takes effect when you reconnect). With it off,
+no audio track is set up at all. This is the A/B for the buffer regression: since audio arrived
+(2026-10-02) the video buffer has tracked the audio buffer, because Chrome holds the picture in
+sync with the sound.
+
+### Removed
+
+- **The low-latency pipeline (WebCodecs) and redundant audio.** Tried in two designs, main thread
+  and then worker. On the phone both were worse than the standard path: the hardware decoder
+  stalled or held frames, and the picture and touch lagged. Removed from both ends: client
+  worker, audio player and switches; daemon `wcmedia`, the `wado-media` channel and the session
+  fields. Old pages that still send the fields are ignored safely.
+
 **Low-latency pipeline v2: everything heavy in a worker.** Reassembly, H.264 decode (hardware,
 with a software fallback when the hardware decoder holds or stalls), painting, and Opus decode now
 run in a dedicated worker on an OffscreenCanvas. Decoded audio goes from the worker straight to

@@ -129,11 +129,7 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/autorate.js"),
     "\n",
-    include_str!("js/wc_worker.js"),
-    "\n",
-    include_str!("js/wc_recv.js"),
-    "\n",
-    include_str!("js/wc_audio.js"),
+    include_str!("js/caps.js"),
     "\n",
     include_str!("js/lifecycle.js"),
 );
@@ -449,19 +445,9 @@ pub fn run(ui: Ui) {
                         crate::actions::apply(ui);
                     }
                 }
-                // What this browser can do: the low-latency pipeline needs WebCodecs.
+                // What this browser is: names the sound output that plays here.
                 "caps" => {
-                    live.wc_supported.set(
-                        msg.get("webcodecs")
-                            .and_then(|v| v.as_bool())
-                            .unwrap_or(false),
-                    );
                     live.device_name.set(string("device"));
-                }
-                // The low-latency pipeline started or stopped painting frames.
-                "wcLive" => {
-                    live.wc_live
-                        .set(msg.get("on").and_then(|v| v.as_bool()).unwrap_or(false));
                 }
                 "winMenu" => {
                     live.win_menu.set(msg.get("id").and_then(|v| v.as_u64()));
