@@ -186,15 +186,22 @@ try {
     document.querySelector(".ccscrim")?.click(); return true; })()`);
   check("the media channel opens on the daemon", await (async () => { const t = Date.now(); while (Date.now() - t < 8000) { if (daemonLog.includes("media data channel open")) return true; await sleep(200); } return false; })());
   const wcOk = await phone.until(`window.__wado.wcVideo.shown > 30 && document.getElementById("wado-canvas").classList.contains("on")`, 20000);
+  check("WebCodecs: decoding runs in a worker, off the touch thread", await phone.ev(`!!window.__wado.wc.worker && !window.__wado.wcVideo.dec`));
   check("WebCodecs: frames decode and paint the canvas", wcOk,
-    await phone.ev(`(() => { const w = window.__wado.wc; const r = [...w.ready.values()][0]; const head = r ? Array.from(r.parts[0].slice(0, 12)).map((b) => b.toString(16).padStart(2, "0")).join(" ") : null;
-      return JSON.stringify({ shown: window.__wado.wcVideo.shown, codecWas: window.__wado.wcVideo._lastCodec, codec: window.__wado.wcVideo.codec, live: w.live, lost: w.lost, partial: w.partial.size, ready: w.ready.size, next: w.next, needKey: w.needKey, anyKey: [...w.ready.values()].some((f) => f.key), head, dec: window.__wado.wcVideo.dec && window.__wado.wcVideo.dec.state }); })()`));
-  check("WebCodecs: audio packets arrive on the same channel", await phone.until(`window.__wado.wcAudio._off.length > 20`, 10000));
+    await phone.ev(`JSON.stringify({ shown: window.__wado.wcVideo.shown, codec: window.__wado.wcVideo.codec, hw: window.__wado.wcVideo._hw, live: window.__wado.wc.live, lost: window.__wado.wc.lost, worker: !!window.__wado.wc.worker })`));
+  check("WebCodecs: audio packets arrive on the same channel", await phone.until(`window.__wado.wcAudio.packets > 20`, 10000));
   // Sync: the picture shows the frame whose time the sound is at — within about a frame.
   const sync = await (async () => { const t = Date.now(); let r = null; while (Date.now() - t < 10000) {
-      r = await phone.ev(`(() => { const a = window.__wado.wcAudio, v = window.__wado.wcVideo; const c = a.clockUs(); return c === null ? null : { offMs: (c - v.lastTs) / 1000, targetMs: a.targetMs, queuedMs: a.queuedMs }; })()`);
+      r = await phone.ev(`window.__wado.wc.syncMs === null ? null : { offMs: window.__wado.wc.syncMs, targetMs: window.__wado.wcAudio.targetMs, queuedMs: window.__wado.wcAudio.queuedMs }`);
       if (r) break; await sleep(300); } return r; })();
   check("WebCodecs: picture follows the audio clock (|A/V offset| < 50 ms)", sync && Math.abs(sync.offMs) < 50, JSON.stringify(sync));
+  // The point of v2: the main thread (touch) stays free while the pipeline plays.
+  await phone.cdp("Performance.enable");
+  const pm = async () => Object.fromEntries((await phone.cdp("Performance.getMetrics")).result.metrics.map((m) => [m.name, m.value]));
+  const m0 = await pm(); await sleep(3000); const m1 = await pm();
+  const busy = (100 * (m1.TaskDuration - m0.TaskDuration)) / 3;
+  check("WebCodecs: main thread stays mostly idle (< 20% busy) while it plays", busy < 20, busy.toFixed(1) + "% busy");
+  console.log("        main thread busy " + busy.toFixed(1) + "% during WebCodecs playback");
   check("WebCodecs: input still maps onto the picture", await phone.ev(`(() => { const v = document.getElementById("wado-video"); const r = v.getBoundingClientRect(); return !!window.__wado.normPoint(r.left + r.width / 2, r.top + r.height / 2, v); })()`));
   const rtp = await phone.ev(`(async () => { const g = async () => { let n = 0; (await window.__wado.pc.getStats()).forEach((r) => { if (r.type === "inbound-rtp" && r.kind === "video") n = r.framesReceived || 0; }); return n; };
     const a = await g(); await new Promise((r) => setTimeout(r, 2000)); return (await g()) - a; })()`);
