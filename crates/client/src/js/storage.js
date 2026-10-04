@@ -24,10 +24,20 @@ W.loadSettings = () => {
   let q;
   try { q = new URLSearchParams(location.search); } catch (_) { return; }
   const relay = q.get("relay"), id = q.get("id");
-  // The QR's single-use pairing code: kept until a join is accepted, sent with every join until
-  // then, so the host's gate trusts this device without anyone approving it.
+  // The QR's single-use pairing code: kept until the computer lets this device in, proven inside
+  // the envelope (never sent), so the host's gate trusts this device without anyone approving it.
   const pair = q.get("pair");
   if (pair) { try { localStorage.setItem("wado.pair", pair); } catch (_) {} }
+  // The computer's identity pin, from a QR its owner showed: authoritative, so it replaces any
+  // earlier pin for this Remote ID (e2e_keys.js reads the same key).
+  const hk = q.get("hk"), hkId = String(q.get("id") || "").replace(/\D/g, "");
+  if (hk && hkId) {
+    try {
+      const all = JSON.parse(localStorage.getItem("wado.hostpins")) || {};
+      all[hkId] = { pin: hk, from: "qr" };
+      localStorage.setItem("wado.hostpins", JSON.stringify(all));
+    } catch (_) {}
+  }
   if (!relay && !id) return;
   const s = W.loadSettings();
   s.conn_mode = "relay";

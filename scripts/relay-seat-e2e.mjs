@@ -16,6 +16,12 @@
 //   leave      a client closing with the leave code frees its seat instead of holding it
 //   silence    a frozen daemon is noticed and its client released
 //   ratelimit  a burst of joins from one address is cut off with a retry time
+//   envelope   (Decision Log 2026-10-04) the relay can neither read nor inject: plaintext and
+//              tampered frames are dropped, a device claiming another's id is refused, a
+//              changed computer identity is refused by the client, a QR code pairs and pins
+//
+// Clients run the real browser envelope code (scripts/lib/e2e-device.mjs). Messages for the
+// computer are sealed; `__up` is pushed when the secure link is up.
 //
 // Takes about 70 s, most of it waiting out the 45 s silence window.
 
@@ -23,6 +29,8 @@ import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { execFileSync } from "node:child_process";
+import { device, onFrame } from "./lib/e2e-device.mjs";
 
 const ROOT = new URL("..", import.meta.url).pathname;
 const PORT = 4977;
@@ -76,24 +84,32 @@ async function stop(p) {
   await new Promise((r) => { p.once("exit", r); setTimeout(r, 5000); });
 }
 
-// A client: records every frame, answers pings unless told not to.
+// One "browser" per client key unless a test hands in another: same key, same device key.
+const devices = {};
+// A client: records every frame (sealed ones opened), answers pings.
 class Client {
-  constructor(name, { key = name + "-key", instance = "", takeover = false } = {}) {
+  constructor(name, { key = name + "-key", instance = "", takeover = false, dev = null, pair = false } = {}) {
     this.name = name;
     this.msgs = [];
     this.closed = false;
+    this.dev = dev || (devices[key] ||= device(key));
     const q = new URLSearchParams({ client: key, name });
     if (instance) q.set("instance", instance);
     if (takeover) q.set("takeover", "1");
+    if (pair) q.set("pair", "1");
     this.ws = new WebSocket(`${RELAY}/join/${RID}?${q}`);
     this.ws.onmessage = (e) => {
       const m = JSON.parse(e.data);
-      if (m.type === "ping") return this.send({ type: "pong" });
-      this.msgs.push(m);
+      if (m.type === "ping") return this.raw({ type: "pong" });
+      if (!onFrame(this.dev, this.ws, RID, m, (x) => this.msgs.push(x))) this.msgs.push(m);
     };
     this.ws.onclose = () => { this.closed = true; };
   }
-  send(m) { try { this.ws.send(JSON.stringify(m)); } catch (_) {} }
+  // Sealed, as the client sends everything for the computer.
+  send(m) { return this.dev.W.e2eSend(m); }
+  // In the clear, as the relay (or anything in front of it) could.
+  raw(m) { try { this.ws.send(typeof m === "string" ? m : JSON.stringify(m)); } catch (_) {} }
+  up(ms = 8000) { return this.wait("__up", ms); }
   has(type) { return this.msgs.find((m) => m.type === type); }
   wait(type, ms = 10000) { return this.waitWhere((m) => m.type === type, ms); }
   async waitWhere(pred, ms = 10000) {
@@ -127,6 +143,7 @@ try {
   check("…and paired when the daemon registers", !!acc, JSON.stringify(phone.msgs));
   check("…on a stable instance id", acc && acc.instance_id === `${RID}:1`, acc && acc.instance_id);
   check("…with the relay's caps", acc && ["park", "hold", "takeover", "gate", "ping", "leave"].every((c) => acc.caps.includes(c)));
+  check("…and the envelope comes up", !!(await phone.up()), JSON.stringify(phone.msgs) + "\n" + phone.dev.W.log.join("\n"));
 
   // ── gate ────────────────────────────────────────────────────────────────────
   console.log("gate");
@@ -218,9 +235,61 @@ try {
   back.ws.close(4001, "leave");
   await back.waitClosed(3000);
   await sleep(300);
-  const after = new Client("Phone");
+  let after = new Client("Phone");
   const lvacc = await after.wait("join_accepted", 5000);
   check("a device that leaves frees its seat at once: the next one walks in", !!lvacc && !after.has("join_denied"), JSON.stringify(after.msgs));
+
+  // ── envelope ────────────────────────────────────────────────────────────────
+  console.log("envelope");
+  check("the phone's link is sealed", !!(await after.up()), after.dev.W.log.join("\n"));
+  // What a hostile relay would inject, in the clear: dropped, never acted on.
+  after.raw({ type: "session_launch", command: "touch /tmp/wado-e2e-pwned" });
+  // A sealed frame with a forged counter (the relay replaying or reordering).
+  after.raw({ type: "sealed", n: 999, c: "AAAA" });
+  check("an injected plaintext command is dropped by the daemon",
+    await waitFor(d1, /e2e: dropped a frame .*refused unsealed/, 3000));
+  check("…and a forged sealed frame breaks the link instead of being read",
+    await waitFor(d1, /e2e: dropped a frame .*does not open/, 3000));
+  after.ws.close(4001, "leave");
+  await after.waitClosed(3000);
+  await sleep(300);
+  // The relay names the phone, but the device behind it holds a different key.
+  const impostor = new Client("Phone", { dev: device("Phone-key") });
+  const fail = await impostor.wait("e2e_fail", 8000);
+  check("a device claiming a trusted id with another key is refused", fail && /not the one/.test(fail.reason), JSON.stringify(impostor.msgs));
+  check("…and never gets the link up", !impostor.has("__up"));
+  impostor.ws.close(4001, "leave");
+  await impostor.waitClosed(3000);
+  await sleep(300);
+  // The client refuses a computer whose identity is not the pinned one — the trusted phone,
+  // with its pin swapped as if a relay were standing in for the computer.
+  const real = devices["Phone-key"];
+  const pinsWere = real.store.getItem("wado.hostpins");
+  real.store.setItem("wado.hostpins", JSON.stringify({ [RID]: { pin: "not-this-computer", from: "qr" } }));
+  const wary = new Client("Phone");
+  check("a client refuses a computer whose identity changed", await wary.waitClosed(8000) && !wary.has("__up"),
+    real.W.log.slice(-3).join("\n"));
+  check("…and says so", real.W.log.some((l) => /identity has changed/.test(l)));
+  real.store.setItem("wado.hostpins", pinsWere);
+  await sleep(300);
+  // A QR code: pairs a new device with no approval, pins both ends.
+  const qr = execFileSync(join(ROOT, "target/release/wado"), ["qr", "--relay", "http://r.example", "--id", RID],
+    { env: { ...process.env, XDG_CONFIG_HOME: CFG } }).toString();
+  const lq = new URLSearchParams(qr.match(/open: \S+\?(\S+)/)[1]);
+  const tab = device("Tab-key");
+  tab.store.setItem("wado.pair", lq.get("pair"));
+  tab.store.setItem("wado.hostpins", JSON.stringify({ [RID]: { pin: lq.get("hk"), from: "qr" } }));
+  const paired = new Client("Tab", { dev: tab, pair: true });
+  check("a QR-paired device gets in with no approval, pinned", !!(await paired.up()), JSON.stringify(paired.msgs) + tab.W.log.join("\n"));
+  check("…the code never went to the relay", !qr.includes("pair=1") && !(await waitFor(r, new RegExp(lq.get("pair")), 300)));
+  check("…and the trust list pins its key",
+    /Tab-key\tTab\t\S+\t1/.test(readFileSync(join(CFG, "wado/trusted_clients"), "utf8")));
+  check("…and the code is used up", tab.store.getItem("wado.pair") === null);
+  paired.ws.close(4001, "leave");
+  await paired.waitClosed(3000);
+  await sleep(300);
+  after = new Client("Phone");
+  check("the real phone still gets in after all that", !!(await after.up()));
 
   // ── silence ─────────────────────────────────────────────────────────────────
   console.log("silence (≈50 s)");

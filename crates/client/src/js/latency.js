@@ -108,10 +108,7 @@ W.latency = {
       let srv = null;
       if (W.relayMode) {
         srv = W._lastTiming || null;
-        const ws = W.relayWs;
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          try { ws.send(JSON.stringify({ type: "timing_request" })); } catch (_) {}
-        }
+        W.relaySendMsg({ type: "timing_request" });
       } else {
         try {
           const resp = await fetch(W.server + "/timing", { cache: "no-store" });

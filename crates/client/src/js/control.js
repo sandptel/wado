@@ -12,11 +12,7 @@
 const sendControl = async (body, relayMsg) => {
   if (!W.sessionOn) { status("ignored — no session"); return; }
   if (W.relayMode) {
-    if (!W.relayWs || W.relayWs.readyState !== WebSocket.OPEN) {
-      status("relay: not connected");
-      return;
-    }
-    W.relayWs.send(JSON.stringify(relayMsg));
+    if (!W.relaySendMsg(relayMsg)) status("relay: not connected");
     return;
   }
   try {

@@ -14,9 +14,7 @@
 // and leave an empty list indistinguishable from "this machine has no apps".
 W.requestApps = async (server) => {
   if (W.relayMode) {
-    if (W.relayWs && W.relayWs.readyState === WebSocket.OPEN) {
-      W.relayWs.send(JSON.stringify({ type: "apps_request" }));
-    }
+    W.relaySendMsg({ type: "apps_request" });
     return;
   }
   try {

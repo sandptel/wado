@@ -8,6 +8,7 @@ pub mod apps;
 pub mod audio;
 pub mod cli;
 pub mod config;
+pub mod e2e;
 pub mod error;
 pub mod gate;
 pub mod host;

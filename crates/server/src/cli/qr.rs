@@ -2,7 +2,8 @@
 //!
 //! Scanning it opens the web client with the relay and Remote ID filled in; a device that has
 //! never seen this computer adds it, one that has is pointed at it again. Each code carries a
-//! single-use pairing code (a day's validity) that trusts the device that scans it. Defaults come from
+//! single-use pairing code (a day's validity) that trusts the device that scans it, and the pin
+//! of this computer's identity key. Defaults come from
 //! the config (`server { public-relay }`) and the saved Remote ID.
 
 use qrcode::{QrCode, render::unicode};
@@ -44,8 +45,22 @@ pub fn print(relay: Option<&str>, id: Option<&str>) -> bool {
     };
     // A fresh single-use pairing code: whoever scans this was shown this computer's screen,
     // so their device is trusted without another device approving it.
+    //
+    // `hk` pins this computer's identity key on the device that scans it, so a relay can never
+    // stand in for this computer to it (`crate::e2e`). Neither the code nor the pin reach the
+    // relay: the client keeps both and proves the code inside the envelope.
     let pair = crate::gate::Gate::default().mint_pair();
-    let l = format!("{}&pair={pair}", link(&cfg.server.client_url, &relay, &id));
+    let hk = match crate::e2e::host_key::HostKey::load_or_create(&crate::remote_id::config_dir()) {
+        Ok(k) => k.pin(),
+        Err(e) => {
+            eprintln!("could not read this computer's identity key: {e}");
+            return false;
+        }
+    };
+    let l = format!(
+        "{}&pair={pair}&hk={hk}",
+        link(&cfg.server.client_url, &relay, &id)
+    );
     if let Some(q) = render(&l) {
         println!("{q}");
     }

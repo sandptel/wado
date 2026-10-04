@@ -1,5 +1,29 @@
 # Changelog
 
+### Security
+
+- **The relay can no longer read or forge anything between your device and your computer.**
+  Until now every control message crossed the relay as plain JSON, including launch commands,
+  shells, settings and approvals. So a compromised relay, or whatever sits in front of it, could
+  have run commands on the computer, not just watched. Now device and computer run a handshake
+  on every join and seal everything after it end to end. The relay passes along bytes it cannot
+  open, and anything it injects or alters is dropped.
+  - **Identity.** Each browser holds a key it cannot export, and each computer one key
+    (`~/.config/wado/host_key`). The trust list records each device's key: the first time a
+    device you already trusted connects, its key is remembered. From then on a device presenting
+    another key under the same name is refused.
+  - **QR codes pin the computer.** `wado qr` links now carry the computer's key fingerprint, and
+    the pairing code is proven inside the handshake instead of being sent. A device remembers the
+    computer it first met and **refuses to connect** if that computer's key ever changes, rather
+    than quietly trusting whoever answers.
+  - **The terminal library loaded from the CDN is pinned by hash**, so a tampered copy is
+    refused instead of running in the page that holds the device's key.
+  - Media was already end-to-end encrypted (DTLS-SRTP), and video still goes directly between the
+    devices. Connecting takes one extra round trip through the relay; streaming latency is
+    unchanged.
+  - **Every device needs this page version and an updated computer together.** An older computer
+    shows "its wado is older than this page — update it".
+
 ### Fixed
 
 - **The computer's audio sink exists only while a device is connected, and is named after it.**

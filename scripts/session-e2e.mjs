@@ -17,6 +17,7 @@ import { spawn } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { deviceFor, secure } from "./lib/e2e-device.mjs";
 
 const ROOT = new URL("..", import.meta.url).pathname;
 const BIN = join(ROOT, process.argv[2] || "target/release");
@@ -48,13 +49,10 @@ class Client {
     const q = new URLSearchParams({ client: name + "-key", name });
     if (takeover) q.set("takeover", "1");
     this.ws = new WebSocket(`${RELAY}/join/${RID}?${q}`);
-    this.ws.onmessage = (e) => {
-      const m = JSON.parse(e.data);
-      if (m.type === "ping") return this.send({ type: "pong" });
-      this.msgs.push(m);
-    };
+    // The real client's envelope (scripts/lib/e2e-device.mjs): sends wait for the secure link.
+    this.dev = deviceFor(name + "-key");
+    this.send = secure(this.ws, this.dev, RID, (m) => this.msgs.push(m));
   }
-  send(m) { this.ws.send(JSON.stringify(m)); }
   async waitWhere(pred, ms = 10000) {
     const t0 = Date.now();
     while (Date.now() - t0 < ms) {
@@ -66,7 +64,7 @@ class Client {
   }
   wait(type, ms) { return this.waitWhere((m) => m.type === type, ms); }
   output(id) { return this.msgs.filter((m) => m.type === "pty_output" && m.id === id).map((m) => m.data).join(""); }
-  close() { this.ws.close(); }
+  close() { this.dev.W.e2eClose(this.ws); }
 }
 
 // Both devices already trusted — as after an approval — so the run tests sessions, not the gate.
