@@ -71,8 +71,6 @@
 .fplace:hover { background: var(--s2); }
 .fplace.on { background: color-mix(in oklab, var(--accent), transparent 80%); color: var(--bright); font-weight: 600; }
 .fplace.on .fi { color: var(--accent); }
-.funpin { opacity: 0; padding: 0 4px; color: var(--dim); font-size: 16px; }
-.fplace:hover .funpin { opacity: 1; }
 .fgrow { flex: 1; }
 
 .fmain { overflow-y: auto; min-height: 0; padding: 8px 10px 110px; overscroll-behavior: contain; scroll-padding-bottom: 110px; }

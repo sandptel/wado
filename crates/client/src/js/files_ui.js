@@ -339,8 +339,8 @@
     for (const r of F.info.roots) side.append(place(r === F.info.home ? "home" : "drive", label(r), () => go(r), at(r)));
     if (S.quick.pins.length) side.append(h("div", { class: "fsidehead" }, "Pinned"));
     for (const p of S.quick.pins) {
-      side.append(place(p.kind === "pin" ? "pin" : "folder", p.name, () => go(p.path), at(p.path),
-        p.kind === "pin" && rw() ? h("span", { class: "funpin", title: "Unpin", onclick: (e) => { e.stopPropagation(); pin(p.path, false); } }, "×") : null));
+      // Unpin lives in the folder's ⋯ menu — an inline × here was too easy to misclick.
+      side.append(place(p.kind === "pin" ? "pin" : "folder", p.name, () => go(p.path), at(p.path)));
     }
     if (F.info.trash) side.append(h("div", { class: "fsidehead" }, ""), place("trash", "Trash", () => go(F.info.trash), inTrash(S.path) && S.view === "dir"));
     side.append(h("span", { class: "fgrow" }), ...storage(true));
