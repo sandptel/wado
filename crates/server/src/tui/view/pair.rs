@@ -18,8 +18,8 @@ use crate::tui::theme;
 const BELOW: u16 = 8;
 /// The narrowest the card gets: the row of grants.
 const MIN_W: u16 = 44;
-/// The terminal's own white: light on dark themes, so the code reads dark-on-light to a camera.
-const INK: Color = Color::White;
+/// The large code's light: the terminal's own white, light on dark themes.
+const LIGHT: Color = Color::White;
 
 fn qr(app: &App) -> Option<Qr> {
     Qr::new(&app.pair.as_ref().ok()?.link)
@@ -59,7 +59,12 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
                 qw.min(inner.width),
                 qh,
             );
-            f.render_widget(Paragraph::new(q.lines(large, Style::new().fg(INK))), r);
+            let ink = if large {
+                Style::new().fg(LIGHT)
+            } else {
+                theme::accent()
+            };
+            f.render_widget(Paragraph::new(q.lines(large, ink)), r);
             app.hits.borrow_mut().push((r, Target::Zoom));
             y += qh + 1;
         }
