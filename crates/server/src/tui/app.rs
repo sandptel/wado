@@ -1,104 +1,112 @@
 //! The panel's state and what each key does. Drawing is [`super::view`]'s; side effects are
-//! [`super::actions`]'s. Keys mean the same thing wherever they make sense — `f s c h` edit a
-//! grant checklist, whichever one is in front of you.
+//! [`super::actions`]'s.
+//!
+//! One rule everywhere: **tab** picks a card, **arrows** move in it, **space** flips what is under
+//! the cursor — and a click does both. Grants read the same way wherever they appear: a row of
+//! four toggles, `files shells settings host`.
 
+use std::cell::RefCell;
 use std::time::{Duration, Instant};
 
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
+use ratatui::layout::{Position, Rect};
 
 use super::actions::{self, Outcome};
 use super::data::Snapshot;
-use crate::gate::{Grants, Verdict};
+use super::load::Load;
+use crate::gate::{Gate, Grants, Verdict};
 
+/// The cards that take the cursor, in tab order.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Panel {
-    Rig,
-    Sessions,
-    Devices,
+pub enum Card {
     Pair,
-    Security,
+    Devices,
+    Switches,
 }
 
-impl Panel {
-    pub const ALL: [Panel; 5] = [
-        Panel::Rig,
-        Panel::Sessions,
-        Panel::Devices,
-        Panel::Pair,
-        Panel::Security,
-    ];
-    pub fn title(self) -> &'static str {
-        match self {
-            Panel::Rig => "Rig",
-            Panel::Sessions => "Sessions",
-            Panel::Devices => "Devices",
-            Panel::Pair => "Pair",
-            Panel::Security => "Security",
-        }
-    }
+impl Card {
+    pub const ALL: [Card; 3] = [Card::Pair, Card::Devices, Card::Switches];
     fn index(self) -> usize {
-        Self::ALL.iter().position(|p| *p == self).unwrap_or(0)
+        Self::ALL.iter().position(|c| *c == self).unwrap_or(0)
     }
 }
 
-/// The rows of the Security panel, in order.
+/// The rows of the Switches card, in order.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Setting {
+pub enum Switch {
     Join,
     TrustFirst,
-    NewDevice,
     Files,
     Shells,
+    NewDevice,
 }
 
-pub const SETTINGS: [Setting; 5] = [
-    Setting::Join,
-    Setting::TrustFirst,
-    Setting::NewDevice,
-    Setting::Files,
-    Setting::Shells,
+pub const SWITCHES: [Switch; 5] = [
+    Switch::Join,
+    Switch::TrustFirst,
+    Switch::Files,
+    Switch::Shells,
+    Switch::NewDevice,
 ];
 
-pub enum Modal {
-    /// `unpair <key>`, waiting for y.
-    Unpair {
-        key: String,
-        name: String,
-    },
-    Help,
+/// The grant columns, in the order every checklist shows them.
+pub const GRANTS: [&str; 4] = ["files", "shells", "settings", "host"];
+/// The Devices matrix: the grants, then who is owner.
+pub const OWNER_COL: usize = 4;
+
+/// What a click on a drawn region does.
+#[derive(Clone, Copy)]
+pub enum Target {
+    Cell(Card, usize, usize),
+    Answer(Verdict),
+    Snooze,
+}
+
+/// The pairing code on screen.
+pub struct Pair {
+    pub link: String,
+    pub code: String,
 }
 
 pub struct App {
     pub snap: Snapshot,
-    pub focus: Panel,
-    /// The cursor in each panel, by [`Panel::index`].
-    pub cursor: [usize; 5],
-    /// The checklist the next pairing code will carry.
+    pub load: Load,
+    pub focus: Card,
+    /// `(row, column)` in each card, by [`Card::index`].
+    pub cursor: [(usize, usize); 3],
+    /// The checklist the QR on screen carries.
     pub pair_grants: Grants,
-    /// The last code made, and the checklist it was made with.
-    pub pair_link: Option<(String, Grants)>,
-    pub modal: Option<Modal>,
+    pub pair: Result<Pair, String>,
+    /// `(key, name)` of a device waiting for `y` to be unpaired.
+    pub confirm: Option<(String, String)>,
     /// Approval requests put off with Esc; they come back when a new one arrives.
     pub snoozed: Vec<String>,
     pub toast: Option<(Outcome, Instant)>,
     pub quit: bool,
+    /// Where the last frame put each clickable thing.
+    pub hits: RefCell<Vec<(Rect, Target)>>,
     last_read: Instant,
 }
 
 impl App {
     pub fn new() -> Self {
-        Self {
+        let mut app = Self {
             snap: Snapshot::read(),
-            focus: Panel::Devices,
-            cursor: [0; 5],
+            load: Load::default(),
+            focus: Card::Pair,
+            cursor: [(0, 0); 3],
             pair_grants: Grants::new_device(),
-            pair_link: None,
-            modal: None,
+            pair: Err("making a code…".into()),
+            confirm: None,
             snoozed: Vec::new(),
             toast: None,
             quit: false,
+            hits: RefCell::new(Vec::new()),
             last_read: Instant::now(),
-        }
+        };
+        app.load.sample();
+        app.mint();
+        app
     }
 
     /// Re-read the world once a second.
@@ -117,12 +125,42 @@ impl App {
 
     fn refresh(&mut self) {
         self.snap = Snapshot::read();
+        self.load.sample();
         self.last_read = Instant::now();
-        for p in Panel::ALL {
-            let len = self.len(p);
-            let c = &mut self.cursor[p.index()];
-            *c = (*c).min(len.saturating_sub(1));
+        // The QR on screen is always one that works: a used or expired code is replaced.
+        match &self.pair {
+            Ok(p) if !Gate::default().pair_live(&p.code) => {
+                self.mint();
+                self.toast = Some((
+                    Ok("the code was used — a fresh one is up".into()),
+                    Instant::now(),
+                ));
+            }
+            Err(_) => self.mint(),
+            Ok(_) => {}
         }
+        for c in Card::ALL {
+            let rows = self.rows(c);
+            let (r, col) = self.cursor[c.index()];
+            let r = r.min(rows.saturating_sub(1));
+            self.cursor[c.index()] = (r, col.min(self.cols(c, r).saturating_sub(1)));
+        }
+    }
+
+    /// Replace the code on screen with one carrying the current checklist.
+    fn mint(&mut self) {
+        if let Ok(old) = &self.pair {
+            Gate::default().revoke_pair(&old.code);
+        }
+        self.pair = actions::pair(&self.pair_grants).map(|link| Pair {
+            code: link
+                .split("pair=")
+                .nth(1)
+                .and_then(|r| r.split('&').next())
+                .unwrap_or_default()
+                .to_string(),
+            link,
+        });
     }
 
     fn done(&mut self, o: Outcome) {
@@ -130,19 +168,26 @@ impl App {
         self.refresh();
     }
 
-    pub fn len(&self, p: Panel) -> usize {
-        match p {
-            // relay, tunnel, then each daemon
-            Panel::Rig => 2 + self.snap.status.daemons.len(),
-            Panel::Sessions => self.snap.status.sessions.len(),
-            Panel::Devices => self.snap.devices.len(),
-            Panel::Pair => 1,
-            Panel::Security => SETTINGS.len(),
+    pub fn rows(&self, c: Card) -> usize {
+        match c {
+            Card::Pair => 1,
+            Card::Devices => self.snap.devices.len(),
+            Card::Switches => SWITCHES.len(),
         }
     }
 
-    pub fn at(&self, p: Panel) -> usize {
-        self.cursor[p.index()]
+    fn cols(&self, c: Card, row: usize) -> usize {
+        match c {
+            Card::Pair => GRANTS.len(),
+            Card::Devices => GRANTS.len() + 1,
+            Card::Switches if SWITCHES.get(row) == Some(&Switch::NewDevice) => GRANTS.len(),
+            Card::Switches => 1,
+        }
+    }
+
+    /// The cursor of card `c`, or `None` when it is not the focused one.
+    pub fn at(&self, c: Card) -> Option<(usize, usize)> {
+        (self.focus == c).then(|| self.cursor[c.index()])
     }
 
     /// The device waiting at the gate that has not been put off, if any.
@@ -158,139 +203,139 @@ impl App {
             self.quit = true;
             return;
         }
-        if let Some(m) = self.modal.take() {
-            return self.modal_key(m, k.code);
+        if let Some((key, _)) = self.confirm.take() {
+            if k.code == KeyCode::Char('y') {
+                self.done(actions::unpair(&key));
+            }
+            return;
         }
-        if let Some(r) = self.asking() {
-            let (id, name) = (r.id.clone(), r.name.clone());
-            let v = match k.code {
-                KeyCode::Char('o') => Some(Verdict::Once),
-                KeyCode::Char('a') => Some(Verdict::Always),
-                KeyCode::Char('d') => Some(Verdict::Deny),
-                KeyCode::Esc => {
-                    self.snoozed.push(id);
-                    return;
-                }
+        if self.asking().is_some() {
+            let t = match k.code {
+                KeyCode::Char('y' | 'a') => Some(Target::Answer(Verdict::Always)),
+                KeyCode::Char('o') => Some(Target::Answer(Verdict::Once)),
+                KeyCode::Char('n' | 'd') => Some(Target::Answer(Verdict::Deny)),
+                KeyCode::Esc => Some(Target::Snooze),
                 _ => None,
             };
-            if let Some(v) = v {
-                return self.done(actions::answer(&id, &name, v));
+            if let Some(t) = t {
+                return self.hit(t);
             }
             // Anything else falls through: a request must not lock the panel.
         }
         match k.code {
-            KeyCode::Char('q') => self.quit = true,
-            KeyCode::Char('?') => self.modal = Some(Modal::Help),
-            KeyCode::Char(c @ '1'..='5') => {
-                self.focus = Panel::ALL[c as usize - '1' as usize];
+            KeyCode::Char('q') | KeyCode::Esc => self.quit = true,
+            KeyCode::Tab => self.focus = Card::ALL[(self.focus.index() + 1) % 3],
+            KeyCode::BackTab => self.focus = Card::ALL[(self.focus.index() + 2) % 3],
+            KeyCode::Down | KeyCode::Char('j') => self.step(1, 0),
+            KeyCode::Up | KeyCode::Char('k') => self.step(-1, 0),
+            KeyCode::Right | KeyCode::Char('l') => self.step(0, 1),
+            KeyCode::Left | KeyCode::Char('h') => self.step(0, -1),
+            KeyCode::Enter | KeyCode::Char(' ') => {
+                let (r, c) = self.cursor[self.focus.index()];
+                self.flip(self.focus, r, c);
             }
-            KeyCode::Tab => self.focus = Panel::ALL[(self.focus.index() + 1) % 5],
-            KeyCode::BackTab => self.focus = Panel::ALL[(self.focus.index() + 4) % 5],
-            KeyCode::Down | KeyCode::Char('j') => self.step(1),
-            KeyCode::Up | KeyCode::Char('k') => self.step(-1),
-            KeyCode::Char('r') => self.done(Ok("refreshed".into())),
-            KeyCode::Char(c @ ('f' | 's' | 'c' | 'h')) => self.grant_key(c),
-            KeyCode::Char('u') | KeyCode::Delete if self.focus == Panel::Devices => {
-                if let Some(row) = self.snap.devices.get(self.at(Panel::Devices)) {
-                    self.modal = Some(Modal::Unpair {
-                        key: row.device.key.clone(),
-                        name: row.device.name.clone(),
-                    });
+            KeyCode::Char('x') | KeyCode::Delete if self.focus == Card::Devices => {
+                if let Some(row) = self.snap.devices.get(self.cursor[1].0) {
+                    self.confirm = Some((row.device.key.clone(), row.device.name.clone()));
                 }
             }
-            KeyCode::Char('o') if self.focus == Panel::Devices => {
-                if let Some(row) = self.snap.devices.get(self.at(Panel::Devices)) {
-                    let (key, name) = (row.device.key.clone(), row.device.name.clone());
-                    self.done(
+            KeyCode::Char('c') => match &self.pair {
+                Ok(p) => {
+                    actions::copy(&p.link);
+                    self.toast = Some((Ok("link copied".into()), Instant::now()));
+                }
+                Err(e) => self.toast = Some((Err(e.clone()), Instant::now())),
+            },
+            _ => {}
+        }
+    }
+
+    pub fn mouse(&mut self, m: MouseEvent) {
+        match m.kind {
+            MouseEventKind::Down(_) => {
+                let at = Position::new(m.column, m.row);
+                let hit = self
+                    .hits
+                    .borrow()
+                    .iter()
+                    .find(|(r, _)| r.contains(at))
+                    .map(|(_, t)| *t);
+                if let Some(t) = hit {
+                    self.hit(t);
+                }
+            }
+            MouseEventKind::ScrollDown => self.step(1, 0),
+            MouseEventKind::ScrollUp => self.step(-1, 0),
+            _ => {}
+        }
+    }
+
+    fn hit(&mut self, t: Target) {
+        match t {
+            Target::Cell(card, r, c) => {
+                self.focus = card;
+                self.cursor[card.index()] = (r, c);
+                self.flip(card, r, c);
+            }
+            Target::Answer(v) => {
+                if let Some(req) = self.asking() {
+                    let (id, name) = (req.id.clone(), req.name.clone());
+                    self.done(actions::answer(&id, &name, v));
+                }
+            }
+            Target::Snooze => {
+                if let Some(req) = self.asking() {
+                    self.snoozed.push(req.id.clone());
+                }
+            }
+        }
+    }
+
+    fn step(&mut self, dr: isize, dc: isize) {
+        let card = self.focus;
+        let rows = self.rows(card);
+        if rows == 0 {
+            return;
+        }
+        let (r, c) = self.cursor[card.index()];
+        let r = (r as isize + dr).rem_euclid(rows as isize) as usize;
+        let cols = self.cols(card, r);
+        let c = (c as isize + dc).clamp(0, cols as isize - 1) as usize;
+        self.cursor[card.index()] = (r, c);
+    }
+
+    /// Space on `(row, col)` of `card`.
+    fn flip(&mut self, card: Card, row: usize, col: usize) {
+        match card {
+            Card::Pair => {
+                let (token, on) = flip(&self.pair_grants, col);
+                let _ = self.pair_grants.set(&token, on);
+                self.mint();
+            }
+            Card::Devices => {
+                let Some(r) = self.snap.devices.get(row) else {
+                    return;
+                };
+                let (key, name) = (r.device.key.clone(), r.device.name.clone());
+                if col == OWNER_COL {
+                    if r.owner {
+                        return self.done(Ok(format!("{name} is already the owner")));
+                    }
+                    return self.done(
                         actions::set("security.owner", &key)
                             .map(|_| format!("{name} is the owner now")),
                     );
                 }
-            }
-            KeyCode::Enter | KeyCode::Char(' ') => self.activate(),
-            _ => {}
-        }
-    }
-
-    fn modal_key(&mut self, m: Modal, code: KeyCode) {
-        match (m, code) {
-            (Modal::Unpair { key, .. }, KeyCode::Char('y')) => self.done(actions::unpair(&key)),
-            (Modal::Help, _) | (Modal::Unpair { .. }, _) => {}
-        }
-    }
-
-    fn step(&mut self, by: isize) {
-        let len = self.len(self.focus);
-        if len == 0 {
-            return;
-        }
-        let i = self.focus.index();
-        self.cursor[i] = (self.cursor[i] as isize + by).rem_euclid(len as isize) as usize;
-    }
-
-    /// `f s c h`: flip a grant on whichever checklist is in front of you.
-    fn grant_key(&mut self, c: char) {
-        let flip = |g: &Grants| -> (String, bool) {
-            match c {
-                // none → ro → rw → none
-                'f' => match g.files {
-                    "none" => ("files-ro".into(), true),
-                    "ro" => ("files-rw".into(), true),
-                    _ => ("files".into(), false),
-                },
-                's' => ("shells".into(), !g.shells),
-                'c' => ("settings".into(), !g.settings),
-                _ => ("host".into(), !g.host),
-            }
-        };
-        match self.focus {
-            Panel::Devices => {
-                let Some(row) = self.snap.devices.get(self.at(Panel::Devices)) else {
-                    return;
-                };
-                if row.owner && c != 'f' {
+                if r.owner && col != 0 {
                     return self.done(Err("the owner may do everything but files already".into()));
                 }
-                let (token, on) = flip(&row.device.grants);
-                let key = row.device.key.clone();
+                let (token, on) = flip(&r.device.grants, col);
                 self.done(actions::toggle(&key, &token, on));
             }
-            Panel::Pair => {
-                let (token, on) = flip(&self.pair_grants);
-                let _ = self.pair_grants.set(&token, on);
-            }
-            Panel::Security if SETTINGS[self.at(Panel::Security)] == Setting::NewDevice => {
-                let mut g = Grants::new_device();
-                let (token, on) = flip(&g);
-                let _ = g.set(&token, on);
-                let v = g.tokens();
-                let v = if v.is_empty() { "-".into() } else { v };
-                self.done(actions::set("security.new-device", &v));
-            }
-            _ => {}
-        }
-    }
-
-    /// Enter / space on the selected row.
-    fn activate(&mut self) {
-        match self.focus {
-            Panel::Pair => {
-                let g = self.pair_grants.clone();
-                match actions::pair(&g) {
-                    Ok(link) => {
-                        self.pair_link = Some((link, g));
-                        self.toast = Some((
-                            Ok("new pairing code — single use, good for a day".into()),
-                            Instant::now(),
-                        ));
-                    }
-                    Err(e) => self.done(Err(e)),
-                }
-            }
-            Panel::Security => {
+            Card::Switches => {
                 let s = &self.snap.cfg;
-                let o = match SETTINGS[self.at(Panel::Security)] {
-                    Setting::Join => actions::set(
+                let o = match SWITCHES[row] {
+                    Switch::Join => actions::set(
                         "security.join",
                         if s.security.open_join() {
                             "ask"
@@ -298,18 +343,46 @@ impl App {
                             "open"
                         },
                     ),
-                    Setting::TrustFirst => actions::set(
+                    Switch::TrustFirst => actions::set(
                         "security.trust-first-device",
                         bool_kdl(!s.security.trust_first_device),
                     ),
-                    Setting::Files => actions::set("files.enabled", bool_kdl(!s.files.enabled)),
-                    Setting::Shells => actions::set("shells.enabled", bool_kdl(!s.shells.enabled)),
-                    Setting::NewDevice => Err("f s c h edit what a new device may do".into()),
+                    Switch::Files => actions::set("files.enabled", bool_kdl(!s.files.enabled)),
+                    Switch::Shells => actions::set("shells.enabled", bool_kdl(!s.shells.enabled)),
+                    Switch::NewDevice => {
+                        let mut g = Grants::new_device();
+                        let (token, on) = flip(&g, col);
+                        let _ = g.set(&token, on);
+                        let v = g.tokens();
+                        actions::set("security.new-device", if v.is_empty() { "-" } else { &v })
+                    }
                 };
                 self.done(o);
             }
-            _ => {}
         }
+    }
+}
+
+/// A code nobody can see any more is withdrawn.
+impl Drop for App {
+    fn drop(&mut self) {
+        if let Ok(p) = &self.pair {
+            Gate::default().revoke_pair(&p.code);
+        }
+    }
+}
+
+/// The grant token and new state for flipping column `col` of `g` — files step none → ro → rw.
+fn flip(g: &Grants, col: usize) -> (String, bool) {
+    match col {
+        0 => match g.files {
+            "none" => ("files-ro".into(), true),
+            "ro" => ("files-rw".into(), true),
+            _ => ("files".into(), false),
+        },
+        1 => ("shells".into(), !g.shells),
+        2 => ("settings".into(), !g.settings),
+        _ => ("host".into(), !g.host),
     }
 }
 

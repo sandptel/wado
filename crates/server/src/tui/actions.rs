@@ -47,3 +47,12 @@ pub fn set(key: &str, value: &str) -> Outcome {
     }
     Ok(format!("{key} = {value}"))
 }
+
+/// Put `text` on the clipboard of the terminal the panel is in — OSC 52, so it works over ssh.
+pub fn copy(text: &str) {
+    use base64::Engine;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(text);
+    let mut out = std::io::stdout();
+    let _ = write!(out, "\x1b]52;c;{b64}\x07");
+    let _ = out.flush();
+}

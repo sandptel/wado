@@ -50,3 +50,47 @@ pub fn dot(up: bool) -> (&'static str, Style) {
         (OFFLINE, dim())
     }
 }
+
+/// The cursor in the focused card.
+pub fn cursor() -> Style {
+    Style::new()
+        .fg(Color::Black)
+        .bg(ACCENT)
+        .add_modifier(Modifier::BOLD)
+}
+
+/// A grant or switch: green when on, grey when off.
+pub fn state(on: bool) -> Style {
+    if on { Style::new().fg(GOOD) } else { dim() }
+}
+
+/// `text` in a three-row box-drawing face — digits, `-`, space and the letters of "wado".
+pub fn big(text: &str) -> [String; 3] {
+    let mut rows = [String::new(), String::new(), String::new()];
+    for (i, c) in text.chars().enumerate() {
+        let g: [&str; 3] = match c {
+            '0' | 'o' => ["┏━┓", "┃ ┃", "┗━┛"],
+            '1' => ["╺┓ ", " ┃ ", "╺┻╸"],
+            '2' => ["┏━┓", "┏━┛", "┗━╸"],
+            '3' => ["┏━┓", "╺━┫", "┗━┛"],
+            '4' => ["╻ ╻", "┗━┫", "  ╹"],
+            '5' => ["┏━╸", "┗━┓", "┗━┛"],
+            '6' => ["┏━┓", "┣━┓", "┗━┛"],
+            '7' => ["┏━┓", "  ┃", "  ╹"],
+            '8' => ["┏━┓", "┣━┫", "┗━┛"],
+            '9' => ["┏━┓", "┗━┫", "┗━┛"],
+            'w' => ["╻ ╻", "┃╻┃", "┗┻┛"],
+            'a' => ["┏━┓", "┣━┫", "╹ ╹"],
+            'd' => ["╺┳┓", " ┃┃", "╺┻┛"],
+            '-' => ["   ", "╺━╸", "   "],
+            _ => [" ", " ", " "],
+        };
+        for (r, part) in rows.iter_mut().zip(g) {
+            if i > 0 {
+                r.push(' ');
+            }
+            r.push_str(part);
+        }
+    }
+    rows
+}

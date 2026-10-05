@@ -237,6 +237,18 @@ impl Gate {
         Some(hit)
     }
 
+    /// Whether pairing code `code` can still be redeemed — false once used or expired.
+    pub fn pair_live(&self, code: &str) -> bool {
+        self.pairs()
+            .iter()
+            .any(|(c, t, _)| c == code && *t > now_s())
+    }
+
+    /// Withdraw pairing code `code` unused.
+    pub fn revoke_pair(&self, code: &str) {
+        let _ = self.redeem(code);
+    }
+
     fn pairs_path(&self) -> PathBuf {
         self.dir.join("pair_codes")
     }
