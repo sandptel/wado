@@ -32,7 +32,6 @@
 //! second late costs nothing, and polling a tiny directory costs less than the dependency.
 
 use std::fs;
-use std::io::Write;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
@@ -44,6 +43,14 @@ pub const APPROVAL_WAIT: Duration = Duration::from_secs(600);
 const POLL: Duration = Duration::from_millis(500);
 /// How long a QR pairing code works.
 const PAIR_TTL: Duration = Duration::from_secs(24 * 3600);
+
+/// `security { files-default }`, read as `none` unless it is a level.
+fn files_default() -> String {
+    match wado_config::live::current().security.files_default.as_str() {
+        l @ ("ro" | "rw") => l.into(),
+        _ => "none".into(),
+    }
+}
 
 fn now_s() -> u64 {
     SystemTime::now()
@@ -238,18 +245,8 @@ impl Gate {
         if key.is_empty() || self.trusted_keys().iter().any(|k| k == key) {
             return;
         }
-        let line = format!("{key}\t{}\n", name.replace(['\t', '\n'], " "));
-        let res = fs::create_dir_all(&self.dir).and_then(|_| {
-            fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(self.trusted_path())?
-                .write_all(line.as_bytes())
-        });
-        match res {
-            Ok(()) => info!("gate: trusted a new device — {name}"),
-            Err(e) => warn!("gate: could not write the trust list: {e}"),
-        }
+        self.write_line(key, name, "", false, &files_default());
+        info!("gate: trusted a new device — {name}");
     }
 
     /// The pairing codes still live, for checking a device's proof against.
@@ -274,9 +271,13 @@ impl Gate {
             })
     }
 
-    /// Write `key`'s line with its proven key, in place or appended. Its file grant is kept.
+    /// Write `key`'s line with its proven key, in place or appended. Its file grant is kept; a
+    /// new line starts with `security { files-default }`.
     fn set(&self, key: &str, name: &str, pk: &str, pinned: bool) {
-        let files = self.files_level(key);
+        let files = match self.entry(key) {
+            Some(_) => self.files_level(key),
+            None => files_default(),
+        };
         self.write_line(key, name, pk, pinned, &files);
     }
 

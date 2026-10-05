@@ -4,9 +4,11 @@
 //! next viewer asks for the list and gets each one back with its scrollback, which is what makes
 //! ssh from a phone on mobile data usable at all. A shell ends when it exits or its tab is closed.
 //!
+//! - [`access`] — which devices may use them.
 //! - [`hosts`] — the ssh aliases on offer, which double as the allow-list.
 //! - [`scrollback`] — the output kept for a reattach.
 
+pub mod access;
 pub mod hosts;
 pub mod scrollback;
 
