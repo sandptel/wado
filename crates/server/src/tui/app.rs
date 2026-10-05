@@ -60,6 +60,8 @@ pub enum Target {
     Cell(Card, usize, usize),
     Answer(Verdict),
     Snooze,
+    /// The QR code: compact ↔ large.
+    Zoom,
 }
 
 /// The pairing code on screen.
@@ -77,6 +79,8 @@ pub struct App {
     /// The checklist the QR on screen carries.
     pub pair_grants: Grants,
     pub pair: Result<Pair, String>,
+    /// The QR at its large size, for a camera that struggles with the compact one.
+    pub big_qr: bool,
     /// `(key, name)` of a device waiting for `y` to be unpaired.
     pub confirm: Option<(String, String)>,
     /// Approval requests put off with Esc; they come back when a new one arrives.
@@ -97,6 +101,7 @@ impl App {
             cursor: [(0, 0); 3],
             pair_grants: Grants::new_device(),
             pair: Err("making a code…".into()),
+            big_qr: false,
             confirm: None,
             snoozed: Vec::new(),
             toast: None,
@@ -239,6 +244,7 @@ impl App {
                     self.confirm = Some((row.device.key.clone(), row.device.name.clone()));
                 }
             }
+            KeyCode::Char('z') => self.big_qr = !self.big_qr,
             KeyCode::Char('c') => match &self.pair {
                 Ok(p) => {
                     actions::copy(&p.link);
@@ -264,8 +270,8 @@ impl App {
                     self.hit(t);
                 }
             }
-            MouseEventKind::ScrollDown => self.step(1, 0),
-            MouseEventKind::ScrollUp => self.step(-1, 0),
+            MouseEventKind::ScrollDown => self.scroll(1),
+            MouseEventKind::ScrollUp => self.scroll(-1),
             _ => {}
         }
     }
@@ -283,6 +289,7 @@ impl App {
                     self.done(actions::answer(&id, &name, v));
                 }
             }
+            Target::Zoom => self.big_qr = !self.big_qr,
             Target::Snooze => {
                 if let Some(req) = self.asking() {
                     self.snoozed.push(req.id.clone());
@@ -291,17 +298,45 @@ impl App {
         }
     }
 
+    /// Move the cursor; past a card's edge it crosses to the card on that side —
+    /// Pair on the left, Devices above Switches on the right.
     fn step(&mut self, dr: isize, dc: isize) {
         let card = self.focus;
-        let rows = self.rows(card);
-        if rows == 0 {
+        let rows = self.rows(card) as isize;
+        let (r, c) = self.cursor[card.index()];
+        let (r2, c2) = (r as isize + dr, c as isize + dc);
+        let cols = self.cols(card, r) as isize;
+        let across = match card {
+            Card::Devices if rows == 0 => match (dr, dc) {
+                (_, -1) => Some(Card::Pair),
+                (1, _) => Some(Card::Switches),
+                _ => None,
+            },
+            Card::Pair if c2 >= cols || r2 != r as isize => Some(Card::Devices),
+            Card::Devices if c2 < 0 => Some(Card::Pair),
+            Card::Devices if r2 >= rows => Some(Card::Switches),
+            Card::Switches if r2 < 0 => Some(Card::Devices),
+            Card::Switches if c2 < 0 => Some(Card::Pair),
+            _ => None,
+        };
+        if let Some(to) = across {
+            self.focus = to;
             return;
         }
-        let (r, c) = self.cursor[card.index()];
-        let r = (r as isize + dr).rem_euclid(rows as isize) as usize;
-        let cols = self.cols(card, r);
-        let c = (c as isize + dc).clamp(0, cols as isize - 1) as usize;
+        let r = r2.clamp(0, rows - 1) as usize;
+        let c = c2.clamp(0, self.cols(card, r) as isize - 1) as usize;
         self.cursor[card.index()] = (r, c);
+    }
+
+    /// The wheel moves within the card, never out of it.
+    fn scroll(&mut self, by: isize) {
+        let card = self.focus;
+        let rows = self.rows(card) as isize;
+        if rows > 0 {
+            let (r, c) = self.cursor[card.index()];
+            let r = (r as isize + by).clamp(0, rows - 1) as usize;
+            self.cursor[card.index()] = (r, c.min(self.cols(card, r) - 1));
+        }
     }
 
     /// Space on `(row, col)` of `card`.
