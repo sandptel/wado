@@ -19,6 +19,7 @@ mod devices;
 mod header;
 mod load;
 mod pair;
+mod qr;
 mod screens;
 mod switches;
 
@@ -203,14 +204,17 @@ fn footer(app: &App) -> Paragraph<'static> {
     let mut spans = vec![Span::raw(" ")];
     let hints: &[(&str, &str)] = match app.focus {
         Card::Pair => &[
-            ("←→", "choose"),
             ("space", "allow/deny"),
             ("c", "copy link"),
+            ("z", "QR size"),
         ],
-        Card::Devices => &[("↑↓←→", "move"), ("space", "flip"), ("x", "unpair")],
-        Card::Switches => &[("↑↓", "move"), ("space", "flip")],
+        Card::Devices => &[("space", "flip"), ("x", "unpair")],
+        Card::Switches => &[("space", "flip")],
     };
-    for (k, what) in hints.iter().chain(&[("tab", "next card"), ("q", "quit")]) {
+    for (k, what) in hints
+        .iter()
+        .chain(&[("arrows", "move · across cards"), ("q", "quit")])
+    {
         spans.push(Span::styled(k.to_string(), theme::key()));
         spans.push(Span::styled(format!(" {what}  "), theme::dim()));
     }
