@@ -15,4 +15,4 @@ cd "$(dirname "$0")/.."
 # cargo saturating every core is the one condition under which they were first seen.
 nice -n 19 cargo build --release -p wado "$@"
 
-exec ./target/release/wado
+exec ./target/release/wado daemon

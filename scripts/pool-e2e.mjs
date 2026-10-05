@@ -64,7 +64,7 @@ writeFileSync(join(T, "cfg/wado/trusted_clients"), "Phone-key\tPhone\nLaptop-key
 start(ROOT + "target/release/wado-relay", ["--bind", "127.0.0.1:" + PORT]);
 await sleep(400);
 for (const n of ["e2e-pool-a", "e2e-pool-b"]) {
-  start(ROOT + "target/release/wado", [], {
+  start(ROOT + "target/release/wado", ["daemon"], {
     WADO_RELAY_URL: "ws://127.0.0.1:" + PORT, WADO_REMOTE_ID: RID, WADO_INSTANCE: n,
     XDG_CONFIG_HOME: join(T, "cfg"), WADO_UDP_SLICE: n.endsWith("a") ? "2" : "3", // 0–1 belong to the rig; 4+ are past the port ceiling
   });

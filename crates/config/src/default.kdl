@@ -18,8 +18,7 @@ server {
 security {
     // trust-first-device #true        // with an empty trust list, trust the first device
     // join "ask"                      // "ask" (a connected device approves) | "open" (anyone, let in once)
-    // files-default "none"            // file grant a newly trusted device starts with: none | ro | rw
-    // shell-access "trusted"          // who gets the console's shells: "trusted" | "owner"
+    // new-device "host"               // what a new device may do: files-ro|files-rw shells settings host
 }
 
 stream {

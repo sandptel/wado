@@ -16,12 +16,10 @@ pub struct Security {
     /// `"ask"`. Anyone who reaches this computer's remote id gets its desktop: for testing.
     /// Anything else reads as `"ask"`.
     pub join: String,
-    /// The file grant (`none`, `ro`, `rw`) a device starts with when it is first trusted. It
-    /// still counts only once the device is QR-paired, as `wado files grant` does.
-    pub files_default: String,
-    /// Who may open, see or type into the console's shells: `"trusted"` (any device on the
-    /// trust list, not one let in once) or `"owner"`. Anything else reads as `"owner"`.
-    pub shell_access: String,
+    /// What a newly trusted device may do beyond the desktop, as grant tokens: `files-ro`,
+    /// `files-rw`, `shells`, `settings`, `host`. A pairing code's checklist starts from this;
+    /// a device approved "always" gets exactly this. Files still need a QR pin to count.
+    pub new_device: String,
     /// The client key of the device allowed to change privileged settings from the client.
     /// Unset: the first device in `trusted_clients`.
     pub owner: Option<String>,
@@ -31,9 +29,6 @@ impl Security {
     pub fn open_join(&self) -> bool {
         self.join == "open"
     }
-    pub fn owner_only_shells(&self) -> bool {
-        self.shell_access != "trusted"
-    }
 }
 
 impl Default for Security {
@@ -41,8 +36,7 @@ impl Default for Security {
         Self {
             trust_first_device: true,
             join: "ask".into(),
-            files_default: "none".into(),
-            shell_access: "trusted".into(),
+            new_device: "host".into(),
             owner: None,
         }
     }

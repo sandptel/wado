@@ -28,6 +28,7 @@ pub mod runlane;
 pub mod sched;
 pub mod sessions;
 pub mod shells;
+pub mod tui;
 pub mod webrtc_settings;
 pub mod website;
 

@@ -36,6 +36,9 @@ use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
 use serde::{Deserialize, Serialize};
+
+pub mod grants;
+pub use grants::Grants;
 use tracing::{info, warn};
 
 /// How long a request may wait for an answer. Matches the relay's own `APPROVAL_WAIT`.
@@ -43,14 +46,6 @@ pub const APPROVAL_WAIT: Duration = Duration::from_secs(600);
 const POLL: Duration = Duration::from_millis(500);
 /// How long a QR pairing code works.
 const PAIR_TTL: Duration = Duration::from_secs(24 * 3600);
-
-/// `security { files-default }`, read as `none` unless it is a level.
-fn files_default() -> String {
-    match wado_config::live::current().security.files_default.as_str() {
-        l @ ("ro" | "rw") => l.into(),
-        _ => "none".into(),
-    }
-}
 
 fn now_s() -> u64 {
     SystemTime::now()
@@ -64,6 +59,16 @@ pub struct Request {
     pub id: String,
     pub name: String,
     pub addr: String,
+}
+
+/// One line of `trusted_clients`, read.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Device {
+    pub key: String,
+    pub name: String,
+    /// Its key was proven with a QR pairing code.
+    pub pinned: bool,
+    pub grants: Grants,
 }
 
 #[derive(Debug, PartialEq)]
@@ -185,6 +190,11 @@ impl Gate {
     /// A new pairing code for a connect link: single use, good for a day. The QR it goes into is
     /// shown only on this computer, so a device presenting it was shown the host's screen.
     pub fn mint_pair(&self) -> String {
+        self.mint_pair_with(&Grants::new_device())
+    }
+
+    /// A pairing code that, redeemed, gives its device `grants` (on top of any it has).
+    pub fn mint_pair_with(&self, grants: &Grants) -> String {
         use rand::Rng;
         let code: String = rand::thread_rng()
             .sample_iter(&rand::distributions::Alphanumeric)
@@ -195,10 +205,10 @@ impl Gate {
         let mut lines: Vec<String> = self
             .pairs()
             .into_iter()
-            .filter(|(_, t)| *t > now_s())
-            .map(|(c, t)| format!("{c}\t{t}"))
+            .filter(|(_, t, _)| *t > now_s())
+            .map(|(c, t, g)| format!("{c}\t{t}\t{g}"))
             .collect();
-        lines.push(format!("{code}\t{until}"));
+        lines.push(format!("{code}\t{until}\t{}", grants.tokens()));
         if let Err(e) = fs::create_dir_all(&self.dir)
             .and_then(|_| fs::write(self.pairs_path(), lines.join("\n") + "\n"))
         {
@@ -208,34 +218,42 @@ impl Gate {
     }
 
     /// Use up a pairing code: true once for a live code, false for anything else.
-    pub fn redeem(&self, code: &str) -> bool {
+    /// Spend a pairing code: the grants it carries, or `None` if it is not live.
+    pub fn redeem(&self, code: &str) -> Option<Grants> {
         if code.is_empty() {
-            return false;
+            return None;
         }
         let all = self.pairs();
-        let ok = all.iter().any(|(c, t)| c == code && *t > now_s());
-        if ok {
-            let rest: Vec<String> = all
-                .into_iter()
-                .filter(|(c, t)| c != code && *t > now_s())
-                .map(|(c, t)| format!("{c}\t{t}"))
-                .collect();
-            let _ = fs::write(self.pairs_path(), rest.join("\n") + "\n");
-        }
-        ok
+        let hit = all
+            .iter()
+            .find(|(c, t, _)| c == code && *t > now_s())
+            .map(|(_, _, g)| Grants::parse(g).unwrap_or(Grants::NONE))?;
+        let rest: Vec<String> = all
+            .into_iter()
+            .filter(|(c, t, _)| c != code && *t > now_s())
+            .map(|(c, t, g)| format!("{c}\t{t}\t{g}"))
+            .collect();
+        let _ = fs::write(self.pairs_path(), rest.join("\n") + "\n");
+        Some(hit)
     }
 
     fn pairs_path(&self) -> PathBuf {
         self.dir.join("pair_codes")
     }
 
-    fn pairs(&self) -> Vec<(String, u64)> {
+    /// `(code, expiry, grant tokens)`. A code from before checklists carries `new-device`.
+    fn pairs(&self) -> Vec<(String, u64, String)> {
         fs::read_to_string(self.pairs_path())
             .unwrap_or_default()
             .lines()
             .filter_map(|l| {
-                let (c, t) = l.split_once('\t')?;
-                Some((c.to_string(), t.parse().ok()?))
+                let mut f = l.split('\t');
+                let c = f.next()?.to_string();
+                let t = f.next()?.parse().ok()?;
+                let g = f
+                    .next()
+                    .map_or_else(|| Grants::new_device().tokens(), String::from);
+                Some((c, t, g))
             })
             .collect()
     }
@@ -245,7 +263,7 @@ impl Gate {
         if key.is_empty() || self.trusted_keys().iter().any(|k| k == key) {
             return;
         }
-        self.write_line(key, name, "", false, &files_default());
+        self.write_line(key, name, "", false, &Grants::new_device());
         info!("gate: trusted a new device — {name}");
     }
 
@@ -253,8 +271,8 @@ impl Gate {
     pub fn live_pairs(&self) -> Vec<String> {
         self.pairs()
             .into_iter()
-            .filter(|(_, t)| *t > now_s())
-            .map(|(c, _)| c)
+            .filter(|(_, t, _)| *t > now_s())
+            .map(|(c, ..)| c)
             .collect()
     }
 
@@ -271,19 +289,24 @@ impl Gate {
             })
     }
 
-    /// Write `key`'s line with its proven key, in place or appended. Its file grant is kept; a
-    /// new line starts with `security { files-default }`.
-    fn set(&self, key: &str, name: &str, pk: &str, pinned: bool) {
-        let files = match self.entry(key) {
-            Some(_) => self.files_level(key),
-            None => files_default(),
-        };
-        self.write_line(key, name, pk, pinned, &files);
+    /// Write `key`'s line with its proven key, in place or appended. Its grants are kept, plus
+    /// `more` (a pairing code's checklist); a new line starts with `security { new-device }`.
+    fn set(&self, key: &str, name: &str, pk: &str, pinned: bool, more: Option<&Grants>) {
+        let had = self
+            .device(key)
+            .map_or_else(Grants::new_device, |d| d.grants);
+        let g = more.map_or_else(|| had.clone(), |m| had.union(m));
+        self.write_line(key, name, pk, pinned, &g);
     }
 
-    fn write_line(&self, key: &str, name: &str, pk: &str, pinned: bool, files: &str) {
+    fn write_line(&self, key: &str, name: &str, pk: &str, pinned: bool, g: &Grants) {
         let name = name.replace(['\t', '\n'], " ");
-        let line = format!("{key}\t{name}\t{pk}\t{}\t{files}", u8::from(pinned));
+        let line = format!(
+            "{key}\t{name}\t{pk}\t{}\t{}\t{}",
+            u8::from(pinned),
+            g.files,
+            g.flags()
+        );
         let mut lines: Vec<String> = fs::read_to_string(self.trusted_path())
             .unwrap_or_default()
             .lines()
@@ -301,8 +324,8 @@ impl Gate {
         }
     }
 
-    /// Every trusted device: `(key, name, pinned, files level)`, oldest first.
-    pub fn devices(&self) -> Vec<(String, String, bool, String)> {
+    /// Every trusted device, oldest first.
+    pub fn devices(&self) -> Vec<Device> {
         fs::read_to_string(self.trusted_path())
             .unwrap_or_default()
             .lines()
@@ -310,29 +333,40 @@ impl Gate {
             .filter(|f| !f[0].is_empty())
             .map(|f| {
                 let get = |i: usize| f.get(i).copied().unwrap_or("");
-                let lvl = match get(4) {
-                    "ro" | "rw" => get(4),
-                    _ => "none",
-                };
-                (get(0).into(), get(1).into(), get(3) == "1", lvl.into())
+                Device {
+                    key: get(0).into(),
+                    name: get(1).into(),
+                    pinned: get(3) == "1",
+                    grants: Grants::from_columns(get(4), f.get(5).copied()),
+                }
             })
             .collect()
     }
 
-    fn files_level(&self, key: &str) -> String {
-        self.devices()
-            .into_iter()
-            .find(|d| d.0 == key)
-            .map_or_else(|| "none".into(), |d| d.3)
+    pub fn device(&self, key: &str) -> Option<Device> {
+        self.devices().into_iter().find(|d| d.key == key)
+    }
+
+    /// What `key` may do: its line's grants; the owner may do everything but files without
+    /// asking; a device off the list, nothing.
+    pub fn grants(&self, key: &str) -> Grants {
+        let own = self.device(key).map_or(Grants::NONE, |d| d.grants);
+        if crate::config::link::is_owner(key, self) {
+            // Files stay an explicit grant, owner or not.
+            return Grants {
+                files: own.files,
+                ..Grants::ALL
+            };
+        }
+        own
     }
 
     /// What `key` may do with files: `none`, `ro` or `rw`. A grant counts only on a line whose
     /// key was proven with a QR code — a device trusted on first use, or a legacy line, gets
     /// nothing until it is re-paired.
     pub fn files_access(&self, key: &str) -> &'static str {
-        match self.devices().into_iter().find(|d| d.0 == key) {
-            Some((_, _, true, l)) if l == "rw" => "rw",
-            Some((_, _, true, l)) if l == "ro" => "ro",
+        match self.device(key) {
+            Some(d) if d.pinned => self.grants(key).files,
             _ => "none",
         }
     }
@@ -343,24 +377,56 @@ impl Gate {
         if !matches!(level, "none" | "ro" | "rw") {
             return Err(format!("`{level}` is not a level — use none, ro or rw"));
         }
+        let token = if level == "none" {
+            "files"
+        } else {
+            &format!("files-{level}")
+        };
+        self.allow(who, &[token], level != "none")
+            .map(|(name, _)| name)
+    }
+
+    /// Turn grants on or off for the device `who` names. Returns its name and grants now.
+    pub fn allow(&self, who: &str, tokens: &[&str], on: bool) -> Result<(String, Grants), String> {
+        let d = self.find(who)?;
+        let mut g = d.grants.clone();
+        for t in tokens {
+            g.set(t, on)?;
+        }
+        let pk = self.entry(&d.key).map(|e| e.0).unwrap_or_default();
+        self.write_line(&d.key, &d.name, &pk, d.pinned, &g);
+        info!("gate: {} may now: {}", d.name, g.tokens());
+        Ok((d.name, g))
+    }
+
+    /// The one device `who` names: its key, a prefix of it, or its exact name.
+    pub fn find(&self, who: &str) -> Result<Device, String> {
         let all = self.devices();
         let hits: Vec<_> = all
             .iter()
-            .filter(|d| !who.is_empty() && (d.0.starts_with(who) || d.1 == who))
+            .filter(|d| !who.is_empty() && (d.key.starts_with(who) || d.name == who))
             .collect();
-        let (key, name, pinned, _) = match hits.as_slice() {
-            [one] => (*one).clone(),
-            [] => return Err(format!("no trusted device matches `{who}`")),
-            _ => {
-                return Err(format!(
-                    "`{who}` matches {} devices — use more of the key",
-                    hits.len()
-                ));
-            }
-        };
-        let pk = self.entry(&key).map(|e| e.0).unwrap_or_default();
-        self.write_line(&key, &name, &pk, pinned, level);
-        info!("gate: files access for {name} set to {level}");
+        match hits.as_slice() {
+            [one] => Ok((*one).clone()),
+            [] => Err(format!("no trusted device matches `{who}`")),
+            _ => Err(format!(
+                "`{who}` matches {} devices — use more of the key",
+                hits.len()
+            )),
+        }
+    }
+
+    /// Forget a device: it must be approved or paired again to get back in. Returns its name.
+    pub fn unpair(&self, who: &str) -> Result<String, String> {
+        let Device { key, name, .. } = self.find(who)?;
+        let kept: String = fs::read_to_string(self.trusted_path())
+            .unwrap_or_default()
+            .lines()
+            .filter(|l| !l.trim().is_empty() && l.split('\t').next() != Some(key.as_str()))
+            .map(|l| format!("{l}\n"))
+            .collect();
+        fs::write(self.trusted_path(), kept).map_err(|e| e.to_string())?;
+        info!("gate: unpaired {name}");
         Ok(name)
     }
 
@@ -377,9 +443,12 @@ impl Gate {
     ) -> Result<(), &'static str> {
         // A QR code is the owner's say-so, and it pins whatever key proved it — a re-pair is
         // how a device that lost its key comes back.
-        if pair.is_some_and(|c| self.redeem(c)) {
-            info!("gate: {name} paired with a QR code — trusted and pinned");
-            self.set(key, name, pk, true);
+        if let Some(g) = pair.and_then(|c| self.redeem(c)) {
+            info!(
+                "gate: {name} paired with a QR code — trusted and pinned, may: {}",
+                g.tokens()
+            );
+            self.set(key, name, pk, true, Some(&g));
             return Ok(());
         }
         match self.entry(key) {
@@ -389,7 +458,7 @@ impl Gate {
             }
             Some(_) => {
                 info!("gate: {name} proved a key for the first time — remembered (not pinned)");
-                self.set(key, name, pk, false);
+                self.set(key, name, pk, false, None);
                 Ok(())
             }
             None if once => Ok(()),
@@ -534,10 +603,10 @@ mod tests {
     fn a_pairing_code_works_once() {
         let g = temp();
         let c = g.mint_pair();
-        assert!(!g.redeem("nope"));
-        assert!(!g.redeem(""));
-        assert!(g.redeem(&c));
-        assert!(!g.redeem(&c), "a code must be single use");
+        assert!(g.redeem("nope").is_none());
+        assert!(g.redeem("").is_none());
+        assert!(g.redeem(&c).is_some());
+        assert!(g.redeem(&c).is_none(), "a code must be single use");
     }
 
     #[test]
@@ -588,6 +657,17 @@ mod tests {
         );
         assert!(g.grant("Phone 2", "ro").is_ok(), "by exact name");
         assert_eq!(g.files_access("laptop"), "none");
+    }
+
+    #[test]
+    fn unpair_forgets_one_device() {
+        let g = temp();
+        g.trust("phone", "Phone");
+        g.trust("laptop", "Laptop");
+        assert_eq!(g.unpair("Phone").unwrap(), "Phone");
+        assert_eq!(g.decide("phone", "Phone"), Decision::Unknown);
+        assert_eq!(g.trusted().len(), 1);
+        assert!(g.unpair("phone").is_err(), "already gone");
     }
 
     #[test]

@@ -24,7 +24,8 @@ pub fn state_for(key: &str, gate: &Gate) -> ConfigState {
             focus_follows_pointer: cfg.input.focus_follows_pointer,
         },
         prefs: cfg.device.get(key).and_then(|d| d.prefs.clone()),
-        owner: is_owner(key, gate),
+        // "May change privileged settings" — the owner, or a device granted `settings`.
+        owner: gate.grants(key).settings,
         error: status.error,
         restart: status.restart,
         shells: cfg.shells.enabled,
@@ -56,9 +57,9 @@ pub fn set(
     confirmed: bool,
 ) -> Result<(), String> {
     if tier::of(cfg_key) == Tier::Privileged {
-        if !is_owner(key, gate) {
+        if !gate.grants(key).settings {
             return Err(format!(
-                "{cfg_key} can only be changed from the owner device"
+                "{cfg_key} needs the settings grant — on the computer: wado allow <device> settings"
             ));
         }
         if !confirmed {

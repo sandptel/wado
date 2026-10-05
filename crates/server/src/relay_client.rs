@@ -1671,9 +1671,10 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     .clone();
                 let allowed = if !ctx.viewer_ok.load(Ordering::SeqCst) {
                     Err("this device has not been approved yet".to_string())
-                } else if action.is_network() && !crate::config::link::is_owner(&device, &ctx.gate)
-                {
-                    Err("Wi-Fi can only be changed from the owner device".to_string())
+                } else if action.is_network() && !ctx.gate.grants(&device).settings {
+                    Err("Wi-Fi needs the settings grant — on the computer: wado allow <device> settings".to_string())
+                } else if !ctx.gate.grants(&device).host {
+                    Err("this device may not control the computer — on the computer: wado allow <device> host".to_string())
                 } else {
                     Ok(())
                 };

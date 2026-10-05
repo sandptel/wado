@@ -35,6 +35,8 @@ libc = "0.2"
 base64 = "0.22"
 # The connect QR code `wado qr` prints in the terminal. No image output, so no image deps.
 qrcode = { version = "0.14", default-features = false }
+# `wado tui` — the control panel. Its crossterm backend is re-exported as `ratatui::crossterm`.
+ratatui = "0.30"
 # The end-to-end envelope over the relay (`e2e/`): Ed25519, X25519, HKDF, AES-GCM, HMAC.
 # Already in the tree via webrtc/rustls, so no new crate.
 ring = "0.17"
