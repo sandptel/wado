@@ -611,6 +611,31 @@ async fn run(
 /// One relay connection: WS connect → Register → serve messages until the
 /// connection drops. `Ok(())` means registration succeeded (connection ended
 /// later); `Err` means we never registered.
+/// Why the viewer on the seat may not use the shells, asked afresh each time: the viewer
+/// changes, and so can `security { shell-access }`.
+///
+/// ponytail: reads the trust list per message and output chunk — a few hundred bytes; cache it
+/// if a shell burst ever shows up in a profile.
+fn shell_refusal(ctx: &RelayCtx) -> impl Fn() -> Option<&'static str> + Send + 'static {
+    let viewer = Arc::clone(&ctx.viewer);
+    let room = Arc::clone(&ctx.room);
+    let once = Arc::clone(&ctx.once);
+    let ok = Arc::clone(&ctx.viewer_ok);
+    let gate = ctx.gate.clone();
+    move || {
+        if !ok.load(Ordering::SeqCst) {
+            return Some("this device has not been approved yet");
+        }
+        let key = viewer.lock().unwrap_or_else(|e| e.into_inner()).0.clone();
+        let room = room.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let once = once
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains(&room);
+        crate::shells::access::refused(&gate, &key, once)
+    }
+}
+
 async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     // ── 1. Connect ───────────────────────────────────────────────────────────
     let register_url = format!("{}/register", ctx.relay_url);
@@ -931,10 +956,15 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     let shells_task = {
         let mut rx = crate::shells::events();
         let out_tx_s = out_tx.clone();
+        let refusal = shell_refusal(ctx);
         tokio::spawn(async move {
             use crate::shells::Event;
             loop {
-                let msg = match rx.recv().await {
+                let ev = rx.recv().await;
+                if matches!(ev, Ok(_)) && refusal().is_some() {
+                    continue;
+                }
+                let msg = match ev {
                     Ok(Event::Output { id, data }) => RelayMsg::PtyOutput {
                         id,
                         data,
@@ -1718,6 +1748,26 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 send_relay(&out_tx, &RelayMsg::AppsList { apps }).await.ok();
             }
 
+            RelayMsg::PtyOpen { .. }
+            | RelayMsg::PtyInput { .. }
+            | RelayMsg::PtyResize { .. }
+            | RelayMsg::PtyClose { .. }
+            | RelayMsg::ShellsRequest
+                if let Some(why) = shell_refusal(ctx)() =>
+            {
+                if matches!(msg, RelayMsg::PtyOpen { .. } | RelayMsg::ShellsRequest) {
+                    info!("shells: refused — {why}");
+                    send_relay(
+                        &out_tx,
+                        &RelayMsg::SessionError {
+                            message: format!("no shells: {why}"),
+                        },
+                    )
+                    .await
+                    .ok();
+                }
+            }
+
             RelayMsg::PtyOpen { cols, rows, host } => match crate::shells::open(cols, rows, host) {
                 Ok(id) => {
                     send_relay(&out_tx, &RelayMsg::PtyOpened { id }).await.ok();
@@ -2392,6 +2442,13 @@ async fn decide_join(
         // displace a live viewer.
         Decision::Unknown if !pair.is_empty() && !key.is_empty() && !takeover => {
             info!("gate: {label} says it holds a pairing code — it must prove it");
+            Ok(())
+        }
+        // `security { join "open" }`: in as if approved once. Never for a takeover — that
+        // displaces a live viewer, and still needs someone's say-so.
+        Decision::Unknown if !takeover && wado_config::live::current().security.open_join() => {
+            warn!("gate: join is open — letting {label} in once without asking");
+            once = true;
             Ok(())
         }
         Decision::Unknown => {
