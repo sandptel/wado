@@ -1,39 +1,43 @@
-//! Drawing. One frame, top to bottom:
+//! Drawing. A dashboard, not a list-and-detail: everything that matters is on screen at once.
 //!
 //! ```text
-//!   header    id · relay · tunnel · daemons · join policy · version
-//!   ┌ panels ─┐┌ detail of the selected row ───────────┐
-//!   │1 Rig    ││                                        │
-//!   │2 Sess.  ││                                        │
-//!   │3 Devices│├ activity ──────────────────────────────┤
-//!   │4 Pair   ││ gate / files / shells / config lines   │
-//!   │5 Secur. ││                                        │
-//!   footer    keys for this panel, or the last action's outcome
+//!   ╻ ╻┏━┓╺┳┓┏━┓  big Remote ID                       relay · tunnel · pool · version
+//!   [ a device knocking: y let in · o once · n no ]
+//!   ┌ Pair ──────┐┌ Screens ─────────────────┐┌ Load ────────┐
+//!   │  QR code   ││ each daemon, its session ││ braille CPU  │
+//!   │            │└──────────────────────────┘└──────────────┘
+//!   │            │┌ Devices ─────────────────────────────────┐
+//!   │ checklist  ││ device × files shells settings host owner│
+//!   │ link       │└──────────────────────────────────────────┘
+//!   │            │┌ Activity ────────────────┐┌ Switches ────┐
+//!   └────────────┘└──────────────────────────┘└──────────────┘
+//!   keys for the card in focus, or the last action's outcome
 //! ```
-//!
-//! - [`panels`] — the five lists on the left.
-//! - [`detail`] — the right-hand pane for each.
-//! - [`overlay`] — the approval prompt, confirmations, help.
 
-mod detail;
-mod overlay;
-mod panels;
+mod activity;
+mod devices;
+mod header;
+mod load;
+mod pair;
+mod screens;
+mod switches;
 
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
     style::Style,
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Paragraph},
+    widgets::{Block, BorderType, Paragraph},
 };
 
-use super::app::{App, Panel};
+use super::app::{App, Card, Target};
 use super::theme;
 
-/// Below this the five panels cannot each show a row.
-const MIN: (u16, u16) = (90, 30);
+/// Below this the Pair card and the device matrix cannot both fit.
+const MIN: (u16, u16) = (110, 28);
 
 pub fn draw(f: &mut Frame, app: &App) {
+    app.hits.borrow_mut().clear();
     let a = f.area();
     if a.width < MIN.0 || a.height < MIN.1 {
         let msg = format!(
@@ -43,159 +47,180 @@ pub fn draw(f: &mut Frame, app: &App) {
         f.render_widget(Paragraph::new(Line::styled(msg, theme::dim())), a);
         return;
     }
-    let [head, body, foot] = Layout::vertical([
-        Constraint::Length(1),
-        Constraint::Min(8),
+    let knock = app.asking().is_some();
+    let [head, banner, body, foot] = Layout::vertical([
+        Constraint::Length(3),
+        Constraint::Length(if knock { 3 } else { 0 }),
+        Constraint::Min(10),
         Constraint::Length(1),
     ])
-    .areas(f.area());
-    f.render_widget(header(app), head);
+    .areas(a);
+    header::draw(f, app, head);
+    if knock {
+        knock_banner(f, app, banner);
+    }
 
-    let [left, right] =
-        Layout::horizontal([Constraint::Length(36), Constraint::Min(30)]).areas(body);
-    panels::draw(f, app, left);
+    let [left, right] = Layout::horizontal([
+        Constraint::Length(pair::width(app, body.height)),
+        Constraint::Min(50),
+    ])
+    .areas(body);
+    pair::draw(f, app, left);
 
-    let [det, act] =
-        Layout::vertical([Constraint::Min(18), Constraint::Percentage(30)]).areas(right);
-    detail::draw(f, app, det);
-    activity(f, app, act);
+    // Fixed rows hug their content; the screens and the load graphs take what is left, so a
+    // taller terminal draws bigger screens rather than empty boxes.
+    let wide = right.width >= 88;
+    let dev_h = app.snap.devices.len().max(1) as u16 + 3;
+    let bottom_h = if wide { 10 } else { 16 };
+    let [top, mid, bottom] = Layout::vertical([
+        Constraint::Min(8),
+        Constraint::Length(dev_h),
+        Constraint::Length(bottom_h),
+    ])
+    .areas(right);
+    if wide {
+        let [s, l] = Layout::horizontal([Constraint::Min(40), Constraint::Length(36)]).areas(top);
+        screens::draw(f, app, s);
+        load::draw(f, app, l);
+    } else {
+        screens::draw(f, app, top);
+    }
+    devices::draw(f, app, mid);
+    let [act, sw] = if wide {
+        Layout::horizontal([Constraint::Min(30), Constraint::Length(46)]).areas(bottom)
+    } else {
+        let [s, a] = Layout::vertical([Constraint::Length(8), Constraint::Min(3)]).areas(bottom);
+        [a, s]
+    };
+    activity::draw(f, app, act);
+    switches::draw(f, app, sw);
 
     f.render_widget(footer(app), foot);
-    overlay::draw(f, app);
 }
 
-/// A rounded block titled `[n] Title`, accented when focused.
-pub fn block<'a>(title: impl Into<Line<'a>>, focused: bool) -> Block<'a> {
-    Block::new()
-        .borders(Borders::ALL)
+/// A rounded card. The focused one is accented, its title bold.
+pub fn card<'a>(title: &str, focused: bool) -> Block<'a> {
+    Block::bordered()
         .border_type(BorderType::Rounded)
         .border_style(theme::border(focused))
-        .title(title)
+        .title(Span::styled(
+            format!(" {title} "),
+            if focused { theme::key() } else { theme::bold() },
+        ))
 }
 
-pub fn panel_title(p: Panel, focused: bool) -> Line<'static> {
-    let n = Panel::ALL.iter().position(|x| *x == p).unwrap_or(0) + 1;
-    Line::from(vec![
-        Span::styled(format!("[{n}]"), theme::key()),
-        Span::styled(
-            format!(" {} ", p.title()),
-            if focused { theme::bold() } else { Style::new() },
-        ),
-    ])
-}
-
-fn header(app: &App) -> Paragraph<'static> {
-    let s = &app.snap.status;
-    let mut spans = vec![
-        Span::styled(" ▌wado ", theme::key()),
-        Span::styled(
-            s.remote_id.clone().unwrap_or_else(|| "no id yet".into()),
-            theme::bold(),
-        ),
-        Span::raw("   "),
-    ];
-    let mut pill = |up: bool, label: String| {
-        let (g, st) = theme::dot(up);
-        spans.push(Span::styled(g, st));
-        spans.push(Span::raw(format!(" {label}   ")));
-    };
-    pill(s.relay.is_some(), "relay".into());
-    pill(s.tunnel.is_some(), "tunnel".into());
-    pill(
-        !s.daemons.is_empty(),
-        format!(
-            "{} daemon{}",
-            s.daemons.len(),
-            if s.daemons.len() == 1 { "" } else { "s" }
-        ),
-    );
-    if app.snap.cfg.security.open_join() {
-        spans.push(Span::styled(
-            format!("{} join open", theme::ALERT),
-            Style::new().fg(theme::WARN),
-        ));
-        spans.push(Span::raw("   "));
+/// Draw `spans` left to right from `(x, y)`, registering each span whose target is set as
+/// clickable. Returns the x after the last span.
+pub fn row(
+    f: &mut Frame,
+    app: &App,
+    mut x: u16,
+    y: u16,
+    max_x: u16,
+    spans: Vec<(Span<'static>, Option<Target>)>,
+) -> u16 {
+    for (s, t) in spans {
+        let w = (s.width() as u16).min(max_x.saturating_sub(x));
+        if w == 0 {
+            break;
+        }
+        let r = Rect::new(x, y, w, 1);
+        f.render_widget(s, r);
+        if let Some(t) = t {
+            app.hits.borrow_mut().push((r, t));
+        }
+        x += w;
     }
-    if !app.snap.pending.is_empty() {
-        spans.push(Span::styled(
-            format!("{} {} waiting", theme::WAIT, app.snap.pending.len()),
-            Style::new().fg(theme::WARN),
-        ));
-    }
-    spans.push(Span::styled(
-        format!("   {}", crate::cli::landing::VERSION),
-        theme::dim(),
-    ));
-    Paragraph::new(Line::from(spans))
+    x
 }
 
-fn activity(f: &mut Frame, app: &App, area: Rect) {
-    let inner_h = area.height.saturating_sub(2) as usize;
-    let lines: Vec<Line> = app
-        .snap
-        .activity
-        .iter()
-        .rev()
-        .take(inner_h)
-        .rev()
-        .map(|l| {
-            let (time, rest) = l.split_at(l.find(' ').unwrap_or(0));
-            let style = if rest.contains("refused") || rest.contains("denied") {
-                Style::new().fg(theme::BAD)
-            } else if rest.contains("let ") || rest.contains("trusted") {
-                Style::new().fg(theme::GOOD)
-            } else {
-                Style::new()
-            };
-            Line::from(vec![
-                Span::styled(time.to_string(), theme::dim()),
-                Span::styled(rest.to_string(), style),
-            ])
-        })
-        .collect();
-    let empty = lines.is_empty();
-    let p = Paragraph::new(if empty {
-        vec![Line::styled(
-            " nothing yet — joins, grants and file activity show here",
-            theme::dim(),
-        )]
+/// One toggle cell: `label` padded to `width`, green when on, the cursor's colour under it.
+pub fn toggle(label: String, on: bool, cursor: bool, width: usize) -> Span<'static> {
+    let style = if cursor {
+        theme::cursor()
     } else {
-        lines
-    })
-    .block(block(" Activity ", false));
-    f.render_widget(p, area);
+        theme::state(on)
+    };
+    Span::styled(format!("{label:^width$}"), style)
+}
+
+fn knock_banner(f: &mut Frame, app: &App, area: Rect) {
+    let Some(r) = app.asking() else { return };
+    let block = Block::bordered()
+        .border_type(BorderType::Thick)
+        .border_style(Style::new().fg(theme::WARN));
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+    let more = app.snap.pending.len().saturating_sub(1);
+    let btn = |k: &str, what: &str, t: Target| {
+        vec![
+            (Span::styled(format!(" {k} "), theme::cursor()), Some(t)),
+            (Span::styled(format!(" {what}   "), theme::bold()), Some(t)),
+        ]
+    };
+    let mut spans = vec![
+        (
+            Span::styled(format!(" {} ", theme::WAIT), Style::new().fg(theme::WARN)),
+            None,
+        ),
+        (Span::styled(r.name.clone(), theme::bold()), None),
+        (Span::raw(" wants to use this computer "), None),
+        (
+            Span::styled(format!("from {}    ", r.addr), theme::dim()),
+            None,
+        ),
+    ];
+    spans.extend(btn(
+        "y",
+        "let in",
+        Target::Answer(crate::gate::Verdict::Always),
+    ));
+    spans.extend(btn(
+        "o",
+        "just once",
+        Target::Answer(crate::gate::Verdict::Once),
+    ));
+    spans.extend(btn(
+        "n",
+        "turn away",
+        Target::Answer(crate::gate::Verdict::Deny),
+    ));
+    spans.extend(btn("esc", "later", Target::Snooze));
+    if more > 0 {
+        spans.push((Span::styled(format!("+{more} waiting"), theme::dim()), None));
+    }
+    row(f, app, inner.x, inner.y, inner.right(), spans);
 }
 
 fn footer(app: &App) -> Paragraph<'static> {
-    if let Some((o, _)) = &app.toast {
-        let (text, color) = match o {
-            Ok(m) => (format!(" {} {m}", theme::ON), theme::GOOD),
-            Err(e) => (format!(" ✗ {e}"), theme::BAD),
-        };
-        return Paragraph::new(Line::styled(text, Style::new().fg(color)));
+    if let Some((_, name)) = &app.confirm {
+        return Paragraph::new(Line::from(vec![
+            Span::styled(format!(" Unpair {name}? "), Style::new().fg(theme::BAD)),
+            Span::styled(" y ", theme::cursor()),
+            Span::styled(" unpair   any other key keeps it", theme::dim()),
+        ]));
     }
-    let hints: &[(&str, &str)] = match app.focus {
-        Panel::Devices => &[
-            ("f", "files"),
-            ("s", "shells"),
-            ("c", "settings"),
-            ("h", "host"),
-            ("o", "make owner"),
-            ("u", "unpair"),
-        ],
-        Panel::Pair => &[("f s c h", "checklist"), ("⏎", "make QR")],
-        Panel::Security => &[("⏎", "toggle"), ("f s c h", "new-device grants")],
-        _ => &[],
-    };
     let mut spans = vec![Span::raw(" ")];
-    for (k, what) in hints.iter().chain(&[
-        ("1-5", "panel"),
-        ("j/k", "move"),
-        ("?", "help"),
-        ("q", "quit"),
-    ]) {
+    let hints: &[(&str, &str)] = match app.focus {
+        Card::Pair => &[
+            ("←→", "choose"),
+            ("space", "allow/deny"),
+            ("c", "copy link"),
+        ],
+        Card::Devices => &[("↑↓←→", "move"), ("space", "flip"), ("x", "unpair")],
+        Card::Switches => &[("↑↓", "move"), ("space", "flip")],
+    };
+    for (k, what) in hints.iter().chain(&[("tab", "next card"), ("q", "quit")]) {
         spans.push(Span::styled(k.to_string(), theme::key()));
         spans.push(Span::styled(format!(" {what}  "), theme::dim()));
+    }
+    spans.push(Span::styled("· click works too", theme::dim()));
+    if let Some((o, _)) = &app.toast {
+        let (text, color) = match o {
+            Ok(m) => (format!("   {} {m}", theme::ON), theme::GOOD),
+            Err(e) => (format!("   ✗ {e}"), theme::BAD),
+        };
+        spans.push(Span::styled(text, Style::new().fg(color)));
     }
     Paragraph::new(Line::from(spans))
 }

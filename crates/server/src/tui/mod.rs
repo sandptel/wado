@@ -6,45 +6,54 @@
 //! - [`data`] — one read of the world.
 //! - [`actions`] — the changes, and where they are written.
 //! - [`view`] — drawing.
+//! - [`load`] — each daemon's CPU and memory.
 //! - [`theme`] — colours and glyphs.
 //! - [`rig`] — starting the rig when nothing is running.
 
 mod actions;
 mod app;
 mod data;
+mod load;
 pub mod rig;
 mod theme;
 mod view;
 
 use std::time::Duration;
 
-use ratatui::crossterm::event::{self, Event, KeyEventKind};
+use ratatui::crossterm::{
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyEventKind},
+    execute,
+};
 
 pub fn run(args: &[String]) -> i32 {
     if args.first().map(String::as_str) == Some("--frame") {
-        let panel = args.get(2).and_then(|p| p.parse::<usize>().ok());
-        return frame(args.get(1).map_or("140x44", String::as_str), panel);
+        let card = args.get(2).and_then(|p| p.parse::<usize>().ok());
+        return frame(args.get(1).map_or("150x46", String::as_str), card);
     }
     if let Err(e) = rig::ensure() {
         eprintln!("  {e}");
         return 1;
     }
     let mut term = ratatui::init();
+    let _ = execute!(std::io::stdout(), EnableMouseCapture);
     let mut app = app::App::new();
     let res = (|| -> std::io::Result<()> {
         while !app.quit {
             term.draw(|f| view::draw(f, &app))?;
             if event::poll(Duration::from_millis(250))? {
-                if let Event::Key(k) = event::read()? {
-                    if k.kind == KeyEventKind::Press {
-                        app.key(k);
-                    }
+                match event::read()? {
+                    Event::Key(k) if k.kind == KeyEventKind::Press => app.key(k),
+                    Event::Mouse(m) => app.mouse(m),
+                    _ => {}
                 }
             }
             app.tick();
         }
         Ok(())
     })();
+    // Withdraw the code on screen before the terminal is handed back.
+    drop(app);
+    let _ = execute!(std::io::stdout(), DisableMouseCapture);
     ratatui::restore();
     match res {
         Ok(()) => 0,
@@ -55,13 +64,13 @@ pub fn run(args: &[String]) -> i32 {
     }
 }
 
-/// `wado tui --frame [WxH] [panel 1-5]`: one frame as plain text, without touching the terminal or starting
+/// `wado tui --frame [WxH] [card 1-3]`: one frame as plain text, without touching the terminal or starting
 /// anything — to see the panel from a script, a log, or a session with no terminal of its own.
-fn frame(size: &str, panel: Option<usize>) -> i32 {
+fn frame(size: &str, card: Option<usize>) -> i32 {
     let (w, h) = size
         .split_once('x')
         .and_then(|(w, h)| Some((w.parse().ok()?, h.parse().ok()?)))
-        .unwrap_or((140, 44));
+        .unwrap_or((150, 46));
     let mut term = match ratatui::Terminal::new(ratatui::backend::TestBackend::new(w, h)) {
         Ok(t) => t,
         Err(e) => {
@@ -70,8 +79,8 @@ fn frame(size: &str, panel: Option<usize>) -> i32 {
         }
     };
     let mut app = app::App::new();
-    if let Some(p) = panel.filter(|p| (1..=5).contains(p)) {
-        app.focus = app::Panel::ALL[p - 1];
+    if let Some(c) = card.filter(|c| (1..=3).contains(c)) {
+        app.focus = app::Card::ALL[c - 1];
     }
     if let Err(e) = term.draw(|f| view::draw(f, &app)) {
         eprintln!("{e}");
