@@ -339,8 +339,8 @@ async fn dispatch(chan: Arc<Chan>, id: u32, req: FileReq) {
                     .gate
                     .devices()
                     .into_iter()
-                    .map(|(key, name, pinned, files)| {
-                        json!({ "key": key, "name": name, "pinned": pinned, "files": files, "me": key == chan.who.key })
+                    .map(|d| {
+                        json!({ "key": d.key, "name": d.name, "pinned": d.pinned, "files": d.grants.files, "me": d.key == chan.who.key })
                     })
                     .collect();
                 chan.reply(id, json!({ "devices": list })).await;

@@ -3,9 +3,10 @@ use wado::website::{self, FRAME_CHANNEL_CAPACITY, logbus::LogBus};
 
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if let Some(code) = wado::cli::dispatch(&args) {
-        std::process::exit(code);
-    }
+    let args = match wado::cli::dispatch(&args) {
+        wado::cli::Run::Exit(code) => std::process::exit(code),
+        wado::cli::Run::Daemon(args) => args,
+    };
 
     let log_bus = init_logging();
     let config = load_config();
@@ -37,7 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Clients connect with that single ID; no separate password.
     //
     // Direct mode (default): server binds an HTTP control endpoint.
-    //   First CLI argument overrides the default listen address (127.0.0.1:8080).
+    //   `wado daemon <addr>` overrides the default listen address (127.0.0.1:8080).
 
     if let Some(relay_url) = config.server.relay.clone() {
         let remote_id = wado::remote_id::resolve();
@@ -56,7 +57,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
         wado::relay_client::start(handles, frame_rx, relay_url, remote_id, log_bus)?;
     } else {
-        // A bare first argument is still the listen address, as it always was.
+        // `wado daemon <addr>`: the listen address.
         let control_addr = args
             .first()
             .cloned()

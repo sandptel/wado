@@ -28,11 +28,16 @@
 # and a feature would cost a full fat-LTO release rebuild of the one binary that must never be a
 # debug build — to change a log level. `WADO_RUN=connection scripts/rig.sh --daemon` is instant.
 #
-# Usage:  scripts/rig.sh            start everything (reuses the existing binaries)
+# Usage:  scripts/rig.sh            start everything (reuses the existing binaries), then open
+#                                   the control panel (`wado tui`)
 #         scripts/rig.sh --build    rebuild release first, then start everything
 #         scripts/rig.sh --daemon   restart ONLY the daemons, keeping relay and tunnel up
 #         scripts/rig.sh --add N    add N more daemons to the RUNNING pool, disturbing nothing
 #         scripts/rig.sh --stop     stop everything and exit
+#
+#         --headless (with any of the starting forms) prints the relay URL, Remote ID and QR
+#         instead of opening the panel — what `wado tui` itself runs when it starts the rig, and
+#         what to use from a script. Without a terminal it is implied.
 #
 # Each daemon gets WADO_INSTANCE=n (its log number), its stable identity in the pool: after a
 # relay restart a device is handed back the same daemon, and its running desktop, by that key.
@@ -72,9 +77,22 @@ mkdir -p "$LOGS"
 
 say() { printf '  %s\n' "$*"; }
 
+# The daemons among the processes named wado: run as `wado daemon`, or bare `wado` from before
+# the CLI. `pkill -x wado` alone would also kill `wado tui` — including the one that asked for
+# this rig to be started.
+daemon_pids() {
+  local p a1
+  for p in $(pgrep -x wado); do
+    a1="$(tr '\0' '\n' < "/proc/$p/cmdline" 2>/dev/null | sed -n 2p)"
+    { [ -z "$a1" ] || [ "$a1" = daemon ]; } && echo "$p"
+  done
+  return 0
+}
+kill_daemons() { local p; p="$(daemon_pids)"; [ -z "$p" ] || kill $p 2>/dev/null || true; }
+
 stop_all() {
   # -x: exact process name. Never -f here; see the header.
-  pkill -x wado        2>/dev/null || true
+  kill_daemons
   pkill -x wado-relay  2>/dev/null || true
   [ "${KEEP_TUNNEL:-0}" = 1 ] || pkill -x cloudflared 2>/dev/null || true
   sleep 1
@@ -126,7 +144,7 @@ add_daemons() {
     keep_log "$LOGS/daemon-$n.log"
     setsid env WADO_RELAY_URL="ws://127.0.0.1:$RELAY_PORT" WADO_REMOTE_ID="$rid" \
       WADO_UDP_SLICE="$((n - 1))" WADO_INSTANCE="$n" WADO_RUN="$LANE" \
-      nohup ./target/release/wado > "$LOGS/daemon-$n.log" 2>&1 < /dev/null &
+      nohup ./target/release/wado daemon > "$LOGS/daemon-$n.log" 2>&1 < /dev/null &
     for _ in $(seq 60); do
       grep -q "clients can connect" "$LOGS/daemon-$n.log" 2>/dev/null && break
       sleep 0.25
@@ -138,6 +156,15 @@ add_daemons() {
   say "pool now: $(curl -s --max-time 2 "http://127.0.0.1:$RELAY_PORT/health" || echo '?')"
 }
 
+# --headless may come anywhere; the rest is positional as it always was.
+HEADLESS=0
+ARGS=()
+for a in "$@"; do
+  if [ "$a" = --headless ]; then HEADLESS=1; else ARGS+=("$a"); fi
+done
+set -- "${ARGS[@]+"${ARGS[@]}"}"
+[ -t 1 ] || HEADLESS=1
+
 DAEMON_ONLY=0
 case "${1:-}" in
   --add) add_daemons "${2:-1}"; exit 0 ;;
@@ -145,7 +172,7 @@ case "${1:-}" in
   --build) nice -n 19 cargo build --release -p wado -p wado-relay ;;
   --daemon) DAEMON_ONLY=1 ;;
   "") ;;
-  *) echo "usage: $0 [--build|--daemon|--stop]" >&2; exit 2 ;;
+  *) echo "usage: $0 [--build|--daemon|--add N|--stop] [--headless]" >&2; exit 2 ;;
 esac
 
 for bin in wado wado-relay; do
@@ -159,7 +186,7 @@ CF="$(command -v cloudflared || true)"
 if [ "$DAEMON_ONLY" = 1 ]; then
   pgrep -x wado-relay  >/dev/null || { echo "relay is not running — start the full rig first" >&2; exit 1; }
   pgrep -x cloudflared >/dev/null || { echo "tunnel is not running — start the full rig first" >&2; exit 1; }
-  pkill -x wado 2>/dev/null || true
+  kill_daemons
   sleep 1
 else
   if tunnel_is_live; then
@@ -214,7 +241,7 @@ done
 keep_log "$LOGS/daemon-1.log"
 setsid env WADO_RELAY_URL="ws://127.0.0.1:$RELAY_PORT" WADO_UDP_SLICE=0 WADO_INSTANCE=1 \
   WADO_RUN="$LANE" \
-  nohup ./target/release/wado > "$LOGS/daemon-1.log" 2>&1 < /dev/null &
+  nohup ./target/release/wado daemon > "$LOGS/daemon-1.log" 2>&1 < /dev/null &
 
 RID=""
 for _ in $(seq 60); do
@@ -232,7 +259,7 @@ for n in $(seq 2 "$INSTANCES"); do
   # log looked healthy — see `udp_port_range` in crates/server/src/webrtc_settings.rs.
   setsid env WADO_RELAY_URL="ws://127.0.0.1:$RELAY_PORT" WADO_REMOTE_ID="$RID" \
     WADO_UDP_SLICE="$((n - 1))" WADO_INSTANCE="$n" WADO_RUN="$LANE" \
-    nohup ./target/release/wado > "$LOGS/daemon-$n.log" 2>&1 < /dev/null &
+    nohup ./target/release/wado daemon > "$LOGS/daemon-$n.log" 2>&1 < /dev/null &
   for _ in $(seq 60); do
     grep -q "clients can connect" "$LOGS/daemon-$n.log" 2>/dev/null && break
     sleep 0.25
@@ -264,7 +291,7 @@ fi
 echo
 say "run lane    $LANE   (WADO_RUN=perf|connection|feature|compositor)"
 say "daemons     $INSTANCES in the pool — ${POOLED:-?} registered with the relay"
-say "            $(date -r target/release/wado '+%Y-%m-%d %H:%M') build   pids $(pgrep -x wado | tr '\n' ' ')"
+say "            $(date -r target/release/wado '+%Y-%m-%d %H:%M') build   pids $(daemon_pids | tr '\n' ' ')"
 say "logs        $LOGS/{daemon-N,relay,tunnel}.log"
 echo
 say "$INSTANCES devices can hold a session at once. The ${INSTANCES}+1st is refused with a reason,"
@@ -285,3 +312,6 @@ fi
 echo
 say "This tunnel is reused across rig restarts now — only --stop (or a reboot) rotates the URL."
 echo
+
+# The rig is up: hand the terminal to the control panel, unless asked to stay headless.
+[ "$HEADLESS" = 1 ] || exec ./target/release/wado tui

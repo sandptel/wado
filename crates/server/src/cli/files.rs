@@ -15,13 +15,18 @@ pub fn run(args: &[String]) -> i32 {
             if devices.is_empty() {
                 println!("no trusted devices yet");
             }
-            for (key, name, pinned, level) in devices {
-                let note = if pinned {
+            for d in devices {
+                let note = if d.pinned {
                     ""
                 } else {
-                    "  (not QR-paired: no file access until it scans `wado qr`)"
+                    "  (not QR-paired: no file access until it scans `wado pair`)"
                 };
-                println!("{level:<5} {name:<24} {}{note}", &key[..key.len().min(8)]);
+                println!(
+                    "{:<5} {:<24} {}{note}",
+                    d.grants.files,
+                    d.name,
+                    &d.key[..d.key.len().min(8)]
+                );
             }
             0
         }

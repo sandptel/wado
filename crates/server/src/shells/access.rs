@@ -1,4 +1,4 @@
-//! Who may open, see or type into the shells — `security { shell-access }`.
+//! Who may open, see or type into the shells — a device's `shells` grant.
 //!
 //! The shells outlive connections and carry whatever the owner left in them (an ssh session, a
 //! root prompt), so a device let in once — by a tap, or by `join "open"` — never gets them.
@@ -10,10 +10,10 @@ pub fn refused(gate: &Gate, key: &str, once: bool) -> Option<&'static str> {
     if once || key.is_empty() || gate.entry(key).is_none() {
         return Some("shells are for trusted devices — this one was let in once");
     }
-    if wado_config::live::current().security.owner_only_shells()
-        && !crate::config::link::is_owner(key, gate)
-    {
-        return Some("shells are for this computer's owner device (security { shell-access })");
+    if !gate.grants(key).shells {
+        return Some(
+            "this device has no shell access — on the computer: wado allow <device> shells",
+        );
     }
     None
 }
@@ -26,8 +26,12 @@ mod tests {
     fn once_and_strangers_get_no_shells() {
         let dir = std::env::temp_dir().join(format!("wado-shell-access-{}", std::process::id()));
         let g = Gate::at(dir.clone());
+        g.trust("owner", "Owner");
         g.trust("phone", "Phone");
-        assert!(refused(&g, "phone", false).is_none(), "trusted, by default");
+        assert!(refused(&g, "owner", false).is_none(), "the owner may");
+        assert!(refused(&g, "phone", false).is_some(), "not granted");
+        g.allow("phone", &["shells"], true).unwrap();
+        assert!(refused(&g, "phone", false).is_none(), "granted");
         assert!(refused(&g, "phone", true).is_some(), "let in once");
         assert!(refused(&g, "laptop", false).is_some(), "not on the list");
         assert!(refused(&g, "", false).is_some(), "no key");
