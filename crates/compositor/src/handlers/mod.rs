@@ -51,8 +51,8 @@ impl SeatHandler for Wado {
 }
 
 impl SelectionHandler for Wado {
-    /// The text of a selection the viewer gave us — see [`crate::clipboard`].
-    type SelectionUserData = std::sync::Arc<str>;
+    /// The bytes of a selection set from outside the session — see [`crate::clipboard`].
+    type SelectionUserData = std::sync::Arc<[u8]>;
 
     fn new_selection(
         &mut self,

@@ -8,11 +8,12 @@ use crate::tui::app::{App, Card, OWNER_COL, Target};
 use crate::tui::theme;
 
 /// `(wide label, narrow label)` per column, grants then owner.
-const COLS: [(&str, &str); 5] = [
+const COLS: [(&str, &str); 6] = [
     ("files", "fil"),
     ("shells", "sh"),
     ("settings", "set"),
     ("host", "hst"),
+    ("clipboard", "clp"),
     ("owner", theme::OWNER),
 ];
 const NOW: usize = 8;
@@ -120,6 +121,7 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
                 1 => mark(g.shells),
                 2 => mark(g.settings),
                 3 => mark(g.host),
+                4 => mark(g.clipboard),
                 _ => (
                     if r.owner { theme::OWNER } else { theme::OFF }.into(),
                     r.owner,

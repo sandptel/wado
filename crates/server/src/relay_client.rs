@@ -100,7 +100,7 @@ struct RelayCtx {
     windows: tokio::sync::watch::Receiver<wado_protocol::WindowList>,
     /// The menu open on the focused window, read into a sheet for the phone (M-P S7).
     menu: tokio::sync::watch::Receiver<Option<wado_compositor::hit::MenuSpot>>,
-    clipboard: tokio::sync::watch::Receiver<String>,
+    clipboard: tokio::sync::watch::Receiver<wado_compositor::clipboard::Clip>,
     /// Bitrate actually written to the video track over the last stretch, in kbps. Forwarded to
     /// the viewer — see [`wado_protocol::RelayMsg::SentKbps`] for why it has to be.
     sent_kbps: tokio::sync::watch::Receiver<u32>,
@@ -214,6 +214,8 @@ pub fn start(
                 // Daemon-lifetime, not connection-lifetime: notifications arrive whether or not
                 // a viewer is connected at that moment.
                 tokio::spawn(crate::notify::run(app_bus));
+                crate::clip::watch::start();
+                crate::clip::sync::start(cmd_tx.clone(), clipboard.clone());
                 if let Err(e) = run(
                     cmd_tx, input_tx, timings, text_input, shedding, windows, menu, clipboard,
                     frame_rx, relay_url, remote_id, log_bus,
@@ -235,7 +237,7 @@ async fn run(
     shedding: tokio::sync::watch::Receiver<u32>,
     windows: tokio::sync::watch::Receiver<wado_protocol::WindowList>,
     menu: tokio::sync::watch::Receiver<Option<wado_compositor::hit::MenuSpot>>,
-    clipboard: tokio::sync::watch::Receiver<String>,
+    clipboard: tokio::sync::watch::Receiver<wado_compositor::clipboard::Clip>,
     mut frame_rx: mpsc::Receiver<FrameMsg>,
     relay_url: String,
     remote_id: String,
@@ -940,7 +942,12 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
         let out_tx_cb = out_tx.clone();
         tokio::spawn(async move {
             while rx.changed().await.is_ok() {
-                let text = rx.borrow_and_update().clone();
+                let clip = rx.borrow_and_update().clone();
+                // Images reach the viewer through the host history (`clip`), not this.
+                if !clip.is_text() {
+                    continue;
+                }
+                let text = String::from_utf8_lossy(&clip.data).into_owned();
                 if send_relay(&out_tx_cb, &RelayMsg::Clipboard { text })
                     .await
                     .is_err()
@@ -948,6 +955,19 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     break;
                 }
             }
+        })
+    };
+
+    // The host clipboard's history, again on every change, for a viewer with the grant.
+    let clip_task = {
+        let (viewer, ok, gate) = (
+            Arc::clone(&ctx.viewer),
+            Arc::clone(&ctx.viewer_ok),
+            ctx.gate.clone(),
+        );
+        crate::clip::serve::follow(out_tx.clone(), move || {
+            let device = viewer.lock().unwrap_or_else(|e| e.into_inner()).0.clone();
+            ok.load(Ordering::SeqCst) && gate.grants(&device).clipboard
         })
     };
 
@@ -1629,8 +1649,56 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
 
             RelayMsg::ClipboardSet { text } => {
                 if ctx.viewer_ok.load(Ordering::SeqCst) {
-                    let _ = ctx.cmd_tx.send(CompositorCommand::SetClipboard { text });
+                    let clip = wado_compositor::clipboard::Clip {
+                        mime: "text/plain;charset=utf-8".into(),
+                        data: text.into_bytes().into(),
+                    };
+                    // Into the session; and onto the host too for a device that may.
+                    let device = ctx
+                        .viewer
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .0
+                        .clone();
+                    if ctx.gate.grants(&device).clipboard {
+                        let cmd_tx = ctx.cmd_tx.clone();
+                        tokio::spawn(async move {
+                            let _ = crate::clip::sync::push(&cmd_tx, clip).await;
+                        });
+                    } else {
+                        let _ = ctx.cmd_tx.send(CompositorCommand::SetClipboard(clip));
+                    }
                 }
+            }
+
+            msg @ (RelayMsg::ClipList
+            | RelayMsg::ClipGet { .. }
+            | RelayMsg::ClipPush { .. }
+            | RelayMsg::ClipPin { .. }
+            | RelayMsg::ClipDelete { .. }) => {
+                let device = ctx
+                    .viewer
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .0
+                    .clone();
+                if !ctx.viewer_ok.load(Ordering::SeqCst) {
+                    continue;
+                }
+                if !ctx.gate.grants(&device).clipboard {
+                    let message = "this device may not use the computer's clipboard — on the \
+                                   computer: wado allow <device> clipboard"
+                        .to_string();
+                    send_relay(&out_tx, &RelayMsg::ClipError { message })
+                        .await
+                        .ok();
+                    continue;
+                }
+                tokio::spawn(crate::clip::serve::handle(
+                    msg,
+                    ctx.cmd_tx.clone(),
+                    out_tx.clone(),
+                ));
             }
 
             RelayMsg::SessionsRequest => {
@@ -1916,6 +1984,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     config_task.abort();
     shells_task.abort();
     clipboard_task.abort();
+    clip_task.abort();
     notify_task.abort();
     files_note_task.abort();
     close_files(&ctx.files_pc);

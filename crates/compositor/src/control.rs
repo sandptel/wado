@@ -66,8 +66,8 @@ pub enum CompositorCommand {
     },
     /// The sink session apps should play into — the daemon's "this phone" output.
     AudioSink(Option<String>),
-    /// Make `text` the session's clipboard (the viewer pasted or copied on its side).
-    SetClipboard { text: String },
+    /// Make this the session's clipboard (the viewer, or the host desktop, copied it).
+    SetClipboard(crate::clipboard::Clip),
     /// Make the next encoded frame a forced IDR keyframe. Sent when a viewer
     /// connects or the browser requests one via RTCP PLI/FIR.
     ForceKeyframe,
@@ -142,7 +142,7 @@ pub fn handle_command(state: &mut Wado, cmd: CompositorCommand, frame_tx: &mpsc:
             let _ = reply.send(state.hit_window(x, y));
         }
         CompositorCommand::ForceKeyframe => headless::force_keyframe(state),
-        CompositorCommand::SetClipboard { text } => state.set_clipboard(text),
+        CompositorCommand::SetClipboard(clip) => state.set_clipboard(clip),
         CompositorCommand::AudioSink(name) => crate::session_env::set_sink(name),
         CompositorCommand::ViewerAttached(attached) => {
             headless::set_viewer_attached(state, attached)

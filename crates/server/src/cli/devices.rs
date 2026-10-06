@@ -68,10 +68,11 @@ fn badges(g: &Grants, pinned: bool) -> String {
         }
     };
     format!(
-        "{files}   {}  {}  {}",
+        "{files}   {}  {}  {}  {}",
         flag(g.shells, "shells"),
         flag(g.settings, "settings"),
-        flag(g.host, "host")
+        flag(g.host, "host"),
+        flag(g.clipboard, "clipboard")
     )
 }
 

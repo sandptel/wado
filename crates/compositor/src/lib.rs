@@ -101,8 +101,8 @@ pub struct CompositorHandles {
     pub windows: tokio::sync::watch::Receiver<wado_protocol::WindowList>,
     /// The menu open on the focused window — see [`hit::MenuSpot`]. State, like `windows`.
     pub menu: tokio::sync::watch::Receiver<Option<hit::MenuSpot>>,
-    /// The session clipboard, when an app copies text — see [`clipboard`].
-    pub clipboard: tokio::sync::watch::Receiver<String>,
+    /// The session clipboard, when an app copies — see [`clipboard`].
+    pub clipboard: tokio::sync::watch::Receiver<clipboard::Clip>,
     /// The session's private bus address — see [`Wado::app_bus_tx`].
     pub app_bus: tokio::sync::watch::Receiver<Option<String>>,
 }

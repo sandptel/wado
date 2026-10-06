@@ -476,6 +476,47 @@ pub enum RelayMsg {
         text: String,
     },
 
+    // ── The computer's clipboard history (see `server::clip`) ───────────────
+    // Needs no session, and the `clipboard` grant.
+    /// Client → server: send me [`RelayMsg::ClipHistory`].
+    ClipList,
+    /// Server → client: the host clipboard's history, newest first, pinned ones on top. Sent on
+    /// request and whenever the host clipboard changes. `available: false` — no host desktop
+    /// clipboard (no Wayland desktop, or no cliphist), and `error` says which.
+    ClipHistory {
+        available: bool,
+        entries: Vec<crate::ClipEntry>,
+        #[serde(default)]
+        error: Option<String>,
+    },
+    /// Client → server: the whole of entry `id`, as [`RelayMsg::ClipData`].
+    ClipGet {
+        id: String,
+    },
+    /// Server → client: an entry in full. `data` is the text, or a `data:` URI for an image.
+    ClipData {
+        id: String,
+        mime: String,
+        data: String,
+    },
+    /// Client → server: make this the host's (and the session's) clipboard. `data` as in
+    /// [`RelayMsg::ClipData`].
+    ClipPush {
+        mime: String,
+        data: String,
+    },
+    ClipPin {
+        id: String,
+        on: bool,
+    },
+    ClipDelete {
+        id: String,
+    },
+    /// Server → client: a clipboard request failed, and why.
+    ClipError {
+        message: String,
+    },
+
     // ── Daemon config (see `wado-config`) ──────────────────────────────────
     /// Client → server: send me [`RelayMsg::ConfigState`]. Needs no session.
     ConfigGet,
