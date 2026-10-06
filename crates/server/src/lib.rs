@@ -26,6 +26,7 @@ pub mod relay_client;
 pub mod remote_id;
 pub mod runlane;
 pub mod sched;
+pub mod selfhost;
 pub mod sessions;
 pub mod shells;
 pub mod tui;

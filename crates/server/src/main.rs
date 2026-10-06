@@ -8,8 +8,14 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         wado::cli::Run::Daemon(args) => args,
     };
 
+    // No relay configured and no listen address given: host our own relay and tunnel.
+    let selfhosted = args.is_empty() && wado::selfhost::prepare();
+
     let log_bus = init_logging();
     let config = load_config();
+    if selfhosted {
+        wado::selfhost::tunnel::watch();
+    }
 
     // A debug build cannot meet the latency target and does not fail in a way that looks
     // like a build problem: it looks like a network or encoder fault. SRTP encrypts and
@@ -37,15 +43,19 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // else the persisted ~/.config/wado/remote_id, else generated + persisted).
     // Clients connect with that single ID; no separate password.
     //
-    // Direct mode (default): server binds an HTTP control endpoint.
-    //   `wado daemon <addr>` overrides the default listen address (127.0.0.1:8080).
+    // Bare `wado daemon` with no relay configured: `selfhost` starts a local relay and tunnel and
+    // sets WADO_RELAY_URL, so it lands here in relay mode too.
+    //
+    // Direct mode: `wado daemon <addr>` binds an HTTP control endpoint on that address.
 
     if let Some(relay_url) = config.server.relay.clone() {
         let remote_id = wado::remote_id::resolve();
         // In a terminal, show the way in: the connect QR code, every start.
         {
             use std::io::IsTerminal;
-            if std::io::stdout().is_terminal() && config.server.public_relay.is_some() {
+            if std::io::stdout().is_terminal()
+                && (config.server.public_relay.is_some() || selfhosted)
+            {
                 wado::cli::qr::print(None, Some(&remote_id));
             }
         }

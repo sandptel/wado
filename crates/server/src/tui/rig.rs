@@ -1,50 +1,38 @@
-//! Start the rig — relay, tunnel, daemon pool — when the panel opens on a computer where none
-//! of it is running. `scripts/rig.sh` knows how (setsid, ports, slices, tunnel reuse); this only
-//! finds it and waits for the daemons to answer.
+//! Start a daemon when the panel opens on a computer where none is running. It brings up its own
+//! relay and tunnel (`crate::selfhost`); this only starts it and waits for it to answer.
 
-use std::{path::PathBuf, process::Command, time::Duration};
+use std::{process::Command, time::Duration};
 
-/// The checkout this binary was built in: `<repo>/target/release/wado`.
-fn repo() -> Option<PathBuf> {
-    let exe = std::env::current_exe().ok()?.canonicalize().ok()?;
-    let root = exe.ancestors().nth(3)?.to_path_buf();
-    root.join("scripts/rig.sh").is_file().then_some(root)
-}
+use crate::cli::status;
 
-/// Make sure at least one daemon is up, starting the rig if none is.
+/// Make sure at least one daemon is up, starting one if none is.
+///
+/// ponytail: one daemon, so one device at a time. Run `wado daemon` again to grow the pool.
 pub fn ensure() -> Result<(), String> {
-    if !crate::cli::status::read().daemons.is_empty() {
+    if !status::daemons().is_empty() {
         return Ok(());
     }
-    let root = repo().ok_or(
-        "no daemon is running, and this wado was not built in a checkout with scripts/rig.sh \
-         — start one with `wado daemon`",
+    println!("  no daemon running — starting one (relay and tunnel too, if needed)…");
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let n = crate::selfhost::slot::next();
+    let log = status::rig_dir().join(format!("daemon-{n}.log"));
+    let _ = std::fs::create_dir_all(status::rig_dir());
+    crate::selfhost::detach(
+        Command::new(exe)
+            .arg("daemon")
+            .env("WADO_INSTANCE", n.to_string())
+            .env("WADO_UDP_SLICE", (n - 1).to_string()),
+        &log,
     )?;
-    println!("  no daemon running — starting the rig (relay, tunnel, daemons)…");
-    let log = crate::cli::status::rig_dir();
-    let _ = std::fs::create_dir_all(&log);
-    let out = std::fs::File::create(log.join("rig.log")).map_err(|e| e.to_string())?;
-    let status = Command::new(root.join("scripts/rig.sh"))
-        .arg("--headless")
-        .current_dir(&root)
-        .stdout(out.try_clone().map_err(|e| e.to_string())?)
-        .stderr(out)
-        .status()
-        .map_err(|e| format!("could not run scripts/rig.sh: {e}"))?;
-    if !status.success() {
-        return Err(format!(
-            "the rig did not start — see {}",
-            log.join("rig.log").display()
-        ));
-    }
-    for _ in 0..40 {
-        if !crate::cli::status::read().daemons.is_empty() {
+    // The tunnel alone can take ~30 s on a cold start.
+    for _ in 0..240 {
+        if !status::daemons().is_empty() {
             return Ok(());
         }
         std::thread::sleep(Duration::from_millis(250));
     }
     Err(format!(
-        "the rig started but no daemon answers — see {}",
+        "the daemon started but does not answer — see {}",
         log.display()
     ))
 }
