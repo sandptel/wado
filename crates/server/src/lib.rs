@@ -7,6 +7,7 @@ pub mod a11y;
 pub mod apps;
 pub mod audio;
 pub mod cli;
+pub mod clip;
 pub mod config;
 pub mod e2e;
 pub mod error;

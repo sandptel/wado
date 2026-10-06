@@ -132,8 +132,8 @@ pub struct Wado {
     pub shedding_tx: tokio::sync::watch::Sender<u32>,
     /// The window list for the viewer's bottom bar — see [`crate::window_list`].
     pub windows_tx: tokio::sync::watch::Sender<wado_protocol::WindowList>,
-    /// The session's clipboard text, whenever an app copies — see [`crate::clipboard`].
-    pub clipboard_tx: tokio::sync::watch::Sender<String>,
+    /// The session's clipboard, whenever an app copies — see [`crate::clipboard`].
+    pub clipboard_tx: tokio::sync::watch::Sender<crate::clipboard::Clip>,
     /// The session's private D-Bus address while it has one — what the server serves
     /// notifications on. `None` with no session, or with isolation off.
     pub app_bus_tx: tokio::sync::watch::Sender<Option<String>>,
@@ -458,7 +458,7 @@ impl Wado {
             text_input_tx: tokio::sync::watch::channel(false).0,
             shedding_tx: tokio::sync::watch::channel(1).0,
             windows_tx: tokio::sync::watch::channel(Default::default()).0,
-            clipboard_tx: tokio::sync::watch::channel(String::new()).0,
+            clipboard_tx: tokio::sync::watch::channel(Default::default()).0,
             app_bus_tx: tokio::sync::watch::channel(None).0,
             menu_tx: tokio::sync::watch::channel(None).0,
             window_ids: std::collections::HashMap::new(),

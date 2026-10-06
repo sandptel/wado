@@ -79,7 +79,8 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
                         0 => g.files != "none",
                         1 => g.shells,
                         2 => g.settings,
-                        _ => g.host,
+                        3 => g.host,
+                        _ => g.clipboard,
                     };
                     let mark = if on { theme::ON } else { theme::OFF };
                     spans.push((

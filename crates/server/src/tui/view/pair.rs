@@ -118,7 +118,8 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
             ),
             1 => (name.to_string(), g.shells),
             2 => (name.to_string(), g.settings),
-            _ => (name.to_string(), g.host),
+            3 => (name.to_string(), g.host),
+            _ => (name.to_string(), g.clipboard),
         };
         let mark = if on { theme::ON } else { theme::OFF };
         spans.push((

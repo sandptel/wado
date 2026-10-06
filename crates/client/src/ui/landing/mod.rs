@@ -4,6 +4,7 @@
 //! session the only decision is *where*, and it deserves the whole screen. It dissolves into
 //! the stream once the session is up.
 
+mod clips;
 mod profiles;
 mod progress;
 mod sessions;
@@ -86,6 +87,7 @@ pub fn render(ui: Ui) -> Element {
                 }
             }
             if status != "idle" { p { class: "landingstatus", "{status}" } }
+            if (s.conn_mode)() == "relay" { {crate::ui::scoped(ui, "clips", clips::render)} }
         }
     }
 }

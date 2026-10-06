@@ -1,6 +1,6 @@
 //! What a trusted device may do beyond seeing and driving the desktop.
 //!
-//! Written as tokens — `files-ro`, `files-rw`, `shells`, `settings`, `host` — in three places
+//! Written as tokens — `files-ro`, `files-rw`, `shells`, `settings`, `host`, `clipboard` — in three places
 //! that must agree: `security { new-device }`, a pairing code's checklist, and `wado allow`.
 //! On a device's `trusted_clients` line, files keep their own column (5) and the rest are
 //! column 6, comma-joined, `-` for none. A line without column 6 predates grants and keeps what
@@ -8,7 +8,14 @@
 //!
 //! The owner device may do everything, whatever its line says.
 
-pub const TOKENS: &[&str] = &["files-ro", "files-rw", "shells", "settings", "host"];
+pub const TOKENS: &[&str] = &[
+    "files-ro",
+    "files-rw",
+    "shells",
+    "settings",
+    "host",
+    "clipboard",
+];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Grants {
@@ -20,6 +27,8 @@ pub struct Grants {
     pub settings: bool,
     /// The computer's sound, Bluetooth and sleep.
     pub host: bool,
+    /// The computer's clipboard history — it holds whatever was copied there, passwords too.
+    pub clipboard: bool,
 }
 
 impl Grants {
@@ -28,12 +37,14 @@ impl Grants {
         shells: false,
         settings: false,
         host: false,
+        clipboard: false,
     };
     pub const ALL: Self = Self {
         files: "rw",
         shells: true,
         settings: true,
         host: true,
+        clipboard: true,
     };
 
     /// What a line from before grants had.
@@ -42,6 +53,7 @@ impl Grants {
         shells: true,
         settings: false,
         host: true,
+        clipboard: false,
     };
 
     /// `security { new-device }`: what a newly trusted device starts with.
@@ -67,6 +79,7 @@ impl Grants {
             ("shells", _) => self.shells = on,
             ("settings", _) => self.settings = on,
             ("host", _) => self.host = on,
+            ("clipboard", _) => self.clipboard = on,
             _ => {
                 return Err(format!(
                     "`{token}` is not a grant — use {}",
@@ -94,6 +107,7 @@ impl Grants {
             shells: self.shells || o.shells,
             settings: self.settings || o.settings,
             host: self.host || o.host,
+            clipboard: self.clipboard || o.clipboard,
         }
     }
 
@@ -103,6 +117,7 @@ impl Grants {
             (self.shells, "shells"),
             (self.settings, "settings"),
             (self.host, "host"),
+            (self.clipboard, "clipboard"),
         ]
         .into_iter()
         .filter_map(|(on, t)| on.then_some(t))
@@ -154,9 +169,9 @@ mod tests {
 
     #[test]
     fn tokens_round_trip() {
-        let g = Grants::parse("files-rw, shells host").unwrap();
+        let g = Grants::parse("files-rw, shells host clipboard").unwrap();
         assert_eq!(g.files, "rw");
-        assert!(g.shells && g.host && !g.settings);
+        assert!(g.shells && g.host && g.clipboard && !g.settings);
         assert_eq!(Grants::parse(&g.tokens()).unwrap(), g);
         assert_eq!(Grants::from_columns("rw", Some(&g.flags())), g);
         assert_eq!(Grants::parse("-").unwrap(), Grants::NONE);

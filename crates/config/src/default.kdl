@@ -18,7 +18,7 @@ server {
 security {
     // trust-first-device #true        // with an empty trust list, trust the first device
     // join "ask"                      // "ask" (a connected device approves) | "open" (anyone, let in once)
-    // new-device "host"               // what a new device may do: files-ro|files-rw shells settings host
+    // new-device "host"               // what a new device may do: files-ro|files-rw shells settings host clipboard
 }
 
 stream {

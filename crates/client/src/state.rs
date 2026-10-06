@@ -46,6 +46,17 @@ pub struct Note {
 /// Clipboard entries kept from the session, newest first.
 pub const MAX_CLIPS: usize = 5;
 
+/// The computer's clipboard history, as the daemon last sent it — see `js/cliphost.js`.
+#[derive(Clone, Default, PartialEq)]
+pub struct ClipHist {
+    /// The daemon has answered at least once.
+    pub loaded: bool,
+    pub available: bool,
+    pub entries: Vec<wado_protocol::ClipEntry>,
+    /// Why there is no history, or why the last request failed.
+    pub error: String,
+}
+
 /// User choices. Everything here is persisted by [`crate::persist`].
 ///
 /// Grouped in the UI by *when it takes effect* — connection, session (needs a restart), live
@@ -309,6 +320,9 @@ pub struct Live {
     pub shell_mods: Signal<(bool, bool)>,
     /// What apps in the session copied, newest first — see `js/clipboard.js`.
     pub clips: Signal<Vec<String>>,
+    /// The computer's clipboard history, and the image tiles' pictures by entry id.
+    pub clip_hist: Signal<ClipHist>,
+    pub clip_imgs: Signal<std::collections::HashMap<String, String>>,
     /// The notification shade, newest first.
     pub notes: Signal<Vec<Note>>,
     /// The stream is being recorded (`js/capture.js`).
@@ -466,6 +480,8 @@ impl Live {
             shell_active: use_signal(|| 0),
             shell_mods: use_signal(|| (false, false)),
             clips: use_signal(Vec::new),
+            clip_hist: use_signal(Default::default),
+            clip_imgs: use_signal(Default::default),
             notes: use_signal(Vec::new),
             recording: use_signal(|| false),
             hoststate: use_signal(|| None),

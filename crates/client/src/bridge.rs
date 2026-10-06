@@ -118,6 +118,8 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/clipboard.js"),
     "\n",
+    include_str!("js/cliphost.js"),
+    "\n",
     include_str!("js/notify.js"),
     "\n",
     // The file manager. After `relay.js` (it wraps the `__down` handler) and `sheet.js`;
@@ -391,6 +393,33 @@ pub fn run(ui: Ui) {
                     clips.retain(|c| *c != text);
                     clips.insert(0, text);
                     clips.truncate(crate::state::MAX_CLIPS);
+                }
+                "clipHistory" => {
+                    let entries: Vec<wado_protocol::ClipEntry> = msg
+                        .get("entries")
+                        .and_then(|v| serde_json::from_value(v.clone()).ok())
+                        .unwrap_or_default();
+                    // Pictures of entries no longer in the history go with them.
+                    live.clip_imgs
+                        .write()
+                        .retain(|id, _| entries.iter().any(|e| e.id == *id));
+                    live.clip_hist.set(crate::state::ClipHist {
+                        loaded: true,
+                        available: msg
+                            .get("available")
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false),
+                        entries,
+                        error: string("error"),
+                    });
+                }
+                "clipImage" => {
+                    live.clip_imgs.write().insert(string("id"), string("data"));
+                }
+                "clipError" => {
+                    let mut h = live.clip_hist.write();
+                    h.loaded = true;
+                    h.error = string("text");
                 }
                 "notification" => {
                     let note = crate::state::Note {
