@@ -66,7 +66,7 @@ impl Status {
 }
 
 /// Instances with a live socket, sorted. A file a dead daemon left behind does not connect.
-fn daemons() -> Vec<String> {
+pub fn daemons() -> Vec<String> {
     let dir = crate::config::socket::path_for("x")
         .parent()
         .map(PathBuf::from)
@@ -109,18 +109,30 @@ fn relay_addr() -> String {
     }
 }
 
-/// `GET /health` by hand: one request, no HTTP client dependency for it.
-fn health(addr: &str) -> Option<String> {
+/// `GET /health`, the body.
+pub fn health(addr: &str) -> Option<String> {
+    get(addr, "/health").map(|(_, body)| body)
+}
+
+/// One plain-HTTP `GET` to a local service, by hand: status and body, no HTTP client dependency.
+pub fn get(addr: &str, path: &str) -> Option<(u16, String)> {
     let sock = addr.parse().ok()?;
     let mut s = TcpStream::connect_timeout(&sock, Duration::from_millis(300)).ok()?;
     s.set_read_timeout(Some(Duration::from_millis(500))).ok()?;
-    write!(s, "GET /health HTTP/1.0\r\nHost: {addr}\r\n\r\n").ok()?;
-    let mut body = String::new();
-    s.read_to_string(&mut body).ok()?;
-    body.split("\r\n\r\n").nth(1).map(|b| b.trim().to_string())
+    write!(s, "GET {path} HTTP/1.0\r\nHost: {addr}\r\n\r\n").ok()?;
+    let mut resp = String::new();
+    s.read_to_string(&mut resp).ok()?;
+    let code = resp.split(' ').nth(1)?.parse().ok()?;
+    let body = resp
+        .split("\r\n\r\n")
+        .nth(1)
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    Some((code, body))
 }
 
-/// Where `scripts/rig.sh` keeps its logs.
+/// Where the rig keeps its logs — `wado daemon`'s relay and tunnel, and `scripts/rig.sh`.
 pub fn rig_dir() -> PathBuf {
     std::env::var_os("TMPDIR")
         .map(PathBuf::from)
@@ -128,7 +140,7 @@ pub fn rig_dir() -> PathBuf {
         .join("wado-rig")
 }
 
-fn tunnel() -> Option<String> {
+pub fn tunnel() -> Option<String> {
     // The log names other cloudflare.com pages first; the tunnel is the trycloudflare one.
     let log = std::fs::read_to_string(rig_dir().join("tunnel.log")).ok()?;
     log.match_indices("https://").find_map(|(at, _)| {

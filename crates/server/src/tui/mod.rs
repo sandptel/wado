@@ -8,7 +8,7 @@
 //! - [`view`] — drawing.
 //! - [`load`] — each daemon's CPU and memory.
 //! - [`theme`] — colours and glyphs.
-//! - [`rig`] — starting the rig when nothing is running.
+//! - [`rig`] — starting a daemon when none is running.
 
 mod actions;
 mod app;
