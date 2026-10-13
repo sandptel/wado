@@ -12,7 +12,8 @@
 #     from the session so they outlive the shell that started them.
 #   * **Kill by exact name.** `pkill -f wado` matches the shell running this script and any
 #     editor with the word on screen. `-x` matches the process name and nothing else.
-#   * **cloudflared is not on PATH** in this dev shell; it lives in the nix store.
+#   * **cloudflared comes from the dev shell.** A bare store path is not a GC root and gets
+#     collected; the /nix/store scan below is only a fallback for running outside the shell.
 #   * **The quick-tunnel URL changes on every restart.** That is why this prints it: the client's
 #     compiled-in default will be stale, and the URL has to be pasted into the client's relay
 #     field (or the client rebuilt).

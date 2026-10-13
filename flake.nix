@@ -224,6 +224,7 @@
               # built against the FFmpeg 8.1 ABI. nixpkgs `ffmpeg` is 9.x now.
               ffmpeg_8 # video verification + libav* dev libs for the M3 FFI
               dioxus-cli
+              cloudflared # rig.sh's quick tunnel; on PATH so GC can't take it
             ];
 
             buildInputs = runtimeLibs;
