@@ -4,10 +4,13 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     systems.url = "github:nix-systems/default";
+    # cloudflared only: < 2026.10.2 trusts the compromised eMudhra intermediates (Cloudflare
+    # advisory 2026-10-20). Drop once the main pin carries >= 2026.10.2.
+    nixpkgs-master.url = "github:NixOS/nixpkgs/master";
   };
 
   outputs =
-    { self, nixpkgs, systems, ... }:
+    { self, nixpkgs, nixpkgs-master, systems, ... }:
     let
       eachSystem = nixpkgs.lib.genAttrs (import systems);
       pkgsFor = nixpkgs.legacyPackages;
@@ -224,7 +227,7 @@
               # built against the FFmpeg 8.1 ABI. nixpkgs `ffmpeg` is 9.x now.
               ffmpeg_8 # video verification + libav* dev libs for the M3 FFI
               dioxus-cli
-              cloudflared # rig.sh's quick tunnel; on PATH so GC can't take it
+              nixpkgs-master.legacyPackages.${system}.cloudflared # rig.sh's quick tunnel; on PATH so GC can't take it
             ];
 
             buildInputs = runtimeLibs;
