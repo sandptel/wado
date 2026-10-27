@@ -8,14 +8,15 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         wado::cli::Run::Daemon(args) => args,
     };
 
-    // No relay configured and no listen address given: host our own relay and tunnel.
-    let selfhosted = args.is_empty() && wado::selfhost::prepare();
+    // `wado daemon <addr>` is direct mode; anything else joins the pool on the relay, so it
+    // takes the next free instance first.
+    let direct = !args.is_empty();
+    if !direct {
+        wado::slot::claim();
+    }
 
     let log_bus = init_logging();
     let config = load_config();
-    if selfhosted {
-        wado::selfhost::tunnel::watch();
-    }
 
     // A debug build cannot meet the latency target and does not fail in a way that looks
     // like a build problem: it looks like a network or encoder fault. SRTP encrypts and
@@ -40,24 +41,23 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (mut event_loop, mut state, handles) = wado_compositor::build(frame_tx)?;
 
     // ── Mode selection ───────────────────────────────────────────────────────
-    // Relay mode: set WADO_RELAY_URL (e.g. ws://my-vps:4000). The server's identity
-    // is its Remote ID — resolved by `remote_id::resolve()` (WADO_REMOTE_ID env var,
-    // else the persisted ~/.config/wado/remote_id, else generated + persisted).
-    // Clients connect with that single ID; no separate password.
+    // Relay mode, the default: the public relay (`wado_config::schema::server::DEFAULT_RELAY`)
+    // unless `server { relay }` / WADO_RELAY_URL names another. The server's identity is its
+    // Remote ID — resolved by `remote_id::resolve()` (WADO_REMOTE_ID env var, else the
+    // persisted ~/.config/wado/remote_id, else generated + persisted). Clients connect with
+    // that single ID; no separate password.
     //
-    // Bare `wado daemon` with no relay configured: `selfhost` starts a local relay and tunnel and
-    // sets WADO_RELAY_URL, so it lands here in relay mode too.
-    //
-    // Direct mode: `wado daemon <addr>` binds an HTTP control endpoint on that address.
+    // Direct mode: `wado daemon <addr>`, or `relay ""`, binds an HTTP control endpoint.
 
-    if let Some(relay_url) = config.server.relay.clone() {
+    let relay = (!direct)
+        .then(|| config.server.relay_url().map(str::to_owned))
+        .flatten();
+    if let Some(relay_url) = relay {
         let remote_id = wado::remote_id::resolve();
         // In a terminal, show the way in: the connect QR code, every start.
         {
             use std::io::IsTerminal;
-            if std::io::stdout().is_terminal()
-                && (config.server.public_relay.is_some() || selfhosted)
-            {
+            if std::io::stdout().is_terminal() && config.server.public_url().is_some() {
                 wado::cli::qr::print(None, Some(&remote_id));
             }
         }

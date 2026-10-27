@@ -15,10 +15,10 @@ use wado_protocol::{logfmt::LogLine, AppEntry};
 /// client on a different port and reaches the wado server here over CORS.
 pub const DEFAULT_SERVER: &str = "http://127.0.0.1:8080";
 
-/// Default relay the client dials in relay mode. Editable in the UI.
-/// ponytail: a trycloudflare quick tunnel — ephemeral, it changes every `cloudflared`
-/// restart. Replace when the relay gets a stable hostname.
-pub const DEFAULT_RELAY: &str = "https://lib-collaboration-verbal-gps.trycloudflare.com";
+/// Default relay the client dials in relay mode — the public one every daemon dials by default
+/// (`wado_config::schema::server::DEFAULT_RELAY`). Editable in the UI; `js/storage.js` moves
+/// saved trycloudflare URLs onto it.
+pub const DEFAULT_RELAY: &str = "https://wado-relay.indiasouthcentral.cloudapp.azure.com";
 
 /// Marks a scale that has never been chosen — neither by the user nor from pixel density.
 /// Not a valid option value, so it cannot survive the effect that resolves it.

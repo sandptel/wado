@@ -1,5 +1,5 @@
 //! What is running on this computer, read from the outside: the daemons' command sockets, the
-//! relay's `/health`, and the files the pool shares. Used by the landing page and the TUI.
+//! relay's health, and the files the pool shares. Used by the landing page and the TUI.
 
 use std::{
     io::{Read, Write},
@@ -40,16 +40,16 @@ pub struct Status {
 
 pub fn read() -> Status {
     let gate = crate::gate::Gate::default();
-    let relay_addr = relay_addr();
+    let remote_id = std::fs::read_to_string(wado_config::paths::config_dir().join("remote_id"))
+        .ok()
+        .map(|s| pretty_id(s.trim()))
+        .filter(|s| !s.is_empty());
     Status {
         daemons: daemons(),
-        relay: health(&relay_addr),
-        relay_addr,
+        relay: relay_health(),
+        relay_addr: host_of(&relay_url()),
         tunnel: tunnel(),
-        remote_id: std::fs::read_to_string(wado_config::paths::config_dir().join("remote_id"))
-            .ok()
-            .map(|s| pretty_id(s.trim()))
-            .filter(|s| !s.is_empty()),
+        remote_id,
         sessions: crate::sessions::list(),
         trusted: gate.trusted().len(),
         pending: gate.pending().len(),
@@ -57,10 +57,14 @@ pub fn read() -> Status {
 }
 
 impl Status {
-    /// How many daemons the relay has registered, from its `/health`.
+    /// How many of this computer's daemons the relay has registered: `daemons` from the public
+    /// relay's `/online/<id>`, or `servers` from a private relay's `/health`.
     pub fn pooled(&self) -> Option<u32> {
         let h = self.relay.as_deref()?;
-        let n = h.split("\"servers\":").nth(1)?;
+        let n = h
+            .split("\"daemons\":")
+            .nth(1)
+            .or_else(|| h.split("\"servers\":").nth(1))?;
         n.split(|c: char| !c.is_ascii_digit()).next()?.parse().ok()
     }
 }
@@ -88,25 +92,103 @@ pub fn daemons() -> Vec<String> {
     out
 }
 
-/// The relay this computer's daemons dial, as `host:port`: `WADO_RELAY_URL`, else config, else
-/// the rig's `127.0.0.1:4000`.
-fn relay_addr() -> String {
-    let url = std::env::var("WADO_RELAY_URL")
+/// The relay this computer's daemons dial: `WADO_RELAY_URL`, else config — the public relay
+/// unless set — else the rig's local one.
+fn relay_url() -> String {
+    std::env::var("WADO_RELAY_URL")
         .ok()
-        .or_else(|| wado_config::live::current().server.relay.clone())
-        .unwrap_or_default();
-    let host = url
-        .split("://")
+        .or_else(|| {
+            wado_config::live::current()
+                .server
+                .relay_url()
+                .map(str::to_owned)
+        })
+        .unwrap_or_else(|| "ws://127.0.0.1:4000".into())
+}
+
+/// `wss://host:port/path` → `host:port`.
+fn host_of(url: &str) -> String {
+    url.split("://")
         .nth(1)
-        .unwrap_or("")
+        .unwrap_or(url)
         .split('/')
         .next()
-        .unwrap_or("");
-    if host.is_empty() {
-        "127.0.0.1:4000".into()
-    } else {
-        host.into()
+        .unwrap_or("")
+        .to_string()
+}
+
+/// The relay's answer, refreshed every 5 s off the caller's thread: a relay across the internet
+/// must not stall the panel's redraw. The first call waits for one answer, so a one-shot
+/// `wado` prints the truth rather than "down".
+///
+/// ponytail: the URL and Remote ID are re-read each round, not watched.
+fn relay_health() -> Option<String> {
+    use std::sync::{Mutex, Once};
+    static LAST: Mutex<Option<String>> = Mutex::new(None);
+    static START: Once = Once::new();
+    START.call_once(|| {
+        *LAST.lock().unwrap() = probe_relay();
+        std::thread::spawn(|| {
+            loop {
+                std::thread::sleep(Duration::from_secs(5));
+                let h = probe_relay();
+                *LAST.lock().unwrap() = h;
+            }
+        });
+    });
+    LAST.lock().unwrap().clone()
+}
+
+/// A TLS relay is a shared one, so it is asked about this computer only (`/online/<id>`); a
+/// plain-`ws` one is the rig's own and answers `/health`.
+fn probe_relay() -> Option<String> {
+    let url = relay_url();
+    let addr = host_of(&url);
+    if !url.starts_with("wss://") {
+        return health(&addr);
     }
+    let id = std::fs::read_to_string(wado_config::paths::config_dir().join("remote_id"))
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let path = id.map_or("/health".into(), |id| format!("/online/{id}"));
+    https_get(&addr, &path)
+}
+
+/// One `GET` over TLS, by hand like [`get`]: rustls and the webpki roots are already in the
+/// tree for the relay link itself. The body on a 2xx, else `None`.
+fn https_get(host: &str, path: &str) -> Option<String> {
+    use std::{net::ToSocketAddrs, sync::Arc};
+    let (name, port) = host.split_once(':').unwrap_or((host, "443"));
+    let roots = rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    let cfg = rustls::ClientConfig::builder_with_provider(Arc::new(
+        rustls::crypto::ring::default_provider(),
+    ))
+    .with_safe_default_protocol_versions()
+    .ok()?
+    .with_root_certificates(roots)
+    .with_no_client_auth();
+    let server = rustls::pki_types::ServerName::try_from(name.to_string()).ok()?;
+    let conn = rustls::ClientConnection::new(Arc::new(cfg), server).ok()?;
+    let sock = (name, port.parse::<u16>().ok()?)
+        .to_socket_addrs()
+        .ok()?
+        .next()?;
+    let tcp = TcpStream::connect_timeout(&sock, Duration::from_secs(3)).ok()?;
+    tcp.set_read_timeout(Some(Duration::from_secs(3))).ok()?;
+    let mut tls = rustls::StreamOwned::new(conn, tcp);
+    write!(tls, "GET {path} HTTP/1.0\r\nHost: {name}\r\n\r\n").ok()?;
+    let mut resp = String::new();
+    // A server that closes without close_notify ends in an error after the body has arrived.
+    let _ = tls.read_to_string(&mut resp);
+    let ok = resp.split(' ').nth(1)?.starts_with('2');
+    ok.then(|| {
+        resp.split("\r\n\r\n")
+            .nth(1)
+            .unwrap_or("")
+            .trim()
+            .to_string()
+    })
 }
 
 /// `GET /health`, the body.
@@ -132,7 +214,7 @@ pub fn get(addr: &str, path: &str) -> Option<(u16, String)> {
     Some((code, body))
 }
 
-/// Where the rig keeps its logs — `wado daemon`'s relay and tunnel, and `scripts/rig.sh`.
+/// Where the rig keeps its logs — `scripts/rig.sh`'s relay and tunnel, and spawned daemons.
 pub fn rig_dir() -> PathBuf {
     std::env::var_os("TMPDIR")
         .map(PathBuf::from)

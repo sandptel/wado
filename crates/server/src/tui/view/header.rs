@@ -82,12 +82,19 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
             }),
         ),
     );
+    // Where a phone reaches this computer: the rig's tunnel if one is up, else the relay's
+    // public URL (`server { public-relay }`, or the dialled relay when it is not local).
+    let public = s
+        .tunnel
+        .clone()
+        .or_else(|| app.snap.cfg.server.public_url());
     let mut tunnel = pill(
-        s.tunnel.is_some(),
-        "tunnel",
-        s.tunnel
-            .as_deref()
-            .map_or("none".into(), |t| t.trim_start_matches("https://").into()),
+        public.is_some(),
+        "phones",
+        public.as_deref().map_or(
+            "no public relay — set server { public-relay }".into(),
+            |t| t.trim_start_matches("https://").into(),
+        ),
     );
     if app.snap.cfg.security.open_join() {
         tunnel.spans.push(Span::styled(

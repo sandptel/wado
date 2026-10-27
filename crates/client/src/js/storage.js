@@ -64,6 +64,21 @@ W.loadSettings = () => {
   try { history.replaceState(null, "", location.pathname); } catch (_) {}
 })();
 
+// The relay moved off cloudflared quick tunnels onto one stable public host (`2026-10-28`). A
+// saved trycloudflare URL is dead the moment its tunnel restarts, so it is replaced here, after
+// the connect link above (an old QR still carries one) and before anything dials. Same host as
+// the Rust `DEFAULT_RELAY` in state.rs.
+W.DEFAULT_RELAY = "https://wado-relay.indiasouthcentral.cloudapp.azure.com";
+(() => {
+  const s = W.loadSettings();
+  let changed = false;
+  const fix = (u) => /\.trycloudflare\.com/.test(String(u || "")) ? ((changed = true), W.DEFAULT_RELAY) : u;
+  if (s.relay_url) s.relay_url = fix(s.relay_url);
+  (Array.isArray(s.profiles) ? s.profiles : []).forEach((p) => { if (p && p.relay_url) p.relay_url = fix(p.relay_url); });
+  if (Array.isArray(s.relays)) s.relays = [...new Set(s.relays.map(fix))];
+  if (changed) { try { localStorage.setItem(STORE_KEY, JSON.stringify(s)); } catch (_) {} }
+})();
+
 // Every save carries when it was made (`_at`), so the daemon's copy of these settings and this
 // browser's can be told apart by age — see config.js.
 W.saveSettings = (obj) => {

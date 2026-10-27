@@ -3,12 +3,18 @@
 
 use serde::{Deserialize, Serialize};
 
+/// The public relay every daemon dials unless told otherwise (Decision Log `2026-10-27`):
+/// signalling only, so one small VPS serves everyone. `server { relay }` / `WADO_RELAY_URL`
+/// point a daemon at your own; `relay ""` or `wado daemon <addr>` means direct mode.
+/// The client's `DEFAULT_RELAY` names the same host.
+pub const DEFAULT_RELAY: &str = "wss://wado-relay.indiasouthcentral.cloudapp.azure.com";
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields, rename_all = "kebab-case")]
 pub struct Server {
     /// Direct-mode HTTP control address. Localhost on purpose — see the RCE hazard in CLAUDE.md.
     pub listen: String,
-    /// Relay URL. Set means relay mode; unset means direct mode.
+    /// Relay URL — [`DEFAULT_RELAY`] unless set. Empty means direct mode.
     pub relay: Option<String>,
     /// Stable identity within a pool (`WADO_INSTANCE`).
     pub instance: String,
@@ -28,7 +34,7 @@ impl Default for Server {
     fn default() -> Self {
         Self {
             listen: "127.0.0.1:8080".into(),
-            relay: None,
+            relay: Some(DEFAULT_RELAY.into()),
             instance: "1".into(),
             remote_id: None,
             udp_slice: 0,
@@ -36,6 +42,33 @@ impl Default for Server {
             public_relay: None,
             client_url: "https://sandptel.github.io/wado/".into(),
         }
+    }
+}
+
+impl Server {
+    /// The relay to dial, or `None` for direct mode.
+    pub fn relay_url(&self) -> Option<&str> {
+        self.relay.as_deref().filter(|r| !r.trim().is_empty())
+    }
+
+    /// The relay as a phone reaches it: `public-relay`, else the dialled relay when it is not
+    /// on this machine (a loopback relay is no use to a phone), as `https://`.
+    pub fn public_url(&self) -> Option<String> {
+        if let Some(p) = &self.public_relay {
+            return Some(p.clone());
+        }
+        let r = self.relay_url()?;
+        let host = r.split("://").nth(1).unwrap_or(r);
+        if ["127.", "localhost", "[::1]", "0.0.0.0"]
+            .iter()
+            .any(|l| host.starts_with(l))
+        {
+            return None;
+        }
+        Some(
+            r.replacen("wss://", "https://", 1)
+                .replacen("ws://", "http://", 1),
+        )
     }
 }
 
@@ -47,4 +80,25 @@ pub struct Turn {
     pub url: Vec<String>,
     pub user: String,
     pub pass: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn public_url_follows_the_relay_unless_local() {
+        let mut s = Server::default();
+        assert_eq!(s.relay_url(), Some(DEFAULT_RELAY));
+        assert_eq!(
+            s.public_url().unwrap(),
+            DEFAULT_RELAY.replacen("wss", "https", 1)
+        );
+        s.relay = Some("ws://127.0.0.1:4000".into());
+        assert_eq!(s.public_url(), None);
+        s.public_relay = Some("https://p.example".into());
+        assert_eq!(s.public_url().as_deref(), Some("https://p.example"));
+        s.relay = Some(" ".into());
+        assert_eq!(s.relay_url(), None, "empty is direct mode");
+    }
 }

@@ -5917,6 +5917,7 @@ dependencies = [
  "rand 0.8.8",
  "ratatui",
  "ring",
+ "rustls",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -5927,6 +5928,7 @@ dependencies = [
  "wado-compositor",
  "wado-config",
  "wado-protocol",
+ "webpki-roots 0.26.11",
  "webrtc",
  "zbus",
 ]

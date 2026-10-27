@@ -654,6 +654,19 @@ if it was maximized first.
 
 ### Changed
 
+- **wado connects through one public relay, with no tunnel to run.** A bare `wado daemon` now
+  dials `wado-relay.indiasouthcentral.cloudapp.azure.com` and is reachable from any network at
+  once. It no longer starts a local relay and a cloudflared quick tunnel, whose address changed on
+  every restart and stranded phones holding the old one. The relay only introduces the two ends;
+  video, input and files still go directly between them.
+  - The web client uses the same relay by default, and any saved `trycloudflare.com` address,
+    including one from an old QR code, is moved onto it automatically.
+  - **Your own relay** still works: `server { relay "wss://…" }` in `config.kdl` or
+    `WADO_RELAY_URL`, plus the relay picker in the client. `relay ""` or `wado daemon <address>`
+    is direct mode.
+  - `wado` and `wado tui` ask the relay whether **this** computer is online, instead of reading
+    totals for every computer on it, and show the address phones use.
+
 **Housekeeping.** The workspace is now `cargo fmt`-clean. The server's 31 KB control-plane
 module was split into one file per job (routes, WebRTC offer, frame pump, log stream, HTTP
 writers, viewer watchdog). There are new tests for the encoder fallback ladder and for the

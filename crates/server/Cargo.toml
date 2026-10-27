@@ -40,6 +40,10 @@ ratatui = "0.30"
 # The end-to-end envelope over the relay (`e2e/`): Ed25519, X25519, HKDF, AES-GCM, HMAC.
 # Already in the tree via webrtc/rustls, so no new crate.
 ring = "0.17"
+# `wado tui` / `wado` asking the public relay whether this computer is online (`cli/status.rs`).
+# Both already in the tree for the relay link's wss://.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+webpki-roots = "0.26"
 # The file manager (`files/`): CRC-32 for folder zips, MD5 for freedesktop thumbnail names,
 # percent-encoding for file URIs. All already in the tree.
 crc = "3"

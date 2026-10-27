@@ -30,7 +30,8 @@ pub fn render(link: &str) -> Option<String> {
 
 /// A pairing link for this computer whose code gives the device that redeems it `grants`.
 ///
-/// The relay is `relay`, else `server { public-relay }`, else the rig's live tunnel.
+/// The relay is `relay`, else `server { public-relay }` or the dialled relay, else the rig's
+/// live tunnel.
 pub fn pair_link(
     relay: Option<&str>,
     id: Option<&str>,
@@ -39,7 +40,7 @@ pub fn pair_link(
     let cfg = wado_config::live::current();
     let relay = relay
         .map(str::to_string)
-        .or_else(|| cfg.server.public_relay.clone())
+        .or_else(|| cfg.server.public_url())
         .or_else(|| super::status::read().tunnel);
     let id = id
         .map(str::to_string)
