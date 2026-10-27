@@ -65,3 +65,14 @@ Add an uptime monitor on that URL (any free HTTP checker) that alerts you — th
 - **Client origin.** Passkeys (P1) are bound to the page's domain, and device keys to its origin:
   moving the client later means every device re-pairs. Serve the client from the same domain
   (GitHub Pages custom domain) **before** P1 ships.
+
+## Building here instead (no toolchain on the VPS)
+
+The dev shell has `cargo-zigbuild`, which links against an old glibc so the binary runs on stock
+Ubuntu/Debian:
+
+```sh
+cargo zigbuild --release -p wado-relay --target x86_64-unknown-linux-gnu.2.35
+strip -o wado-relay target/x86_64-unknown-linux-gnu/release/wado-relay   # ~2.7 MB
+scp wado-relay user@host: && ssh user@host 'sudo install -m755 wado-relay /usr/local/bin/ && sudo systemctl restart wado-relay'
+```
