@@ -400,6 +400,28 @@ W.relayTakeover = () => {
   return true;
 };
 
+// A fresh socket now, no backoff — for `netwatch.js`, when this device's own network changed.
+// The old socket is bound to an address the device no longer has, but the relay will not notice
+// for up to ~45 s and would refuse this device its own seat meanwhile ("every seat is in use").
+// So when this device *held* its seat (`ownSeat`: joined when the network changed) this one dial
+// carries takeover=1 — the one exception to "takeover only on a tap", decided 2026-10-28, and
+// safe from the I17 steal-war because the displaced socket is told `taken_over` and stops. A
+// device that was parked or refused redials plainly: a takeover there would take *another*
+// device's seat. Not `_relayTookOver`: the session comes back through `onLinkUp`'s ordinary
+// resume, not as a desktop taken from another device.
+W.relayKick = (ownSeat) => {
+  if (!W._relayTarget || W._e2eBlocked || W._relayTakenOver) return false;
+  W._relayTakeover = !!ownSeat;
+  W._relayTries = 0;
+  if (W._relayRetry) { clearTimeout(W._relayRetry); W._relayRetry = null; }
+  const ws = W.relayWs;
+  W.relayWs = null;
+  W.relayUp = false;
+  if (ws) { try { ws.onclose = null; ws.close(); } catch (_) {} }
+  openLink();
+  return true;
+};
+
 // Dial at load if this browser already knows where to go. The settings blob is the same one the
 // Rust UI writes, so a device that has connected once is connected again before anything is
 // pressed — which is the point of the whole file.

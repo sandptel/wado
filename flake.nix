@@ -243,6 +243,11 @@
             # Pointing libva at the shell's OWN mesa keeps the two in lockstep by
             # construction, so a NixOS rebuild that moves the system driver can't break us.
             LIBVA_DRIVERS_PATH = "${pkgs.mesa}/lib/dri";
+            # The same drift for EGL and GBM, found 2026-10-28: libglvnd took the HOST's EGL vendor
+            # (/run/opengl-driver, a Mesa built against a newer glibc than this shell's), failed to
+            # load it, and the compositor fell back to surfaceless EGL — no GBM, so no zero-copy tier.
+            __EGL_VENDOR_LIBRARY_DIRS = "${pkgs.mesa}/share/glvnd/egl_vendor.d";
+            GBM_BACKENDS_PATH = "${pkgs.mesa}/lib/gbm";
 
             # at-spi2-core's prefix: each session runs its own accessibility bus and registry
             # from it (crates/compositor/src/session_env/a11y.rs). Its binaries live in

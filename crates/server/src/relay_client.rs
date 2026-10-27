@@ -1290,6 +1290,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     room.clear();
                 }
                 ctx.link.lock().unwrap_or_else(|e| e.into_inner()).clear();
+                crate::links::clear(&ctx.remote_id);
                 ctx.once
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
@@ -1963,6 +1964,23 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
 
             RelayMsg::ClientLog { line } => {
                 info!("browser: {line}");
+            }
+
+            // How the device reaches us, every few seconds — kept for `wado tui`, logged on change.
+            RelayMsg::DeviceStatus { link } => {
+                if ctx.viewer_ok.load(Ordering::SeqCst) {
+                    let (key, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                    if let Some(line) = crate::links::report(&ctx.remote_id, &key, &name, link) {
+                        info!("link: {line}");
+                    }
+                }
+            }
+
+            RelayMsg::HostNetRequest => {
+                if ctx.viewer_ok.load(Ordering::SeqCst) {
+                    let net = crate::nat::host_net();
+                    send_relay(&out_tx, &RelayMsg::HostNet { net }).await.ok();
+                }
             }
 
             RelayMsg::Ping => {

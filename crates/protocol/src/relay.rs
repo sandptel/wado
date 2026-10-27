@@ -642,6 +642,17 @@ pub enum RelayMsg {
     ClientLog {
         line: String,
     },
+    /// Client → server, every few seconds while joined: how this device reaches the computer
+    /// (`wado tui` shows it per device). Never named `peer_*`: the relay intercepts those.
+    DeviceStatus {
+        link: crate::link::DeviceLink,
+    },
+    /// Client → server: what is this computer's network like? Answered with [`RelayMsg::HostNet`].
+    HostNetRequest,
+    /// Server → client: the NAT probe's verdict, so the badge can name a likely cause early.
+    HostNet {
+        net: crate::link::HostNet,
+    },
 
     // ── WebRTC signaling (bidirectional, forwarded by relay) ─────────────────
     /// Client's SDP offer JSON (with all ICE candidates gathered, non-trickle).
@@ -719,6 +730,7 @@ mod wire_tests {
             "session_stop",
             "session_rejoin",
             "pty_close",
+            "host_net_request",
         ] {
             let json = format!(r#"{{"type":"{name}"}}"#);
             assert!(
@@ -726,6 +738,19 @@ mod wire_tests {
                 "{name} no longer parses"
             );
         }
+    }
+
+    /// What `js/device_status.js` sends — and an older client's report with fields missing.
+    #[test]
+    fn device_status_wire_shape() {
+        let full = r#"{"type":"device_status","link":{"state":"direct","path":"lan","rtt_ms":4,
+            "net":"wifi","visible":true,"last_recovery_ms":980,"last_recovery_why":"network back"}}"#;
+        let Ok(RelayMsg::DeviceStatus { link }) = serde_json::from_str(full) else {
+            panic!("device_status no longer parses")
+        };
+        assert_eq!((link.path.as_str(), link.rtt_ms), ("lan", Some(4)));
+        let sparse = r#"{"type":"device_status","link":{"state":"relayed","rtt_ms":null}}"#;
+        assert!(serde_json::from_str::<RelayMsg>(sparse).is_ok());
     }
 
     #[test]

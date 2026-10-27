@@ -134,6 +134,15 @@ fn running(s: &Status) {
         s.trusted,
         if s.trusted == 1 { "" } else { "s" },
     );
+    // Each device joined right now, and how it reaches this computer.
+    for l in crate::links::list() {
+        println!(
+            "             {} {} — {}",
+            dot(l.link.state == "direct"),
+            bold(&l.name),
+            crate::links::describe(&l.link)
+        );
+    }
 }
 
 /// The command closest to a mistyped one, if any is close enough to be a guess.

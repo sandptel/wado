@@ -64,6 +64,14 @@ pub const JS: &str = concat!(
     // After `seat.js`, for the same reason: it wraps the `__up` handler, and `saveSettings`.
     include_str!("js/config.js"),
     "\n",
+    // The link badge, the network watch and the heartbeat, in that order: each wraps the `__up`
+    // handler, and the heartbeat reads what `link_state` classified.
+    include_str!("js/link_state.js"),
+    "\n",
+    include_str!("js/netwatch.js"),
+    "\n",
+    include_str!("js/device_status.js"),
+    "\n",
     include_str!("js/input_core.js"),
     "\n",
     include_str!("js/input_units.js"),
@@ -243,6 +251,11 @@ pub fn run(ui: Ui) {
 
             match kind {
                 "status" => live.status.set(text()),
+                "link" => {
+                    if let Ok(l) = serde_json::from_value(msg.clone()) {
+                        live.link.set(l);
+                    }
+                }
                 "screen" => {
                     live.screen_w.set(num("w").unwrap_or(0.0) as u32);
                     live.screen_h.set(num("h").unwrap_or(0.0) as u32);

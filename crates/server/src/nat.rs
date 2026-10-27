@@ -106,7 +106,16 @@ pub async fn report() {
         }
     }
 
-    match classify(&seen) {
+    let verdict = classify(&seen);
+    let _ = LAST.set(
+        match verdict {
+            Verdict::Consistent(_) => "consistent",
+            Verdict::Symmetric(..) => "symmetric",
+            Verdict::Unknown => "unknown",
+        }
+        .into(),
+    );
+    match verdict {
         Verdict::Consistent(a) => {
             info!(public = %a, "NAT: one mapping for every destination — srflx candidates are usable")
         }
@@ -128,6 +137,19 @@ pub async fn report() {
              WADO_TURN_URL (with WADO_TURN_USER/WADO_TURN_PASS), or switch the VPN off."
         ),
         Verdict::Unknown => debug!("NAT probe: fewer than two STUN servers answered — no verdict"),
+    }
+}
+
+/// The startup probe's verdict, kept for the client's link badge (`RelayMsg::HostNet`).
+static LAST: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// What the probe found, for a client: empty until it has run.
+///
+/// ponytail: probed once at startup; a VPN switched on later is not noticed until a restart.
+pub fn host_net() -> wado_protocol::link::HostNet {
+    wado_protocol::link::HostNet {
+        nat: LAST.get().cloned().unwrap_or_default(),
+        turn: crate::ice::has_turn(),
     }
 }
 

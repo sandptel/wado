@@ -654,6 +654,23 @@ if it was maximized first.
 
 ### Changed
 
+- **You can always see how you are connected, and wado comes back by itself when the network
+  changes.**
+  - **A badge in the corner** says which path this device is on: *Connected* (ready), *Connecting…*,
+    *Direct · LAN* or *Direct · internet* with the round trip, *Relayed — limited*, *Reconnecting…*,
+    *Computer offline*, *Waiting*, or *Offline*. Tap it to find out what that means and whose problem
+    it is. *Offline* tells "this device has no network" apart from "wado's relay is unreachable —
+    not your computer", and *Relayed* names a VPN or strict NAT on the computer when its own probe
+    found one. During a healthy direct session the badge shrinks to a dot.
+  - **Switching networks**, for example Wi-Fi to mobile data, is noticed straight away. The picture
+    comes back behind a *Reconnecting…* veil with the session and its apps untouched. Before, this
+    waited for a 45-second watchdog or a failed connection. How long it took is written to the
+    computer's log (`network: reconnected in … ms`).
+  - **The computer sees every connected device**: `wado tui` shows each one's path and round trip
+    (`lan 4ms`, `inet 38ms`, `relayed`), `wado` lists them, and the log records every change of path.
+  - **Fixed:** a session entered with *Join session* never came back by itself after a connection
+    drop. It now resumes like one that was started on that device.
+
 - **wado connects through one public relay, with no tunnel to run.** A bare `wado daemon` now
   dials `wado-relay.indiasouthcentral.cloudapp.azure.com` and is reachable from any network at
   once. It no longer starts a local relay and a cloudflared quick tunnel, whose address changed on

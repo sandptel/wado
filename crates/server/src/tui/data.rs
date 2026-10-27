@@ -19,6 +19,8 @@ pub struct Row {
     pub owner: bool,
     /// Watching a session right now.
     pub online: bool,
+    /// How it reaches this computer, while it is joined to one of its daemons (`crate::links`).
+    pub link: Option<wado_protocol::link::DeviceLink>,
 }
 
 pub struct Snapshot {
@@ -44,10 +46,15 @@ impl Snapshot {
             .iter()
             .filter_map(|s| s.viewer.as_deref())
             .collect();
+        let links = crate::links::list();
         let devices = gate
             .devices()
             .into_iter()
             .map(|d| Row {
+                link: links
+                    .iter()
+                    .find(|l| l.key == d.key)
+                    .map(|l| l.link.clone()),
                 grants: gate.grants(&d.key),
                 owner: crate::config::link::is_owner(&d.key, &gate),
                 online: watching.contains(&d.name.as_str()),

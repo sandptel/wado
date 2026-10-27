@@ -13,6 +13,7 @@ pub mod control;
 pub mod envelope;
 pub mod files;
 pub mod host;
+pub mod link;
 pub mod menu;
 pub mod relay;
 pub mod relay_wire;

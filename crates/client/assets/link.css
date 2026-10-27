@@ -1,0 +1,50 @@
+/* The link badge (ui/link_badge.rs) and the reconnecting veil (ui/reconnecting.rs).
+ * Top-left: toasts and the files pill own top-centre, the stagebar owns top-right. Above the
+ * landing (40) and the control centre (60), below toasts (70). Colour only from base16 tokens. */
+
+.linkbadge {
+  position: fixed; z-index: 65;
+  top: calc(10px + env(safe-area-inset-top)); left: calc(10px + env(safe-area-inset-left));
+  --tone: var(--good);
+}
+.linkbadge.warn { --tone: var(--warn); }
+.linkbadge.bad  { --tone: var(--bad); }
+
+.linkpill {
+  display: inline-flex; align-items: center; gap: 7px;
+  min-height: 32px; padding: 0 12px 0 10px; border-radius: 999px;
+  background: color-mix(in oklab, var(--s1), transparent 12%);
+  border: 1px solid color-mix(in oklab, var(--tone), transparent 60%);
+  color: var(--bright); font: 600 13px/1 var(--body);
+}
+/* A healthy direct session: only the dot, so a game keeps its corner. Still a 32 px target. */
+.linkbadge.quiet .linkpill { padding: 0; width: 32px; justify-content: center; background: transparent; border-color: transparent; }
+
+.linkdot { width: 8px; height: 8px; border-radius: 50%; background: var(--tone); flex: none; }
+.linkbadge.warn .linkdot { animation: breathe 2.4s ease-in-out infinite; }
+
+.linkcard {
+  margin-top: 6px; width: min(320px, calc(100vw - 20px)); padding: 12px 14px;
+  border-radius: var(--r2); background: var(--s2); border: 1px solid var(--line);
+  color: var(--text); font: 13px/1.45 var(--body);
+  display: grid; gap: 8px;
+}
+.linkcard p { margin: 0; }
+.linkcard b { color: var(--tone); }
+.linkcard .btn { justify-self: start; min-height: 40px; }
+
+.reconnecting {
+  position: fixed; inset: 0; z-index: 8; pointer-events: none;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  background: rgb(0 0 0 / .35); color: var(--base07); font: 600 16px/1 var(--body);
+}
+.reconnecting .spin {
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 2px solid color-mix(in oklab, var(--base07), transparent 70%); border-top-color: var(--base07);
+  animation: linkspin .8s linear infinite;
+}
+@keyframes linkspin { to { rotate: 360deg; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .linkbadge.warn .linkdot, .reconnecting .spin { animation: none; }
+}

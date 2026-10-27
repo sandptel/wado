@@ -16,7 +16,7 @@ const COLS: [(&str, &str); 6] = [
     ("clipboard", "clp"),
     ("owner", theme::OWNER),
 ];
-const NOW: usize = 8;
+const NOW: usize = 13;
 
 pub fn draw(f: &mut Frame, app: &App, area: Rect) {
     let focused = app.focus == Card::Devices;
@@ -80,7 +80,17 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
         } else {
             Style::new()
         };
-        let (dot, dot_st) = theme::dot(r.online);
+        let (dot, dot_st) = theme::dot(r.online || r.link.is_some());
+        let now = r.link.as_ref().map_or_else(
+            || {
+                if r.online {
+                    "live".to_string()
+                } else {
+                    String::new()
+                }
+            },
+            short,
+        );
         let mut spans = vec![
             (
                 Span::styled(format!(" {pin} "), theme::state(d.pinned)),
@@ -94,14 +104,7 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
                 None,
             ),
             (
-                Span::styled(
-                    format!(
-                        "{dot} {:<w$}",
-                        if r.online { "live" } else { "" },
-                        w = NOW - 2
-                    ),
-                    dot_st,
-                ),
+                Span::styled(format!("{dot} {:<w$.w$}", now, w = NOW - 2), dot_st),
                 None,
             ),
         ];
@@ -143,4 +146,19 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
 
 fn mark(on: bool) -> (String, bool) {
     (if on { theme::ON } else { theme::OFF }.into(), on)
+}
+
+/// The "now" cell for a joined device: `lan 4ms`, `inet 38ms`, `relayed`, `recon…`.
+fn short(l: &wado_protocol::link::DeviceLink) -> String {
+    let path = match (l.state.as_str(), l.path.as_str()) {
+        ("direct", "lan") => "lan",
+        ("direct", "turn") => "turn",
+        ("direct", _) => "inet",
+        ("reconnecting", _) => "recon…",
+        (s, _) => s,
+    };
+    match l.rtt_ms.filter(|_| l.state == "direct") {
+        Some(ms) => format!("{path} {ms}ms"),
+        None => path.to_string(),
+    }
 }

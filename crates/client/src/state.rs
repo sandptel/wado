@@ -400,6 +400,8 @@ pub struct Live {
     pub conn_stage: Signal<u8>,
     /// Why the connection stopped where it did. Empty while nothing has failed.
     pub conn_error: Signal<String>,
+    /// Which path this device is on right now — the link badge (`crate::link`).
+    pub link: Signal<crate::link::Link>,
 
     /// Set when the daemon reports a session was already running, holding what it is — the
     /// encoder mode, and its pipeline tier when there is one.
@@ -506,6 +508,7 @@ impl Live {
             screen_dpr: use_signal(|| 0.0),
             screen_h: use_signal(|| 0),
             conn_stage: use_signal(|| 0),
+            link: use_signal(crate::link::Link::default),
             conn_error: use_signal(String::new),
             session_alive: use_signal(|| None),
             apps: use_signal(Vec::new),

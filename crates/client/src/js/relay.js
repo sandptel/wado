@@ -220,6 +220,18 @@ function onLinkUp() {
     if (W._relayWanted) emit({ type: "startFailed" });
     return;
   }
+  // A session joined from the home page ("Join session", sessions.js) never set `_relayWanted` —
+  // it was not started here — so it fell into the cold-load branch below, which clears the
+  // crumb and asks for nothing: after any blip the picture only came back when the dead peer
+  // connection finally reported `failed` (17 s, measured 2026-10-28). It is ours all the same,
+  // and `session_rejoin` can only attach to what exists, so take it back.
+  if (W.sessionOn && (!W._relayWanted || !W._relayConfig)) {
+    W._relayResuming = true;
+    rlog("link back — taking back the session this page joined");
+    status("relay: reconnecting to the running session…");
+    W.relaySendMsg({ type: "session_rejoin" });
+    return;
+  }
   if (!W._relayWanted || !W._relayConfig) {
     // No session asked for on this page — but this device may have been watching one before the
     // page was torn down under it. See `relayResumeIfWatching`.
@@ -302,7 +314,9 @@ W.relayOn("session_started", async (msg) => {
     // `connecting` is deliberately NOT skipped: an attempt that is stalling should be
     // superseded, because ICE takes up to 45 s to declare failure and waiting that out is worse
     // than re-offering. Only a connection that has actually succeeded is protected.
-    if (W.pc && W.pc.connectionState === "connected") {
+    // …unless this device's network just changed (`netwatch.js`): then "connected" is a peer
+    // connection bound to an address the device no longer has, which only has not noticed yet.
+    if (W.pc && W.pc.connectionState === "connected" && !W._rebuildOnStart) {
       rlog("already connected — keeping the live peer connection rather than rebuilding it");
       stagebar("Streaming (relay).");
     } else {

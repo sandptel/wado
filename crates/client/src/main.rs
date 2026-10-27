@@ -11,6 +11,7 @@ mod actions;
 mod bridge;
 mod cfg;
 mod debug;
+mod link;
 mod persist;
 mod profile;
 mod res;
@@ -129,6 +130,7 @@ fn App() -> Element {
         document::Stylesheet { href: asset!("/assets/stage.css") }
         document::Stylesheet { href: asset!("/assets/gamepad.css") }
         document::Stylesheet { href: asset!("/assets/files.css") }
+        document::Stylesheet { href: asset!("/assets/link.css") }
 
         // The stage is the whole screen, always. Everything else floats over it and never
         // takes space from the picture — the control centre included (Decision Log 2026-10-02).
@@ -140,6 +142,8 @@ fn App() -> Element {
             {ui::landing::render(ui)}
             {ui::toast::render(ui)}
             {ui::cc::render(ui)}
+            {ui::reconnecting::render(ui)}
+            {ui::link_badge::render(ui)}
         }
     }
 }
