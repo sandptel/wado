@@ -21,12 +21,23 @@ pub const EV_KEY: u16 = 0x01;
 pub const EV_ABS: u16 = 0x03;
 pub const SYN_REPORT: u16 = 0x00;
 
-const UI_DEV_SETUP: u64 = 0x405c_5503; // _IOW('U', 3, struct uinput_setup) — 92 bytes
-const UI_ABS_SETUP: u64 = 0x401c_5504; // _IOW('U', 4, struct uinput_abs_setup) — 28 bytes
-const UI_SET_EVBIT: u64 = 0x4004_5564;
-const UI_SET_KEYBIT: u64 = 0x4004_5565;
-const UI_SET_ABSBIT: u64 = 0x4004_5567;
-const UI_SET_PROPBIT: u64 = 0x4004_556e;
+/// `_IOW(type, nr, size)` — the kernel's ioctl-number encoding (`asm-generic/ioctl.h`):
+/// direction (write = 1) in bit 30, the payload size in bits 16..30, the type character in
+/// bits 8..16, the sequence number in bits 0..8. Deriving every `_IOW` constant from this
+/// (and the real payload struct's `size_of`) instead of a hand-copied hex literal means a
+/// wrong size or a transposed nibble fails to compile-time-match the kernel header value
+/// pinned in the test below, rather than silently reading a garbage struct at runtime.
+const fn iow(nr: u64, size: usize) -> u64 {
+    (1 << 30) | ((size as u64) << 16) | (('U' as u64) << 8) | nr
+}
+
+const UI_DEV_SETUP: u64 = iow(3, std::mem::size_of::<UinputSetup>());
+const UI_ABS_SETUP: u64 = iow(4, std::mem::size_of::<UinputAbsSetup>());
+const UI_SET_EVBIT: u64 = iow(100, std::mem::size_of::<i32>());
+const UI_SET_KEYBIT: u64 = iow(101, std::mem::size_of::<i32>());
+const UI_SET_ABSBIT: u64 = iow(103, std::mem::size_of::<i32>());
+const UI_SET_PROPBIT: u64 = iow(110, std::mem::size_of::<i32>());
+/// `_IO('U', 1)` / `_IO('U', 2)` — no payload, so not derived from `iow`.
 const UI_DEV_CREATE: u64 = 0x5501;
 const UI_DEV_DESTROY: u64 = 0x5502;
 
@@ -244,8 +255,9 @@ unsafe fn ioctl_ptr(fd: i32, req: u64, arg: *const libc::c_void) -> io::Result<(
 mod tests {
     use super::*;
 
-    /// The ioctl numbers are hand-derived from `_IOW('U', nr, struct)`, which is exactly the
-    /// kind of arithmetic that is wrong by a bit and fails as a confusing `EINVAL` at runtime.
+    /// `UI_*` are computed from `iow()` and the real struct sizes, not copied from the kernel
+    /// header by hand — so this test is the thing that actually pins them to the header's
+    /// values (a wrong `nr`, a wrong `'U'`, or a struct whose size drifted would fail here).
     #[test]
     fn ioctl_numbers_match_the_kernel_headers() {
         assert_eq!(UI_DEV_SETUP, 0x405c_5503);

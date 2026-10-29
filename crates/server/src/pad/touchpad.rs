@@ -1,7 +1,7 @@
-//! The virtual multi-touch touchpad: device setup, and the pure logic that turns one frame of
+//! The virtual multi-touch touchpad: device setup, and the logic that turns one frame of
 //! [`Contact`]s into evdev slot events.
 
-use std::io;
+use std::{collections::HashSet, io};
 
 use wado_protocol::pad::Contact;
 
@@ -50,76 +50,79 @@ fn scale(v: u16, max: i32) -> i32 {
     (v as i64 * max as i64 / 65535) as i32
 }
 
-/// Assign each contact's id a slot (0..=4), keeping a continuing id's previous slot and giving
-/// a new id the first slot not already in use. An id past the slot budget keeps no slot (the
-/// touch is dropped from `events`, but not from the device: nothing moves because nothing is
-/// mapped).
-fn assign_slots(prev: &[Contact], next: &[Contact]) -> std::collections::HashMap<u8, u16> {
-    let mut prev_slots = std::collections::HashMap::new();
-    for &(id, _, _) in prev.iter().take(SLOTS) {
-        let slot = prev_slots.len() as u16;
-        prev_slots.entry(id).or_insert(slot);
-    }
-
-    let mut next_slots = std::collections::HashMap::new();
-    let mut used = [false; SLOTS];
-    // Continuing ids keep their slot first, so a new id never bumps one still touching.
-    for &(id, _, _) in next {
-        if let Some(&s) = prev_slots.get(&id) {
-            next_slots.insert(id, s);
-            used[s as usize] = true;
-        }
-    }
-    for &(id, _, _) in next {
-        if next_slots.contains_key(&id) {
-            continue;
-        }
-        if let Some(free) = (0..SLOTS).find(|&s| !used[s]) {
-            next_slots.insert(id, free as u16);
-            used[free] = true;
-        }
-        // else: no free slot — this finger is silently ignored.
-    }
-    next_slots
+/// Persistent slot state, carried by the caller across frames (`Touchpad` owns one). A slot
+/// holds the client-assigned id currently occupying it and the kernel tracking id handed out
+/// for it; `next_tracking_id` is a counter, never the client id, because client ids are
+/// reused across lift/re-press while a tracking id must not be (`ABS_MT_TRACKING_ID` is how
+/// libinput tells a re-press apart from the same finger never having moved). `ignored` holds
+/// client ids that showed up with no free slot — they stay locked out for their whole
+/// lifetime, even once a slot frees, until they are absent from a frame at all.
+#[derive(Default)]
+pub struct Slots {
+    slots: [Option<(u8, u16)>; SLOTS],
+    next_tracking_id: u16,
+    ignored: HashSet<u8>,
 }
 
-/// The evdev events that take the device from `prev`'s contacts to `next`'s, pure and
-/// stateless. `w`/`h` are the device's axis maxima (already the `*10` device range, not CSS
-/// px).
-pub fn slot_events(prev: &[Contact], next: &[Contact], w: i32, h: i32) -> Vec<(u16, u16, i32)> {
-    let prev_slots = assign_slots(&[], prev); // prev's own slot assignment, by its own order
-    let next_slots = assign_slots(prev, next);
+/// The evdev events that take the device from `state`'s current slot assignment to `next`'s,
+/// mutating `state` in place. `w`/`h` are the device's axis maxima (already the `*10` device
+/// range, not CSS px).
+///
+/// Order: every slot whose id left this frame lifts first (`MT_SLOT` + `MT_TRACKING_ID -1`).
+/// Then every slot still occupied — continuing or brand new — gets `MT_SLOT` (+
+/// `MT_TRACKING_ID` on a fresh assignment) and its position. A brand-new id takes the lowest
+/// slot that was free *before* any lift this call ran, so a same-frame replacement (one id
+/// leaves, another arrives) never reuses the slot it just vacated. Then, if anything above
+/// was emitted, `BTN_TOUCH` and — only when the finger count changed — the old/new
+/// `BTN_TOOL_*` bits. Finally, if a finger remains, `ABS_X`/`ABS_Y` of the lowest occupied
+/// slot.
+pub fn slot_events(state: &mut Slots, next: &[Contact], w: i32, h: i32) -> Vec<(u16, u16, i32)> {
+    let next_ids: HashSet<u8> = next.iter().map(|&(id, _, _)| id).collect();
 
-    let prev_used: std::collections::HashSet<u16> = prev_slots.values().copied().collect();
-    let next_used: std::collections::HashSet<u16> = next_slots.values().copied().collect();
+    // Absent from this frame → no longer locked out. If it comes back later it gets a fresh
+    // shot at a slot.
+    state.ignored.retain(|id| next_ids.contains(id));
 
-    let mut lifted: Vec<u16> = prev_used.difference(&next_used).copied().collect();
-    lifted.sort_unstable();
+    let old_count = state.slots.iter().filter(|s| s.is_some()).count();
+    // Captured before any lift below runs: a slot a lift frees this call is not up for grabs
+    // by a new id in the same call.
+    let free_before: Vec<usize> = (0..SLOTS).filter(|&s| state.slots[s].is_none()).collect();
 
-    // For each slot now occupied, whether it's a brand-new id (appeared) or a continuing one
-    // that may have moved.
-    let mut changed: Vec<(u16, u8, u16, u16, bool)> = Vec::new(); // (slot, id, x, y, appeared)
+    let mut events = Vec::new();
+    for s in 0..SLOTS {
+        if let Some((id, _)) = state.slots[s] {
+            if !next_ids.contains(&id) {
+                events.push((EV_ABS, ABS_MT_SLOT, s as i32));
+                events.push((EV_ABS, ABS_MT_TRACKING_ID, -1));
+                state.slots[s] = None;
+            }
+        }
+    }
+
+    // (slot, x, y, Some(tracking_id) if this is a fresh assignment)
+    let mut changed: Vec<(usize, u16, u16, Option<u16>)> = Vec::new();
+    let mut free = free_before.into_iter();
     for &(id, x, y) in next {
-        let Some(&slot) = next_slots.get(&id) else {
+        if state.ignored.contains(&id) {
             continue;
-        };
-        match prev.iter().find(|&&(pid, _, _)| pid == id) {
-            None => changed.push((slot, id, x, y, true)),
-            Some(&(_, px, py)) if (px, py) != (x, y) => changed.push((slot, id, x, y, false)),
-            Some(_) => {}
+        }
+        if let Some(slot) = (0..SLOTS).find(|&s| state.slots[s].is_some_and(|(sid, _)| sid == id)) {
+            changed.push((slot, x, y, None));
+        } else if let Some(slot) = free.next() {
+            let tracking_id = state.next_tracking_id;
+            state.next_tracking_id = state.next_tracking_id.wrapping_add(1);
+            state.slots[slot] = Some((id, tracking_id));
+            changed.push((slot, x, y, Some(tracking_id)));
+        } else {
+            state.ignored.insert(id);
         }
     }
     changed.sort_unstable_by_key(|e| e.0);
 
-    let mut events = Vec::new();
-    for &slot in &lifted {
+    for &(slot, x, y, tracking_id) in &changed {
         events.push((EV_ABS, ABS_MT_SLOT, slot as i32));
-        events.push((EV_ABS, ABS_MT_TRACKING_ID, -1));
-    }
-    for &(slot, id, x, y, appeared) in &changed {
-        events.push((EV_ABS, ABS_MT_SLOT, slot as i32));
-        if appeared {
-            events.push((EV_ABS, ABS_MT_TRACKING_ID, id as i32));
+        if let Some(tracking_id) = tracking_id {
+            events.push((EV_ABS, ABS_MT_TRACKING_ID, tracking_id as i32));
         }
         events.push((EV_ABS, ABS_MT_POSITION_X, scale(x, w)));
         events.push((EV_ABS, ABS_MT_POSITION_Y, scale(y, h)));
@@ -129,8 +132,7 @@ pub fn slot_events(prev: &[Contact], next: &[Contact], w: i32, h: i32) -> Vec<(u
         return events;
     }
 
-    let old_count = prev_used.len();
-    let new_count = next_used.len();
+    let new_count = state.slots.iter().filter(|s| s.is_some()).count();
     events.push((EV_KEY, BTN_TOUCH, (new_count > 0) as i32));
     if old_count != new_count {
         if let Some(code) = tool_code(old_count) {
@@ -141,7 +143,8 @@ pub fn slot_events(prev: &[Contact], next: &[Contact], w: i32, h: i32) -> Vec<(u
         }
     }
 
-    if let Some((&id, _)) = next_slots.iter().min_by_key(|&(_, &s)| s) {
+    if let Some(lowest) = state.slots.iter().position(|s| s.is_some()) {
+        let (id, _) = state.slots[lowest].expect("position() found a Some");
         if let Some(&(_, x, y)) = next.iter().find(|&&(nid, _, _)| nid == id) {
             events.push((EV_ABS, ABS_X, scale(x, w)));
             events.push((EV_ABS, ABS_Y, scale(y, h)));
@@ -154,7 +157,7 @@ pub fn slot_events(prev: &[Contact], next: &[Contact], w: i32, h: i32) -> Vec<(u
 /// An open virtual touchpad. Dropping it destroys the kernel device.
 pub struct Touchpad {
     device: uinput::Device,
-    prev: Vec<Contact>,
+    slots: Slots,
     w_px: u16,
     h_px: u16,
 }
@@ -199,7 +202,7 @@ impl Touchpad {
 
         Ok(Touchpad {
             device,
-            prev: Vec::new(),
+            slots: Slots::default(),
             w_px,
             h_px,
         })
@@ -209,11 +212,10 @@ impl Touchpad {
     pub fn frame(&mut self, c: &[Contact]) -> io::Result<()> {
         let w = self.w_px as i32 * 10;
         let h = self.h_px as i32 * 10;
-        let events = slot_events(&self.prev, c, w, h);
+        let events = slot_events(&mut self.slots, c, w, h);
         if !events.is_empty() {
             self.device.emit(&events)?;
         }
-        self.prev = c.to_vec();
         Ok(())
     }
 
@@ -229,12 +231,13 @@ mod tests {
 
     #[test]
     fn one_finger_down_moves_then_lifts() {
-        let down = slot_events(&[], &[(0, 32768, 32768)], 3900, 8000);
+        let mut slots = Slots::default();
+        let down = slot_events(&mut slots, &[(0, 32768, 32768)], 3900, 8000);
         assert!(down.contains(&(EV_ABS, ABS_MT_TRACKING_ID, 0)));
         assert!(down.contains(&(EV_KEY, BTN_TOUCH, 1)));
         assert!(down.contains(&(EV_KEY, BTN_TOOL_FINGER, 1)));
         assert!(down.contains(&(EV_ABS, ABS_MT_POSITION_X, 1950)));
-        let up = slot_events(&[(0, 32768, 32768)], &[], 3900, 8000);
+        let up = slot_events(&mut slots, &[], 3900, 8000);
         assert!(up.contains(&(EV_ABS, ABS_MT_TRACKING_ID, -1)));
         assert!(up.contains(&(EV_KEY, BTN_TOUCH, 0)));
         assert!(up.contains(&(EV_KEY, BTN_TOOL_FINGER, 0)));
@@ -242,17 +245,208 @@ mod tests {
 
     #[test]
     fn second_finger_switches_tool_to_doubletap() {
-        let e = slot_events(&[(0, 0, 0)], &[(0, 0, 0), (1, 10, 10)], 100, 100);
+        let mut slots = Slots::default();
+        slot_events(&mut slots, &[(0, 0, 0)], 100, 100);
+        let e = slot_events(&mut slots, &[(0, 0, 0), (1, 10, 10)], 100, 100);
         assert!(e.contains(&(EV_KEY, BTN_TOOL_FINGER, 0)));
         assert!(e.contains(&(EV_KEY, BTN_TOOL_DOUBLETAP, 1)));
     }
 
+    /// Adapted: a sixth finger gets no tracking id, this call or ever again, even though the
+    /// other five keep refreshing their (unchanged) positions every frame.
     #[test]
     fn a_sixth_finger_is_ignored() {
+        let mut slots = Slots::default();
         let five: Vec<Contact> = (0..5).map(|i| (i, 0, 0)).collect();
+        slot_events(&mut slots, &five, 100, 100);
         let mut six = five.clone();
         six.push((5, 0, 0));
-        assert!(slot_events(&five, &six, 100, 100).is_empty());
+        let e = slot_events(&mut slots, &six, 100, 100);
+        assert!(
+            !e.iter()
+                .any(|&(k, c, v)| k == EV_ABS && c == ABS_MT_TRACKING_ID && v >= 0)
+        );
+    }
+
+    /// (a) The lower-numbered finger lifts; the other keeps its own slot (not slot 0 — the
+    /// CRITICAL bug this replaces re-derived slots from list position every call, so the
+    /// survivor's events silently landed on slot 0 with no tracking id). It then moves, still
+    /// in its own slot, and finally lifts, releasing that slot.
+    #[test]
+    fn lower_finger_lifts_then_the_other_moves_then_lifts() {
+        let mut slots = Slots::default();
+
+        let e1 = slot_events(&mut slots, &[(0, 100, 100), (1, 30000, 30000)], 1000, 1000);
+        assert_eq!(
+            e1,
+            vec![
+                (EV_ABS, ABS_MT_SLOT, 0),
+                (EV_ABS, ABS_MT_TRACKING_ID, 0),
+                (EV_ABS, ABS_MT_POSITION_X, scale(100, 1000)),
+                (EV_ABS, ABS_MT_POSITION_Y, scale(100, 1000)),
+                (EV_ABS, ABS_MT_SLOT, 1),
+                (EV_ABS, ABS_MT_TRACKING_ID, 1),
+                (EV_ABS, ABS_MT_POSITION_X, scale(30000, 1000)),
+                (EV_ABS, ABS_MT_POSITION_Y, scale(30000, 1000)),
+                (EV_KEY, BTN_TOUCH, 1),
+                (EV_KEY, BTN_TOOL_DOUBLETAP, 1),
+                (EV_ABS, ABS_X, scale(100, 1000)),
+                (EV_ABS, ABS_Y, scale(100, 1000)),
+            ]
+        );
+
+        let e2 = slot_events(&mut slots, &[(1, 30000, 30000)], 1000, 1000);
+        assert_eq!(
+            e2,
+            vec![
+                (EV_ABS, ABS_MT_SLOT, 0),
+                (EV_ABS, ABS_MT_TRACKING_ID, -1),
+                (EV_ABS, ABS_MT_SLOT, 1),
+                (EV_ABS, ABS_MT_POSITION_X, scale(30000, 1000)),
+                (EV_ABS, ABS_MT_POSITION_Y, scale(30000, 1000)),
+                (EV_KEY, BTN_TOUCH, 1),
+                (EV_KEY, BTN_TOOL_DOUBLETAP, 0),
+                (EV_KEY, BTN_TOOL_FINGER, 1),
+                (EV_ABS, ABS_X, scale(30000, 1000)),
+                (EV_ABS, ABS_Y, scale(30000, 1000)),
+            ],
+            "the survivor's position must land on its own slot 1, not slot 0"
+        );
+
+        let e3 = slot_events(&mut slots, &[(1, 31000, 31000)], 1000, 1000);
+        assert_eq!(
+            e3,
+            vec![
+                (EV_ABS, ABS_MT_SLOT, 1),
+                (EV_ABS, ABS_MT_POSITION_X, scale(31000, 1000)),
+                (EV_ABS, ABS_MT_POSITION_Y, scale(31000, 1000)),
+                (EV_KEY, BTN_TOUCH, 1),
+                (EV_ABS, ABS_X, scale(31000, 1000)),
+                (EV_ABS, ABS_Y, scale(31000, 1000)),
+            ],
+            "still slot 1 — moving must not reassign the slot"
+        );
+
+        let e4 = slot_events(&mut slots, &[], 1000, 1000);
+        assert_eq!(
+            e4,
+            vec![
+                (EV_ABS, ABS_MT_SLOT, 1),
+                (EV_ABS, ABS_MT_TRACKING_ID, -1),
+                (EV_KEY, BTN_TOUCH, 0),
+                (EV_KEY, BTN_TOOL_FINGER, 0),
+            ],
+            "the final lift must release slot 1, not a stale slot 0"
+        );
+    }
+
+    /// (b) A same-frame replacement: id 0 lifts and id 1 appears in the same call. The
+    /// IMPORTANT bug this replaces reused slot 0 for id 1 with no `-1` in between; the new
+    /// contact must land on a different slot, with a fresh tracking id, and the finger count
+    /// must not blip to 2.
+    #[test]
+    fn replacement_in_one_frame_frees_then_reassigns() {
+        let mut slots = Slots::default();
+        let e1 = slot_events(&mut slots, &[(0, 100, 100)], 1000, 1000);
+        assert_eq!(
+            e1,
+            vec![
+                (EV_ABS, ABS_MT_SLOT, 0),
+                (EV_ABS, ABS_MT_TRACKING_ID, 0),
+                (EV_ABS, ABS_MT_POSITION_X, scale(100, 1000)),
+                (EV_ABS, ABS_MT_POSITION_Y, scale(100, 1000)),
+                (EV_KEY, BTN_TOUCH, 1),
+                (EV_KEY, BTN_TOOL_FINGER, 1),
+                (EV_ABS, ABS_X, scale(100, 1000)),
+                (EV_ABS, ABS_Y, scale(100, 1000)),
+            ]
+        );
+
+        let e2 = slot_events(&mut slots, &[(1, 30000, 30000)], 1000, 1000);
+        assert_eq!(
+            e2,
+            vec![
+                (EV_ABS, ABS_MT_SLOT, 0),
+                (EV_ABS, ABS_MT_TRACKING_ID, -1),
+                (EV_ABS, ABS_MT_SLOT, 1),
+                (EV_ABS, ABS_MT_TRACKING_ID, 1),
+                (EV_ABS, ABS_MT_POSITION_X, scale(30000, 1000)),
+                (EV_ABS, ABS_MT_POSITION_Y, scale(30000, 1000)),
+                (EV_KEY, BTN_TOUCH, 1),
+                (EV_ABS, ABS_X, scale(30000, 1000)),
+                (EV_ABS, ABS_Y, scale(30000, 1000)),
+            ],
+            "id 1 must land on slot 1 (never the just-freed slot 0) with a fresh tracking id, \
+             and the finger count must stay 1 throughout"
+        );
+    }
+
+    /// (c) Six fingers at once: the sixth is locked out immediately. Lifting the first finger
+    /// frees slot 0, but the sixth must stay locked out — not promoted into the freed slot —
+    /// and a later move of the sixth must produce no event for it at all.
+    #[test]
+    fn sixth_finger_stays_ignored_even_after_a_slot_frees() {
+        let mut slots = Slots::default();
+        let six: Vec<Contact> = (0..6).map(|i| (i, 10, 10)).collect();
+        let e1 = slot_events(&mut slots, &six, 1000, 1000);
+        let appeared = e1
+            .iter()
+            .filter(|&&(k, c, v)| k == EV_ABS && c == ABS_MT_TRACKING_ID && v >= 0)
+            .count();
+        assert_eq!(
+            appeared, 5,
+            "only 5 slots exist — the 6th id gets no tracking id"
+        );
+
+        let drop_zero: Vec<Contact> = (1..6).map(|i| (i, 10, 10)).collect();
+        let e2 = slot_events(&mut slots, &drop_zero, 1000, 1000);
+        assert!(e2.contains(&(EV_ABS, ABS_MT_SLOT, 0)));
+        assert!(e2.contains(&(EV_ABS, ABS_MT_TRACKING_ID, -1)));
+        let appeared2 = e2
+            .iter()
+            .filter(|&&(k, c, v)| k == EV_ABS && c == ABS_MT_TRACKING_ID && v >= 0)
+            .count();
+        assert_eq!(
+            appeared2, 0,
+            "id 5 must not be promoted into the freed slot 0"
+        );
+
+        let moved: Vec<Contact> = (1..6).map(|i| (i, 20000, 20000)).collect();
+        let e3 = slot_events(&mut slots, &moved, 1000, 1000);
+        let slot_updates = e3
+            .iter()
+            .filter(|&&(k, c, _)| k == EV_ABS && c == ABS_MT_SLOT)
+            .count();
+        assert_eq!(
+            slot_updates, 4,
+            "id 5 is still ignored — only 4 real slots move"
+        );
+    }
+
+    /// (d) Tracking ids come from a counter, never the client id: lifting and re-pressing the
+    /// same client id must hand out a new, larger tracking id.
+    #[test]
+    fn tracking_ids_increase_across_lift_and_repress() {
+        let mut slots = Slots::default();
+        let find_trk = |events: &[(u16, u16, i32)]| {
+            events
+                .iter()
+                .find(|&&(k, c, _)| k == EV_ABS && c == ABS_MT_TRACKING_ID)
+                .map(|&(_, _, v)| v)
+                .unwrap()
+        };
+
+        let first = slot_events(&mut slots, &[(0, 0, 0)], 100, 100);
+        let trk1 = find_trk(&first);
+
+        slot_events(&mut slots, &[], 100, 100);
+        let second = slot_events(&mut slots, &[(0, 0, 0)], 100, 100);
+        let trk2 = find_trk(&second);
+
+        assert!(
+            trk2 > trk1,
+            "re-press must get a larger tracking id ({trk1} -> {trk2})"
+        );
     }
 
     #[test]
