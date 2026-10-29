@@ -19,15 +19,27 @@
 //! - `bluetoothctl.rs` — Bluetooth through BlueZ (`Bluetooth`).
 //! - `inhibit.rs` — keeping awake with `systemd-inhibit` (`PowerInhibit`).
 //! - `sysinfo.rs` — what the computer is (`SysInfoSource`).
+//! - `hyprland.rs` — windows and workspaces through Hyprland (`WindowManager`).
+//! - `launcher.rs` — opening apps on the desktop (`Launcher`).
+//! - `grim.rs` — screenshots (`Screenshot`).
+//! - `login.rs` — lock and sleep (`SystemPower`).
+//! - `on_desktop.rs` — running a tool on the desktop's display.
+//! - `probe.rs` — what is installed: a program on `PATH`, a session bus, a terminal.
 
 pub mod backlight;
 pub mod bluetoothctl;
 pub mod cmd;
+pub mod grim;
+pub mod hyprland;
 pub mod inhibit;
 pub mod keyboard;
+pub mod launcher;
+pub mod login;
 pub mod mpris;
 pub mod nmcli;
+pub mod on_desktop;
 pub mod pipewire;
+pub mod probe;
 pub mod sysinfo;
 pub mod touchpad;
 pub mod uinput;
@@ -40,18 +52,19 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::sync::{Arc, OnceLock};
 
 use wado_platform::audio::{AudioMixer, ViewerSink};
+use wado_platform::desktop::{Launcher, Screenshot, WindowManager};
 use wado_platform::display::Brightness;
 use wado_platform::input::{
     GamepadInjector, InputError, KeyInjector, Opener, TextInjector, TouchInjector,
 };
 use wado_platform::media::MediaPlayers;
 use wado_platform::network::{Bluetooth, WifiRadio};
-use wado_platform::power::PowerInhibit;
+use wado_platform::power::{PowerInhibit, SystemPower};
 use wado_platform::registry::Offer;
 use wado_platform::sysinfo::SysInfoSource;
 use wado_platform::{Provider, ProviderId};
 
-use crate::actions::detect::on_path;
+use probe::{on_path, tool};
 
 /// This provider's id.
 pub const LINUX: ProviderId = ProviderId("linux");
@@ -85,14 +98,14 @@ fn offer<T: ?Sized>(probe: Result<(), String>, imp: impl FnOnce() -> Arc<T>) -> 
     Some(probe.map(|()| imp()))
 }
 
-/// Every tool in `tools` is installed — else which one is missing, in words.
-fn tools(tools: &[&str], what: &str) -> Result<(), String> {
-    match tools.iter().find(|t| !on_path(t)) {
-        None => Ok(()),
-        Some(t) => Err(format!(
-            "{what} needs {t}, which is not installed on this computer"
-        )),
-    }
+/// Every tool in `tools` is installed — else the first that is not, in words.
+fn tools(tools: &[&str]) -> Result<(), String> {
+    tools.iter().try_for_each(|t| tool(t))
+}
+
+/// `probe`'s result as an offer.
+fn opened<P, T: ?Sized>(probe: Result<P, String>, imp: impl FnOnce(P) -> Arc<T>) -> Offer<T> {
+    Some(probe.map(imp))
 }
 
 /// Every Linux provider in one: the host's own tools and devices.
@@ -146,7 +159,7 @@ impl Provider for LinuxProvider {
 
     fn text(&self) -> Offer<dyn TextInjector> {
         let probe = wtype::command().and_then(|_| {
-            crate::actions::detect::on_path("wtype")
+            on_path("wtype")
                 .then_some(())
                 .ok_or_else(|| wtype::NO_WTYPE.to_string())
         });
@@ -154,7 +167,7 @@ impl Provider for LinuxProvider {
     }
 
     fn audio(&self) -> Offer<dyn AudioMixer> {
-        let probe = tools(&["pw-dump", "wpctl"], "Sound control");
+        let probe = tools(&["pw-dump", "wpctl"]);
         offer(probe, || self.pipewire() as Arc<dyn AudioMixer>)
     }
 
@@ -163,9 +176,9 @@ impl Provider for LinuxProvider {
     }
 
     fn media(&self) -> Offer<dyn MediaPlayers> {
-        let probe = crate::actions::detect::session_bus()
+        let probe = probe::session_bus()
             .then_some(())
-            .ok_or_else(|| crate::actions::Need::Mpris.why());
+            .ok_or_else(|| probe::NO_BUS.to_string());
         offer(probe, || {
             self.media
                 .get_or_init(|| Arc::new(mpris::Mpris::new(self.pipewire().state())))
@@ -174,7 +187,7 @@ impl Provider for LinuxProvider {
     }
 
     fn brightness(&self) -> Offer<dyn Brightness> {
-        offer(tools(&["brightnessctl"], "Brightness"), || {
+        offer(tools(&["brightnessctl"]), || {
             self.brightness
                 .get_or_init(|| Arc::new(backlight::Backlight::new()))
                 .clone() as Arc<dyn Brightness>
@@ -182,7 +195,7 @@ impl Provider for LinuxProvider {
     }
 
     fn wifi(&self) -> Offer<dyn WifiRadio> {
-        offer(tools(&["nmcli"], "Wi-Fi"), || {
+        offer(tools(&["nmcli"]), || {
             self.wifi
                 .get_or_init(|| Arc::new(nmcli::NetworkManager::new()))
                 .clone() as Arc<dyn WifiRadio>
@@ -190,7 +203,7 @@ impl Provider for LinuxProvider {
     }
 
     fn bluetooth(&self) -> Offer<dyn Bluetooth> {
-        offer(tools(&["bluetoothctl"], "Bluetooth"), || {
+        offer(tools(&["bluetoothctl"]), || {
             self.bluetooth
                 .get_or_init(|| Arc::new(bluetoothctl::BlueZ::new()))
                 .clone() as Arc<dyn Bluetooth>
@@ -198,10 +211,32 @@ impl Provider for LinuxProvider {
     }
 
     fn power_inhibit(&self) -> Offer<dyn PowerInhibit> {
-        offer(tools(&["systemd-inhibit"], "Keeping awake"), || {
+        offer(tools(&["systemd-inhibit"]), || {
             self.awake
                 .get_or_init(|| Arc::new(inhibit::SystemdInhibit::new()))
                 .clone() as Arc<dyn PowerInhibit>
+        })
+    }
+
+    fn window_manager(&self) -> Offer<dyn WindowManager> {
+        opened(hyprland::Hyprland::probe(), |h| {
+            Arc::new(h) as Arc<dyn WindowManager>
+        })
+    }
+
+    fn launcher(&self) -> Offer<dyn Launcher> {
+        opened(launcher::XdgLauncher::probe(), |l| {
+            Arc::new(l) as Arc<dyn Launcher>
+        })
+    }
+
+    fn screenshot(&self) -> Offer<dyn Screenshot> {
+        opened(grim::Grim::probe(), |g| Arc::new(g) as Arc<dyn Screenshot>)
+    }
+
+    fn system_power(&self) -> Offer<dyn SystemPower> {
+        opened(login::Logind::probe(), |l| {
+            Arc::new(l) as Arc<dyn SystemPower>
         })
     }
 

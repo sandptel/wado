@@ -1,60 +1,26 @@
-//! Opening an app on the desktop: a terminal, the browser, the file manager. Started and left
-//! to run — never awaited, so the tap is answered as soon as the app is on its way.
+//! Opening an app on the desktop through the platform's launcher: a terminal, the browser, the
+//! file manager.
 
-use super::detect::Found;
+use wado_platform::desktop::App;
+
 use super::{Action, Does, Need};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Op {
-    Terminal,
-    Browser,
-    Files,
-}
-
 pub fn all() -> Vec<Action> {
-    let open = vec![Need::Tool("xdg-open"), Need::Desktop];
-    vec![
-        Action::new(
-            "open-terminal",
-            "Terminal",
-            "Apps",
-            "term",
-            vec![Need::Terminal, Need::Desktop],
-            Does::App(Op::Terminal),
-        ),
-        Action::new(
-            "open-browser",
-            "Browser",
-            "Apps",
-            "net",
-            open.clone(),
-            Does::App(Op::Browser),
-        ),
-        Action::new(
-            "open-files",
-            "Files",
-            "Apps",
-            "folder",
-            open,
-            Does::App(Op::Files),
-        ),
+    [
+        ("open-terminal", "Terminal", "term", App::Terminal),
+        ("open-browser", "Browser", "net", App::Browser),
+        ("open-files", "Files", "folder", App::Files),
     ]
-}
-
-pub fn run(op: Op, found: &Found) -> Result<(), String> {
-    let detached = super::proc::detached;
-    match op {
-        Op::Terminal => {
-            let term = found
-                .terminal
-                .as_deref()
-                .ok_or_else(|| Need::Terminal.why())?;
-            detached(term, &[])
-        }
-        Op::Browser => detached("xdg-open", &["https://"]),
-        Op::Files => {
-            let home = std::env::var("HOME").map_err(|_| "no home folder to open")?;
-            detached("xdg-open", &[&home])
-        }
-    }
+    .into_iter()
+    .map(|(id, name, icon, app)| {
+        Action::new(
+            id,
+            name,
+            "Apps",
+            icon,
+            vec![Need::Launch(app)],
+            Does::App(app),
+        )
+    })
+    .collect()
 }

@@ -23,7 +23,7 @@ pub enum PowerOp {
 
 /// Lock the screen, or sleep.
 pub trait SystemPower: Send + Sync {
-    /// `op` can be done here (its tool is installed, its service reachable).
-    fn can(&self, op: PowerOp) -> bool;
+    /// `op` can be done here (its tool is installed, its service reachable) — or why not.
+    fn can(&self, op: PowerOp) -> Res<()>;
     fn run(&self, op: PowerOp) -> Fut<'_, Res<()>>;
 }

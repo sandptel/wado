@@ -1,165 +1,89 @@
-//! What this computer has for the actions to use: a running Hyprland, the tools on `PATH`, a
-//! session bus for media players, the desktop's display, a terminal.
+//! What an action needs here, as platform capabilities (`wado_platform`), and asking the
+//! platform whether this computer has them.
 //!
-//! Looked up at most every 30 s, and again after a miss — an action that failed or was asked for
-//! while missing — so a Hyprland restarted or a tool just installed shows up on the next list.
+//! The platform probes once; actions look again at most every [`FRESH`], and after a miss — an
+//! action that failed or was asked for while missing — so a Hyprland restarted or a tool just
+//! installed shows up on the next list.
 
-use std::collections::BTreeSet;
-use std::path::Path;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-const FRESH: Duration = Duration::from_secs(30);
+use wado_platform::desktop::App;
+use wado_platform::power::PowerOp;
+use wado_platform::{Capability, Platform};
+
+/// How long what was probed is trusted for listing.
+pub const FRESH: Duration = Duration::from_secs(30);
 
 /// One thing an action needs here.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Need {
-    /// Hyprland is running and `hyprctl` reaches it.
-    Hyprland,
-    /// A program on `PATH`.
-    Tool(&'static str),
-    /// A session bus, where media players (MPRIS) live.
-    Mpris,
-    /// The desktop's Wayland display (`clip::env`), for tools that draw or capture on it.
-    Desktop,
-    /// `xdg-terminal-exec`, else `$TERMINAL`.
-    Terminal,
+    /// The capability is provided.
+    Cap(Capability),
+    /// The platform's system power can do this.
+    Power(PowerOp),
+    /// The platform's launcher can open this.
+    Launch(App),
+    /// The platform's screenshots can be of an area the person chooses.
+    Region,
 }
 
 impl Need {
-    /// Why an action needing this cannot run here, in plain words.
-    pub fn why(&self) -> String {
+    /// The capability this need is part of.
+    pub fn cap(&self) -> Capability {
         match self {
-            Need::Hyprland => "Hyprland is not running on this computer".into(),
-            Need::Tool(t) => format!("{t} is not installed on this computer"),
-            Need::Mpris => "this computer has no desktop session bus for media players".into(),
-            Need::Desktop => "the daemon was not started inside a Wayland desktop".into(),
-            Need::Terminal => {
-                "no terminal found — install xdg-terminal-exec or set $TERMINAL".into()
-            }
+            Need::Cap(c) => *c,
+            Need::Power(_) => Capability::SystemPower,
+            Need::Launch(_) => Capability::Launcher,
+            Need::Region => Capability::Screenshot,
         }
     }
 }
 
-/// Answers "is this here?" — the real computer, or a fake in tests.
+/// Answers "is this here, and if not, why?" — the platform, or a fake in tests.
 pub trait Detect {
-    fn has(&self, need: &Need) -> bool;
+    fn check(&self, need: &Need) -> Result<(), String>;
 }
 
-/// What was found, once.
-#[derive(Debug, Clone, Default)]
-pub struct Found {
-    hyprland: bool,
-    mpris: bool,
-    desktop: bool,
-    tools: BTreeSet<&'static str>,
-    /// The terminal program to start, when there is one.
-    pub terminal: Option<String>,
-}
-
-impl Detect for Found {
-    fn has(&self, need: &Need) -> bool {
+impl Detect for Platform {
+    fn check(&self, need: &Need) -> Result<(), String> {
+        let absent = |a: wado_platform::Absent| a.why;
         match need {
-            Need::Hyprland => self.hyprland,
-            Need::Tool(t) => self.tools.contains(t),
-            Need::Mpris => self.mpris,
-            Need::Desktop => self.desktop,
-            Need::Terminal => self.terminal.is_some(),
+            Need::Cap(c) => self.absent(*c).map_or(Ok(()), |a| Err(a.why)),
+            Need::Power(op) => self.system_power().map_err(absent)?.can(*op),
+            Need::Launch(app) => self.launcher().map_err(absent)?.can(*app),
+            Need::Region => self.screenshot().map_err(absent)?.can_region(),
         }
     }
 }
 
-static CACHE: Mutex<Option<(Instant, Found)>> = Mutex::new(None);
+/// When the actions' capabilities were last probed.
+static LOOKED: Mutex<Option<Instant>> = Mutex::new(None);
 
-/// What this computer has, from the cache while it is fresh.
-pub async fn now() -> Found {
-    if let Some((at, found)) = CACHE.lock().unwrap_or_else(|e| e.into_inner()).as_ref()
-        && at.elapsed() < FRESH
-    {
-        return found.clone();
+/// Probe the actions' capabilities again when they were last looked at more than [`FRESH`] ago.
+pub async fn fresh(p: &'static Platform) {
+    let stale = LOOKED
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .is_none_or(|at| at.elapsed() >= FRESH);
+    if stale {
+        look_again(p, super::used()).await;
+        *LOOKED.lock().unwrap_or_else(|e| e.into_inner()) = Some(Instant::now());
     }
-    let found = scan().await;
-    *CACHE.lock().unwrap_or_else(|e| e.into_inner()) = Some((Instant::now(), found.clone()));
-    found
 }
 
-/// Look again on the next [`now`].
+/// Look again on the next [`fresh`].
 pub fn forget() {
-    *CACHE.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    *LOOKED.lock().unwrap_or_else(|e| e.into_inner()) = None;
 }
 
-async fn scan() -> Found {
-    let tools: BTreeSet<&'static str> = super::all()
-        .iter()
-        .flat_map(|a| a.needs.iter())
-        .filter_map(|n| match n {
-            Need::Tool(t) => Some(*t),
-            _ => None,
-        })
-        .chain(["hyprctl"])
-        .filter(|t| on_path(t))
-        .collect();
-    let hyprland = tools.contains("hyprctl") && super::hypr::running().await;
-    Found {
-        hyprland,
-        mpris: session_bus(),
-        desktop: crate::clip::env::display().is_some(),
-        terminal: terminal(&|t| on_path(t), std::env::var("TERMINAL").ok()),
-        tools,
-    }
-}
-
-/// `prog` is an executable on `PATH`, or an executable path itself.
-pub fn on_path(prog: &str) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-    let exec = |p: &Path| {
-        p.metadata()
-            .is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
-    };
-    if prog.contains('/') {
-        return exec(Path::new(prog));
-    }
-    std::env::var_os("PATH")
-        .is_some_and(|paths| std::env::split_paths(&paths).any(|d| exec(&d.join(prog))))
-}
-
-/// `xdg-terminal-exec` when installed, else `$TERMINAL` when it names a program that is.
-fn terminal(exists: &dyn Fn(&str) -> bool, env: Option<String>) -> Option<String> {
-    if exists("xdg-terminal-exec") {
-        return Some("xdg-terminal-exec".into());
-    }
-    env.filter(|t| !t.trim().is_empty() && exists(t.trim()))
-        .map(|t| t.trim().to_string())
-}
-
-pub fn session_bus() -> bool {
-    std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_some_and(|a| !a.is_empty())
-        || std::env::var_os("XDG_RUNTIME_DIR").is_some_and(|d| Path::new(&d).join("bus").exists())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn terminal_prefers_xdg_terminal_exec_then_the_env() {
-        let all = |_: &str| true;
-        assert_eq!(
-            terminal(&all, Some("kitty".into())).as_deref(),
-            Some("xdg-terminal-exec")
-        );
-        let kitty = |t: &str| t == "kitty";
-        assert_eq!(
-            terminal(&kitty, Some("kitty".into())).as_deref(),
-            Some("kitty")
-        );
-        assert_eq!(terminal(&kitty, Some("foot".into())), None, "not installed");
-        assert_eq!(terminal(&kitty, None), None);
-    }
-
-    #[test]
-    fn on_path_finds_a_shell() {
-        assert!(on_path("sh"));
-        assert!(!on_path("wado-no-such-tool"));
-    }
+/// Probe `caps` again now. Probing may run a tool and wait for it, so it runs where blocking is
+/// fine.
+pub async fn look_again(p: &'static Platform, caps: Vec<Capability>) {
+    let _ = tokio::task::spawn_blocking(move || {
+        for cap in caps {
+            p.reprobe(cap);
+        }
+    })
+    .await;
 }

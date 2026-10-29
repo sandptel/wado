@@ -1,4 +1,4 @@
-//! Hyprland: which instance to talk to, and `hyprctl dispatch`.
+//! Hyprland ([`WindowManager`] on Linux): which instance to talk to, and `hyprctl dispatch`.
 //!
 //! `hyprctl` finds Hyprland by `HYPRLAND_INSTANCE_SIGNATURE`, a directory under
 //! `$XDG_RUNTIME_DIR/hypr`. The daemon's own is captured at start (like `clip::env`), but a
@@ -10,8 +10,60 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 use tokio::process::Command;
+use wado_platform::desktop::{Dir, WindowManager, WindowOp};
+use wado_platform::{Fut, Res};
 
 const DEADLINE: Duration = Duration::from_secs(5);
+
+/// Shown when there is no Hyprland to drive.
+pub const NOT_RUNNING: &str = "Hyprland is not running on this computer";
+
+/// The window manager, through `hyprctl`.
+pub struct Hyprland;
+
+impl Hyprland {
+    /// Hyprland, when `hyprctl` is installed and an instance answers it — the probe, run where
+    /// blocking is fine (daemon start, or a blocking task).
+    pub fn probe() -> Result<Hyprland, String> {
+        let sig = signature().ok_or(NOT_RUNNING)?;
+        let mut cmd = std::process::Command::new("hyprctl");
+        cmd.arg("version").env("HYPRLAND_INSTANCE_SIGNATURE", sig);
+        match super::cmd::run_blocking(cmd, DEADLINE) {
+            Some(out) if out.status.success() => Ok(Hyprland),
+            _ => Err(NOT_RUNNING.into()),
+        }
+    }
+}
+
+impl WindowManager for Hyprland {
+    fn run(&self, op: WindowOp) -> Fut<'_, Res<()>> {
+        Box::pin(async move { dispatch(&args(op)).await })
+    }
+}
+
+/// The `hyprctl` arguments that do `op`.
+pub fn args(op: WindowOp) -> Vec<String> {
+    let d = |a: &[&str]| {
+        ["dispatch"]
+            .iter()
+            .chain(a)
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>()
+    };
+    let side = |dir| if dir == Dir::Left { "l" } else { "r" };
+    match op {
+        WindowOp::Fullscreen => d(&["fullscreen"]),
+        WindowOp::Close => d(&["killactive"]),
+        WindowOp::ToggleFloat => d(&["togglefloating"]),
+        WindowOp::Pin => d(&["pin"]),
+        WindowOp::Focus(dir) => d(&["movefocus", side(dir)]),
+        // `e±1`: the next workspace that has windows, so a swipe never lands on an empty one.
+        WindowOp::WorkspaceStep(Dir::Left) => d(&["workspace", "e-1"]),
+        WindowOp::WorkspaceStep(Dir::Right) => d(&["workspace", "e+1"]),
+        WindowOp::Workspace(n) => d(&["workspace", &n.to_string()]),
+        WindowOp::MoveToWorkspace(n) => d(&["movetoworkspace", &n.to_string()]),
+    }
+}
 
 static CAPTURED: OnceLock<Option<String>> = OnceLock::new();
 
@@ -79,11 +131,6 @@ async fn hyprctl(args: &[&str]) -> Result<String, String> {
     }
 }
 
-/// Hyprland answers `hyprctl version`.
-pub async fn running() -> bool {
-    hyprctl(&["version"]).await.is_ok()
-}
-
 /// `hyprctl dispatch …`. It exits 0 even when it refuses, so its answer is read: `ok`.
 pub async fn dispatch(args: &[String]) -> Result<(), String> {
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
@@ -114,6 +161,30 @@ mod tests {
         let f = std::fs::File::create(dir.join(sig).join(".socket.sock")).unwrap();
         f.set_modified(SystemTime::now() - Duration::from_secs(age_s))
             .unwrap();
+    }
+
+    #[test]
+    fn each_op_is_exactly_a_hyprctl_dispatch() {
+        let a = |op| args(op).join(" ");
+        assert_eq!(
+            a(WindowOp::WorkspaceStep(Dir::Right)),
+            "dispatch workspace e+1"
+        );
+        assert_eq!(
+            a(WindowOp::WorkspaceStep(Dir::Left)),
+            "dispatch workspace e-1"
+        );
+        assert_eq!(
+            a(WindowOp::MoveToWorkspace(3)),
+            "dispatch movetoworkspace 3"
+        );
+        assert_eq!(a(WindowOp::Workspace(9)), "dispatch workspace 9");
+        assert_eq!(a(WindowOp::Focus(Dir::Left)), "dispatch movefocus l");
+        assert_eq!(a(WindowOp::Focus(Dir::Right)), "dispatch movefocus r");
+        assert_eq!(a(WindowOp::Fullscreen), "dispatch fullscreen");
+        assert_eq!(a(WindowOp::Close), "dispatch killactive");
+        assert_eq!(a(WindowOp::ToggleFloat), "dispatch togglefloating");
+        assert_eq!(a(WindowOp::Pin), "dispatch pin");
     }
 
     #[test]

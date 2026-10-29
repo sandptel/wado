@@ -1,5 +1,7 @@
 //! The default output's volume and mute, through the platform's mixer (`wado_platform::audio`).
 
+use wado_platform::{Capability, Platform};
+
 use super::{Action, Does, Need};
 
 /// A volume step: one tap of a laptop's volume key.
@@ -25,15 +27,14 @@ pub fn all() -> Vec<Action> {
             name,
             "Sound",
             icon,
-            vec![Need::Tool("wpctl"), Need::Tool("pw-dump")],
+            vec![Need::Cap(Capability::Audio)],
             Does::Sound(op),
         )
     })
     .collect()
 }
 
-pub async fn run(op: Op) -> Result<(), String> {
-    let p = crate::platform::get();
+pub async fn run(p: &Platform, op: Op) -> Result<(), String> {
     let mixer = p.audio().map_err(|a| a.why)?;
     let a = crate::host::audio::now(mixer.as_ref(), crate::host::viewer::name(p).as_deref()).await;
     let out = a

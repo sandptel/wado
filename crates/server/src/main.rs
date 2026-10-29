@@ -37,7 +37,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // Before `build`, which points WAYLAND_DISPLAY at the session for the apps it launches.
     wado::clip::env::capture();
-    wado::actions::hypr::capture();
+    wado::platform::linux::hyprland::capture();
     // Probe the host's capabilities now, while the desktop's display is still the one captured
     // above, and off the async paths that answer viewers.
     let caps = wado::platform::get().caps();

@@ -243,8 +243,11 @@ pub struct FakePower {
 }
 
 impl SystemPower for FakePower {
-    fn can(&self, op: PowerOp) -> bool {
-        self.can.contains(&op)
+    fn can(&self, op: PowerOp) -> Res<()> {
+        self.can
+            .contains(&op)
+            .then_some(())
+            .ok_or_else(|| format!("{op:?} is not possible here"))
     }
     fn run(&self, op: PowerOp) -> Fut<'_, Res<()>> {
         Box::pin(async move { ok(&self.log, format!("power.run {op:?}")) })
@@ -351,8 +354,11 @@ pub struct FakeLauncher {
 }
 
 impl Launcher for FakeLauncher {
-    fn can(&self, app: App) -> bool {
-        self.can.contains(&app)
+    fn can(&self, app: App) -> Res<()> {
+        self.can
+            .contains(&app)
+            .then_some(())
+            .ok_or_else(|| format!("{app:?} cannot be opened here"))
     }
     fn open(&self, app: App) -> Res<()> {
         ok(&self.log, format!("launch.open {app:?}"))
@@ -365,8 +371,10 @@ pub struct FakeScreenshot {
 }
 
 impl Screenshot for FakeScreenshot {
-    fn can_region(&self) -> bool {
+    fn can_region(&self) -> Res<()> {
         self.region
+            .then_some(())
+            .ok_or_else(|| "no area can be chosen here".to_string())
     }
     fn shoot(&self, region: bool, to: PathBuf) -> Fut<'_, Res<()>> {
         Box::pin(async move { ok(&self.log, format!("shot {region} {}", to.display())) })

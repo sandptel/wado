@@ -25,11 +25,18 @@ pub async fn desktop(prog: &str, args: &[&str], deadline: Duration) -> Result<St
     }
 }
 
+/// Shown outside a Wayland desktop.
+pub const NO_DESKTOP: &str = "the daemon was not started inside a Wayland desktop";
+
+/// The desktop's display, or why there is none.
+pub fn display() -> Result<&'static str, String> {
+    crate::clip::env::display().ok_or_else(|| NO_DESKTOP.to_string())
+}
+
 /// Start `prog args…` on the desktop's display and leave it: an app the user opened outlives the
 /// tap that opened it, and the daemon too (its own process group, no pipes back).
 pub fn detached(prog: &str, args: &[&str]) -> Result<(), String> {
-    let display =
-        crate::clip::env::display().ok_or("the daemon was not started inside a Wayland desktop")?;
+    let display = display()?;
     tokio::process::Command::new(prog)
         .args(args)
         .env("WAYLAND_DISPLAY", display)

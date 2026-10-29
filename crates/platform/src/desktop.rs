@@ -42,15 +42,15 @@ pub enum App {
 
 /// Opening apps on the desktop. Started and left to run: an app outlives the tap that opened it.
 pub trait Launcher: Send + Sync {
-    /// `app` can be opened here.
-    fn can(&self, app: App) -> bool;
+    /// `app` can be opened here — or why not, in words a person can act on.
+    fn can(&self, app: App) -> Res<()>;
     fn open(&self, app: App) -> Res<()>;
 }
 
 /// Screenshots of the desktop, saved as PNG.
 pub trait Screenshot: Send + Sync {
-    /// The person can choose an area (else only the whole screen).
-    fn can_region(&self) -> bool;
+    /// The person can choose an area (else only the whole screen) — or why not.
+    fn can_region(&self) -> Res<()>;
     /// Capture the screen — or an area the person chooses on it — into `to`.
     fn shoot(&self, region: bool, to: PathBuf) -> Fut<'_, Res<()>>;
 }
