@@ -80,6 +80,7 @@
     W.padRail.mount({ rail: el.rail, bar: el.bar });
     W.padRail.onType(() => keyboard(true));
     W.padRail.onError(alert);
+    W.padRail.onDone((a, res) => W.padConfirm.show(el.area, a, res));
     W.padActions.onChange(() => { if (!root.hidden) W.padRail.paint(); });
 
     W.padKeys.onMods((m) => {
@@ -97,7 +98,8 @@
       if (m.k === "err" && !W.padActions.owns(m)) { alert(m.message); paintPill(); }
     });
 
-    // First-touch hint fade. The rings, connector, chip and ambient highlight are js/pad_feel.js.
+    // First-touch hint fade. The rings, connector, chip and ambient highlight are js/pad_feel.js,
+    // the gesture hints js/pad_hints.js, the first-use coach js/pad_coach.js.
     el.area.addEventListener("pointerdown", () => el.area.classList.add("touched"));
 
     // Which way round: the layout follows this device's settings and the keyboard.
@@ -150,6 +152,7 @@
     W.padRail.paint();
     if (opening) return;
     W.padFeel.attach(el.area);
+    W.padHints.attach(el.area);
     root.classList.remove("tpturn");
     void root.offsetWidth;
     root.classList.add("tpturn");
@@ -184,6 +187,8 @@
     W.padActions.refresh();
     W.padTouch.attach(el.area);
     W.padFeel.attach(el.area);
+    W.padHints.attach(el.area);
+    W.padCoach.attach(el.area);
     W.padKeys.attach(el.text, el.row);
     paintPill();
     if (p.keyboard) keyboard(true);
@@ -199,6 +204,8 @@
     keyboard(false);
     W.padTouch.detach();
     W.padFeel.detach();
+    W.padHints.detach();
+    W.padCoach.detach();
     W.padKeys.detach();
     W.pad.stop();
     root.classList.remove("tpturn");

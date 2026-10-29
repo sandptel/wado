@@ -1,6 +1,6 @@
 // Runnable check for the trackpad's client side: js/pad_link.js, js/pad_prefs.js,
 // js/pad_orient.js, js/pad_touch.js, js/pad_keys.js, js/pad_icons.js, js/pad_actions.js,
-// js/pad_rail.js (views on the DOM shim in scripts/lib/pad-dom.mjs).
+// js/pad_rail.js (views on the DOM shim in scripts/lib/pad-dom.mjs), js/pad_hints.js.
 //
 // Loads the real modules into a stub `W` with a fake clock, a fake relay and a fake
 // RTCPeerConnection, drives them, and asserts the wire messages.
@@ -11,7 +11,7 @@ import { makeDocument } from "./lib/pad-dom.mjs";
 
 const js = (f) => readFileSync(new URL(`../crates/client/src/js/${f}`, import.meta.url), "utf8");
 const MODULES = ["pad_link.js", "pad_prefs.js", "pad_orient.js", "pad_touch.js", "pad_keys.js",
-  "pad_icons.js", "pad_actions.js", "pad_rail.js"];
+  "pad_icons.js", "pad_actions.js", "pad_rail.js", "pad_hints.js"];
 const src = MODULES.map(js).join("\n");
 
 class FakeDC {
@@ -351,6 +351,25 @@ await run("the icon set matches ui/widgets/icon.rs", async (e) => {
   const rs = readFileSync(new URL("../crates/client/src/ui/widgets/icon.rs", import.meta.url), "utf8");
   const names = [...rs.matchAll(/^\s+"([a-z0-9]+)" => "/gm)].map((m) => m[1]);
   eq(e.W.padIconNames, names, "same names, same order");
+});
+
+// ── gesture hints (js/pad_hints.js): what the picture says the fingers are doing ───────
+const F = (x0, y0, x, y) => ({ x0, y0, x, y });
+await run("hints: two fingers together scroll; spreading pinches; three slide a swipe; four are four", async (e) => {
+  const c = e.W.padHints.classify;
+  const sc = c([F(100, 100, 100, 160), F(150, 100, 150, 160)], 100);
+  eq([sc.kind, sc.axis], ["scroll", "v"], "two fingers down the pad");
+  const pi = c([F(100, 100, 60, 100), F(150, 100, 190, 100)], 100);
+  eq([pi.kind, pi.out, pi.scale.toFixed(1)], ["pinch", true, "2.6"], "spread");
+  eq(c([F(100, 100, 120, 100), F(150, 100, 130, 100)], 100).kind, "pinch", "close");
+  const sw = c([F(0, 0, 40, 0), F(50, 0, 90, 0), F(100, 0, 140, 0)], 100);
+  eq([sw.kind, sw.n, sw.axis], ["swipe", 3, "h"], "three to the right");
+  eq(c([F(0, 0, 2, 0), F(50, 0, 50, 0), F(100, 0, 100, 0), F(150, 0, 150, 0)], 50).kind, "four", "four still");
+  eq(c([F(0, 0, 3, 0)], 200), null, "one finger: not yet a hold");
+  const h = c([F(0, 0, 3, 0)], 900);
+  eq([h.kind, h.progress], ["hold", 1], "held still and full");
+  eq(c([F(0, 0, 30, 0)], 900), null, "a moving finger is no hold");
+  eq(c([F(0, 0, 5, 5), F(50, 0, 55, 5)], 100), null, "too little to tell");
 });
 
 // ── keys ──────────────────────────────────────────────────────────────────────────────

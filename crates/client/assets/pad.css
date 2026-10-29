@@ -70,9 +70,11 @@
 
 /* Finger ring: position is written straight from the pointer event every frame, never eased.
  * Only landing (scale + fade in) and lifting (scale + fade out ripple) animate. */
-.tpfinger { position: absolute; left: 0; top: 0; width: 26px; height: 26px; margin: -13px 0 0 -13px;
+.tpfinger { position: absolute; left: 0; top: 0; width: 44px; height: 44px; margin: -22px 0 0 -22px;
   border-radius: 50%; border: 2px solid var(--accent); pointer-events: none;
-  background: color-mix(in oklab, var(--accent), transparent 80%); }
+  /* A soft filled core under the fingertip, fading out to the ring. */
+  background: radial-gradient(circle, color-mix(in oklab, var(--accent), transparent 40%) 0 7px,
+    color-mix(in oklab, var(--accent), transparent 78%) 9px, color-mix(in oklab, var(--accent), transparent 88%) 100%); }
 .tpfinger.land { animation: tpland-scale 160ms var(--pop), tpland-fade 90ms var(--ease); }
 .tpfinger.lift { animation: tplift 140ms ease-in forwards; }
 @keyframes tpland-scale { from { scale: .6; } to { scale: 1; } }
@@ -80,7 +82,7 @@
 @keyframes tplift { from { scale: 1; opacity: 1; } to { scale: 1.5; opacity: 0; } }
 
 /* Halo: a larger, fainter bloom under a landing finger that settles with it — secondary layer. */
-.tphalo { position: absolute; left: 0; top: 0; width: 60px; height: 60px; margin: -30px 0 0 -30px;
+.tphalo { position: absolute; left: 0; top: 0; width: 120px; height: 120px; margin: -60px 0 0 -60px;
   border-radius: 50%; pointer-events: none;
   background: radial-gradient(circle, color-mix(in oklab, var(--accent), transparent 85%), transparent 72%);
   opacity: 0; scale: .6; }
@@ -234,3 +236,97 @@
 /* Without motion the check is simply there, not drawn. */
 @media (prefers-reduced-motion: reduce) { .tpact[data-state="ok"] .tpmark path { stroke-dashoffset: 0; } }
 :root[data-motion="off"] .tpact[data-state="ok"] .tpmark path { stroke-dashoffset: 0; }
+
+/* ── Gesture hints (js/pad_hints.js) ────────────────────────────────────────────────────────
+ * One element, moved to the fingers' centre each frame. Arrows lead in the direction of travel
+ * and pulse along it; the label sits under the centre and never turns. */
+.tpg { position: absolute; left: 0; top: 0; z-index: 1; pointer-events: none; opacity: 0;
+  transition: opacity 160ms var(--ease); }
+.tpg.on { opacity: 1; }
+.tpg > * { position: absolute; left: 0; top: 0; display: none; }
+.tpg[data-k="scroll"] .tpg-flow, .tpg[data-k="swipe"] .tpg-flow { display: flex; }
+.tpg[data-k="pinch"] .tpg-pinch, .tpg[data-k="hold"] .tpg-hold { display: block; }
+.tpg .tpg-label { display: block; }
+.tpg .tpg-label[hidden] { display: none; }
+.tpg svg { width: 32px; height: 32px; fill: none; stroke: var(--accent); stroke-width: 3;
+  stroke-linecap: round; stroke-linejoin: round; }
+.tpg-flow { transform-origin: 0 50%; margin-top: -16px; gap: 0; }
+.tpg-flow svg { margin-right: -10px; animation: tpg-flow 720ms ease-in-out infinite; }
+.tpg-flow svg:nth-child(2) { animation-delay: 120ms; }
+.tpg-flow svg:nth-child(3) { animation-delay: 240ms; }
+@keyframes tpg-flow { 0%, 100% { opacity: .25; } 40% { opacity: 1; } }
+.tpg[data-k="swipe"] .tpg-flow { margin-top: -22px; }
+.tpg[data-k="swipe"] .tpg-flow svg { width: 44px; height: 44px; margin-right: -16px; stroke-width: 3.4; }
+.tpg-pinch span { position: absolute; left: 0; top: 0; margin: -16px 0 0 -16px; display: grid; }
+.tpg-hold { width: 72px; height: 72px; margin: -36px 0 0 -36px; border-radius: 50%;
+  border: 2px solid color-mix(in oklab, var(--accent), transparent 55%); }
+.tpg-hold i { position: absolute; inset: 4px; border-radius: 50%; scale: 1; transform: scale(.25);
+  background: color-mix(in oklab, var(--accent), transparent 72%); transition: transform 60ms linear; }
+.tpg.full .tpg-hold { border-color: var(--accent); animation: tpg-full 320ms var(--pop); }
+@keyframes tpg-full { 40% { scale: 1.14; } }
+.tpg-label { translate: -50% -50%; white-space: nowrap; padding: 4px 11px; border-radius: 999px;
+  font: 600 13px var(--body); color: var(--bright);
+  background: color-mix(in oklab, var(--s0), transparent 12%); border: 1px solid var(--line);
+  animation: tpg-label 260ms var(--pop); }
+.tpg[data-k="pinch"] .tpg-label, .tpg[data-k="four"] .tpg-label { font-family: var(--mono); }
+@keyframes tpg-label { from { opacity: 0; scale: .8; } }
+
+/* ── "That ran" (js/pad_confirm.js): icon and name pop in, tick or shake, gone by ~600 ms. ── */
+.tpconfirm { position: absolute; left: 0; top: 0; z-index: 3; pointer-events: none; translate: -50% -50%;
+  display: grid; justify-items: center; gap: 10px;
+  animation: tpconfirm-in 260ms var(--pop) both, tpconfirm-out 200ms ease-in 420ms forwards; }
+.tpconfirm.mid { left: 50%; top: 50%; }
+@keyframes tpconfirm-in { from { opacity: 0; scale: .55; } }
+@keyframes tpconfirm-out { to { opacity: 0; scale: .94; } }
+.tpconfirm-disc { position: relative; width: 80px; height: 80px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--s2); color: var(--bright); box-shadow: 0 18px 50px -20px #000a, inset 0 0 0 2px var(--accent); }
+.tpconfirm-disc > svg { width: 36px; height: 36px; }
+.tpconfirm-badge { position: absolute; right: -4px; bottom: -4px; width: 30px; height: 30px; border-radius: 50%;
+  display: grid; place-items: center; background: var(--good); color: var(--on-accent);
+  animation: tpconfirm-badge 280ms var(--pop) 110ms both; }
+.tpconfirm-badge svg { width: 18px; height: 18px; stroke-width: 3; }
+@keyframes tpconfirm-badge { from { scale: 0; } }
+.tpconfirm.bad .tpconfirm-disc { box-shadow: 0 18px 50px -20px #000a, inset 0 0 0 2px var(--bad); color: var(--bad);
+  animation: tpshake 300ms ease-in-out 140ms; }
+.tpconfirm.bad .tpconfirm-badge { background: var(--bad); }
+.tpconfirm-name { padding: 5px 14px; border-radius: 999px; font: 600 15px var(--body); color: var(--bright);
+  background: color-mix(in oklab, var(--s2), transparent 6%); box-shadow: 0 18px 50px -20px #000a; white-space: nowrap; }
+
+/* ── First-use coach (js/pad_coach.js): three scenes, 2.4 s each, looping until a touch. ──── */
+.tparea:has(.tpcoach) .tphint, .tparea:has(.tpconfirm) .tphint { opacity: 0; }
+.tpcoach { position: absolute; inset: 0; z-index: 2; pointer-events: none; display: grid; place-items: center;
+  transition: opacity 240ms ease-in; }
+.tpcoach.out { opacity: 0; }
+.tpcoach-scene { grid-area: 1 / 1; display: grid; justify-items: center; gap: 16px; opacity: 0;
+  animation: tpcoach-scene 7.2s linear infinite; animation-delay: calc(var(--s) * 2.4s); }
+.tpcoach-scene p { margin: 0; font: 600 16px var(--body); color: var(--bright); text-align: center; }
+@keyframes tpcoach-scene { 0% { opacity: 0; translate: 0 8px; } 4% { opacity: 1; translate: 0 0; }
+  29% { opacity: 1; } 33.3%, 100% { opacity: 0; } }
+.tpcoach-hand { position: relative; width: 176px; height: 96px; }
+.tpcoach-hand i { position: absolute; top: 30px; width: 36px; height: 36px; border-radius: 50%;
+  border: 2px solid var(--accent); background: color-mix(in oklab, var(--accent), transparent 78%);
+  animation: tpcoach-1 7.2s var(--spring) infinite; animation-delay: calc(var(--s) * 2.4s); }
+.tpcoach-hand[data-n="1"] i { left: 24px; }
+.tpcoach-hand[data-n="2"] i:nth-child(1) { left: 52px; }
+.tpcoach-hand[data-n="2"] i:nth-child(2) { left: 96px; }
+.tpcoach-hand[data-n="2"] i { animation-name: tpcoach-2; }
+.tpcoach-hand[data-n="3"] i:nth-child(1) { left: 22px; }
+.tpcoach-hand[data-n="3"] i:nth-child(2) { left: 62px; }
+.tpcoach-hand[data-n="3"] i:nth-child(3) { left: 102px; }
+.tpcoach-hand[data-n="3"] i { animation-name: tpcoach-3; }
+@keyframes tpcoach-1 { 0%, 6% { translate: 0 22px; } 18% { translate: 64px -14px; } 28% { translate: 112px 8px; } 33.3%, 100% { translate: 112px 8px; } }
+@keyframes tpcoach-2 { 0%, 6% { translate: 0 34px; } 26% { translate: 0 -24px; } 33.3%, 100% { translate: 0 -24px; } }
+@keyframes tpcoach-3 { 0%, 6% { translate: -26px 0; } 26% { translate: 44px 0; } 33.3%, 100% { translate: 44px 0; } }
+.tpcoach-foot { position: absolute; bottom: 14px; left: 0; right: 0; margin: 0; text-align: center;
+  font-size: 12.5px; color: var(--dim); }
+/* Without motion: the three scenes as one still list. */
+@media (prefers-reduced-motion: reduce) {
+  .tpcoach { grid-auto-flow: row; align-content: center; gap: 14px; }
+  .tpcoach-scene { grid-area: auto; opacity: 1; }
+  .tpcoach-hand { height: 40px; }
+  .tpcoach-hand i { top: 2px; }
+}
+:root[data-motion="off"] .tpcoach { grid-auto-flow: row; align-content: center; gap: 14px; }
+:root[data-motion="off"] .tpcoach-scene { grid-area: auto; opacity: 1; }
+:root[data-motion="off"] .tpcoach-hand { height: 40px; }
+:root[data-motion="off"] .tpcoach-hand i { top: 2px; }

@@ -13,7 +13,7 @@
 //   W.padRail.mount({rail, bar})   the two containers (pad_ui builds them)
 //   W.padRail.paint()              rebuild from the settings, the action list and the layout
 //   W.padRail.items(quick, list) → the actions to show: `quick`'s order, ids not in `list` skipped
-//   W.padRail.onType(fn), onSettings(fn), onError(fn)
+//   W.padRail.onType(fn), onSettings(fn), onError(fn), onDone(fn(action, {ok, message}))
 
 (() => {
   const R = (W.padRail = {});
@@ -23,11 +23,12 @@
   const SPIN_MIN_MS = 110; // long enough to read as "it ran", short enough to keep the total ≤ 400
   const MARK_MS = 280;
   let box = null;
-  const hooks = { type: [], settings: [], error: [] };
+  const hooks = { type: [], settings: [], error: [], done: [] };
   const call = (k, ...a) => { for (const fn of hooks[k]) { try { fn(...a); } catch (_) {} } };
   R.onType = (fn) => hooks.type.push(fn);
   R.onSettings = (fn) => hooks.settings.push(fn);
   R.onError = (fn) => hooks.error.push(fn);
+  R.onDone = (fn) => hooks.done.push(fn);
 
   R.items = (quick, list) => {
     const by = new Map((list || []).map((a) => [a.id, a]));
@@ -94,11 +95,12 @@
     const label = node("span", "tplabel");
     label.textContent = a.name;
     b.append(ico, node("span", "tpspin", { "aria-hidden": "true" }), mark, label);
-    b.addEventListener("click", () => run(b, a.id));
+    b.addEventListener("click", () => run(b, a));
     return b;
   }
 
-  async function run(b, id) {
+  async function run(b, a) {
+    const id = a.id;
     if (b.dataset.state === "run") return;
     const t0 = performance.now();
     b.dataset.state = "run";
@@ -108,6 +110,7 @@
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
     b.removeAttribute("aria-busy");
     b.dataset.state = res.ok ? "ok" : "bad";
+    call("done", a, res);
     if (!res.ok) call("error", res.message || "That didn't work.");
     setTimeout(() => { if (b.dataset.state !== "run") delete b.dataset.state; }, MARK_MS);
   }
