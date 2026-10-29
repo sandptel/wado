@@ -299,3 +299,17 @@ Order: T1–T3 first (shared), then T4 → T5/T7 in parallel, T8, then T9 → T1
 - **Light live link**: home keeps a control-only link (no video) to each computer that has a widget, so values are live; dropped while a desktop session streams.
 - **True brightness**: a daemon action to set brightness to a level and read it back; the slider shows the real value.
 - **Wi-Fi lives under Connection & trust** (not Sound & devices).
+
+### Follow-up calls — 2026-10-30, after the first build
+
+- **Light links take no seat — control only.** A widget's link joins with `control=1` (relay cap
+  `control`, daemon cap `ctl`): the relay gives it no seat and carries its frames to the daemon
+  wrapped by room (`ctl_open` / `ctl` / `ctl_close`, additive in the frozen handshake). The daemon
+  serves it its own envelope, only a device it already trusts (no pairing on it), and only the
+  control messages — host state and actions, its own config, the clipboard, the action list and
+  runs — checking grants per message. The client asks `/online/:id` first and never sends
+  `control=1` to a relay that does not say `control`; with an older relay or daemon the widget says
+  so and there is no link.
+- **One trackpad settings sheet, two doors.** Computer → Trackpad opens the trackpad's own sheet
+  (`js/pad_settings.js`, `W.padSettings.openHere`); the second page that wrote the same keys is gone.
+- The link badge stays hidden outside a session.
