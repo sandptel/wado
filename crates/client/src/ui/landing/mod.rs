@@ -1,102 +1,56 @@
-//! Before a session: who to connect to, how far the connection got, and Start.
+//! Home — the screen before a session: the computers, what is running, this phone's settings,
+//! and the widgets. Its parts live in [`crate::ui::home`]; this frames them, top to bottom.
 //!
 //! A page of its own rather than the control centre opened over nothing, because before a
 //! session the only decision is *where*, and it deserves the whole screen. It dissolves into
-//! the stream once the session is up.
+//! the stream once the session is up, and recedes under a computer's page or a settings page
+//! pushed over it.
 
-mod clips;
-mod profiles;
-mod progress;
-mod sessions;
+pub mod clips;
 
 use dioxus::prelude::*;
 
 use crate::{
-    actions, bridge,
+    route::View,
     state::Ui,
-    ui::{pages::Page, widgets::Icon},
+    ui::home::{cards, sessions, settings, widgets},
 };
 
 pub fn render(ui: Ui) -> Element {
     let on = (ui.live.session_on)();
-    let mut live = ui.live;
     let s = ui.set;
-    let c = crate::cfg::build(ui);
-    let status = (live.status)();
-    let has_sessions = !(live.sessions)().1.is_empty();
+    let view = (ui.live.view)();
+    // Covered by a computer's page (which runs its own motion over home) or by a pushed page.
+    let under = matches!(view, View::Sub(None, _));
+    let covered = view != View::Home;
+    let state = match (on, under) {
+        (true, _) => "gone",
+        (_, true) => "under",
+        _ => "",
+    };
+    // A Clipboard widget for the selected computer opens the clipboard rail itself.
+    let key = crate::profile::current_key(ui);
+    let clipw = s
+        .widgets
+        .read()
+        .iter()
+        .any(|w| w.kind == crate::widget::WidgetKind::Clipboard && w.host == key);
+    let class = if clipw {
+        format!("{state} has-clipw")
+    } else {
+        state.to_string()
+    };
 
     rsx! {
-        section { id: "landing", class: if on { "gone" } else { "" }, "aria-hidden": "{on}",
+        section { id: "landing", class: "{class}", "aria-hidden": "{on || covered}",
             div { class: "wordmark", "wado" span { "." } }
-            p { class: "tag", "Your desktop, at this screen's own resolution." }
-            {progress::render(ui)}
+            p { class: "tag", "Your computers, at this screen's own resolution." }
+            div { class: "sect", span { "Computers" } }
+            {crate::ui::scoped(ui, "cards", cards::render)}
             {crate::ui::scoped(ui, "sessions", sessions::render)}
-            {crate::ui::scoped(ui, "profiles", profiles::render)}
-            {crate::ui::scoped(ui, "media", crate::ui::media::render)}
-            button {
-                class: "shapecard",
-                onclick: move |_| { live.cc_page.set(Page::Display); live.cc_open.set(true); },
-                span { class: "disc", style: "--hue:var(--base0D)", Icon { name: "monitor" } }
-                span { class: "navtext",
-                    b { "{c.width}×{c.height} · {c.fps} fps · {c.scale}×" }
-                    small { "{(s.quality)()} · tap to change" }
-                }
-                Icon { name: "right" }
-            }
-            div { class: "landingfoot",
-                button {
-                    class: "iconbtn",
-                    "aria-label": "Settings",
-                    onclick: move |_| { live.cc_page.set(Page::Root); live.cc_open.set(true); },
-                    Icon { name: "sliders" }
-                }
-                // Shell-only: a terminal over the relay with no compositor or encoder running.
-                if (s.conn_mode)() == "relay" {
-                    button {
-                        class: "iconbtn",
-                        "aria-label": "Open a shell — no video",
-                        title: "Open a shell — no video",
-                        onclick: move |_| crate::ui::console::open_shells(ui),
-                        Icon { name: "term" }
-                    }
-                }
-                // The trackpad: this phone as the computer's touchpad and keyboard — no video.
-                if (s.conn_mode)() == "relay" {
-                    button {
-                        class: "iconbtn",
-                        "aria-label": "Use as trackpad — no video",
-                        title: "Use as trackpad — no video",
-                        onclick: move |_| bridge::call("window.__wado.padOpen();".to_string()),
-                        Icon { name: "trackpad" }
-                    }
-                }
-                // The file manager: browse, upload, download — no session needed either.
-                if (s.conn_mode)() == "relay" {
-                    button {
-                        class: "iconbtn",
-                        "aria-label": "Files on the computer",
-                        title: "Files on the computer",
-                        onclick: move |_| bridge::call("window.__wado.filesOpen();".to_string()),
-                        Icon { name: "folder" }
-                    }
-                }
-                if has_sessions {
-                    // A session is already running: joining it is the likely wish, a new one the
-                    // other. Both on the one button row, Join the bigger.
-                    button { class: "gonew", disabled: on, title: "Start a new session", "aria-label": "New session",
-                        onclick: move |_| sessions::new(ui),
-                        Icon { name: "plus" } "New"
-                    }
-                    button { class: "go", disabled: on, onclick: move |_| sessions::join(ui),
-                        Icon { name: "play" } "Join session"
-                    }
-                } else {
-                    button { class: "go", disabled: on, onclick: move |_| actions::start(ui),
-                        Icon { name: "power" } "Start session"
-                    }
-                }
-            }
-            if status != "idle" { p { class: "landingstatus", "{status}" } }
+            div { class: "sect", span { "On this phone" } }
+            {settings::render(ui)}
+            {crate::ui::scoped(ui, "widgets", widgets::render)}
             if (s.conn_mode)() == "relay" { {crate::ui::scoped(ui, "clips", clips::render)} }
         }
     }

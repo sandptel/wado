@@ -1,10 +1,12 @@
-/* The landing (ui/landing): before a session, the whole screen is the question "where to?". */
+/* Home (ui/landing frames it, ui/home fills it): before a session, the whole screen is the
+ * question "where to?". Its cards and widgets are styled in home.css. */
 
 #landing {
   position: fixed; inset: 0; z-index: 40;
   overflow-y: auto;
-  display: flex; flex-direction: column; gap: 14px;
-  padding: calc(48px + env(safe-area-inset-top)) max(20px, calc((100% - 460px) / 2)) calc(24px + env(safe-area-inset-bottom));
+  display: flex; flex-direction: column; gap: 12px;
+  padding: calc(64px + env(safe-area-inset-top)) max(16px, calc((100% - 460px) / 2)) calc(32px + env(safe-area-inset-bottom));
+  transform-origin: 50% 30%; scrollbar-width: none;
   background:
     radial-gradient(90% 46% at 50% 0%, color-mix(in oklab, var(--accent), transparent 80%), transparent 70%),
     radial-gradient(60% 40% at 100% 100%, color-mix(in oklab, var(--base0E), transparent 88%), transparent 70%),
@@ -18,62 +20,15 @@
 .wordmark span { color: var(--accent); }
 .tag { margin: -6px 0 6px; color: var(--dim); }
 
-.ring { display: grid; grid-template-columns: 64px 1fr; gap: 14px; align-items: center; padding: 14px; border-radius: var(--r3);
-  background: var(--s1); border: 1px solid var(--line); }
-.ring svg { width: 64px; height: 64px; rotate: -90deg; }
-.ring circle { fill: none; stroke-width: 6; }
-.ring .track { stroke: var(--s3); }
-.ring .arc { stroke: var(--accent); stroke-linecap: round; transition: stroke-dashoffset 600ms var(--spring); }
-.ring.failed .arc { stroke: var(--bad); }
-.steps { display: grid; gap: 4px; }
-.steps b { font: 700 16px var(--display); color: var(--bright); }
-.step { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--dim); }
-.step i { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--s3); flex: none; transition: all 300ms var(--pop); }
-.step.done { color: var(--bright); } .step.done i { background: var(--good); border-color: var(--good); }
-.step.active { color: var(--base0A); } .step.active i { border-color: var(--base0A); border-top-color: transparent; animation: spin .8s linear infinite; }
-.step.failed { color: var(--bad); } .step.failed i { background: var(--bad); border-color: var(--bad); }
 @keyframes spin { to { rotate: 360deg; } }
 .connerr { margin: 0; padding: 10px 12px; border-radius: var(--r1); background: var(--s1); border-left: 3px solid var(--bad);
   color: var(--text); font-size: 12.5px; line-height: 1.45; }
-
-.devices { display: grid; gap: 8px; }
-.dev { display: flex; align-items: center; gap: 6px; padding: 6px 6px 6px 12px; border-radius: var(--r3); background: var(--s1);
-  border: 1.5px solid transparent; text-align: left; min-height: 64px; transition: border-color var(--dur) var(--ease); }
-button.dev { gap: 12px; padding-right: 12px; }
-button.dev > svg:last-child { margin-left: auto; color: var(--dim); }
-.dev.on { border-color: var(--accent); }
-.devpick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; text-align: left; min-height: 52px; }
-.dev .navtext small { font-family: var(--mono); font-size: 11px; }
-.dev.add > svg { margin-left: 0; }
-.dev.add { justify-content: center; color: var(--dim); background: none; border: 1.5px dashed var(--line); min-height: 52px; }
-
-.shapecard { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: var(--r3); background: var(--s1); text-align: left; }
-.shapecard > svg:last-child { margin-left: auto; color: var(--dim); }
-.shapecard b { font-family: var(--mono); font-size: 13px; }
-
-.landingfoot { margin-top: auto; display: flex; gap: 10px; align-items: center; padding-top: 8px; }
-.landingfoot .iconbtn { width: 58px; height: 58px; border-radius: var(--r3); background: var(--s1); color: var(--bright); }
-.go { flex: 1; min-height: 58px; border-radius: var(--r3); font: 700 17px var(--display); background: var(--accent); color: var(--on-accent);
-  display: flex; align-items: center; justify-content: center; gap: 10px; box-shadow: 0 10px 30px color-mix(in oklab, var(--accent), transparent 70%); }
-.landingstatus { margin: 0; text-align: center; font-size: 12px; color: var(--dim); }
 
 /* On a desktop the open control centre is a card on the right; the landing steps aside for it. */
 @media (min-width: 720px) {
   #landing { transition: opacity 500ms var(--ease), scale 600ms var(--spring), translate var(--dur-sheet) var(--spring), visibility 0s; }
   .cc-open #landing { translate: -210px 0; }
 }
-
-/* A computer card's live status pill. */
-.devstatus { justify-self: start; margin-top: 4px; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; --tone: var(--dim);
-  color: var(--tone); background: color-mix(in oklab, var(--tone), transparent 86%); display: inline-flex; align-items: center; gap: 5px; }
-.dev .navtext { display: grid; }
-.dev { min-width: 0; overflow: hidden; }
-#landing > * { min-width: 0; max-width: 100%; }
-.devstatus::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-.devstatus.ok { --tone: var(--good); }
-.devstatus.warn { --tone: var(--base0A); }
-.devstatus.bad { --tone: var(--bad); }
-.devstatus.wait::before { animation: breathe 1.2s ease-in-out infinite; }
 
 /* Running sessions on the home page. */
 .sessions { display: grid; gap: 8px; }
@@ -83,7 +38,8 @@ button.dev > svg:last-child { margin-left: auto; color: var(--dim); }
   color: var(--good); background: color-mix(in oklab, var(--good), transparent 84%); }
 .sessioncard .navtext b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
 .sessioncard .navtext small { white-space: normal; }
-#landing .sect { margin: 4px 4px -6px; }
+#landing .sect { margin: 8px 4px -2px; min-height: 32px; }
+#landing > * { min-width: 0; max-width: 100%; flex-shrink: 0; }
 
 /* The active-session tile: the session's own shape, drawn, beside what it runs. */
 .sessioncard.watched { border-color: color-mix(in oklab, var(--accent), transparent 40%); }
@@ -97,6 +53,3 @@ button.dev > svg:last-child { margin-left: auto; color: var(--dim); }
 .sessionwho .cdot.on { background: var(--accent); animation: breathe 2s ease-in-out infinite; }
 .sessionapps { display: flex; flex-wrap: wrap; gap: 6px; }
 .appchip { padding: 3px 10px; border-radius: 999px; background: var(--s2); color: var(--text); font-size: 12px; }
-.gonew { min-height: 58px; padding: 0 16px; border-radius: var(--r3); display: inline-flex; align-items: center; gap: 6px;
-  background: var(--s1); color: var(--bright); font: 600 15px var(--display); border: 1px solid var(--line); }
-.gonew:disabled { opacity: .5; }

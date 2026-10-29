@@ -20,7 +20,8 @@ pub fn render(ui: Ui) -> Element {
     let imgs = (ui.live.clip_imgs)();
     let query = use_signal(String::new);
     let kind = use_signal(|| None::<ClipKind>);
-    let mut open = use_signal(|| false);
+    // Shared, so the Clipboard widget's header can open it.
+    let mut open = ui.live.clip_rail;
     if !hist.loaded {
         return rsx! {};
     }

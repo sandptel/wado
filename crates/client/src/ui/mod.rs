@@ -2,9 +2,12 @@
 //!
 //! | | |
 //! |---|---|
-//! | [`landing`] | before a session: hosts, connection progress, Start |
+//! | [`landing`] | home's frame: before a session, the lobby of computers |
+//! | [`home`] | home's parts: computer cards, Running, On this phone, widgets |
+//! | [`computer`] | one computer's page, and the pages about it |
+//! | [`subpage`] | a settings page pushed over home or a computer's page |
 //! | [`cc`] | the control centre: hero, quick tiles, settings list, Apply |
-//! | [`pages`] | the control centre's drill-in pages, one per subject |
+//! | [`pages`] | the page list, and the sections the pages are built from |
 //! | [`dock`] | ⋯ ○ ◁ over the picture |
 //! | [`stage`] | the video and everything drawn on it |
 //! | [`console`], [`drawer`] | the shell and the app drawer sheets |
@@ -13,6 +16,7 @@
 //! [`live`] and [`gamepad`] hold no UI any more: they push browser-side settings to the bridge.
 
 pub mod cc;
+pub mod computer;
 pub mod console;
 pub mod dock;
 pub mod drawer;
@@ -20,16 +24,17 @@ pub mod fetch;
 pub mod gamepad;
 pub mod gesture;
 pub mod health;
+pub mod home;
 pub mod host;
 pub mod landing;
 pub mod latency;
 pub mod link_badge;
 pub mod live;
-pub mod media;
 pub mod pages;
 pub mod reconnecting;
 pub mod rejoin;
 pub mod stage;
+pub mod subpage;
 pub mod toast;
 pub mod widgets;
 pub mod workspaces;

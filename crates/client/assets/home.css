@@ -1,0 +1,166 @@
+/* Home's parts (ui/home): the computer cards, the host chip, and the widgets. The frame — the
+ * wordmark, the wash, the Running cards — is landing.css. */
+
+/* ── computer cards ───────────────────────────────────────────────────────────────────── */
+.ccards { display: grid; gap: 8px; }
+.ccard { position: relative; display: flex; align-items: center; gap: 4px; border-radius: var(--r3); background: var(--s1);
+  border: 1px solid var(--line); padding: 6px 8px 6px 6px; min-height: 80px; min-width: 0; --hue: var(--accent);
+  transition: scale var(--dur-press) var(--ease), border-color var(--dur) var(--ease); }
+/* The whole card gives under the finger, not just its left part. */
+.ccard:has(.cpick:active) { scale: .98; }
+.cpick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; text-align: left; min-height: 66px; padding-left: 8px; border-radius: var(--r2); }
+.cpick:active:not(:disabled) { scale: 1; }
+.cpick .disc { width: 46px; height: 46px; transition: scale 220ms var(--pop); }
+.cpick:active .disc { scale: .92; transition-duration: var(--dur-press); }
+.ctext { min-width: 0; display: grid; gap: 1px; }
+.cname { font: 700 17px/1.15 var(--display); color: var(--bright); letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transform-origin: 0 0; justify-self: start; max-width: 100%; }
+.cos { font: 11.5px var(--mono); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cline { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim); margin-top: 3px; white-space: nowrap; min-width: 0; }
+/* ▶: an accent tint; solid with the accent glow while a session runs there (rejoin is the likely
+ * wish); grey on a computer that is not there. */
+.cgo { position: relative; width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; flex: none; color: var(--accent);
+  background: color-mix(in oklab, var(--accent), transparent 82%);
+  transition: scale var(--dur-press) var(--ease), background var(--dur) var(--ease), color var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
+.cgo svg { width: 18px; height: 18px; margin-left: 2px; transition: translate 220ms var(--pop); }
+.cgo:active:not(:disabled) { scale: .9; }
+.cgo:active:not(:disabled) svg { translate: 2px 0; }
+.cgo.live { background: var(--accent); color: var(--on-accent); box-shadow: 0 8px 22px -10px color-mix(in oklab, var(--accent), transparent 30%); }
+.cgo.live::after { content: ""; position: absolute; width: 48px; height: 48px; border-radius: 50%; border: 2px solid var(--accent); opacity: 0;
+  animation: golive 2.4s cubic-bezier(.2, 0, 0, 1) infinite; pointer-events: none; }
+@keyframes golive { 0% { opacity: .5; scale: 1; } 60%, 100% { opacity: 0; scale: 1.35; } }
+.cgo:disabled { background: var(--s2); color: var(--dim); box-shadow: none; opacity: 1; }
+.ccard.add { justify-content: center; gap: 8px; color: var(--dim); background: none; border: 1.5px dashed var(--line); min-height: 52px; font-weight: 600; width: 100%;
+  transition: scale var(--dur-press) var(--ease), color var(--dur) var(--ease), border-color var(--dur) var(--ease); }
+.ccard.add:hover { color: var(--bright); border-color: color-mix(in oklab, var(--accent), var(--line) 50%); }
+.ccard.add:active { scale: .98; }
+
+/* Which computer something is on: its hue dot and name. */
+.hostchip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text); white-space: nowrap; }
+.hostchip i { width: 8px; height: 8px; border-radius: 50%; background: var(--hue); flex: none; }
+
+/* The clipboard rail's edge tab sits low, clear of the cards' ▶; with a Clipboard widget on
+ * home it is not needed at all — the widget's header opens the rail. */
+#landing .cliptab { top: auto; bottom: calc(96px + env(safe-area-inset-bottom)); translate: 0 0; }
+#landing.has-clipw .cliptab { display: none; }
+
+/* ── widgets ──────────────────────────────────────────────────────────────────────────── */
+#wsect button { color: var(--accent); letter-spacing: .02em; text-transform: none; font-size: 14px; font-weight: 600; min-height: 44px; padding: 0 6px; margin-right: -6px; }
+.wlist { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; position: relative; }
+.widget { position: relative; min-width: 0; border-radius: var(--r3); background: var(--s1); padding: 12px 14px 14px; display: grid;
+  grid-template-columns: minmax(0, 1fr); gap: 10px; touch-action: pan-y;
+  transition: scale var(--dur-press) var(--ease), opacity var(--dur) var(--ease), padding 360ms var(--spring), background var(--dur) var(--ease); }
+.whead { display: flex; align-items: center; gap: 8px; min-height: 28px; min-width: 0; }
+.whead > svg { width: 16px; height: 16px; color: var(--dim); }
+.wname { display: contents; }
+.wtitle { font: 600 11px var(--body); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); white-space: nowrap; }
+button.wtitle.linky { min-height: 28px; display: inline-flex; align-items: center; gap: 6px; }
+button.wtitle.linky::after { content: ""; width: 5px; height: 5px; border-right: 1.5px solid currentColor; border-top: 1.5px solid currentColor; rotate: 45deg; }
+.wfor { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text);
+  min-height: 28px; padding: 0 10px 0 8px; border-radius: 999px; background: var(--s2); min-width: 0; max-width: 60%;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative; }
+.wfor .ldot { width: 7px; height: 7px; }
+.wbody { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; min-width: 0; animation: wunfold 420ms var(--spring) both; }
+@keyframes wunfold { from { opacity: 0; translate: 0 -6px; } }
+.widget.away .wbody { opacity: .55; }
+.wnote { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text); min-height: 32px; }
+.wnote svg { width: 18px; height: 18px; flex: none; color: var(--dim); }
+.wnote b { color: var(--bad); font-weight: 600; }
+.wnote.quiet { color: var(--dim); }
+.wspin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--s3); border-top-color: var(--accent); flex: none; animation: wspin .9s linear infinite; }
+@keyframes wspin { to { rotate: 360deg; } }
+.wempty { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 52px; border-radius: var(--r3); border: 1.5px dashed var(--line);
+  color: var(--dim); font-weight: 600; width: 100%; }
+.wempty:hover { color: var(--bright); }
+
+/* bodies */
+.wmedia { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.wmedia .cover { position: relative; width: 52px; height: 52px; border-radius: var(--r1); flex: none; overflow: hidden; background: var(--s2);
+  box-shadow: 0 4px 14px rgb(0 0 0 / .25); display: grid; place-items: center; color: var(--dim); }
+.wmedia .cover i { position: absolute; inset: 0; background-size: cover; background-position: center; animation: artin 520ms var(--spring) both; }
+.wmedia .mt { flex: 1; min-width: 0; display: grid; }
+.wmedia .mt b { font: 700 16px/1.2 var(--display); color: var(--bright); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wmedia .mt span { font-size: 12.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wmedia .iconbtn { color: var(--bright); }
+.wmedia .play { background: var(--accent); color: var(--on-accent); }
+.wmedia .play:hover { background: var(--accent); color: var(--on-accent); }
+.thinbar { height: 4px; border-radius: 2px; background: var(--s3); overflow: hidden; }
+.thinbar i { display: block; height: 100%; width: 100%; background: var(--bright); transform-origin: 0 50%; scale: var(--from) 1; border-radius: 2px; }
+.thinbar i.run { animation: progrun var(--left) linear forwards; }
+.clipsw { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.clipw { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 12px; border-radius: var(--r2); background: var(--s0); min-height: 48px;
+  transition: background var(--dur) var(--ease); }
+.clipw .ct { flex: 1; min-width: 0; font: 12px var(--mono); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clipw .pin { display: grid; }
+.clipw .pin svg { width: 14px; height: 14px; color: var(--base0A); }
+.clipw .iconbtn { width: 40px; height: 40px; }
+.clipw .iconbtn svg { width: 18px; height: 18px; }
+.clipw.copied { background: color-mix(in oklab, var(--good), var(--s0) 82%); }
+.clipw.copied .iconbtn { color: var(--good); }
+.btn.sendclip { min-height: 44px; }
+.padw { position: relative; height: 104px; width: 100%; border-radius: var(--r2); background: var(--s0); border: 1px solid var(--line); display: grid;
+  place-items: center; align-content: center; gap: 4px; color: var(--dim); font-size: 13px; overflow: hidden; text-align: center; touch-action: manipulation; }
+.padw:active:not(:disabled) { scale: 1; }
+.padw > svg { width: 22px; height: 22px; }
+.padw small { display: block; font-size: 11.5px; }
+.padw .touch { position: absolute; width: 44px; height: 44px; margin: -22px; border-radius: 50%; background: color-mix(in oklab, var(--accent), transparent 70%);
+  pointer-events: none; animation: touch 520ms cubic-bezier(.2, 0, 0, 1) forwards; }
+@keyframes touch { from { scale: .4; opacity: 1; } to { scale: 2.2; opacity: 0; } }
+.qchips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin-inline: -14px; padding-inline: 14px; }
+.qchip { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 12px; border-radius: 999px; background: var(--s2); color: var(--bright);
+  font-size: 12.5px; font-weight: 600; white-space: nowrap; flex: none; }
+.qchip svg { width: 16px; height: 16px; transition: scale 200ms var(--pop); }
+.qchip:active:not(:disabled) svg { scale: .8; }
+
+/* edit mode: bodies folded, every widget a 64px row */
+.wlist.editing .widget { padding: 8px 6px 8px 8px; }
+.wlist.editing .whead { min-height: 48px; gap: 6px; }
+.wlist.editing .wname { display: grid; gap: 0; min-width: 0; flex: 1; }
+.wlist.editing .wtitle { font: 600 14px var(--body); letter-spacing: 0; text-transform: none; color: var(--bright); }
+.wlist.editing .wfor { margin-left: 0; background: none; padding: 0; min-height: 22px; color: var(--accent); justify-self: start; max-width: 100%; }
+.wlist.editing .wfor::after { content: ""; width: 6px; height: 6px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; rotate: 45deg;
+  translate: 0 -2px; margin-left: 2px; flex: none; }
+.wrm { width: 44px; height: 44px; display: grid; place-items: center; flex: none; margin-right: -4px; }
+.wrm span { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in oklab, var(--bad), transparent 80%);
+  color: var(--bad); animation: popin 360ms var(--pop) both; animation-delay: calc(var(--k, 0) * 30ms); }
+.wrm svg { width: 15px; height: 15px; stroke-width: 2.6; }
+.wico { width: 38px; height: 38px; border-radius: var(--r2); display: grid; place-items: center; background: var(--s2); color: var(--bright); flex: none;
+  animation: popin 360ms var(--pop) both; animation-delay: calc(var(--k, 0) * 30ms + 40ms); }
+.wico svg { width: 18px; height: 18px; }
+.wmove { margin-left: auto; display: flex; align-items: center; flex: none; animation: slidein 420ms var(--spring) both; animation-delay: calc(var(--k, 0) * 30ms); }
+@keyframes slidein { from { translate: 24px 0; opacity: 0; } }
+.wmove .iconbtn { width: 38px; height: 44px; border-radius: var(--r1); }
+.wmove .iconbtn svg { width: 18px; height: 18px; }
+.grip { width: 44px; height: 48px; display: grid; place-items: center; color: var(--dim); cursor: grab; touch-action: none; border-radius: var(--r1); }
+.grip:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* Lifted, it floats over the list — so, and only so, it gets the Popover shadow. */
+.widget.lifted { z-index: 5; scale: 1.03; background: var(--s2); box-shadow: 0 18px 50px -20px #000a; transition: scale 200ms var(--pop), box-shadow 200ms var(--ease); }
+.widget.lifted .grip { cursor: grabbing; color: var(--accent); }
+.widget.shift { transition: translate 300ms var(--spring); }
+.widget.settle { transition: translate 340ms var(--pop), scale 260ms var(--spring), box-shadow 260ms var(--ease); }
+.edithint { font-size: 12px; color: var(--dim); margin: 0 4px; animation: rise 420ms var(--spring) both 60ms; }
+.wtray { display: grid; gap: 8px; animation: rise 420ms var(--spring) both 80ms; }
+.wtray .sect { margin-top: 4px; }
+.traygrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
+.wadd { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 12px; border-radius: var(--r2); border: 1.5px dashed var(--line);
+  color: var(--text); font-weight: 600; font-size: 13px; transition: scale var(--dur-press) var(--ease), border-color var(--dur) var(--ease); }
+.wadd > svg { width: 18px; height: 18px; color: var(--accent); }
+.wadd .wadd-ic { display: none; }
+.wadd:hover { border-color: color-mix(in oklab, var(--accent), var(--line) 50%); }
+
+/* the host picker sheet */
+.wscrim { position: fixed; inset: 0; z-index: 45; background: color-mix(in oklab, #000, transparent 55%); opacity: 0; pointer-events: none;
+  transition: opacity var(--dur-sheet) var(--spring); }
+.wscrim.on { opacity: 1; pointer-events: auto; }
+.wsheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; max-width: 520px; margin: 0 auto; background: var(--s0); border-top: 1px solid var(--line);
+  border-radius: var(--r4) var(--r4) 0 0; padding: 0 16px calc(20px + env(safe-area-inset-bottom)); translate: 0 104%; visibility: hidden;
+  transition: translate var(--dur-sheet) var(--spring), visibility 0s linear var(--dur-sheet); box-shadow: 0 -20px 60px rgb(0 0 0 / .35); display: grid; gap: 10px; }
+.wsheet.on { translate: 0 0; visibility: visible; transition: translate var(--dur-sheet) var(--spring), visibility 0s; }
+.wsheet h3 { margin: 0 4px; font: 700 20px var(--display); color: var(--bright); letter-spacing: -.01em; }
+.wsheet .why { margin: -4px 4px 4px; font-size: 13px; }
+.pickrow .check { margin-left: auto; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; color: var(--on-accent);
+  background: var(--accent); scale: 0; transition: scale 300ms var(--pop); flex: none; }
+.pickrow.on .check { scale: 1; }
+.pickrow .check svg { width: 16px; height: 16px; stroke-width: 2.6; }
+.pickrow .navtext small { display: flex; gap: 6px; align-items: center; }
+.pickrow .lstate { font-weight: 500; }

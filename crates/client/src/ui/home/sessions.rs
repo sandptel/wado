@@ -1,4 +1,5 @@
-//! Running sessions on this computer — on whichever daemon of its pool — each with Resume and End.
+//! Running: the sessions on the selected computer — on whichever daemon of its pool — each
+//! saying which computer it is on, with Rejoin and End.
 //!
 //! What lets any device get back to the one session: a phone that left it, a laptop opening the
 //! page later, a second phone. Resume re-fits it to this device's screen and keeps its apps.
@@ -9,7 +10,7 @@ use wado_protocol::SessionSummary;
 
 use crate::{bridge, state::Ui, ui::widgets::Icon};
 
-fn ago(secs: u64) -> String {
+pub fn ago(secs: u64) -> String {
     match secs / 60 {
         0 => "just now".into(),
         m @ 1..=59 => format!("{m} min ago"),
@@ -48,8 +49,34 @@ pub fn new(ui: Ui) {
     crate::actions::start(ui);
 }
 
-fn short(app: &str) -> String {
-    app.rsplit('.').next().unwrap_or(app).to_string()
+/// `org.mozilla.firefox` → "Firefox".
+pub fn short(app: &str) -> String {
+    let last = app.rsplit('.').next().unwrap_or(app);
+    let mut c = last.chars();
+    match c.next() {
+        Some(f) => f.to_uppercase().chain(c).collect(),
+        None => String::new(),
+    }
+}
+
+/// "Firefox and more", or "Empty desktop".
+pub fn headline(apps: &[String]) -> String {
+    if apps.is_empty() {
+        "Empty desktop".to_string()
+    } else {
+        short(&apps[0]) + if apps.len() > 1 { " and more" } else { "" }
+    }
+}
+
+/// The session's own shape, drawn: a phone-tall or a desk-wide box inside 46px.
+pub fn shape_style(w: u32, h: u32) -> String {
+    let (w, h) = (w.max(1) as f32, h.max(1) as f32);
+    let (bw, bh) = if w >= h {
+        (46.0, 46.0 * h / w)
+    } else {
+        (46.0 * w / h, 46.0)
+    };
+    format!("width:{bw:.0}px;height:{bh:.0}px")
 }
 
 pub fn render(ui: Ui) -> Element {
@@ -64,30 +91,24 @@ pub fn render(ui: Ui) -> Element {
     if list.is_empty() {
         return rsx! {};
     }
-    let title = if list.len() == 1 {
-        "Active session".to_string()
-    } else {
-        format!("{} active sessions", list.len())
-    };
+    let name = crate::profile::current_name(ui);
+    let hue = crate::profile::hue((ui.set.profile)());
 
     rsx! {
-        div { class: "sect", span { "{title}" } }
+        div { class: "sect", span { "Running" } }
         div { class: "sessions",
             for s in list.into_iter() {
                 {
                     let (a, b, c) = (s.instance.clone(), s.instance.clone(), s.instance.clone());
                     let n = s.instance.rsplit(':').next().unwrap_or("").to_string();
-                    let head = if s.apps.is_empty() { "Empty desktop".to_string() } else { short(&s.apps[0]) + if s.apps.len() > 1 { " and more" } else { "" } };
+                    let head = headline(&s.apps);
                     let who = match (&s.viewer, s.detached, s.instance == here) {
                         (Some(v), _, _) => format!("open on {v}"),
                         (None, true, _) => "left running".to_string(),
                         _ => "nobody watching".to_string(),
                     };
                     let live_now = s.viewer.is_some();
-                    // The session's own shape, drawn: a phone-tall or a desk-wide box.
-                    let (w, h) = (s.width.max(1) as f32, s.height.max(1) as f32);
-                    let (bw, bh) = if w >= h { (46.0, 46.0 * h / w) } else { (46.0 * w / h, 46.0) };
-                    let shape = format!("width:{bw:.0}px;height:{bh:.0}px");
+                    let shape = shape_style(s.width, s.height);
                     let apps: Vec<String> = s.apps.iter().take(6).map(|a| short(a)).collect();
                     rsx! {
                         div { key: "{s.instance}", class: if live_now { "sessioncard watched" } else { "sessioncard" },
@@ -97,8 +118,11 @@ pub fn render(ui: Ui) -> Element {
                                 }
                                 div { class: "navtext",
                                     b { "{head}" }
-                                    small { "{s.width}×{s.height} · {s.fps} fps · started {ago(s.age_s)}" }
-                                    small { class: "sessionwho", span { class: if live_now { "cdot on" } else { "cdot" } } "{who} · #{n}" }
+                                    small { class: "mono", "{s.width}×{s.height} · {s.fps} fps · started {ago(s.age_s)}" }
+                                    small { class: "sessionwho",
+                                        span { class: "hostchip", style: "--hue:var(--base{hue})", i {} "on {name}" }
+                                        span { class: if live_now { "cdot on" } else { "cdot" } } "{who} · #{n}"
+                                    }
                                 }
                             }
                             if !apps.is_empty() {
@@ -120,7 +144,7 @@ pub fn render(ui: Ui) -> Element {
                             } else {
                                 div { class: "actions",
                                     button { class: "btn", onclick: move |_| confirm.set(Some(c.clone())), Icon { name: "power" } "End" }
-                                    button { class: "btn primary", onclick: move |_| act(&a, "resume"), Icon { name: "play" } "Rejoin" }
+                                    button { class: "btn primary", onclick: move |_| act(&a, "resume"), Icon { name: "play", fill: true } "Rejoin" }
                                 }
                             }
                         }
