@@ -1,0 +1,10 @@
+.gradle/
+build/
+local.properties
+.kotlin/
+# The bundled web client: built by scripts/android-build.sh, never committed.
+/app/src/main/assets/client/
+# Release signing: held by the user (docs/android-release.md).
+keystore.properties
+*.jks
+*.keystore

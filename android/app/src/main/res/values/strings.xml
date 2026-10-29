@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">wado</string>
+
+    <string name="sc_trackpad">Trackpad</string>
+    <string name="sc_trackpad_long">Your last computer\'s touchpad</string>
+    <string name="sc_files">Files</string>
+    <string name="sc_files_long">Your last computer\'s files</string>
+    <string name="sc_shell">Shell</string>
+    <string name="sc_shell_long">A terminal on your last computer</string>
+    <string name="sc_session">Desktop</string>
+    <string name="sc_session_on">Desktop on %1$s</string>
+
+    <string name="ch_ask">Computer needs you</string>
+    <string name="ch_done">Finished on your computer</string>
+    <string name="ch_apps">Apps on your computer</string>
+    <string name="ch_status">Computer status</string>
+    <string name="ch_media">Playing on your computer</string>
+    <string name="ch_stay">Staying connected</string>
+
+    <string name="stay_title">Staying connected</string>
+    <string name="stay_text">So your computer can reach this phone while wado is closed.</string>
+    <string name="stay_off">Turn off</string>
+
+    <string name="media_on_computer">On your computer</string>
+</resources>

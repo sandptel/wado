@@ -2,6 +2,19 @@
 
 ### Added
 
+- **wado for Android (APK).** A native app that carries the same client, so it behaves the same
+  and updates only when the app does (`docs/android.md`). It opens on its own home — your
+  computers, live status, and a Desktop / Trackpad / Files / Shell door on each — and adds what a
+  browser cannot: the trackpad turns the screen to landscape for real, the screen stays on and the
+  bars hide during a session, taps and gestures are felt with the phone's own haptics, a
+  computer's QR is scanned right in the app, and **Share → wado** sends photos and files to a
+  computer's Downloads, opens links on it, or puts text on its clipboard. What the computer
+  plays shows on the lock screen and Bluetooth buttons, and the volume keys turn it up and down
+  while wado is open. The clipboard follows both ways (never passwords). "Stay connected" (off by
+  default) keeps notifications coming while the app is closed; with a UnifiedPush app such as
+  ntfy installed, push needs no Google at all. Build: `nix develop .#android -c
+  scripts/android-build.sh`; signing a release: `docs/android-release.md`.
+
 - **Install wado as an app.** Add it to your home screen (Android and desktop browsers offer it;
   on an iPhone, Safari shows a one-time hint: Share → Add to Home Screen). It opens to your
   computers like any app, and it opens **offline** too — your computers just show as offline.
