@@ -1,0 +1,1084 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>wado — Computer page prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" />
+<style>
+/* ── tokens: DESIGN.md / assets/base.css, verbatim ─────────────────────────────────────── */
+:root {
+  --base00:#181818; --base01:#282828; --base02:#383838; --base03:#585858;
+  --base04:#b8b8b8; --base05:#d8d8d8; --base06:#e8e8e8; --base07:#f8f8f8;
+  --base08:#ab4642; --base09:#dc9656; --base0A:#f7ca88; --base0B:#a1b56c;
+  --base0C:#86c1b9; --base0D:#7cafc2; --base0E:#ba8baf; --base0F:#a16946;
+  color-scheme: dark;
+}
+/* One light scheme: catppuccin-latte, from crates/client/src/schemes.json. */
+:root[data-theme="light"] {
+  --base00:#eff1f5; --base01:#e6e9ef; --base02:#ccd0da; --base03:#bcc0cc;
+  --base04:#acb0be; --base05:#4c4f69; --base06:#dc8a78; --base07:#7287fd;
+  --base08:#d20f39; --base09:#fe640b; --base0A:#df8e1d; --base0B:#40a02b;
+  --base0C:#179299; --base0D:#1e66f5; --base0E:#8839ef; --base0F:#dd7878;
+  color-scheme: light;
+}
+:root {
+  --s0: var(--base00);
+  --s1: color-mix(in oklab, var(--base00), var(--base05) 6%);
+  --s2: color-mix(in oklab, var(--base00), var(--base05) 11%);
+  --s3: color-mix(in oklab, var(--base00), var(--base05) 18%);
+  --line: color-mix(in oklab, var(--base00), var(--base05) 14%);
+  --bright: var(--base05);
+  --text: color-mix(in oklab, var(--base05), var(--base00) 10%);
+  --dim: color-mix(in oklab, var(--base05), var(--base00) 42%);
+  --accent: var(--base0D); --on-accent: var(--base00);
+  --good: var(--base0B); --warn: var(--base09); --bad: var(--base08); --caution: var(--base0A);
+  --r1:10px; --r2:16px; --r3:22px; --r4:28px; --gap:10px;
+  --display: "Bricolage Grotesque", "Figtree", system-ui, sans-serif;
+  --body: "Figtree", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* The two curves (unchanged) … */
+  --spring: cubic-bezier(.32, .72, 0, 1);
+  --pop: cubic-bezier(.34, 1.56, .64, 1);
+  --ease: var(--spring);
+  --dur: 220ms; --dur-sheet: 480ms;
+  /* … and the proposed extension (design-spec.md §4.1): durations and a stagger step, no new curve. */
+  --dur-hero: 520ms;      /* card → Computer page shared element */
+  --dur-press: 120ms;
+  --stagger: 40ms;
+}
+:root[data-motion="reduced"] { --dur: 120ms; --dur-sheet: 200ms; --dur-hero: 160ms; --stagger: 0ms; --pop: var(--spring); }
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--s0); color: var(--text); font: 14px/1.45 var(--body);
+  overscroll-behavior: none; -webkit-tap-highlight-color: transparent; }
+body { overflow: hidden; }
+svg.i { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+svg.i.fill { fill: currentColor; stroke: none; }
+button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; padding: 0;
+  transition: scale var(--dur-press) var(--ease), background var(--dur) var(--ease), color var(--dur) var(--ease), opacity var(--dur) var(--ease); }
+button:active:not(:disabled) { scale: .96; }
+button:disabled { opacity: .4; cursor: default; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mono { font-family: var(--mono); }
+
+/* ── screens ───────────────────────────────────────────────────────────────────────────── */
+.screen { position: fixed; inset: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; }
+.screen::-webkit-scrollbar { display: none; }
+#home { z-index: 10; padding: calc(40px + env(safe-area-inset-top)) max(16px, calc((100% - 460px) / 2)) calc(32px + env(safe-area-inset-bottom));
+  display: flex; flex-direction: column; gap: 12px;
+  background:
+    radial-gradient(90% 40% at 50% 0%, color-mix(in oklab, var(--accent), transparent 82%), transparent 70%),
+    radial-gradient(60% 30% at 100% 100%, color-mix(in oklab, var(--base0E), transparent 90%), transparent 70%),
+    var(--s0);
+  transform-origin: 50% 30%; }
+#home > * { flex-shrink: 0; min-width: 0; }
+#computer { z-index: 20; visibility: hidden; transform-origin: 50% 0; }
+#computer.on { visibility: visible; }
+#computer .cground { position: fixed; inset: 0; background: var(--s0); z-index: 0; }
+#computer .cground::before { content: ""; position: absolute; inset: 0;
+  background: radial-gradient(80% 36% at 30% 0%, color-mix(in oklab, var(--hue), transparent 86%), transparent 70%); }
+#sub { z-index: 30; visibility: hidden; background: var(--s0); }
+#sub.on { visibility: visible; }
+
+/* ── shared pieces (reused from cc.css / landing.css) ─────────────────────────────────── */
+.wordmark { font: 700 clamp(42px, 12vw, 64px)/1 var(--display); color: var(--bright); letter-spacing: -.045em; }
+.wordmark span { color: var(--accent); }
+.tag { margin: -4px 0 6px; color: var(--dim); }
+.sect { display: flex; justify-content: space-between; align-items: center; margin: 8px 4px -2px; min-height: 32px;
+  font: 600 11px var(--body); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+.sect button { color: var(--accent); letter-spacing: .02em; text-transform: none; font-size: 14px; font-weight: 600; min-height: 44px; padding: 0 6px; margin-right: -6px; }
+.disc { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; flex: none; --hue: var(--accent);
+  color: var(--hue); background: color-mix(in oklab, var(--hue), transparent 84%); }
+.list { border-radius: var(--r3); background: var(--s1); overflow: hidden; }
+.navrow { width: 100%; display: flex; align-items: center; gap: 14px; padding: 12px 14px; text-align: left; min-height: 60px; }
+.navrow:hover { background: var(--s2); }
+.navrow + .navrow { border-top: 1px solid color-mix(in oklab, var(--line), transparent 40%); }
+.navrow > svg:last-child { margin-left: auto; color: var(--dim); }
+.navtext { min-width: 0; flex: 1; }
+.navtext b { display: block; font-weight: 600; color: var(--bright); }
+.navtext small { display: block; font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.btn { min-height: 48px; padding: 0 16px; border-radius: var(--r2); font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  background: var(--s2); color: var(--bright); width: 100%; }
+.btn.primary { background: var(--accent); color: var(--on-accent); }
+.btn.danger { background: color-mix(in oklab, var(--bad), transparent 82%); color: var(--bad); }
+.iconbtn { width: 44px; height: 44px; border-radius: 50%; display: inline-grid; place-items: center; color: var(--dim); flex: none; }
+.iconbtn:hover { background: var(--s2); color: var(--bright); }
+.card { border-radius: var(--r3); background: var(--s1); padding: 14px; display: grid; gap: 10px; }
+.cardhead { font-weight: 600; color: var(--bright); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.why { font-size: 12px; color: var(--dim); margin: 0; }
+.why.host { color: var(--caution); }
+.whenbadge { font: 600 9.5px var(--body); letter-spacing: .08em; text-transform: uppercase; padding: 3px 7px; border-radius: 999px; margin-left: 2px; }
+.whenbadge.apply { color: var(--accent); background: color-mix(in oklab, var(--accent), transparent 86%); }
+.whenbadge.host { color: var(--base0E); background: color-mix(in oklab, var(--base0E), transparent 86%); }
+.seg { position: relative; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; padding: 4px; border-radius: var(--r2); background: var(--s0); }
+.seg .knob { position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc((100% - 8px) / var(--n));
+  translate: calc(100% * var(--i)) 0; border-radius: calc(var(--r2) - 4px); background: var(--accent); transition: translate 420ms var(--spring); }
+.seg button { position: relative; z-index: 1; min-height: 40px; border-radius: calc(var(--r2) - 4px); font-weight: 600; font-size: 13px; color: var(--dim); }
+.seg button.on { color: var(--on-accent); }
+.switchrow { display: flex; align-items: center; gap: 10px; min-height: 48px; width: 100%; text-align: left; }
+.swtext { flex: 1; min-width: 0; } .swtext b { color: var(--bright); font-weight: 600; display: block; } .swtext small { display: block; font-size: 12px; color: var(--dim); }
+.sw { width: 52px; height: 32px; border-radius: 999px; background: var(--s3); position: relative; flex: none; transition: background var(--dur) var(--ease); }
+.sw::after { content: ""; position: absolute; top: 8px; left: 8px; width: 16px; height: 16px; border-radius: 50%; background: var(--dim);
+  transition: left 340ms var(--pop), top 340ms var(--pop), width 340ms var(--pop), height 340ms var(--pop), background var(--dur); }
+.sw.on { background: var(--accent); } .sw.on::after { left: 24px; top: 4px; width: 24px; height: 24px; background: var(--on-accent); }
+
+/* ── HOME: computer cards ─────────────────────────────────────────────────────────────── */
+.ccards { display: grid; gap: 8px; }
+.ccard { position: relative; display: flex; align-items: center; gap: 4px; border-radius: var(--r3); background: var(--s1);
+  border: 1px solid var(--line); padding: 6px 8px 6px 6px; min-height: 80px; transition: scale var(--dur-press) var(--ease); }
+.ccard:has(.cpick:active) { scale: .98; }
+.cpick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; text-align: left; min-height: 66px; padding-left: 8px; border-radius: var(--r2); }
+.cpick:active:not(:disabled) { scale: 1; }
+.cpick .disc { width: 46px; height: 46px; }
+.ctext { min-width: 0; display: grid; gap: 1px; }
+.cname { font: 700 17px/1.15 var(--display); color: var(--bright); letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transform-origin: 0 0; justify-self: start; }
+.cos { font: 11.5px var(--mono); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cline { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim); margin-top: 3px; white-space: nowrap; }
+.cgo { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; flex: none; color: var(--accent);
+  background: color-mix(in oklab, var(--accent), transparent 82%); transition: scale var(--dur-press) var(--ease), background var(--dur) var(--ease); }
+.cgo svg { width: 18px; height: 18px; margin-left: 2px; }
+.cgo.live { background: var(--accent); color: var(--on-accent); box-shadow: 0 8px 22px -10px color-mix(in oklab, var(--accent), transparent 30%); }
+.cgo:active:not(:disabled) { scale: .9; }
+.cgo:disabled { background: var(--s2); color: var(--dim); box-shadow: none; opacity: 1; }
+.ccard.add { justify-content: center; gap: 8px; color: var(--dim); background: none; border: 1.5px dashed var(--line); min-height: 52px; font-weight: 600; width: 100%; }
+
+/* Link state: dot + words, tone from the truth. The dot moves only while something is alive. */
+.lstate { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--tone); --tone: var(--dim); white-space: nowrap; }
+.lstate.ok { --tone: var(--good); } .lstate.warn { --tone: var(--caution); } .lstate.bad { --tone: var(--bad); }
+.ldot { position: relative; width: 8px; height: 8px; border-radius: 50%; background: var(--tone); flex: none; }
+.ldot::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--tone); opacity: 0; }
+.lstate.ok .ldot::after { animation: ripple 2s cubic-bezier(.2, 0, 0, 1) infinite; }   /* paced to the ping sample */
+.lstate.warn .ldot { animation: breathe 2.4s ease-in-out infinite; }
+@keyframes ripple { 0% { opacity: .55; scale: 1; } 45%, 100% { opacity: 0; scale: 2.8; } }
+@keyframes breathe { 50% { opacity: .35; } }
+.ms { display: inline-block; font-variant-numeric: tabular-nums; }
+.ms.roll { animation: roll 260ms var(--spring); }
+@keyframes roll { from { translate: 0 60%; opacity: 0; } }
+
+/* Running sessions (sessioncard, reused). */
+.sessioncard { display: grid; gap: 10px; padding: 14px; border-radius: var(--r3); background: var(--s1); border: 1px solid color-mix(in oklab, var(--good), transparent 60%); }
+.sessionhead { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.sessionshape { width: 54px; height: 54px; flex: none; display: grid; place-items: center; border-radius: var(--r2); background: var(--s0); }
+.sessionshape span { display: block; border-radius: 5px; border: 2px solid var(--good); background: color-mix(in oklab, var(--good), transparent 82%); }
+.appchip { padding: 3px 10px; border-radius: 999px; background: var(--s2); color: var(--text); font-size: 12px; }
+.sessionapps { display: flex; flex-wrap: wrap; gap: 6px; }
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.hostchip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text); }
+.hostchip i { width: 8px; height: 8px; border-radius: 50%; background: var(--hue); }
+
+/* ── HOME: widgets ────────────────────────────────────────────────────────────────────── */
+.wlist { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; position: relative; }
+.widget { position: relative; min-width: 0; border-radius: var(--r3); background: var(--s1); padding: 12px 14px 14px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px;
+  transition: scale var(--dur-press) var(--ease), opacity var(--dur) var(--ease), border-radius 360ms var(--spring); touch-action: pan-y; }
+.whead { display: flex; align-items: center; gap: 8px; min-height: 28px; }
+.whead > svg { width: 16px; height: 16px; color: var(--dim); }
+.whead .wtitle { font: 600 11px var(--body); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+.whead .wfor { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text);
+  min-height: 28px; padding: 0 10px 0 8px; border-radius: 999px; background: var(--s2); }
+.whead .wfor .ldot { width: 7px; height: 7px; }
+.wbody { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; min-width: 0; }
+.widget.away .wbody { opacity: .55; }
+.wnote { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text); }
+.wnote b { color: var(--bad); font-weight: 600; }
+
+/* edit-mode chrome: hidden until .editing */
+.wlist:not(.editing) .wedit { display: none !important; }
+.wlist.editing .wbody { display: none; }
+.wlist.editing .widget { padding: 8px 6px 8px 8px; grid-template-columns: 1fr; }
+.wlist.editing .whead { min-height: 48px; gap: 6px; }
+.wlist.editing .whead > svg { display: none; }
+.wrm { width: 44px; height: 44px; display: grid; place-items: center; flex: none; margin-right: -4px; }
+.wrm span { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in oklab, var(--bad), transparent 80%); color: var(--bad); }
+.wrm svg { width: 15px; height: 15px; stroke-width: 2.6; }
+.wlist.editing .wrm span { animation: popin 360ms var(--pop) both; animation-delay: calc(var(--k, 0) * 30ms); }
+@keyframes popin { from { scale: 0; } }
+.wico { width: 38px; height: 38px; border-radius: var(--r2); display: grid; place-items: center; background: var(--s2); color: var(--bright); flex: none; }
+.wlist.editing .wtitle { font: 600 14px var(--body); letter-spacing: 0; text-transform: none; color: var(--bright); }
+.wlist.editing .wname { display: grid; gap: 0; min-width: 0; }
+.wlist.editing .wfor { margin-left: 0; background: none; padding: 0; min-height: 22px; color: var(--accent); justify-self: start; }
+.wlist.editing .wfor::after { content: ""; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; rotate: 45deg; translate: 0 -2px; margin-left: 2px; }
+.wname { display: contents; }
+.wmove { margin-left: auto; display: flex; align-items: center; }
+.wmove .iconbtn { width: 38px; height: 44px; border-radius: var(--r1); }
+.wmove .iconbtn svg { width: 18px; height: 18px; }
+.grip { width: 44px; height: 48px; display: grid; place-items: center; color: var(--dim); cursor: grab; touch-action: none; border-radius: var(--r1); }
+.wlist.editing .wmove { animation: slidein 420ms var(--spring) both; animation-delay: calc(var(--k, 0) * 30ms); }
+@keyframes slidein { from { translate: 24px 0; opacity: 0; } }
+.widget.lifted { z-index: 5; scale: 1.03; background: var(--s2); box-shadow: 0 18px 50px -20px #000a; transition: scale 200ms var(--pop), box-shadow 200ms var(--ease); }
+.widget.lifted .grip { cursor: grabbing; color: var(--accent); }
+.widget.shift { transition: translate 300ms var(--spring); }
+.widget.settle { transition: translate 340ms var(--pop), scale 260ms var(--spring), box-shadow 260ms var(--ease); }
+.widget.leaving { scale: .9; opacity: 0; transition: scale 180ms cubic-bezier(.3,0,1,1), opacity 180ms linear; pointer-events: none; }
+.wtray { display: none; }
+.wlist.editing ~ .wtray { display: grid; gap: 8px; animation: rise 420ms var(--spring) both 80ms; }
+.wtray .traygrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
+.wadd { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 12px; border-radius: var(--r2); border: 1.5px dashed var(--line);
+  color: var(--text); font-weight: 600; font-size: 13px; }
+.wadd svg { width: 18px; height: 18px; color: var(--accent); }
+.edithint { font-size: 12px; color: var(--dim); margin: 0 4px; }
+.wlist.editing ~ .edithint { display: block; } .edithint { display: none; }
+@keyframes rise { from { opacity: 0; translate: 0 14px; } }
+
+/* widget bodies */
+.wmedia { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.wmedia .cover { width: 52px; height: 52px; border-radius: var(--r1); flex: none; background-size: cover; box-shadow: 0 4px 14px rgb(0 0 0 / .25); }
+.wmedia .mt { flex: 1; min-width: 0; display: grid; }
+.wmedia .mt b { font: 700 16px/1.2 var(--display); color: var(--bright); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wmedia .mt span { font-size: 12.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wmedia .iconbtn { color: var(--bright); }
+.wmedia .play { background: var(--accent); color: var(--on-accent); }
+.thinbar { height: 4px; border-radius: 2px; background: var(--s3); overflow: hidden; }
+.thinbar i { display: block; height: 100%; width: 100%; background: var(--bright); transform-origin: 0 50%; scale: var(--p) 1; border-radius: 2px; }
+.clipsw { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.clipw { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 12px; border-radius: var(--r2); background: var(--s0); min-height: 48px; }
+.clipw .ct { flex: 1; min-width: 0; font: 12px var(--mono); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clipw svg.pin { width: 14px; height: 14px; color: var(--caution); }
+.clipw .iconbtn { width: 40px; height: 40px; }
+.clipw .iconbtn svg { width: 18px; height: 18px; }
+.clipw.copied { background: color-mix(in oklab, var(--good), var(--s0) 82%); }
+.padw { position: relative; height: 104px; border-radius: var(--r2); background: var(--s0); border: 1px solid var(--line); display: grid; place-items: center;
+  color: var(--dim); font-size: 13px; overflow: hidden; text-align: center; }
+.padw small { display: block; font-size: 11.5px; }
+.padw .touch { position: absolute; width: 44px; height: 44px; margin: -22px; border-radius: 50%; background: color-mix(in oklab, var(--accent), transparent 70%); pointer-events: none;
+  animation: touch 520ms cubic-bezier(.2, 0, 0, 1) forwards; }
+@keyframes touch { from { scale: .4; opacity: 1; } to { scale: 2.2; opacity: 0; } }
+.qchips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.qchip { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 12px; border-radius: 999px; background: var(--s2); color: var(--bright);
+  font-size: 12.5px; font-weight: 600; white-space: nowrap; flex: none; }
+.qchip svg { width: 16px; height: 16px; }
+
+/* ── sliders: native range on top, a drawn fill and thumb under it ─────────────────────── */
+.slide { position: relative; height: 52px; border-radius: var(--r2); background: var(--s2); overflow: hidden; --v: .5; flex: 1; min-width: 0; }
+.slide .fill { position: absolute; inset: 0; background: color-mix(in oklab, var(--accent), transparent 62%); transform-origin: 0 50%; scale: var(--v) 1;
+  transition: scale 380ms var(--spring); }
+.slide .thumb { position: absolute; top: 0; bottom: 0; left: 0; width: 6px; border-radius: 3px; background: var(--accent);
+  translate: calc(var(--v) * (var(--w, 300px) - 6px)) 0; transition: translate 380ms var(--spring), scale 220ms var(--pop); }
+.slide.dragging .fill, .slide.dragging .thumb { transition: scale 220ms var(--pop); }
+.slide.grab .thumb { scale: 2 .82; }
+.slide .ticks { position: absolute; inset: 0; display: flex; justify-content: space-between; align-items: flex-end; padding: 0 2px 6px; pointer-events: none; }
+.slide .ticks i { width: 2px; height: 6px; border-radius: 1px; background: color-mix(in oklab, var(--bright), transparent 72%); }
+.slide input { -webkit-appearance: none; appearance: none; position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; background: transparent; cursor: ew-resize; opacity: 0; }
+.slide input:focus-visible { opacity: 1; outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r2); }
+.slide input::-webkit-slider-thumb { -webkit-appearance: none; width: 24px; height: 52px; }
+.slidelab, .slideval { position: absolute; top: 50%; translate: 0 -50%; pointer-events: none; font-weight: 600; color: var(--bright); }
+.slidelab { left: 16px; display: flex; align-items: center; gap: 8px; }
+.slidelab svg { width: 18px; height: 18px; }
+.slideval { right: 16px; font: 600 12px var(--mono); transition: scale 220ms var(--pop); }
+.slide.grab .slideval { scale: 1.18; color: var(--accent); }
+.volrow { display: flex; align-items: center; gap: 8px; }
+.iconbtn.muted { color: var(--bad); background: color-mix(in oklab, var(--bad), transparent 86%); }
+
+/* ── COMPUTER PAGE ────────────────────────────────────────────────────────────────────── */
+.cbar { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: 4px; height: calc(56px + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) 8px 0; background: color-mix(in oklab, var(--s0), transparent 100%); transition: background var(--dur) var(--ease); }
+.cbar.solid { background: var(--s0); box-shadow: 0 1px 0 var(--line); }
+.cbar .iconbtn { color: var(--bright); }
+.cbtitle { font: 700 17px var(--display); color: var(--bright); opacity: 0; translate: 0 8px; transition: opacity var(--dur) var(--ease), translate var(--dur-sheet) var(--spring); }
+.cbar.solid .cbtitle { opacity: 1; translate: 0 0; }
+.cpage { position: relative; z-index: 1; padding: 0 16px calc(32px + env(safe-area-inset-bottom)); max-width: 520px; margin: 0 auto; }
+.cgrid { display: flex; flex-direction: column; gap: 12px; }
+.col { display: contents; }
+.o1 { order: 1; } .o2 { order: 2; } .o3 { order: 3; } .o4 { order: 4; } .o5 { order: 5; } .o6 { order: 6; }
+.sx > .sect:first-child { margin-top: 4px; }
+.sx { display: grid; gap: 8px; min-width: 0; }
+
+.hero2 { position: relative; padding: 18px 16px 16px; display: grid; gap: 16px; }
+.hero2 .herobg { position: absolute; inset: 0; border-radius: var(--r4); background: var(--s1); border: 1px solid var(--line); transform-origin: 0 0; overflow: hidden; }
+.hero2 .herobg .wash { position: absolute; inset: 0;
+  background: linear-gradient(135deg, color-mix(in oklab, var(--hue), transparent 76%), color-mix(in oklab, var(--base0E), transparent 90%) 70%); }
+.hero2 > *:not(.herobg) { position: relative; }
+.hrow { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.hrow .disc { width: 64px; height: 64px; transform-origin: 0 0; }
+.hrow .disc svg { width: 28px; height: 28px; }
+.hname { margin: 0; font: 700 30px/1.05 var(--display); letter-spacing: -.025em; color: var(--bright); transform-origin: 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hsub { font: 12px var(--mono); color: var(--dim); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hmeta { display: grid; grid-template-columns: 1.25fr 1fr .8fr; gap: 8px; }
+.hcell { background: color-mix(in oklab, var(--s0), transparent 35%); border-radius: var(--r2); padding: 9px 10px 8px; min-width: 0; text-align: left; display: grid; gap: 2px; align-content: start; }
+.hcell .k { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); font-weight: 600; }
+.hcell .v { font: 600 17px/1.15 var(--display); color: var(--bright); white-space: nowrap; display: flex; align-items: center; gap: 6px; }
+.hcell .v small { font: 500 11px var(--body); color: var(--dim); }
+.hcell .s { font-size: 11.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hcell.tone-ok .v { color: var(--good); } .hcell.tone-warn .v { color: var(--caution); } .hcell.tone-bad .v { color: var(--bad); }
+.hcell .lstate { font: inherit; }
+button.hcell:active { scale: .97; }
+.explain { margin-top: -16px; height: auto; max-height: 0; display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--dur-sheet) var(--spring); }
+.explain.open { grid-template-rows: 1fr; margin-top: -6px; max-height: 200px; }
+.explain > p { overflow: hidden; min-height: 0; margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--text); }
+.explain.open > p { padding: 2px 2px 0; }
+
+/* Big actions: the four reasons you came here. */
+.acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.act { position: relative; display: grid; align-content: space-between; gap: 14px; min-height: 104px; padding: 12px 14px 14px; border-radius: var(--r3);
+  background: var(--s2); text-align: left; overflow: hidden; }
+.act .aic { width: 42px; height: 42px; border-radius: var(--r2); display: grid; place-items: center; background: var(--s3); color: var(--bright);
+  transition: translate 220ms var(--pop), rotate 220ms var(--pop); }
+.act:active:not(:disabled) .aic { translate: 0 2px; }
+.act b { display: block; font: 700 17px/1.1 var(--display); color: var(--bright); letter-spacing: -.01em; }
+.act small { display: block; font-size: 12px; color: var(--dim); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.act.primary { background: var(--accent); color: var(--on-accent); box-shadow: 0 10px 30px color-mix(in oklab, var(--accent), transparent 72%); }
+.act.primary b, .act.primary small { color: var(--on-accent); }
+.act.primary small { opacity: .8; }
+.act.primary .aic { background: color-mix(in oklab, var(--on-accent), transparent 84%); color: var(--on-accent); border-radius: 50%; }
+.act .badge { position: absolute; top: 12px; right: 12px; font: 600 11px var(--mono); padding: 3px 8px; border-radius: 999px; background: var(--s3); color: var(--bright); }
+.act.primary .badge { background: color-mix(in oklab, var(--on-accent), transparent 82%); color: var(--on-accent); }
+
+/* Now playing (mediacard, re-cut: cover crisp on the accent wash; works on light schemes too). */
+.np { position: relative; overflow: hidden; border-radius: var(--r4); padding: 14px; display: grid; gap: 12px; color: var(--bright);
+  background: linear-gradient(135deg, color-mix(in oklab, var(--accent), var(--s1) 70%), color-mix(in oklab, var(--base0E), var(--s1) 78%)); }
+.nptop { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.npart { position: relative; width: 92px; height: 92px; flex: none; border-radius: var(--r2); overflow: hidden; box-shadow: 0 8px 24px -6px rgb(0 0 0 / .45); }
+.npart i { position: absolute; inset: 0; background-size: cover; transition: opacity 360ms var(--ease), scale 520ms var(--spring); }
+.npart i.out { opacity: 0; scale: 1.08; }
+.npt { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.npt .app { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; color: var(--text); opacity: .85; }
+.npt .app i { width: 14px; height: 14px; border-radius: 4px; background: var(--good); }
+.npt b { font: 700 21px/1.15 var(--display); letter-spacing: -.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.npt span.ar { font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.npt .swapout { animation: swapout 160ms cubic-bezier(.3, 0, 1, 1) forwards; }
+.npt .swapin { animation: swapin 320ms var(--spring) both; }
+@keyframes swapout { to { opacity: 0; translate: 0 -8px; } }
+@keyframes swapin { from { opacity: 0; translate: 0 10px; } }
+.scrub { position: relative; height: 22px; display: flex; align-items: center; }
+.scrub .track { position: absolute; left: 0; right: 0; height: 4px; border-radius: 2px; background: color-mix(in oklab, var(--bright), transparent 76%); overflow: hidden; }
+.scrub .prog { position: absolute; inset: 0; background: var(--bright); transform-origin: 0 50%; scale: var(--p, 0) 1; }
+.scrub .knob { position: absolute; left: 0; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--bright); translate: calc(var(--p, 0) * var(--sw, 300px)) 0; scale: 0;
+  transition: scale 200ms var(--pop); }
+.scrub:hover .knob, .scrub:active .knob { scale: 1; }
+.times { display: flex; justify-content: space-between; font: 10.5px var(--mono); color: var(--text); opacity: .8; margin-top: -10px; }
+.npctl { display: flex; align-items: center; gap: 6px; }
+.npout { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 12px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
+  background: color-mix(in oklab, var(--bright), transparent 86%); min-width: 0; max-width: 46%; }
+.npout span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.npout svg { width: 16px; height: 16px; }
+.npbtns { margin-left: auto; display: flex; align-items: center; gap: 2px; }
+.npbtns .iconbtn { color: var(--bright); }
+.npbtns .iconbtn svg { width: 22px; height: 22px; }
+.npplay { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; background: var(--bright); color: var(--s0); }
+.npplay svg { width: 22px; height: 22px; transition: scale 200ms var(--pop), opacity 120ms; }
+.npplay.flip svg { scale: .4; opacity: 0; }
+.npempty { display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: var(--r3); background: var(--s1); color: var(--dim); font-size: 13px; }
+
+/* Quick: two sliders and three toggles (the tile, re-cut vertical for a row of three). */
+.qtiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.qt { display: grid; gap: 10px; align-content: start; justify-items: start; min-height: 104px; padding: 12px; border-radius: var(--r3); background: var(--s2); text-align: left; min-width: 0;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease), border-radius 360ms var(--spring), scale var(--dur-press) var(--ease); }
+.qt .ic { width: 40px; height: 40px; border-radius: var(--r2); display: grid; place-items: center; background: var(--s3); color: var(--bright);
+  transition: background var(--dur) var(--ease), border-radius 360ms var(--spring); }
+.qt .ic svg { transition: scale 300ms var(--pop); }
+.qt b { display: block; font-size: 13px; font-weight: 600; color: var(--bright); }
+.qt small { display: block; font-size: 11.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.qt > span:last-child { min-width: 0; max-width: 100%; }
+.qt.on { background: var(--accent); color: var(--on-accent); border-radius: calc(var(--r3) + 8px); }
+.qt.on b, .qt.on small { color: var(--on-accent); }
+.qt.on .ic { background: color-mix(in oklab, var(--on-accent), transparent 84%); color: var(--on-accent); border-radius: 50%; }
+.qt.bump .ic svg { animation: bump 360ms var(--pop); }
+@keyframes bump { 40% { scale: .7; } }
+.grant { display: grid; gap: 10px; padding: 14px; border-radius: var(--r3); background: color-mix(in oklab, var(--caution), var(--s1) 88%); border: 1px solid color-mix(in oklab, var(--caution), transparent 65%); }
+.grant b { color: var(--bright); }
+.grant p { margin: 0; font-size: 13px; color: var(--text); }
+.cmd { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 12px; border-radius: var(--r1); background: var(--s0); border: 1px solid var(--line); }
+.cmd code { flex: 1; font: 12.5px var(--mono); color: var(--bright); overflow-x: auto; white-space: nowrap; }
+.offcard { display: grid; gap: 8px; padding: 14px; border-radius: var(--r3); background: color-mix(in oklab, var(--bad), var(--s1) 88%); border: 1px solid color-mix(in oklab, var(--bad), transparent 62%); }
+.offcard b { color: var(--bright); } .offcard p { margin: 0; font-size: 13px; color: var(--text); }
+
+/* staggered section entrance */
+.cgrid.enter .sx { animation: rise 520ms var(--spring) both; animation-delay: calc(140ms + var(--n) * var(--stagger)); }
+
+/* desktop: two columns */
+@media (min-width: 960px) {
+  .cpage { max-width: 1080px; padding-inline: 32px; }
+  .cbar { padding-inline: max(24px, calc((100% - 1080px) / 2 + 16px)); }
+  .cgrid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+  .col { display: grid; gap: 12px; }
+  .hname { font-size: 38px; }
+  .hero2 { padding: 22px 20px 20px; }
+  .act { min-height: 120px; }
+}
+
+/* ── SUB PAGE (Display & session) ─────────────────────────────────────────────────────── */
+.spage { padding: 0 16px calc(96px + env(safe-area-inset-bottom)); max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+.phead { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 6px; margin: 0 -8px; padding: calc(6px + env(safe-area-inset-top)) 0 6px; background: var(--s0); }
+.phead .iconbtn { color: var(--bright); }
+.phead .pt { display: grid; }
+.phead .eyebrow { display: inline-flex; align-items: center; gap: 6px; font: 600 10.5px var(--body); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+.phead .eyebrow i { width: 7px; height: 7px; border-radius: 50%; background: var(--hue); }
+.phead h3 { margin: 0; font: 700 20px/1.15 var(--display); color: var(--bright); letter-spacing: -.01em; }
+.shapes { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin-inline: -14px; padding-inline: 14px; }
+.shape { flex: none; display: grid; justify-items: center; align-content: end; gap: 6px; padding: 10px 8px; min-width: 84px; min-height: 92px;
+  border-radius: var(--r2); background: var(--s0); border: 1.5px solid transparent; transition: border-color var(--dur) var(--ease); }
+.shape.on { border-color: var(--accent); }
+.shape i { display: block; border: 1.5px solid var(--dim); border-radius: 3px; }
+.shape.on i { border-color: var(--accent); background: color-mix(in oklab, var(--accent), transparent 80%); }
+.shape b { font: 600 11px var(--mono); color: var(--bright); }
+.shape small { font-size: 10px; color: var(--dim); }
+.applybar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 3; display: flex; align-items: center; gap: 10px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line); background: var(--s1); translate: 0 110%; transition: translate var(--dur-sheet) var(--spring); }
+.applybar.on { translate: 0 0; }
+.applybar .at { flex: 1; min-width: 0; display: grid; }
+.applybar .at span { font-weight: 600; color: var(--bright); }
+.applybar .at small { color: var(--dim); font-size: 12px; }
+.applybar .btn { width: auto; min-height: 44px; }
+
+/* ── SHEET (host picker) ─────────────────────────────────────────────────────────────── */
+.scrim { position: fixed; inset: 0; z-index: 45; background: color-mix(in oklab, #000, transparent 55%); opacity: 0; pointer-events: none; transition: opacity var(--dur-sheet) var(--spring); }
+.scrim.on { opacity: 1; pointer-events: auto; }
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; max-width: 520px; margin: 0 auto; background: var(--s0); border-top: 1px solid var(--line);
+  border-radius: var(--r4) var(--r4) 0 0; padding: 0 16px calc(20px + env(safe-area-inset-bottom)); translate: 0 104%; visibility: hidden;
+  transition: translate var(--dur-sheet) var(--spring), visibility 0s linear var(--dur-sheet); box-shadow: 0 -20px 60px rgb(0 0 0 / .35); display: grid; gap: 10px; }
+.sheet.on { translate: 0 0; visibility: visible; transition: translate var(--dur-sheet) var(--spring), visibility 0s; }
+.grab { height: 22px; display: grid; place-items: center; }
+.grab::before { content: ""; width: 38px; height: 5px; border-radius: 3px; background: var(--s3); }
+.sheet h3 { margin: 0 4px; font: 700 20px var(--display); color: var(--bright); }
+.sheet .why { margin: -4px 4px 4px; font-size: 13px; }
+.pickrow .check { margin-left: auto; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; color: var(--on-accent); background: var(--accent); scale: 0; transition: scale 300ms var(--pop); }
+.pickrow.on .check { scale: 1; }
+.pickrow .check svg { width: 16px; height: 16px; stroke-width: 2.6; }
+.pickrow .navtext small { display: flex; gap: 6px; align-items: center; }
+
+/* ── prototype controls (not part of the design) ─────────────────────────────────────── */
+#proto { position: fixed; right: 10px; bottom: 10px; z-index: 99; display: flex; gap: 6px; font: 600 11px var(--body); }
+#proto button { padding: 8px 10px; border-radius: 999px; background: color-mix(in oklab, var(--base05), transparent 20%); color: var(--base00); }
+.bare #proto { display: none; }
+
+/* ── motion preferences ─────────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 1ms !important; animation: none !important; }
+}
+:root[data-motion="off"] *, :root[data-motion="off"] *::before, :root[data-motion="off"] *::after { transition: none !important; animation: none !important; }
+</style>
+</head>
+<body>
+
+<section id="home" class="screen" aria-label="Home"></section>
+<section id="computer" class="screen" aria-label="Computer"></section>
+<section id="sub" class="screen" aria-label="Settings page"></section>
+<div class="scrim" id="scrim"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheettitle"></div>
+<div id="proto">
+  <button id="pTheme" type="button">Light</button>
+  <button id="pMotion" type="button">Motion: full</button>
+</div>
+
+<script>
+/* ───────────────────────────── data: what the daemon and relay would say ───────────────────────────── */
+const ICON = {
+  server:"M4 3h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM4 13h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2zM6 7h.01M6 17h.01",
+  laptop:"M5 5h14a1 1 0 0 1 1 1v10H4V6a1 1 0 0 1 1-1zM2 19h20",
+  monitor:"M4 3h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM8 21h8M12 17v4",
+  play:"M7 4v16l13-8z", pause:"M7 4h3v16H7zM14 4h3v16h-3z", prev:"M5 5h2.5v14H5zM20 5v14L9 12z", next:"M16.5 5H19v14h-2.5zM4 5l11 7-11 7z",
+  trackpad:"M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM3 15h18M12 15v5",
+  folder:"M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z",
+  term:"M4 17l6-6-6-6M12 19h8", left:"M15 18l-6-6 6-6", right:"M9 18l6-6-6-6", up:"M18 15l-6-6-6 6", down:"M6 9l6 6 6-6",
+  sound:"M11 5 6 9H2v6h4l5 4zM15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14", mute:"M11 5 6 9H2v6h4l5 4zM22 9l-6 6M16 9l6 6",
+  sun:"M12 4V2M12 22v-2M4 12H2M22 12h-2M5.6 5.6 4.2 4.2M19.8 19.8l-1.4-1.4M5.6 18.4l-1.4 1.4M19.8 4.2l-1.4 1.4M12 8a4 4 0 1 0 0 8a4 4 0 1 0 0-8z",
+  eye:"M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6z",
+  wifi:"M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M2 9a15 15 0 0 1 20 0M12 20h.01", bt:"M7 7l10 10-5 5V2l5 5L7 17",
+  hand:"M18 11V6a2 2 0 0 0-4 0M14 10V4a2 2 0 0 0-4 0v6M10 10.5V6a2 2 0 0 0-4 0v8a8 8 0 0 0 16 0v-2a2 2 0 0 0-4 0",
+  net:"M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M2 9a15 15 0 0 1 20 0M12 20h.01",
+  palette:"M12 22a10 10 0 1 1 10-10c0 2.8-2.2 4-4 4h-2a2 2 0 0 0-1.5 3.3A1.6 1.6 0 0 1 12 22zM7.5 10.5h.01M12 7h.01M16.5 10.5h.01",
+  pad:"M6 11h4M8 9v4M15 12h.01M18 10h.01M17.3 5H6.7a4 4 0 0 0-3.96 3.43L2 14.6A2.9 2.9 0 0 0 7 17l1.5-2h7l1.5 2a2.9 2.9 0 0 0 5-2.4l-.74-6.17A4 4 0 0 0 17.3 5z",
+  pulse:"M22 12h-4l-3 9L9 3l-3 9H2", apps:"M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z",
+  clip:"M9 4h6v3H9zM8 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 13h6M9 17h4",
+  music:"M9 18V5l12-2v13M9 18a3 3 0 1 1-6 0a3 3 0 1 1 6 0zM21 16a3 3 0 1 1-6 0a3 3 0 1 1 6 0z",
+  plus:"M12 5v14M5 12h14", minus:"M5 12h14", x:"M18 6 6 18M6 6l12 12", check:"M20 6 9 17l-5-5",
+  power:"M12 2v10M18.4 6.6a9 9 0 1 1-12.8 0", pin:"M12 17v5M9 4h6M10 4v6l-3 4h10l-3-4V4",
+  paste:"M9 4h6v3H9zM8 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M12 18v-7M9 14l3-3 3 3",
+  copy:"M9 9h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H11a2 2 0 0 1-2-2zM5 15H4a1 1 0 0 1-1-1V5a2 2 0 0 1 2-2h9a1 1 0 0 1 1 1v1",
+  grip:"M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01", max:"M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3",
+  layers:"M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5", phone:"M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zM11 18h2",
+  alert:"M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z",
+};
+const ic = (n, cls = "") => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICON[n]}"/></svg>`;
+const icf = (n) => `<svg class="i fill" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICON[n]}"/></svg>`;
+
+const svgUrl = (s) => `url('data:image/svg+xml,${encodeURIComponent(s).replace(/'/g, "%27")}')`;
+const ART = [
+  svgUrl(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='#173634'/><circle cx='64' cy='38' r='20' fill='#eaa25a'/><path d='M0 66Q25 52 50 64T100 58V100H0Z' fill='#2b5a51'/><path d='M0 78Q30 68 56 80T100 76V100H0Z' fill='#0e2321'/></svg>`),
+  svgUrl(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='#2a1f3d'/><g fill='none' stroke='#c99bd9' stroke-width='3'><path d='M-5 40Q20 25 45 40T105 40'/><path d='M-5 52Q20 37 45 52T105 52' opacity='.7'/><path d='M-5 64Q20 49 45 64T105 64' opacity='.45'/></g><circle cx='26' cy='24' r='7' fill='#f1d39a'/></svg>`),
+  svgUrl(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='#e8d9c4'/><rect x='18' y='18' width='64' height='64' fill='#c4553a'/><rect x='34' y='34' width='32' height='32' fill='#1d2a3a'/></svg>`),
+];
+const TRACKS = [
+  { t: "Kerala", a: "Bonobo", al: "Migration", len: 260, pos: 102, art: 0 },
+  { t: "Cirrus", a: "Bonobo", al: "The North Borders", len: 347, pos: 0, art: 1 },
+  { t: "Tadow", a: "Masego, FKJ", al: "Lady Lady", len: 301, pos: 0, art: 2 },
+];
+
+const ME = { name: "Pixel 8", key: "pixel-8" };
+const HOSTS = {
+  framework: { name: "Framework", icon: "laptop", hue: "0D", os: "NixOS 25.11", de: "niri", link: "direct", ms: 23, up: "3 d 4 h",
+    sessions: [{ apps: ["Firefox", "Foot", "Nautilus"], w: 1170, h: 2532, fps: 60, ago: "40 min ago" }],
+    host: true, playing: { i: 0, on: true, out: "Framework speakers" }, vol: .64, muted: false, bright: .7, awake: true, wifi: "Home-5G", bt: "WH-1000XM4",
+    display: "1170×2532 · 60 fps · Balanced", grants: "files, shells, host, input" },
+  studio: { name: "Studio", icon: "monitor", hue: "0E", os: "Arch Linux", de: "Hyprland", link: "relayed", up: "52 min",
+    sessions: [], host: false, playing: null, vol: .4, bright: null, awake: false, wifi: null, bt: "On",
+    display: "1170×2532 · 60 fps · Reactive", grants: "files, input" },
+  living: { name: "Living-room PC", icon: "monitor", hue: "0C", os: "Ubuntu 24.04", de: "Sway", link: "offline", seen: "2 h ago",
+    sessions: [], host: true, playing: null, vol: .5, bright: null, awake: false, wifi: "Home-5G", bt: null,
+    display: "1920×1080 · 60 fps · Sharp", grants: "files, shells, host" },
+};
+const ORDER = ["framework", "studio", "living"];
+
+/* Widget model: { id, type, host } in order — the spec stores this per device (design-spec.md §5). */
+let WIDGETS = [
+  { id: "w1", type: "media", host: "framework" },
+  { id: "w2", type: "volume", host: "living" },
+  { id: "w3", type: "clipboard", host: "framework" },
+  { id: "w4", type: "trackpad", host: "studio" },
+  { id: "w5", type: "brightness", host: "framework" },
+];
+const WTYPES = {
+  media: { label: "Media player", short: "Media", icon: "music", needs: "host" },
+  volume: { label: "Volume", short: "Volume", icon: "sound", needs: "host" },
+  brightness: { label: "Brightness", short: "Brightness", icon: "sun", needs: "host" },
+  clipboard: { label: "Clipboard", short: "Clipboard", icon: "clip", needs: "clipboard" },
+  trackpad: { label: "Trackpad", short: "Trackpad", icon: "trackpad", needs: "input" },
+};
+const CLIPS = [
+  { t: "Meeting moved to 4:30 — same link", pin: true },
+  { t: "https://github.com/Smithay/smithay/pull/1712", pin: false },
+  { t: "cargo build --release -p wado-server", pin: false },
+];
+
+const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.motion !== undefined && document.documentElement.dataset.motion !== "full";
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+
+function link(h) {
+  const x = HOSTS[h];
+  if (x.link === "direct") return { tone: "ok", words: `Direct · <span class="ms" data-ms="${h}">${x.ms}</span> ms`, short: "Direct" };
+  if (x.link === "relayed") return { tone: "warn", words: "Relayed · limited", short: "Relayed" };
+  return { tone: "bad", words: `Offline · seen ${x.seen}`, short: "Offline" };
+}
+const lstate = (h) => { const l = link(h); return `<span class="lstate ${l.tone}"><i class="ldot"></i><span>${l.words}</span></span>`; };
+const clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+
+/* ─────────────────────────────────────────── HOME ─────────────────────────────────────────── */
+function renderHome() {
+  const fw = HOSTS.framework.sessions[0];
+  $("#home").innerHTML = `
+    <div class="wordmark">wado<span>.</span></div>
+    <p class="tag">Your computers, at this screen's own resolution.</p>
+
+    <div class="sect"><span>Computers</span></div>
+    <div class="ccards">
+      ${ORDER.map((k) => { const x = HOSTS[k]; const n = x.sessions.length; return `
+      <div class="ccard" data-host="${k}" style="--hue:var(--base${x.hue})">
+        <button class="cpick" type="button" aria-label="${x.name} — open its page">
+          <span class="disc">${ic(x.icon)}</span>
+          <span class="ctext">
+            <b class="cname">${x.name}</b>
+            <span class="cos">${x.os} · ${x.de}</span>
+            <span class="cline">${lstate(k)}${n ? `<span>· ${n} session</span>` : ""}</span>
+          </span>
+        </button>
+        <button class="cgo ${n ? "live" : ""}" type="button" ${x.link === "offline" ? "disabled" : ""} aria-label="${n ? "Rejoin the desktop on" : "Start a desktop on"} ${x.name}">${icf("play")}</button>
+      </div>`; }).join("")}
+      <button class="ccard add" type="button">${ic("plus")} Add a computer</button>
+    </div>
+
+    <div class="sect"><span>Running</span></div>
+    <div class="sessioncard">
+      <div class="sessionhead">
+        <div class="sessionshape" title="1170×2532"><span style="width:21px;height:46px"></span></div>
+        <div class="navtext">
+          <b>Firefox and more</b>
+          <small class="mono" style="font-size:11px">1170×2532 · 60 fps · started ${fw.ago}</small>
+          <small><span class="hostchip" style="--hue:var(--base0D)"><i></i>on Framework</span> · nobody watching</small>
+        </div>
+      </div>
+      <div class="sessionapps">${fw.apps.map((a) => `<span class="appchip">${a}</span>`).join("")}</div>
+      <div class="actions">
+        <button class="btn" type="button">${ic("power")} End</button>
+        <button class="btn primary" type="button">${icf("play")} Rejoin</button>
+      </div>
+    </div>
+
+    <div class="sect"><span>On this phone</span></div>
+    <div class="list">
+      ${navrow("palette", "0A", "Appearance", "default-dark · round corners")}
+      ${navrow("hand", "0C", "Input feel", "Gestures · scroll 1.00× · natural")}
+      ${navrow("pad", "0B", "Gamepad", "Off · keys & mouse")}
+      ${navrow("apps", "0E", "Quick tiles", "8 tiles in the control centre")}
+      ${navrow("pulse", "08", "Diagnostics", "Readouts · health · server log")}
+    </div>
+
+    <div class="sect" id="wsect"><span>Widgets</span><button type="button" id="wedit" aria-pressed="false">Edit</button></div>
+    <div class="wlist" id="wlist"></div>
+    <p class="edithint">Drag the dots to reorder, or use the arrows. Each widget follows one computer — tap its name to change it.</p>
+    <div class="wtray">
+      <div class="sect" style="margin-top:4px"><span>Add a widget</span></div>
+      <div class="traygrid">${Object.entries(WTYPES).map(([k, t]) => `<button type="button" class="wadd" data-add="${k}">${ic("plus")}${t.short}</button>`).join("")}</div>
+    </div>`;
+  renderWidgets();
+  $$(".ccard[data-host]").forEach((c) => {
+    $(".cpick", c).addEventListener("click", () => openComputer(c.dataset.host, c));
+  });
+  $("#wedit").addEventListener("click", toggleEdit);
+  $$(".wadd").forEach((b) => b.addEventListener("click", () => addWidget(b.dataset.add)));
+}
+const navrow = (icon, hue, title, sub, data = "") =>
+  `<button class="navrow" type="button" ${data}><span class="disc" style="--hue:var(--base${hue})">${ic(icon)}</span><span class="navtext"><b>${title}</b><small>${sub}</small></span>${ic("right")}</button>`;
+
+/* ─────────────────────────────────────────── WIDGETS ─────────────────────────────────────────── */
+function widgetBody(w) {
+  const x = HOSTS[w.host];
+  if (x.link === "offline") return `<div class="wnote">${ic("alert")}<span><b>${x.name} is offline.</b> Seen ${x.seen}. This fills in when it is back.</span></div>`;
+  const t = WTYPES[w.type];
+  if (t.needs === "host" && !x.host) return `<div class="wnote">${ic("alert")}<span>This phone may not control ${x.name}'s ${w.type === "media" ? "media" : w.type}. Open its page to see how to allow it.</span></div>`;
+  if (w.type === "media") {
+    const p = x.playing; if (!p) return `<div class="wnote" style="color:var(--dim)">${ic("music")} Nothing is playing on ${x.name}.</div>`;
+    const tr = TRACKS[p.i];
+    return `<div class="wmedia"><span class="cover" style="background-image:${ART[tr.art]}"></span>
+      <span class="mt"><b>${tr.t}</b><span>${tr.a} · ${p.out}</span></span>
+      <button class="iconbtn play" type="button" aria-label="${p.on ? "Pause" : "Play"}">${icf(p.on ? "pause" : "play")}</button>
+      <button class="iconbtn" type="button" aria-label="Next">${icf("next")}</button></div>
+      <div class="thinbar"><i style="--p:${(tr.pos / tr.len).toFixed(3)}"></i></div>`;
+  }
+  if (w.type === "volume") return `<div class="volrow"><button class="iconbtn" type="button" aria-label="Mute ${x.name}">${ic("sound")}</button>${slider("Volume", x.vol, null, false, `vol-${w.id}`)}</div>`;
+  if (w.type === "brightness") return x.bright == null ? `<div class="wnote" style="color:var(--dim)">${ic("sun")} ${x.name} has no screen brightness wado can set.</div>` : slider("Brightness", x.bright, "sun", true, `br-${w.id}`);
+  if (w.type === "clipboard") return `<div class="clipsw">${CLIPS.map((c) => `<div class="clipw">${c.pin ? ic("pin", "pin") : ""}<span class="ct">${c.t}</span><button class="iconbtn" type="button" aria-label="Copy to this phone">${ic("copy")}</button></div>`).join("")}</div>
+      <button class="btn" type="button" style="min-height:44px">${ic("paste")} Send this phone's clipboard</button>`;
+  if (w.type === "trackpad") return `<div class="padw" data-pad>${ic("trackpad")}<span>Touch to use ${x.name}'s pointer<small>${x.link === "relayed" ? "Relayed — plays a little behind your finger" : "Direct"}</small></span></div>
+      <div class="qchips">${[["left", "Workspace"], ["right", "Workspace"], ["max", "Fullscreen"], ["pause", "Play / pause"]].map(([i, l]) => `<button type="button" class="qchip">${ic(i)}${l}</button>`).join("")}</div>`;
+  return "";
+}
+function widgetEl(w, k) {
+  const x = HOSTS[w.host], t = WTYPES[w.type], l = link(w.host);
+  const d = document.createElement("div");
+  d.className = "widget" + (x.link === "offline" ? " away" : "");
+  d.dataset.id = w.id; d.style.setProperty("--k", k);
+  d.innerHTML = `
+    <div class="whead">
+      <button class="wedit wrm" type="button" aria-label="Remove the ${t.short} widget"><span>${ic("minus")}</span></button>
+      ${ic(t.icon)}<span class="wedit wico">${ic(t.icon)}</span>
+      <span class="wname"><span class="wtitle">${t.label}</span>
+      <button class="wfor" type="button" aria-label="${t.short} shows ${x.name}${"" } — change computer"><span class="lstate ${l.tone}"><i class="ldot"></i></span>${x.name}</button></span>
+      <span class="wedit wmove">
+        <button class="iconbtn" type="button" aria-label="Move up" data-mv="-1">${ic("up")}</button>
+        <button class="iconbtn" type="button" aria-label="Move down" data-mv="1">${ic("down")}</button>
+        <span class="grip" role="button" tabindex="0" aria-label="Drag to reorder">${ic("grip")}</span>
+      </span>
+    </div>
+    <div class="wbody">${widgetBody(w)}</div>`;
+  return d;
+}
+function renderWidgets() {
+  const list = $("#wlist");
+  list.innerHTML = "";
+  WIDGETS.forEach((w, k) => list.appendChild(widgetEl(w, k)));
+  wireWidgets();
+}
+function wireWidgets() {
+  const list = $("#wlist");
+  $$(".widget", list).forEach((el) => {
+    const id = el.dataset.id;
+    $(".wrm", el).onclick = () => removeWidget(id);
+    $$("[data-mv]", el).forEach((b) => (b.onclick = () => moveWidget(id, +b.dataset.mv)));
+    $(".wfor", el).onclick = () => { if (list.classList.contains("editing")) openPicker(id); else openComputer(WIDGETS.find((w) => w.id === id).host, null); };
+    $(".grip", el).addEventListener("pointerdown", (e) => startDrag(e, el));
+    $(".grip", el).addEventListener("keydown", (e) => { if (e.key === "ArrowUp" || e.key === "ArrowDown") { e.preventDefault(); moveWidget(id, e.key === "ArrowUp" ? -1 : 1); } });
+    const pad = $("[data-pad]", el);
+    if (pad) pad.addEventListener("pointerdown", (e) => { const r = pad.getBoundingClientRect(); const t = document.createElement("i"); t.className = "touch";
+      t.style.left = e.clientX - r.left + "px"; t.style.top = e.clientY - r.top + "px"; pad.appendChild(t); setTimeout(() => t.remove(), 600); });
+    $$(".clipw .iconbtn", el).forEach((b) => (b.onclick = () => { const r = b.closest(".clipw"); r.classList.add("copied"); b.innerHTML = ic("check"); setTimeout(() => { r.classList.remove("copied"); b.innerHTML = ic("copy"); }, 1400); }));
+    const play = $(".wmedia .play", el);
+    if (play) play.onclick = () => { const p = HOSTS[WIDGETS.find((w) => w.id === id).host].playing; p.on = !p.on; play.innerHTML = icf(p.on ? "pause" : "play"); };
+  });
+  $$(".slide", list).forEach(wireSlider);
+}
+function toggleEdit() {
+  const list = $("#wlist"), on = !list.classList.contains("editing");
+  flip(list, () => { list.classList.toggle("editing", on); });
+  $("#wedit").textContent = on ? "Done" : "Edit";
+  $("#wedit").setAttribute("aria-pressed", on);
+  if (navigator.vibrate) navigator.vibrate(6);
+}
+/* FLIP: measure, change, then animate everything from where it was. Transform-only. */
+function flip(container, change, sel = ".widget") {
+  const before = new Map($$(sel, container).map((e) => [e.dataset.id, e.getBoundingClientRect()]));
+  change();
+  if (reduced()) return;
+  $$(sel, container).forEach((e) => {
+    const b = before.get(e.dataset.id); if (!b) { e.animate([{ scale: .85, opacity: 0 }, { scale: 1, opacity: 1 }], { duration: 420, easing: "cubic-bezier(.34,1.56,.64,1)" }); return; }
+    const a = e.getBoundingClientRect(); const dy = b.top - a.top; if (Math.abs(dy) < 1) return;
+    e.animate([{ translate: `0 ${dy}px` }, { translate: "0 0" }], { duration: 380, easing: "cubic-bezier(.32,.72,0,1)" });
+  });
+}
+function moveWidget(id, d) {
+  const i = WIDGETS.findIndex((w) => w.id === id), j = i + d;
+  if (j < 0 || j >= WIDGETS.length) return;
+  const list = $("#wlist");
+  flip(list, () => { [WIDGETS[i], WIDGETS[j]] = [WIDGETS[j], WIDGETS[i]]; const a = list.children[Math.min(i, j)], b = list.children[Math.max(i, j)]; list.insertBefore(b, a); });
+  $(`.widget[data-id="${id}"] [data-mv="${d}"]`)?.focus();
+}
+function removeWidget(id) {
+  const list = $("#wlist"), el = $(`.widget[data-id="${id}"]`, list);
+  el.classList.add("leaving");
+  setTimeout(() => flip(list, () => { el.remove(); WIDGETS = WIDGETS.filter((w) => w.id !== id); }), reduced() ? 0 : 170);
+}
+function addWidget(type) {
+  const list = $("#wlist"), w = { id: "w" + Date.now(), type, host: "framework" };
+  flip(list, () => { WIDGETS.push(w); const el = widgetEl(w, 0); el.style.setProperty("--k", 0); list.appendChild(el); wireWidgets(); });
+}
+
+/* Drag to reorder: the lifted widget follows the finger 1:1 (no easing on direct manipulation);
+   the others make room on the spring; on release it settles into its slot with a little overshoot. */
+let drag = null;
+function startDrag(e, el) {
+  if (!$("#wlist").classList.contains("editing")) return;
+  e.preventDefault();
+  const list = $("#wlist"), items = $$(".widget", list);
+  const rects = items.map((x) => x.getBoundingClientRect());
+  const from = items.indexOf(el), gap = 8, h = rects[from].height + gap;
+  drag = { el, items, rects, from, to: from, h, y0: e.clientY, pid: e.pointerId };
+  try { el.setPointerCapture(e.pointerId); } catch (_) {}
+  el.classList.add("lifted");
+  items.forEach((x) => x !== el && x.classList.add("shift"));
+  if (navigator.vibrate) navigator.vibrate(8);
+  el.addEventListener("pointermove", onDrag);
+  el.addEventListener("pointerup", endDrag, { once: true });
+  el.addEventListener("pointercancel", endDrag, { once: true });
+}
+function onDrag(e) {
+  if (!drag) return;
+  const { el, items, rects, from, h } = drag;
+  const dy = e.clientY - drag.y0;
+  el.style.translate = `0 ${dy}px`;
+  const mid = rects[from].top + rects[from].height / 2 + dy;
+  let to = from;
+  rects.forEach((r, i) => { if (i < from && mid < r.top + r.height / 2) to = Math.min(to, i); if (i > from && mid > r.top + r.height / 2) to = i; });
+  if (to !== drag.to) { drag.to = to; if (navigator.vibrate) navigator.vibrate(4); }
+  items.forEach((x, i) => {
+    if (x === el) return;
+    let s = 0;
+    if (from < to && i > from && i <= to) s = -h;
+    if (from > to && i >= to && i < from) s = h;
+    x.style.translate = `0 ${s}px`;
+  });
+}
+function endDrag() {
+  if (!drag) return;
+  const { el, items, rects, from, to } = drag;
+  el.removeEventListener("pointermove", onDrag);
+  // the slot it lands in, measured from where the widget now at `to` started
+  const target = to === from ? 0 : (to > from ? rects[to].bottom - rects[from].bottom : rects[to].top - rects[from].top);
+  el.classList.remove("lifted"); el.classList.add("settle");
+  el.style.translate = `0 ${target}px`;
+  const done = () => {
+    const list = $("#wlist");
+    items.forEach((x) => { x.classList.remove("shift", "settle"); x.style.transition = "none"; x.style.translate = ""; });
+    const [w] = WIDGETS.splice(from, 1); WIDGETS.splice(to, 0, w);
+    const ref = list.children[to >= from ? to + 1 : to];
+    if (to !== from) list.insertBefore(el, to > from ? ref : list.children[to]);
+    requestAnimationFrame(() => items.forEach((x) => (x.style.transition = "")));
+    drag = null;
+  };
+  setTimeout(done, reduced() ? 0 : 340);
+}
+
+/* Host picker sheet */
+let pickFor = null;
+function openPicker(id) {
+  pickFor = id;
+  const w = WIDGETS.find((x) => x.id === id), t = WTYPES[w.type];
+  $("#sheet").innerHTML = `<div class="grab"></div><h3 id="sheettitle">${t.label} shows</h3><p class="why">One computer per widget. Add another ${t.short.toLowerCase()} widget to see a second one.</p>
+    <div class="list">${ORDER.map((k) => { const x = HOSTS[k]; return `<button class="navrow pickrow ${k === w.host ? "on" : ""}" type="button" data-k="${k}" role="radio" aria-checked="${k === w.host}">
+      <span class="disc" style="--hue:var(--base${x.hue})">${ic(x.icon)}</span><span class="navtext"><b>${x.name}</b><small>${lstate(k)}</small></span><span class="check">${ic("check")}</span></button>`; }).join("")}</div>`;
+  $$(".pickrow", $("#sheet")).forEach((r) => (r.onclick = () => {
+    $$(".pickrow", $("#sheet")).forEach((x) => { x.classList.toggle("on", x === r); x.setAttribute("aria-checked", x === r); });
+    w.host = r.dataset.k;
+    setTimeout(() => { closePicker(); const el = $(`.widget[data-id="${id}"]`); const n = widgetEl(w, 0); el.replaceWith(n); wireWidgets(); n.animate([{ scale: .96 }, { scale: 1 }], { duration: 360, easing: "cubic-bezier(.34,1.56,.64,1)" }); }, reduced() ? 0 : 260);
+  }));
+  $("#scrim").classList.add("on"); $("#sheet").classList.add("on");
+}
+function closePicker() { $("#scrim").classList.remove("on"); $("#sheet").classList.remove("on"); }
+$("#scrim").addEventListener("click", closePicker);
+
+/* ─────────────────────────────────────────── SLIDERS ─────────────────────────────────────────── */
+function slider(label, v, icon, stepped, id) {
+  return `<div class="slide" style="--v:${v}">${stepped ? `<span class="ticks">${"<i></i>".repeat(11)}</span>` : ""}<span class="fill"></span><span class="thumb"></span>
+    <input id="${id}" type="range" min="0" max="1" step="${stepped ? 0.1 : 0.02}" value="${v}" aria-label="${label}" />
+    <span class="slidelab">${icon ? ic(icon) : ""}${label}</span><span class="slideval">${Math.round(v * 100)}%</span></div>`;
+}
+function wireSlider(s) {
+  const inp = $("input", s), val = $(".slideval", s);
+  const measure = () => s.style.setProperty("--w", s.clientWidth + "px");
+  measure(); new ResizeObserver(measure).observe(s);
+  let down = false;
+  inp.addEventListener("pointerdown", () => { down = true; s.classList.add("grab"); s.classList.remove("dragging"); });
+  inp.addEventListener("pointermove", () => { if (down) s.classList.add("dragging"); });
+  const up = () => { down = false; s.classList.remove("grab", "dragging"); };
+  inp.addEventListener("pointerup", up); inp.addEventListener("pointercancel", up); inp.addEventListener("blur", up);
+  inp.addEventListener("input", () => { s.style.setProperty("--v", inp.value); val.textContent = Math.round(inp.value * 100) + "%"; });
+}
+
+/* ─────────────────────────────────────────── COMPUTER PAGE ─────────────────────────────────────────── */
+let current = null, openAnims = [];
+function renderComputer(k) {
+  const x = HOSTS[k], l = link(k), off = x.link === "offline", n = x.sessions.length, s0 = x.sessions[0];
+  const c = $("#computer");
+  c.style.setProperty("--hue", `var(--base${x.hue})`);
+  const cell = (key, tone, v, s, btn = false) => `<${btn ? 'button type="button" aria-expanded="false" data-explain' : "div"} class="hcell tone-${tone}"><span class="k">${key}</span><span class="v">${v}</span><span class="s">${s}</span></${btn ? "button" : "div"}>`;
+  const linkV = x.link === "direct" ? `<span class="lstate ok"><i class="ldot"></i></span>Direct <small><span class="ms" data-ms="${k}">${x.ms}</span> ms</small>` : x.link === "relayed" ? `<span class="lstate warn"><i class="ldot"></i></span>Relayed` : `<span class="lstate bad"><i class="ldot"></i></span>None`;
+  const linkS = x.link === "direct" ? "round trip, now" : x.link === "relayed" ? "limited · tap for why" : "nothing to reach";
+  const explain = x.link === "relayed" ? `Your phone reaches ${x.name} through the relay, not directly. Everything works, but the picture is held to a lower quality and touches arrive a little later. Usually one side's network is strict; nothing on ${x.name} needs fixing.`
+    : x.link === "direct" ? `Your phone and ${x.name} talk directly over the internet. 23 ms is the round trip, measured every two seconds.` : "";
+  const tr = x.playing ? TRACKS[x.playing.i] : null;
+  const quick = off ? "" : !x.host ? `
+      <div class="grant"><b>Quick controls need permission</b>
+        <p>This phone may use ${x.name}'s files and trackpad, but not its sound, media, brightness or radios. To allow it, run this on ${x.name}:</p>
+        <div class="cmd"><code>wado allow ${ME.key} host</code><button class="iconbtn" type="button" aria-label="Copy the command">${ic("copy")}</button></div>
+        <p class="why">Or open <span class="mono">wado tui</span> there and tick “host” for ${ME.name}.</p></div>`
+    : `
+      <div class="volrow"><button class="iconbtn ${x.muted ? "muted" : ""}" type="button" data-mute aria-label="Mute ${x.name}">${ic(x.muted ? "mute" : "sound")}</button>${slider("Volume", x.vol, null, false, "cvol")}</div>
+      ${x.bright == null ? `<div class="npempty">${ic("sun")} ${x.name} has no screen brightness wado can set.</div>` : slider("Brightness", x.bright, "sun", true, "cbr")}
+      <div class="qtiles">
+        ${qt("awake", "eye", "Keep awake", x.awake, "Won't sleep", "Sleeps as usual")}
+        ${qt("wifi", "wifi", "Wi-Fi", !!x.wifi, x.wifi || "On", "Off")}
+        ${qt("bt", "bt", "Bluetooth", !!x.bt, x.bt || "On", "Off")}
+      </div>`;
+  c.innerHTML = `
+    <div class="cground"></div>
+    <header class="cbar" id="cbar"><button class="iconbtn" type="button" id="back" aria-label="Back to home">${ic("left")}</button><span class="cbtitle">${x.name}</span></header>
+    <div class="cpage"><div class="cgrid" id="cgrid">
+      <div class="col">
+        <section class="hero2 sx o1" style="--n:0" aria-label="${x.name}">
+          <div class="herobg"><div class="wash"></div></div>
+          <div class="hrow"><span class="disc" style="--hue:var(--base${x.hue})">${ic(x.icon)}</span>
+            <div style="min-width:0"><h1 class="hname">${x.name}</h1><div class="hsub">${x.os} · ${x.de}</div></div></div>
+          <div class="hmeta">
+            ${cell("Link", l.tone, linkV, linkS, x.link === "relayed" || x.link === "direct")}
+            ${cell("Computer", off ? "bad" : "ok", off ? "Offline" : "Online", off ? `seen ${x.seen}` : `up ${x.up}`)}
+            ${cell("Sessions", "", off ? "—" : String(n), n ? s0.apps[0] : off ? "" : "none")}
+          </div>
+          ${explain ? `<div class="explain" id="explain"><p>${explain}</p></div>` : ""}
+        </section>
+        ${off ? `<div class="offcard sx o2" style="--n:1"><b>${x.name} is offline</b><p>It is turned off, asleep, or its wado is not running. This page fills in by itself when it is back — nothing to retry.</p></div>` : ""}
+        <section class="acts sx o2" style="--n:1" aria-label="Open">
+          <button class="act primary" type="button" ${off ? "disabled" : ""}>${n ? `<span class="badge">running</span>` : ""}<span class="aic">${icf("play")}</span><span><b>Desktop</b><small>${n ? `Rejoin · ${s0.apps[0]} and ${s0.apps.length - 1} more` : "Start at this screen's size"}</small></span></button>
+          <button class="act" type="button" ${off ? "disabled" : ""}><span class="aic">${ic("trackpad")}</span><span><b>Trackpad</b><small>This phone as its touchpad</small></span></button>
+          <button class="act" type="button" ${off ? "disabled" : ""}><span class="aic">${ic("folder")}</span><span><b>Files</b><small>Browse, send, download</small></span></button>
+          <button class="act" type="button" ${off || !/shells/.test(x.grants) ? "disabled" : ""}>${k === "framework" ? `<span class="badge">2 open</span>` : ""}<span class="aic">${ic("term")}</span><span><b>Shell</b><small>${/shells/.test(x.grants) ? "A terminal, no video" : "Not allowed for this phone"}</small></span></button>
+        </section>
+        <section class="sx o5" style="--n:4" aria-label="This computer">
+          <div class="sect"><span>This computer</span></div>
+          <div class="list">
+            ${navrow("monitor", "0D", "Display & session", x.display, 'data-page="display"')}
+            ${navrow("trackpad", "0C", "Trackpad", "Landscape · keys beside the pad · 4 quick actions")}
+            ${navrow("sound", "0E", "Sound & devices", off ? "The computer's sound, Wi-Fi and Bluetooth" : `${x.playing ? x.playing.out : "Speakers"} · ${x.wifi ? "Wi-Fi " + x.wifi : "Ethernet"}`)}
+            ${navrow("net", "09", "Connection & trust", `Via relay · this phone: ${x.grants}`)}
+          </div>
+        </section>
+      </div>
+      <div class="col">
+        ${off ? "" : `<section class="sx o3" style="--n:2" aria-label="Now playing">
+          <div class="sect"><span>Now playing</span></div>
+          ${!x.host ? `<div class="npempty">${ic("music")} Needs the host permission — see Quick below.</div>` : !tr ? `<div class="npempty">${ic("music")} Nothing is playing on ${x.name}.</div>` : `
+          <div class="np" id="np">
+            <div class="nptop"><div class="npart" id="npart"><i style="background-image:${ART[tr.art]}"></i></div>
+              <div class="npt" id="npt"><span class="app"><i></i>Spotify</span><b>${tr.t}</b><span class="ar">${tr.a} · ${tr.al}</span></div></div>
+            <div><div class="scrub" id="scrub"><span class="track"><span class="prog" id="prog"></span></span><span class="knob"></span></div>
+            <div class="times"><span id="tpos">${clock(tr.pos)}</span><span id="tlen">${clock(tr.len)}</span></div></div>
+            <div class="npctl"><button class="npout" type="button" aria-label="Plays on ${x.playing.out} — change">${ic("sound")}<span>${x.playing.out}</span></button>
+              <span class="npbtns"><button class="iconbtn" type="button" id="npprev" aria-label="Previous">${icf("prev")}</button>
+              <button class="npplay" type="button" id="npplay" aria-label="Pause">${icf("pause")}</button>
+              <button class="iconbtn" type="button" id="npnext" aria-label="Next">${icf("next")}</button></span></div>
+          </div>`}
+        </section>
+        <section class="sx o4" style="--n:3" aria-label="Quick">
+          <div class="sect"><span>Quick</span></div>
+          ${quick}
+        </section>`}
+      </div>
+    </div></div>`;
+  $("#back").onclick = closeComputer;
+  $$(".slide", c).forEach(wireSlider);
+  $$(".qt", c).forEach((t) => (t.onclick = () => { const on = !t.classList.contains("on"); t.classList.toggle("on", on); t.classList.remove("bump"); void t.offsetWidth; t.classList.add("bump");
+    t.setAttribute("aria-pressed", on); $("small", t).textContent = on ? t.dataset.on : t.dataset.off; }));
+  const ex = $("[data-explain]", c);
+  if (ex) ex.onclick = () => { const o = $("#explain").classList.toggle("open"); ex.setAttribute("aria-expanded", o); };
+  const m = $("[data-mute]", c);
+  if (m) m.onclick = () => { x.muted = !x.muted; m.classList.toggle("muted", x.muted); m.innerHTML = ic(x.muted ? "mute" : "sound"); };
+  $$('[data-page="display"]', c).forEach((b) => (b.onclick = () => openSub(k)));
+  c.onscroll = () => $("#cbar").classList.toggle("solid", c.scrollTop > 120);
+  if (tr) wireNowPlaying(k);
+}
+const qt = (id, icon, title, on, onSub, offSub) =>
+  `<button class="qt ${on ? "on" : ""}" type="button" aria-pressed="${on}" data-on="${onSub}" data-off="${offSub}"><span class="ic">${ic(icon)}</span><span><b>${title}</b><small>${on ? onSub : offSub}</small></span></button>`;
+
+/* Now playing: progress is a scaleX on its own layer (linear — it is a clock), never width. */
+let npTimer = null;
+function wireNowPlaying(k) {
+  const x = HOSTS[k], p = x.playing;
+  const set = () => { const tr = TRACKS[p.i]; const f = tr.pos / tr.len; $("#np").style.setProperty("--p", f.toFixed(4)); $("#tpos").textContent = clock(tr.pos); $("#tlen").textContent = clock(tr.len); };
+  const sc = $("#scrub"); sc.style.setProperty("--sw", sc.clientWidth + "px");
+  set();
+  clearInterval(npTimer);
+  if (!STILL) npTimer = setInterval(() => { if (p.on) { TRACKS[p.i].pos = Math.min(TRACKS[p.i].pos + 1, TRACKS[p.i].len); set(); } }, 1000);
+  $("#npplay").onclick = () => { const b = $("#npplay"); b.classList.add("flip"); setTimeout(() => { p.on = !p.on; b.innerHTML = icf(p.on ? "pause" : "play"); b.setAttribute("aria-label", p.on ? "Pause" : "Play"); requestAnimationFrame(() => b.classList.remove("flip")); }, reduced() ? 0 : 110); };
+  const go = (d) => {
+    p.i = (p.i + d + TRACKS.length) % TRACKS.length; TRACKS[p.i].pos = 0; const tr = TRACKS[p.i];
+    const art = $("#npart"), old = $("i", art), nu = document.createElement("i");
+    nu.style.backgroundImage = ART[tr.art]; nu.classList.add("out"); art.appendChild(nu);
+    requestAnimationFrame(() => requestAnimationFrame(() => { nu.classList.remove("out"); old.classList.add("out"); setTimeout(() => old.remove(), 400); }));
+    const t = $("#npt"); $$("b, .ar", t).forEach((e) => e.classList.add("swapout"));
+    setTimeout(() => { $("b", t).textContent = tr.t; $(".ar", t).textContent = `${tr.a} · ${tr.al}`; $$("b, .ar", t).forEach((e) => { e.classList.remove("swapout"); e.classList.add("swapin"); setTimeout(() => e.classList.remove("swapin"), 340); }); }, reduced() ? 0 : 150);
+    set();
+  };
+  $("#npnext").onclick = () => go(1); $("#npprev").onclick = () => go(-1);
+}
+
+/* Card → Computer page: a shared-element transition, hand-rolled FLIP so it stays transform-only
+   and never takes input away. The card's surface grows into the hero; its disc and name fly to
+   theirs; the hero's wash fades in; the home recedes; the page's sections rise in a stagger. */
+function openComputer(k, card) {
+  if (current) return;
+  current = k;
+  renderComputer(k);
+  const c = $("#computer"), home = $("#home");
+  c.scrollTop = 0; c.classList.add("on");
+  const grid = $("#cgrid");
+  const rm = reduced();
+  openAnims.forEach((a) => a.cancel()); openAnims = [];
+  const A = (el, kf, o) => { const a = el.animate(kf, { fill: "both", ...o }); openAnims.push(a); return a; };
+  const D = rm ? 160 : 520, E = "cubic-bezier(.32,.72,0,1)";
+  if (rm || !card) {
+    A(c, [{ opacity: 0 }, { opacity: 1 }], { duration: rm ? 160 : 360, easing: E });
+    if (!rm) { grid.classList.add("enter"); }
+    A(home, [{ opacity: 1 }, { opacity: 0 }], { duration: rm ? 160 : 300, easing: E });
+    return;
+  }
+  const hero = $(".hero2", c), bg = $(".herobg", hero), hd = $(".hrow .disc", hero), hn = $(".hname", hero);
+  const sb = card.getBoundingClientRect(), sd = $(".disc", card).getBoundingClientRect(), sn = $(".cname", card).getBoundingClientRect();
+  const db = bg.getBoundingClientRect(), dd = hd.getBoundingClientRect(), dn = hn.getBoundingClientRect();
+  const tf = (s, d, uni) => { const sx = s.width / d.width, sy = uni ? sx : s.height / d.height; return `translate(${s.left - d.left}px, ${s.top - d.top}px) scale(${sx}, ${sy})`; };
+  card.style.opacity = "0";
+  A(bg, [{ transform: tf(sb, db, false) }, { transform: "none" }], { duration: D, easing: E });
+  A($(".wash", bg), [{ opacity: 0 }, { opacity: 1 }], { duration: 360, delay: 120, easing: "ease-out" });
+  A(hd, [{ transform: tf(sd, dd, true) }, { transform: "none" }], { duration: D, easing: E });
+  A(hn, [{ transform: tf(sn, dn, true) }, { transform: "none" }], { duration: D, easing: E });
+  $$(".hsub, .hmeta, .explain", hero).forEach((e) => A(e, [{ opacity: 0, translate: "0 10px" }, { opacity: 1, translate: "0 0" }], { duration: 420, delay: 200, easing: E }));
+  A($(".cground", c), [{ opacity: 0 }, { opacity: 1 }], { duration: 300, easing: "ease-out" });
+  A($("#cbar"), [{ opacity: 0 }, { opacity: 1 }], { duration: 300, delay: 200, easing: "ease-out" });
+  A(home, [{ scale: 1, opacity: 1 }, { scale: .94, opacity: 0 }], { duration: 360, easing: E });
+  $$(".sx:not(.hero2)", grid).forEach((e) => { const n = +getComputedStyle(e).getPropertyValue("--n") || 0;
+    A(e, [{ opacity: 0, translate: "0 18px" }, { opacity: 1, translate: "0 0" }], { duration: 520, delay: 160 + n * 40, easing: E }); });
+  if (navigator.vibrate) navigator.vibrate(6);
+}
+function closeComputer() {
+  const k = current; if (!k) return;
+  const c = $("#computer"), home = $("#home"), rm = reduced();
+  const card = $(`.ccard[data-host="${k}"]`);
+  // Reverse what opened it, a touch quicker (exits are shorter than entrances).
+  const E = "cubic-bezier(.32,.72,0,1)";
+  openAnims.forEach((a) => a.cancel()); openAnims = [];
+  if (c.scrollTop > 40 || rm || !card) {
+    c.animate([{ opacity: 1 }, { opacity: 0 }], { duration: rm ? 120 : 260, easing: E, fill: "both" }).finished.then(finish);
+    home.animate([{ scale: rm ? 1 : .96, opacity: 0 }, { scale: 1, opacity: 1 }], { duration: rm ? 120 : 380, easing: E });
+  } else {
+    const hero = $(".hero2", c), bg = $(".herobg", hero), hd = $(".hrow .disc", hero), hn = $(".hname", hero);
+    const sb = card.getBoundingClientRect(), sd = $(".disc", card).getBoundingClientRect(), sn = $(".cname", card).getBoundingClientRect();
+    const db = bg.getBoundingClientRect(), dd = hd.getBoundingClientRect(), dn = hn.getBoundingClientRect();
+    const tf = (s, d, uni) => { const sx = s.width / d.width, sy = uni ? sx : s.height / d.height; return `translate(${s.left - d.left}px, ${s.top - d.top}px) scale(${sx}, ${sy})`; };
+    const o = { duration: 420, easing: E, fill: "both" };
+    bg.animate([{ transform: "none" }, { transform: tf(sb, db, false) }], o);
+    $(".wash", bg).animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: "both" });
+    hd.animate([{ transform: "none" }, { transform: tf(sd, dd, true) }], o);
+    hn.animate([{ transform: "none" }, { transform: tf(sn, dn, true) }], o);
+    $$(".hsub, .hmeta, .explain, .sx:not(.hero2), #cbar", c).forEach((e) => e.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 160, easing: "cubic-bezier(.3,0,1,1)", fill: "both" }));
+    $(".cground", c).animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300, delay: 80, fill: "both" });
+    home.animate([{ scale: .94, opacity: 0 }, { scale: 1, opacity: 1 }], { duration: 420, easing: E });
+    setTimeout(finish, 420);
+  }
+  function finish() { c.classList.remove("on"); c.innerHTML = ""; c.getAnimations({ subtree: true }).forEach((a) => a.cancel()); if (card) card.style.opacity = ""; current = null; clearInterval(npTimer); }
+}
+
+/* ─────────────────────────────────────────── SUB PAGE ─────────────────────────────────────────── */
+function openSub(k) {
+  const x = HOSTS[k], s = $("#sub");
+  s.style.setProperty("--hue", `var(--base${x.hue})`);
+  const seg = (opts, i, name) => `<div class="seg" role="radiogroup" aria-label="${name}" style="--n:${opts.length};--i:${i}"><span class="knob"></span>${opts.map((o, j) => `<button type="button" role="radio" aria-checked="${j === i}" class="${j === i ? "on" : ""}">${o}</button>`).join("")}</div>`;
+  const shape = (w, h, label, on) => { const m = 34 / Math.max(w, h); return `<button type="button" class="shape ${on ? "on" : ""}"><i style="width:${Math.round(w * m)}px;height:${Math.round(h * m)}px"></i><b>${w}×${h}</b><small>${label}</small></button>`; };
+  const sw = (t, sub, on) => `<button type="button" class="switchrow" role="switch" aria-checked="${on}"><span class="swtext"><b>${t}</b><small>${sub}</small></span><span class="sw ${on ? "on" : ""}"></span></button>`;
+  s.innerHTML = `<div class="spage">
+    <div class="phead"><button class="iconbtn" type="button" id="subback" aria-label="Back to ${x.name}">${ic("left")}</button>
+      <div class="pt"><span class="eyebrow"><i></i>${x.name}</span><h3>Display &amp; session</h3></div></div>
+    <div class="card"><div class="cardhead">Running session <span class="whenbadge host">on ${x.name}</span></div>
+      <div class="sessionhead"><div class="sessionshape"><span style="width:21px;height:46px"></span></div>
+        <div class="navtext"><b>Firefox and more</b><small class="mono" style="font-size:11px">1170×2532 · 60 fps · started 40 min ago</small></div></div>
+      <p class="why">Shape, frame rate, scale and tuning change it in place — its apps stay open.</p></div>
+    <div class="card"><div class="cardhead">Shape <span class="whenbadge apply">on Apply</span></div>
+      <div class="shapes">${shape(1170, 2532, "This screen", true)}${shape(2532, 1170, "Sideways", false)}${shape(1920, 1080, "1080p", false)}${shape(2560, 1600, "Laptop panel", false)}</div></div>
+    <div class="card"><div class="cardhead">Frame rate <span class="whenbadge apply">on Apply</span></div>${seg(["30", "60", "90", "120"], 1, "Frame rate")}
+      <p class="why host">${x.name} caps the frame rate at 90 for every device.</p></div>
+    <div class="card"><div class="cardhead">Scale <span class="whenbadge apply">on Apply</span></div>${seg(["1×", "2×", "2.5×", "3×"], 3, "Scale")}</div>
+    <div class="card"><div class="cardhead">Tuning <span class="whenbadge apply">on Apply</span></div>${seg(["Reactive", "Balanced", "Sharp", "Custom"], 1, "Tuning")}
+      <p class="why">Balanced keeps the picture clear and the delay low on most networks.</p></div>
+    <div class="card">${sw("Stream sound", "Off: no audio at all, so the picture never waits for it", true)}${sw("Lock frame rate", "Stutter instead of slowing down", false)}${sw("Redundant input", "Taps and keys also go on a fast lane", true)}</div>
+  </div>
+  <div class="applybar" id="applybar"><span class="at"><span>1 change</span><small id="applywhat">Frame rate 60 → 90 · apps stay open</small></span><button class="btn" type="button" id="applyno">Undo</button><button class="btn primary" type="button">Apply</button></div>`;
+  $$(".seg", s).forEach((g) => $$("button", g).forEach((b, j) => (b.onclick = () => { g.style.setProperty("--i", j); $$("button", g).forEach((x, i) => { x.classList.toggle("on", i === j); x.setAttribute("aria-checked", i === j); }); $("#applybar").classList.add("on"); })));
+  $$(".switchrow", s).forEach((r) => (r.onclick = () => { const o = !$(".sw", r).classList.contains("on"); $(".sw", r).classList.toggle("on", o); r.setAttribute("aria-checked", o); }));
+  $$(".shape", s).forEach((b) => (b.onclick = () => { $$(".shape", s).forEach((x) => x.classList.toggle("on", x === b)); $("#applybar").classList.add("on"); }));
+  $("#applyno").onclick = () => $("#applybar").classList.remove("on");
+  $("#subback").onclick = closeSub;
+  s.scrollTop = 0; s.classList.add("on");
+  const rm = reduced(), E = "cubic-bezier(.32,.72,0,1)";
+  s.animate([{ translate: rm ? "0 0" : "100% 0", opacity: rm ? 0 : 1 }, { translate: "0 0", opacity: 1 }], { duration: rm ? 160 : 480, easing: E });
+  $("#computer").animate([{ translate: "0 0", opacity: 1 }, { translate: rm ? "0 0" : "-24% 0", opacity: 0 }], { duration: rm ? 160 : 480, easing: E, fill: "forwards" });
+}
+function closeSub() {
+  const s = $("#sub"), rm = reduced(), E = "cubic-bezier(.32,.72,0,1)";
+  $("#computer").getAnimations().forEach((a) => a.cancel());
+  $("#computer").animate([{ translate: rm ? "0 0" : "-24% 0", opacity: 0 }, { translate: "0 0", opacity: 1 }], { duration: rm ? 120 : 400, easing: E });
+  s.animate([{ translate: "0 0" }, { translate: rm ? "0 0" : "100% 0", opacity: rm ? 0 : 1 }], { duration: rm ? 120 : 340, easing: E, fill: "forwards" }).finished.then((a) => { s.classList.remove("on"); a.cancel(); });
+}
+
+/* Live link: every ping sample rolls the number and the dot's ripple marks it (CSS-paced at 2 s). */
+let STILL = false;
+function tick() {
+  const x = HOSTS.framework; x.ms = Math.max(17, Math.min(31, x.ms + Math.round((Math.random() - .5) * 6)));
+  $$('[data-ms="framework"]').forEach((e) => { e.textContent = x.ms; e.classList.remove("roll"); void e.offsetWidth; e.classList.add("roll"); });
+}
+
+/* ─────────────────────────────────────────── boot + states for screenshots ─────────────────────────────────────────── */
+const q = new URLSearchParams(location.search);
+if (q.has("bare")) document.documentElement.classList.add("bare");
+if (q.get("theme") === "light") document.documentElement.dataset.theme = "light";
+if (q.has("motion")) document.documentElement.dataset.motion = q.get("motion");
+STILL = q.has("bare");
+renderHome();
+if (!STILL) setInterval(tick, 2000);
+
+$("#pTheme").onclick = () => { const r = document.documentElement; const l = r.dataset.theme !== "light"; r.dataset.theme = l ? "light" : "dark"; $("#pTheme").textContent = l ? "Dark" : "Light"; };
+$("#pMotion").onclick = () => { const r = document.documentElement; const m = { full: "reduced", reduced: "off", off: "full" }[r.dataset.motion || "full"]; r.dataset.motion = m; $("#pMotion").textContent = "Motion: " + m; };
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") { if ($("#sheet").classList.contains("on")) closePicker(); else if ($("#sub").classList.contains("on")) closeSub(); else if (current) closeComputer(); } });
+
+const state = q.get("state");
+const host = q.get("host") || "framework";
+const freeze = (t) => document.getAnimations().forEach((a) => { a.pause(); a.currentTime = t; });
+requestAnimationFrame(() => {
+  if (state === "widgets") $("#wsect").scrollIntoView({ block: "start" });
+  if (state === "computer" || state === "computer2" || state === "sub") openComputer(host, $(`.ccard[data-host="${host}"]`));
+  if (state === "computer2") setTimeout(() => { $("#computer").scrollTop = q.has("y") ? +q.get("y") : 420; $("#computer").dispatchEvent(new Event("scroll")); }, 900);
+  if (state === "sub") setTimeout(() => openSub(host), 900);
+  if (state === "transition") { openComputer(host, $(`.ccard[data-host="${host}"]`)); requestAnimationFrame(() => freeze(+(q.get("t") || 200))); }
+  if (state === "edit" || state === "drag" || state === "picker") {
+    toggleEdit(); $("#wsect").scrollIntoView({ block: "start" });
+    if (state === "picker") setTimeout(() => openPicker("w2"), 600);
+    if (state === "drag") setTimeout(() => {
+      // a frozen mid-drag: Clipboard lifted and carried up past Volume, Volume making room
+      const el = $('.widget[data-id="w3"]'), g = $(".grip", el), r = g.getBoundingClientRect();
+      const ev = (t, y) => new PointerEvent(t, { clientX: r.left + 10, clientY: y, pointerId: 1, bubbles: true });
+      g.dispatchEvent(ev("pointerdown", r.top + 10)); el.dispatchEvent(ev("pointermove", r.top - 66));
+      setTimeout(() => $$(".widget").forEach((w) => w.getAnimations().forEach((a) => a.finish())), 50);
+    }, 700);
+  }
+});
+</script>
+</body>
+</html>
