@@ -19,7 +19,7 @@
 //! a short re-registration gap, not a dead server.
 
 use std::panic::AssertUnwindSafe;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -32,25 +32,14 @@ use tracing::{debug, error, info, warn};
 use webrtc::api::interceptor_registry::register_default_interceptors;
 use webrtc::api::media_engine::{MIME_TYPE_H264, MediaEngine};
 use webrtc::api::{API, APIBuilder};
-use webrtc::data_channel::RTCDataChannel;
-use webrtc::data_channel::data_channel_message::DataChannelMessage;
-use webrtc::ice_transport::ice_connection_state::RTCIceConnectionState;
 use webrtc::interceptor::registry::Registry;
 use webrtc::media::Sample;
 use webrtc::peer_connection::RTCPeerConnection;
-use webrtc::peer_connection::configuration::RTCConfiguration;
 use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
-use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
-use webrtc::rtcp::payload_feedbacks::full_intra_request::FullIntraRequest;
-use webrtc::rtcp::payload_feedbacks::picture_loss_indication::PictureLossIndication;
-use webrtc::rtcp::receiver_report::ReceiverReport;
-use webrtc::track::track_local::TrackLocal;
 use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
 
-use wado_compositor::{CommandSender, CompositorCommand, FrameMsg, InputEvent, InputSender};
-use wado_protocol::{
-    FAST_CHANNEL, INPUT_CHANNEL, MOTION_CHANNEL, relay::RelayMsg, relay::display_remote_id,
-};
+use wado_compositor::{CommandSender, CompositorCommand, FrameMsg, InputSender};
+use wado_protocol::{relay::RelayMsg, relay::display_remote_id};
 
 use crate::e2e::link::Inbound;
 use crate::website::logbus::LogBus;
@@ -70,9 +59,7 @@ const RELAY_SILENCE: Duration = Duration::from_secs(45);
 /// Everything a relay connection needs; lives across reconnects.
 struct RelayCtx {
     api: Arc<API>,
-    track: Arc<TrackLocalStaticSample>,
     cmd_tx: CommandSender,
-    input_tx: InputSender,
     log_bus: LogBus,
     /// The single active viewer's peer connection (generation-guarded).
     active_pc: Arc<Mutex<Option<Arc<RTCPeerConnection>>>>,
@@ -146,13 +133,11 @@ struct RelayCtx {
     link: Arc<Mutex<crate::e2e::link::Link>>,
     /// This computer's identity, shared by every daemon of the pool.
     host_key: Arc<crate::e2e::host_key::HostKey>,
-    /// The Opus track, added to every peer connection that asks for audio.
-    audio_track: Arc<TrackLocalStaticSample>,
-    /// A peer connection with audio is up: the phone sink is being listened to.
-    listening: tokio::sync::watch::Sender<bool>,
-    /// The viewer's "Low-latency audio" switch, from its session config. The audio pump restarts
-    /// with the new frame size when it changes (`crate::audio::run`).
-    audio_low: tokio::sync::watch::Sender<bool>,
+    /// The session's participants — the seat's viewer is one of them, joined rooms the others
+    /// (see [`crate::viewers`]). Owns the "listening" and "low-latency audio" switches too.
+    hub: Arc<crate::viewers::Hub>,
+    /// The seat's viewer's origin in the hub, or 0 when nobody is on the seat.
+    seat_origin: Arc<AtomicU16>,
     /// The device key and name of the viewer in `room` — what its config edits and saved
     /// settings are filed under (see [`crate::config::link`]).
     viewer: Arc<Mutex<(String, String)>>,
@@ -447,11 +432,38 @@ async fn run(
         });
     }
 
+    let a11y = Arc::new(crate::a11y::A11y::default());
+    let gate = crate::gate::Gate::default();
+    let hub = crate::viewers::Hub::new(
+        Arc::clone(&api),
+        Arc::clone(&track),
+        Arc::clone(&audio_track),
+        cmd_tx.clone(),
+        input_tx,
+        listening_tx,
+        audio_low_tx,
+        gate.clone(),
+        remote_id.clone(),
+        crate::viewers::Feeds {
+            text_input: text_input.clone(),
+            shedding: shedding.clone(),
+            windows: windows.clone(),
+            menu: menu.clone(),
+            clipboard: clipboard.clone(),
+            sent_kbps: sent_kbps.clone(),
+            timings: timings.clone(),
+            queue_us: Arc::clone(&queue_us),
+            a11y: Arc::clone(&a11y),
+        },
+    );
+    tokio::spawn(Arc::clone(&hub).run());
+    tokio::spawn(crate::desks::sibling_reaper(Arc::clone(
+        &hub.session_started,
+    )));
+
     let ctx = RelayCtx {
         api,
-        track,
         cmd_tx,
-        input_tx,
         log_bus,
         text_input,
         shedding,
@@ -462,16 +474,16 @@ async fn run(
         queue_us,
         active_pc: Arc::new(Mutex::new(None)),
         generation: Arc::new(AtomicU64::new(0)),
-        last_connected: Arc::new(AtomicU64::new(now_ms())),
+        last_connected: Arc::clone(&hub.last_connected),
         last_relay_msg: Arc::new(AtomicU64::new(now_ms())),
-        session_started: Arc::new(AtomicBool::new(false)),
-        detached: Arc::default(),
+        session_started: Arc::clone(&hub.session_started),
+        detached: Arc::clone(&hub.detached),
         session_since: Arc::default(),
         session_shape: Arc::default(),
         peer: Arc::new(Mutex::new("<none>".to_string())),
         room: Arc::new(Mutex::new(String::new())),
         viewer_ok: Arc::new(AtomicBool::new(false)),
-        gate: crate::gate::Gate::default(),
+        gate,
         approved: Arc::default(),
         link: Arc::default(),
         host_key: Arc::new(crate::e2e::host_key::HostKey::load_or_create(
@@ -481,10 +493,9 @@ async fn run(
         files_pc: Arc::default(),
         pad: crate::pad::Live::default(),
         media_sent: Arc::default(),
-        audio_track,
-        listening: listening_tx,
-        audio_low: audio_low_tx,
-        a11y: Arc::new(crate::a11y::A11y::default()),
+        hub,
+        seat_origin: Arc::default(),
+        a11y,
         relay_url,
         remote_id,
         timings,
@@ -501,6 +512,7 @@ async fn run(
         Arc::clone(&ctx.session_started),
         Arc::clone(&ctx.active_pc),
         Arc::clone(&ctx.detached),
+        Arc::clone(&ctx.hub),
     ));
 
     // The session directory (`crate::sessions`): this daemon's running session, rewritten every
@@ -513,6 +525,7 @@ async fn run(
         let windows = ctx.windows.clone();
         let viewer = Arc::clone(&ctx.viewer);
         let active_pc = Arc::clone(&ctx.active_pc);
+        let hub = Arc::clone(&ctx.hub);
         let instance = format!(
             "{}:{}",
             wado_protocol::relay::normalize_remote_id(&ctx.remote_id),
@@ -531,7 +544,9 @@ async fn run(
                     .unwrap_or_else(|e| e.into_inner())
                     .clone()
                     .is_some_and(|pc| pc.connection_state() == RTCPeerConnectionState::Connected);
-                let (width, height, fps) = *shape.lock().unwrap_or_else(|e| e.into_inner());
+                let (width, height, fps) = hub
+                    .shape()
+                    .unwrap_or_else(|| *shape.lock().unwrap_or_else(|e| e.into_inner()));
                 let apps = windows
                     .borrow()
                     .windows
@@ -544,6 +559,7 @@ async fn run(
                         }
                     })
                     .collect();
+                let (lead, participants, max_participants, kbps) = hub.summary();
                 crate::sessions::write(&wado_protocol::SessionSummary {
                     instance: instance.clone(),
                     started_ms: since.load(Ordering::Relaxed),
@@ -555,6 +571,10 @@ async fn run(
                     viewer: connected
                         .then(|| viewer.lock().unwrap_or_else(|e| e.into_inner()).1.clone()),
                     detached: detached.load(Ordering::SeqCst),
+                    lead,
+                    participants,
+                    max_participants,
+                    kbps,
                 });
             }
         });
@@ -772,15 +792,30 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     // State, not an event: the current value is sent immediately on attach (watch channels
     // deliver the held value to a fresh subscriber), so a viewer joining a session that is
     // already sitting in a text field gets its keyboard up without waiting for the next change.
+    //
+    // With several devices in the session, only the one whose input arrived last raises its
+    // keyboard (`Hub::keyboard_for`) — otherwise every participant's phone would pop one.
     let text_input_task = {
         let mut rx = ctx.text_input.clone();
+        let mut last = ctx.hub.last_input.subscribe();
+        let (hub, seat) = (Arc::clone(&ctx.hub), Arc::clone(&ctx.seat_origin));
         let out_tx_ti = out_tx.clone();
         tokio::spawn(async move {
             // Mark the held value unseen so the first iteration sends it rather than waiting.
             rx.mark_changed();
-            while rx.changed().await.is_ok() {
-                let active = *rx.borrow_and_update();
-                let _ = send_relay_nowait(&out_tx_ti, &RelayMsg::TextInput { active }).await;
+            let mut sent = None;
+            loop {
+                tokio::select! {
+                    r = rx.changed() => if r.is_err() { break },
+                    r = last.changed() => if r.is_err() { break },
+                }
+                last.borrow_and_update();
+                let active =
+                    *rx.borrow_and_update() && hub.keyboard_for(seat.load(Ordering::SeqCst));
+                if sent != Some(active) {
+                    sent = Some(active);
+                    let _ = send_relay_nowait(&out_tx_ti, &RelayMsg::TextInput { active }).await;
+                }
             }
         })
     };
@@ -1029,6 +1064,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
         host_key: Arc::clone(&ctx.host_key),
         cmd_tx: Some(ctx.cmd_tx.clone()),
         relay: out_tx.clone(),
+        hub: Some(Arc::clone(&ctx.hub)),
     };
 
     // ── 4. Main message loop ─────────────────────────────────────────────────
@@ -1163,6 +1199,22 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     .reset(&room_id, &client_key);
                 *ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()) =
                     (client_key.clone(), client_name.clone());
+                // The seat's viewer is a participant like a joined room's: a fresh origin, so the
+                // last one's held input, place and dot go with it.
+                {
+                    let origin = ctx.hub.origin();
+                    let old = ctx.seat_origin.swap(origin, Ordering::SeqCst);
+                    if old != 0 {
+                        ctx.hub.detach(old);
+                    }
+                    ctx.hub.attach(
+                        origin,
+                        &client_key,
+                        &client_name,
+                        out_tx.clone(),
+                        Some(room_id.clone()),
+                    );
+                }
                 // A new viewer never inherits the last one's trackpad or what it held down.
                 ctx.pad.close();
                 // The audio sink appears for this device, named after it.
@@ -1285,7 +1337,16 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 // releases its ICE sockets only on `close().await`, never on `Drop` (I14). Left
                 // open, each abandoned viewer holds four of the 101 pinned UDP ports until the
                 // next offer happens to replace it.
-                let _ = ctx.cmd_tx.send(CompositorCommand::ViewerAttached(false));
+                //
+                // Out of the session, too: what it held is released and the others are told. The
+                // session's attached state is everyone's (`crate::viewers`), so a joined device
+                // still watching keeps it rendering.
+                let origin = ctx.seat_origin.swap(0, Ordering::SeqCst);
+                if origin != 0 {
+                    ctx.hub.detach(origin);
+                } else {
+                    let _ = ctx.cmd_tx.send(CompositorCommand::ViewerAttached(false));
+                }
                 let dead = ctx
                     .active_pc
                     .lock()
@@ -1327,7 +1388,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             }
 
             RelayMsg::SessionStart { config } => {
-                ctx.audio_low.send_if_modified(|v| {
+                ctx.hub.audio_low.send_if_modified(|v| {
                     std::mem::replace(v, config.low_latency_audio) != config.low_latency_audio
                 });
                 if let Err(why) = config.validate() {
@@ -1353,6 +1414,36 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                         .ok();
                     continue;
                 }
+                // The speed test's say (the user's decision): a new session that would not work
+                // — no memory, the computer flat out, every session it runs already running — is
+                // refused, plainly. Its last test if it ran one, else the computer alone.
+                {
+                    let key = ctx
+                        .viewer
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .0
+                        .clone();
+                    let v = ctx
+                        .hub
+                        .verdict(&key, crate::linktest::verdict::Intent::Start)
+                        .unwrap_or_else(|| {
+                            crate::viewers::room::verdict(&ctx.hub, &key, 0, 0, "start")
+                        });
+                    if v.refused() {
+                        let why = v.reasons.first().cloned().unwrap_or_default();
+                        warn!("relay client: refusing a new session — {why}");
+                        send_relay(
+                            &out_tx,
+                            &RelayMsg::SessionError {
+                                message: format!("a new session would not work here: {why}"),
+                            },
+                        )
+                        .await
+                        .ok();
+                        continue;
+                    }
+                }
                 ctx.session_started.store(true, Ordering::SeqCst);
                 ctx.detached.store(false, Ordering::SeqCst);
                 ctx.session_since.store(now_ms(), Ordering::Relaxed);
@@ -1362,6 +1453,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 // completes ICE must still be reaped, and it has never been connected.
                 ctx.last_connected.store(now_ms(), Ordering::Relaxed);
                 let (reply_tx, reply_rx) = oneshot::channel();
+                let started_cfg = config.clone();
                 if ctx
                     .cmd_tx
                     .send(CompositorCommand::Start {
@@ -1382,6 +1474,10 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 }
                 match tokio::time::timeout(Duration::from_secs(5), reply_rx).await {
                     Ok(Ok(Ok(info))) => {
+                        // The seat's viewer started it: it leads, alone.
+                        ctx.hub
+                            .start(ctx.seat_origin.load(Ordering::SeqCst), &started_cfg);
+                        ctx.hub.note_session(&info, true);
                         send_relay(&out_tx, &RelayMsg::SessionStarted { info })
                             .await
                             .ok();
@@ -1417,6 +1513,16 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             RelayMsg::SessionRejoin => {
                 match live_session(&ctx).await {
                     Some(info) => {
+                        // A rejoin is a join: it displaces nobody. The seat's own resume, so no
+                        // grant asked — but a full session is full.
+                        if let Err(message) =
+                            ctx.hub.join(ctx.seat_origin.load(Ordering::SeqCst), false)
+                        {
+                            send_relay(&out_tx, &RelayMsg::SessionError { message })
+                                .await
+                                .ok();
+                            continue;
+                        }
                         ctx.session_started.store(true, Ordering::SeqCst);
                         ctx.detached.store(false, Ordering::SeqCst);
                         ctx.last_connected.store(now_ms(), Ordering::Relaxed);
@@ -1447,11 +1553,6 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             }
 
             RelayMsg::SessionReconfigure { config } => {
-                ctx.audio_low.send_if_modified(|v| {
-                    std::mem::replace(v, config.low_latency_audio) != config.low_latency_audio
-                });
-                *ctx.session_shape.lock().unwrap_or_else(|e| e.into_inner()) =
-                    (config.width, config.height, config.fps);
                 // Same guard as `SessionStart`, from the same `SessionConfig::validate` — the
                 // two verbs take the same struct from the same untrusted socket, and a check on
                 // one of them is a check the other silently does not have.
@@ -1466,6 +1567,27 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     .await
                     .ok();
                     continue;
+                }
+                // The lead's reshapes the session; anyone else's is only the bitrate it can
+                // take — the output stays the lead's size (`crate::viewers`).
+                let origin = ctx.seat_origin.load(Ordering::SeqCst);
+                let lead = ctx.hub.is_lead(origin);
+                let Some(config) = ctx.hub.reconfigure(origin, &config) else {
+                    let msg = match live_session(&ctx).await {
+                        Some(info) => RelayMsg::SessionReconfigured { info },
+                        None => RelayMsg::SessionError {
+                            message: "there is no session to change".into(),
+                        },
+                    };
+                    send_relay(&out_tx, &msg).await.ok();
+                    continue;
+                };
+                if lead {
+                    ctx.hub.audio_low.send_if_modified(|v| {
+                        std::mem::replace(v, config.low_latency_audio) != config.low_latency_audio
+                    });
+                    *ctx.session_shape.lock().unwrap_or_else(|e| e.into_inner()) =
+                        (config.width, config.height, config.fps);
                 }
                 // No `session_started` reply and no renegotiation — see
                 // `RelayMsg::SessionReconfigure`. The viewer keeps the peer connection it has;
@@ -1494,6 +1616,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 // socket waiting for an answer that is not coming.
                 match tokio::time::timeout(Duration::from_secs(5), reply_rx).await {
                     Ok(Ok(Ok(info))) => {
+                        ctx.hub.note_session(&info, lead);
                         send_relay(&out_tx, &RelayMsg::SessionReconfigured { info })
                             .await
                             .ok();
@@ -1533,21 +1656,113 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 // were indistinguishable in the log, which cost real time chasing an unexplained
                 // teardown on 2026-09-13 that turned out to be unprovable either way.
                 info!("relay client: session_stop received from the viewer — tearing down");
+                // Anyone may end it for everyone (the user's decision); the others are told who.
+                ctx.hub.end(Some(ctx.seat_origin.load(Ordering::SeqCst)));
                 ctx.session_started.store(false, Ordering::SeqCst);
                 let _ = ctx.cmd_tx.send(CompositorCommand::Stop);
                 send_relay(&out_tx, &RelayMsg::SessionStopped).await.ok();
             }
 
             RelayMsg::ViewerVisible { visible } => {
-                let _ = ctx.cmd_tx.send(CompositorCommand::ViewerVisible(visible));
+                ctx.hub
+                    .visible(ctx.seat_origin.load(Ordering::SeqCst), visible);
             }
 
             RelayMsg::ViewerStrain { strained } => {
-                // Straight through to the compositor. No rate limiting: the client sends this
-                // only when its settled verdict changes, and the render loop reads it once per
-                // decision window rather than per message.
-                let _ = ctx.cmd_tx.send(CompositorCommand::ViewerStrain(strained));
-                crate::files::pace::strained(strained);
+                // To the compositor through the hub: with several viewers, any one strained
+                // sheds for the stream. No rate limiting: the client sends this only when its
+                // settled verdict changes, and the render loop reads it once per decision window.
+                ctx.hub
+                    .strain(ctx.seat_origin.load(Ordering::SeqCst), strained);
+            }
+
+            // ── Several devices in one session (`crate::viewers`) ──
+            RelayMsg::RoomHello { .. } => {}
+            RelayMsg::LinkTest { bytes } => crate::linktest::send(out_tx.clone(), bytes),
+            RelayMsg::LinkReport {
+                down_kbps,
+                rtt_ms,
+                intent,
+            } => {
+                let key = ctx
+                    .viewer
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .0
+                    .clone();
+                let verdict =
+                    crate::viewers::room::verdict(&ctx.hub, &key, down_kbps, rtt_ms, &intent);
+                send_relay(&out_tx, &RelayMsg::LinkVerdict { verdict })
+                    .await
+                    .ok();
+            }
+            RelayMsg::DeskRequest => {
+                let (out_tx, remote_id, busy) = (
+                    out_tx.clone(),
+                    ctx.remote_id.clone(),
+                    ctx.session_started.load(Ordering::SeqCst),
+                );
+                tokio::spawn(async move {
+                    let rid = wado_protocol::relay::normalize_remote_id(&remote_id);
+                    let msg = match crate::desks::request(&remote_id, busy).await {
+                        crate::desks::Desk::Go(k) => RelayMsg::SessionElsewhere {
+                            instance: format!("{rid}:{k}"),
+                        },
+                        crate::desks::Desk::Full { running, max } => RelayMsg::DesksFull {
+                            running,
+                            max,
+                            message: format!(
+                                "all {max} sessions this computer runs are in use — end one, or \
+                                 join one"
+                            ),
+                        },
+                        crate::desks::Desk::Failed(message) => RelayMsg::SessionError { message },
+                    };
+                    send_relay(&out_tx, &msg).await.ok();
+                });
+            }
+            RelayMsg::SessionJoin => {
+                let msg = match live_session(&ctx).await {
+                    None => RelayMsg::SessionError {
+                        message: "that session has ended".into(),
+                    },
+                    Some(info) => {
+                        match ctx.hub.join(ctx.seat_origin.load(Ordering::SeqCst), true) {
+                            Ok(()) => {
+                                ctx.detached.store(false, Ordering::SeqCst);
+                                RelayMsg::SessionStarted { info }
+                            }
+                            Err(message) => RelayMsg::SessionError { message },
+                        }
+                    }
+                };
+                send_relay(&out_tx, &msg).await.ok();
+            }
+            RelayMsg::SessionTakeover { config } => {
+                let origin = ctx.seat_origin.load(Ordering::SeqCst);
+                let taken = match config.validate() {
+                    Err(why) => Err(format!("that configuration cannot work: {why}")),
+                    Ok(()) if live_session(&ctx).await.is_none() => {
+                        Err("that session has ended".to_string())
+                    }
+                    Ok(()) => ctx.hub.takeover(origin, &config),
+                };
+                let msg = match taken {
+                    Err(message) => RelayMsg::SessionError { message },
+                    Ok(cfg) => {
+                        ctx.detached.store(false, Ordering::SeqCst);
+                        *ctx.session_shape.lock().unwrap_or_else(|e| e.into_inner()) =
+                            (cfg.width, cfg.height, cfg.fps);
+                        match crate::viewers::room::reconfigure(&ctx.cmd_tx, cfg).await {
+                            Ok(info) => {
+                                ctx.hub.note_session(&info, true);
+                                RelayMsg::SessionStarted { info }
+                            }
+                            Err(message) => RelayMsg::SessionError { message },
+                        }
+                    }
+                };
+                send_relay(&out_tx, &msg).await.ok();
             }
 
             RelayMsg::PadOffer { sdp } => {
@@ -1704,10 +1919,20 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             RelayMsg::SessionDetach => {
                 // Left on purpose: the media path goes, the session stays — and is kept past the
                 // no-viewer grace, until someone ends it from a home page.
+                // With others still in it, it simply goes on for them.
                 if ctx.session_started.load(Ordering::SeqCst) {
-                    ctx.detached.store(true, Ordering::SeqCst);
-                    let _ = ctx.cmd_tx.send(CompositorCommand::ViewerAttached(false));
-                    info!("relay client: viewer left; the session is kept running until ended");
+                    let origin = ctx.seat_origin.load(Ordering::SeqCst);
+                    let member = ctx.hub.is_member(origin);
+                    let empty = ctx.hub.leave(origin);
+                    if empty {
+                        ctx.detached.store(true, Ordering::SeqCst);
+                        if !member {
+                            let _ = ctx.cmd_tx.send(CompositorCommand::ViewerAttached(false));
+                        }
+                        info!("relay client: viewer left; the session is kept running until ended");
+                    } else {
+                        info!("relay client: viewer left; the others in the session carry on");
+                    }
                 }
             }
 
@@ -1926,6 +2151,19 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 send_relay(&out_tx, &RelayMsg::SessionWindowed).await.ok();
             }
 
+            // An offer into a running session from a seat viewer not (or no longer) in it — a
+            // reconnect, an older client — is a quiet rejoin: it displaces nobody.
+            RelayMsg::SdpOffer { sdp }
+                if ctx.session_started.load(Ordering::SeqCst)
+                    && offer_wants_video(&sdp)
+                    && !ctx.hub.is_member(ctx.seat_origin.load(Ordering::SeqCst))
+                    && let Err(message) =
+                        ctx.hub.join(ctx.seat_origin.load(Ordering::SeqCst), false) =>
+            {
+                send_relay(&out_tx, &RelayMsg::SessionError { message })
+                    .await
+                    .ok();
+            }
             RelayMsg::SdpOffer { sdp } => match handle_sdp_offer(ctx, sdp, out_tx.clone()).await {
                 Ok(()) => {}
                 Err(e) => {
@@ -1962,6 +2200,10 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             RelayMsg::DeviceStatus { link } => {
                 if ctx.viewer_ok.load(Ordering::SeqCst) {
                     let (key, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                    ctx.hub.set_link(
+                        ctx.seat_origin.load(Ordering::SeqCst),
+                        crate::links::describe(&link),
+                    );
                     if let Some(line) = crate::links::report(&ctx.remote_id, &key, &name, link) {
                         info!("link: {line}");
                     }
@@ -1999,7 +2241,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     close_files(&ctx.files_pc);
     ctx.pad.close(); // and the trackpad: no key stays held after the device leaves
     menu_task.abort();
-    ctl_rooms.clear();
+    ctl_rooms.clear(&ctl);
     write_task.abort();
     Ok(())
 }
@@ -2039,350 +2281,29 @@ fn is_keyframe(data: &[u8]) -> bool {
     false
 }
 
-/// Summarise the ICE candidate types present in an SDP — "host", "srflx", "relay".
-fn offer_has(sdp: &str, kind: &str) -> bool {
-    sdp.lines().any(|l| l.starts_with(&format!("m={kind}")))
+/// The offer (its JSON, as it arrives) asks for the picture — not a sound-only "play on this
+/// phone" link, which is no participant.
+fn offer_wants_video(offer_json: &str) -> bool {
+    offer_json.contains("m=video")
 }
 
-fn candidate_types(sdp: &str) -> String {
-    let mut types: Vec<&str> = sdp
-        .lines()
-        .filter(|l| l.starts_with("a=candidate:"))
-        .filter_map(|l| {
-            let mut parts = l.split_whitespace();
-            // a=candidate:<foundation> <component> <proto> <priority> <ip> <port> typ <type>
-            parts.position(|w| w == "typ").and_then(|_| parts.next())
-        })
-        .collect();
-    types.sort_unstable();
-    types.dedup();
-    if types.is_empty() {
-        "none".to_string()
-    } else {
-        types.join(",")
-    }
-}
-
+/// The seat's viewer's offer: its peer connection is a participant's like any other
+/// ([`crate::viewers::pc`]), in the seat's own slot.
 async fn handle_sdp_offer(
     ctx: &RelayCtx,
     offer_json: String,
     out_tx: mpsc::Sender<String>,
 ) -> crate::Result<()> {
-    let offer: RTCSessionDescription = serde_json::from_str(&offer_json)
-        .map_err(|e| crate::WadoError::Other(format!("bad SDP: {e}")))?;
-
-    // Which device this whole negotiation belongs to. Read once and carried into every closure
-    // below, so a log with two phones in it can be read per device instead of per daemon.
+    // Which device this whole negotiation belongs to, so a log with two phones in it can be
+    // read per device instead of per daemon.
     let peer = ctx.peer.lock().unwrap_or_else(|e| e.into_inner()).clone();
-    let offered_at = std::time::Instant::now();
-    let remote_types = candidate_types(&offer.sdp);
-
-    // The offer carries every candidate the browser gathered (non-trickle). Their types are
-    // the whole diagnosis when media never flows: host-only means STUN was blocked and no
-    // route past NAT was ever found, srflx present means the path failed somewhere later.
-    info!(
-        peer = %peer,
-        "relay client: offer received — {} candidates ({})",
-        offer.sdp.matches("a=candidate:").count(),
-        remote_types
-    );
-
-    let pc = Arc::new(
-        ctx.api
-            .new_peer_connection(RTCConfiguration {
-                ice_servers: crate::ice::servers(),
-                ..Default::default()
-            })
-            .await?,
-    );
-
-    // Each track only when the offer asked for it: an older client offers video alone, and a
-    // shell-only "play on this phone" offers audio alone (no session, nothing to encode).
-    let has_audio = offer_has(&offer.sdp, "audio");
-    let has_video = offer_has(&offer.sdp, "video");
-    let rtp_sender = if offer_has(&offer.sdp, "video") {
-        Some(
-            pc.add_track(Arc::clone(&ctx.track) as Arc<dyn TrackLocal + Send + Sync>)
-                .await?,
-        )
-    } else {
-        None
+    let origin = ctx.seat_origin.load(Ordering::SeqCst);
+    let slot = crate::viewers::pc::Slot {
+        pc: Arc::clone(&ctx.active_pc),
+        generation: Arc::clone(&ctx.generation),
     };
-    if has_audio {
-        pc.add_track(Arc::clone(&ctx.audio_track) as Arc<dyn TrackLocal + Send + Sync>)
-            .await?;
-    }
-
-    // Input data channels: forward JSON InputEvents to the compositor. Both of them — the
-    // reliable INPUT_CHANNEL and the unreliable MOTION_CHANNEL for pointer/touch moves. The
-    // relay path accepted only the first until 2026-10-03, so on a phone every touch-move rode
-    // the reliable channel and one lost packet held all input for a round trip: touches that
-    // stall then jump while the frame rate stays perfect (invariant #1).
-    {
-        let input_tx = ctx.input_tx.clone();
-        // Shared by the input and fast channels of this peer connection: redundant copies are
-        // released once, in order (`crate::input_order`).
-        let order = Arc::new(Mutex::new(crate::input_order::InputOrder::default()));
-        pc.on_data_channel(Box::new(move |dc: Arc<RTCDataChannel>| {
-            let input_tx = input_tx.clone();
-            let order = Arc::clone(&order);
-            Box::pin(async move {
-                let label = dc.label().to_string();
-                if label != INPUT_CHANNEL && label != MOTION_CHANNEL && label != FAST_CHANNEL {
-                    return;
-                }
-                dc.on_open(Box::new(move || {
-                    Box::pin(async move { info!("relay client: {label} data channel open") })
-                }));
-                let dc_echo = Arc::clone(&dc);
-                dc.on_message(Box::new(move |msg: DataChannelMessage| {
-                    let input_tx = input_tx.clone();
-                    let dc_echo = Arc::clone(&dc_echo);
-                    let order = Arc::clone(&order);
-                    Box::pin(async move {
-                        // A sequenced copy ("Redundant input"): released once, in order.
-                        if let Ok(mut v) = serde_json::from_slice::<serde_json::Value>(&msg.data) {
-                            if let Some(q) = v.get("q").and_then(|q| q.as_u64()) {
-                                if let Some(o) = v.as_object_mut() {
-                                    o.remove("q");
-                                }
-                                let ready = {
-                                    let mut o = order.lock().unwrap_or_else(|e| e.into_inner());
-                                    let r = o.arrive(q, v);
-                                    // Every 500 released: how often a copy was a duplicate, a move
-                                    // stale, or a strict event held for a gap.
-                                    if !r.is_empty()
-                                        && o.stats.released / 500
-                                            != (o.stats.released - r.len() as u64) / 500
-                                    {
-                                        let st = o.stats;
-                                        info!(
-                                            released = st.released,
-                                            duplicates = st.duplicates,
-                                            stale_moves = st.stale_moves,
-                                            held = st.held,
-                                            "redundant input"
-                                        );
-                                    }
-                                    r
-                                };
-                                for ev in ready {
-                                    match serde_json::from_value::<InputEvent>(ev) {
-                                        Ok(ev) => {
-                                            let _ = input_tx.send(ev);
-                                        }
-                                        Err(e) => warn!("relay client: bad input event: {e}"),
-                                    }
-                                }
-                                return;
-                            }
-                        }
-                        match serde_json::from_slice::<InputEvent>(&msg.data) {
-                            // The input round-trip probe: answered straight back on the channel it
-                            // came in on. Direct mode always did; relay mode did not, so the
-                            // phone's "input" figure could never be measured (2026-10-03).
-                            Ok(InputEvent::Ping { seq }) => {
-                                let _ = dc_echo
-                                    .send_text(format!("{{\"t\":\"pong\",\"seq\":{seq}}}"))
-                                    .await;
-                            }
-                            Ok(ev) => {
-                                let _ = input_tx.send(ev);
-                            }
-                            Err(e) => warn!("relay client: bad input event: {e}"),
-                        }
-                    })
-                }));
-            })
-        }));
-    }
-
-    // Generation guard: only the current viewer's teardown stops the session.
-    let my_gen = ctx.generation.fetch_add(1, Ordering::SeqCst) + 1;
-    let previous = ctx
-        .active_pc
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .replace(Arc::clone(&pc));
-
-    // Dropping an `RTCPeerConnection` does NOT free it: webrtc-rs holds the ICE agent, its
-    // gathering tasks and its UDP sockets behind internal `Arc`s, and only `close()` tears them
-    // down. Replacing the handle without closing leaks a socket set per re-offer.
-    //
-    // Observed 2026-09-12: after a few hours of reconnect churn the daemon began answering with
-    // `2 candidates (host)` and then `0 candidates (none)` — no srflx, eventually not even a host
-    // candidate — and no client could connect until it was restarted. Sockets it could no longer
-    // get. Re-offers are about to become the normal recovery path rather than a rare one, so this
-    // has to be right before that change is worth anything.
-    //
-    // Spawned rather than awaited: `close()` waits on the agent's own tasks, and this is the
-    // negotiation path — the new answer must not queue behind the old connection's shutdown.
-    if let Some(old) = previous {
-        tokio::spawn(async move {
-            if let Err(e) = old.close().await {
-                warn!("relay client: closing the previous peer connection: {e}");
-            }
-        });
-    }
-
-    // RTCP read loop: PLI/FIR → ForceKeyframe.
-    if let Some(rtp_sender) = rtp_sender {
-        let cmd_tx = ctx.cmd_tx.clone();
-        tokio::spawn(async move {
-            loop {
-                match rtp_sender.read_rtcp().await {
-                    Ok((packets, _)) => {
-                        for p in packets {
-                            let a = p.as_any();
-                            if a.downcast_ref::<PictureLossIndication>().is_some()
-                                || a.downcast_ref::<FullIntraRequest>().is_some()
-                            {
-                                let _ = cmd_tx.send(CompositorCommand::ForceKeyframe);
-                            }
-                            // Loss on the video path: downloads back off (`files::pace`).
-                            if let Some(rr) = a.downcast_ref::<ReceiverReport>() {
-                                for r in &rr.reports {
-                                    crate::files::pace::loss(r.fraction_lost);
-                                }
-                            }
-                        }
-                    }
-                    Err(_) => break,
-                }
-            }
-        });
-    }
-
-    // Connection state change.
-    {
-        let cmd_tx = ctx.cmd_tx.clone();
-        let generation = Arc::clone(&ctx.generation);
-        let last_connected = Arc::clone(&ctx.last_connected);
-        let pc_peer = peer.clone();
-        let listening = ctx.listening.clone();
-        pc.on_peer_connection_state_change(Box::new(move |state| {
-            match state {
-                RTCPeerConnectionState::Connected => {
-                    let _ = listening.send(has_audio);
-                    info!(peer = %pc_peer, took_ms = offered_at.elapsed().as_millis() as u64,
-                          "relay client: viewer connected via WebRTC");
-                    last_connected.store(now_ms(), Ordering::Relaxed);
-                    // Resume rendering and reset the per-viewer state. The keyframe is sent
-                    // here as well as inside `set_viewer_attached` because that call is a
-                    // no-op when a viewer was already attached — a second device connecting
-                    // still needs something its decoder can start from.
-                    let _ = cmd_tx.send(CompositorCommand::ViewerAttached(true));
-                    let _ = cmd_tx.send(CompositorCommand::ForceKeyframe);
-                    crate::files::pace::video(has_video);
-                }
-                // NOT a teardown. A peer connection dying is a *transport* event — a cell
-                // handoff, a tunnel change, a few seconds in a lift — and killing the session
-                // here meant every one of those cost the viewer their windows, their
-                // applications and a cold Chrome launch. Measured 2026-09-12: rtt spiked to
-                // 2191 ms at 17:57:32 and the session was gone at 17:57:33.
-                //
-                // `viewer_watchdog` is the only teardown now. It waits `VIEWER_GRACE` of
-                // relay-link silence *and* a non-connected peer connection, so a viewer that
-                // re-offers through the still-open relay socket keeps everything it had.
-                RTCPeerConnectionState::Failed
-                | RTCPeerConnectionState::Closed
-                | RTCPeerConnectionState::Disconnected => {
-                    if generation.load(Ordering::SeqCst) == my_gen {
-                        let _ = listening.send(false);
-                        crate::files::pace::video(false);
-                        // Stop rendering for a viewer that is not receiving. `Disconnected` is
-                        // included on purpose: it is the transient case — a lift, a handoff —
-                        // and it is precisely when there is no point encoding into a dead path.
-                        // Resuming costs one keyframe.
-                        let _ = cmd_tx.send(CompositorCommand::ViewerAttached(false));
-                        info!(
-                            peer = %pc_peer,
-                            "relay client: peer connection {state:?} — session kept, waiting for \
-                             a re-offer (the watchdog stops it if no viewer comes back)"
-                        );
-                    }
-                }
-                other => info!(?other, "relay client: peer connection state"),
-            }
-            Box::pin(async {})
-        }));
-    }
-
-    // ICE-level transitions. The peer-connection state hides where a failure happened;
-    // this is the one that distinguishes "never got a reply" (stuck Checking) from
-    // "candidates exhausted" (Failed).
-    //
-    // A terminal ICE state is the one moment where the whole diagnosis is still in scope —
-    // which candidate types each side offered, and how long it spent trying. Logged as a
-    // single line there, because reconstructing it afterwards means correlating four lines
-    // across two logs, and on a pool that is per device as well as per daemon.
-    let ice_peer = peer.clone();
-    let ice_remote = remote_types.clone();
-    let local_types = Arc::new(Mutex::new("<not answered yet>".to_string()));
-    let ice_local = Arc::clone(&local_types);
-    pc.on_ice_connection_state_change(Box::new(move |state| {
-        let (peer, remote) = (ice_peer.clone(), ice_remote.clone());
-        let local = ice_local.lock().unwrap_or_else(|e| e.into_inner()).clone();
-        let ms = offered_at.elapsed().as_millis() as u64;
-        match state {
-            RTCIceConnectionState::Failed | RTCIceConnectionState::Disconnected => warn!(
-                peer = %peer, ms, local = %local, remote = %remote,
-                "relay client: ICE {state:?} after {ms}ms — we offered ({local}), the device \
-                 offered ({remote}), and neither has a `relay` candidate because wado runs STUN \
-                 only. ⇒ ASK ABOUT A VPN FIRST, on either end: it adds its tunnel interface to \
-                 the gather and makes the NAT symmetric, which fails exactly like this. \
-                 Confirmed 2026-09-19 — Zscaler on the client, 15 candidates and never \
-                 connected; switched off, 9 candidates and connected in under a second. A \
-                 symmetric carrier NAT does the same thing. Check the startup NAT verdict above."
-            ),
-            _ => info!(peer = %peer, ms, ?state, "relay client: ICE connection state"),
-        }
-        Box::pin(async {})
-    }));
-
-    pc.set_remote_description(offer).await?;
-    let answer = pc.create_answer(None).await?;
-    let mut gather = pc.gathering_complete_promise().await;
-    pc.set_local_description(answer).await?;
-    // Bounded: see `crate::ice::GATHER_WAIT`. Waiting for gathering to *complete* is what a
-    // dead STUN server turns into a 15-second answer, and the client has left by then.
-    if tokio::time::timeout(crate::ice::GATHER_WAIT, gather.recv())
-        .await
-        .is_err()
-    {
-        tracing::warn!(
-            "ICE gathering still running after {:?} — answering with what we have. A STUN \
-             server is not replying; webrtc-ice gives each one a fixed 5s before giving up.",
-            crate::ice::GATHER_WAIT
-        );
-    }
-
-    let local = pc
-        .local_description()
-        .await
-        .ok_or_else(|| crate::WadoError::Other("no local description after ICE gather".into()))?;
-    let answer_json = serde_json::to_string(&local)?;
-
-    let local_kinds = candidate_types(&local.sdp);
-    *local_types.lock().unwrap_or_else(|e| e.into_inner()) = local_kinds.clone();
-    info!(
-        peer = %peer,
-        gather_ms = offered_at.elapsed().as_millis() as u64,
-        "relay client: answer sent — {} candidates ({})",
-        local.sdp.matches("a=candidate:").count(),
-        local_kinds
-    );
-    // Said loudly because the alternative is watching ICE fail and guessing. Host-only is not
-    // a weaker connection, it is one that cannot be made from outside this LAN.
-    if !crate::ice::has_reflexive(&local.sdp) {
-        tracing::warn!(
-            "no server-reflexive candidate — every STUN server timed out, so this answer only \
-             works on the local network. A client elsewhere hangs on 'starting session' while \
-             ICE goes checking, disconnected, failed."
-        );
-    }
-
-    send_relay(&out_tx, &RelayMsg::SdpAnswer { sdp: answer_json }).await?;
+    let answer = crate::viewers::pc::answer(&ctx.hub, origin, &offer_json, &slot, peer).await?;
+    send_relay(&out_tx, &RelayMsg::SdpAnswer { sdp: answer }).await?;
     Ok(())
 }
 
@@ -2653,6 +2574,7 @@ async fn viewer_watchdog(
     session_started: Arc<AtomicBool>,
     active_pc: Arc<Mutex<Option<Arc<RTCPeerConnection>>>>,
     detached: Arc<AtomicBool>,
+    hub: Arc<crate::viewers::Hub>,
 ) {
     let mut tick = tokio::time::interval(std::time::Duration::from_secs(5));
     loop {
@@ -2667,6 +2589,8 @@ async fn viewer_watchdog(
             let pc = active_pc.lock().unwrap_or_else(|e| e.into_inner()).clone();
             pc.map(|pc| pc.connection_state() == RTCPeerConnectionState::Connected)
                 .unwrap_or(false)
+                // A joined participant watching counts as much as the seat's viewer.
+                || hub.any_connected()
         };
         // Sampled here as well as on the state change, so a long-lived connection keeps the clock
         // fresh without depending on an event that only fires on transitions.
@@ -2686,6 +2610,7 @@ async fn viewer_watchdog(
              stopping the session so its applications do not outlive it"
         );
         session_started.store(false, Ordering::SeqCst);
+        hub.end(None);
         let _ = cmd_tx.send(CompositorCommand::Stop);
     }
 }

@@ -37,6 +37,10 @@ pub struct Shared {
     pub host_key: Arc<HostKey>,
     pub cmd_tx: Option<wado_compositor::CommandSender>,
     pub relay: mpsc::Sender<String>,
+    /// The session's participants (`crate::viewers`): a room whose first message is
+    /// `room_hello{view}` is a device joining the session, served there instead of here.
+    /// `None` in tests, and a view room is then refused like any other non-control.
+    pub hub: Option<Arc<crate::viewers::Hub>>,
 }
 
 /// Sent down a room's writer after its last frame: close the link once that frame is out.
@@ -46,6 +50,15 @@ struct Room {
     who: serve::Who,
     link: Arc<Mutex<Link>>,
     cx: serve::Ctx,
+    /// Set by `room_hello{view}`: a joined device, not a widget.
+    view: Mutex<Option<Arc<crate::viewers::room::ViewRoom>>>,
+    hub: Option<Arc<crate::viewers::Hub>>,
+}
+
+impl Room {
+    fn view(&self) -> Option<Arc<crate::viewers::room::ViewRoom>> {
+        self.view.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
 }
 
 /// The control rooms on one relay connection. A new connection starts with none.
@@ -112,6 +125,8 @@ impl Rooms {
                 sent: Arc::default(),
                 out,
             },
+            view: Mutex::default(),
+            hub: sh.hub.clone(),
         };
         info!(device = %name, "control link: opened (no seat, controls only)");
         self.0
@@ -189,6 +204,34 @@ impl Rooms {
                 }
             }
             Inbound::Msg(m) => {
+                // A joined device's room: the session's participants serve it.
+                if let (Some(view), Some(hub)) = (room.view(), sh.hub.as_ref()) {
+                    if !sh.gate.knows(&room.who.key) {
+                        info!(device = %room.who.name, "joined room: device no longer trusted — closing");
+                        let _ = room.cx.out.send(CLOSE.to_string()).await;
+                        return;
+                    }
+                    crate::viewers::room::handle(hub, &view, &room.who, &m, &room.cx).await;
+                    return;
+                }
+                if let Some(hub) = sh.hub.as_ref()
+                    && m.starts_with(r#"{"type":"room_hello""#)
+                    && let Ok(RelayMsg::RoomHello { kind }) = serde_json::from_str::<RelayMsg>(&m)
+                    && kind == "view"
+                {
+                    let origin = hub.origin();
+                    hub.attach(
+                        origin,
+                        &room.who.key,
+                        &room.who.name,
+                        room.cx.out.clone(),
+                        None,
+                    );
+                    *room.view.lock().unwrap_or_else(|e| e.into_inner()) =
+                        Some(Arc::new(crate::viewers::room::ViewRoom::new(origin)));
+                    info!(device = %room.who.name, origin, "control link: a joined device's room (view)");
+                    return;
+                }
                 if serve::handle(&m, &room.who, &room.cx).await.is_err() {
                     let _ = room.cx.out.send(CLOSE.to_string()).await;
                 }
@@ -197,20 +240,35 @@ impl Rooms {
     }
 
     /// The relay connection ended: every room on it is gone.
-    pub fn clear(&self) {
-        self.0.lock().unwrap_or_else(|e| e.into_inner()).clear();
+    pub fn clear(&self, sh: &Shared) {
+        let rooms: Vec<Arc<Room>> = self
+            .0
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .drain()
+            .map(|(_, r)| r)
+            .collect();
+        for r in rooms {
+            if let (Some(v), Some(hub)) = (r.view(), sh.hub.as_ref()) {
+                v.close(hub);
+            }
+        }
     }
 
     /// The client left (or the relay says the room is gone): forget it.
     pub fn close(&self, room_id: &str) {
-        if self
+        let gone = self
             .0
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .remove(room_id)
-            .is_some()
-        {
-            info!("control link: closed");
+            .remove(room_id);
+        if let Some(r) = gone {
+            if let (Some(v), Some(hub)) = (r.view(), r.hub.clone()) {
+                v.close(&hub);
+                info!(device = %r.who.name, "joined room: closed");
+            } else {
+                info!("control link: closed");
+            }
         }
     }
 }
