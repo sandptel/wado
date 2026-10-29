@@ -32,7 +32,7 @@ pub fn args(text: &str) -> Vec<&str> {
 /// A `wtype` command aimed at the desktop's display (never the compositor's own, which
 /// overwrites `WAYLAND_DISPLAY` for the session it runs).
 pub fn command() -> Result<tokio::process::Command, String> {
-    crate::clip::tool::command("wtype")
+    super::on_desktop::command("wtype")
 }
 
 /// Type `text` on the desktop. Keys and shortcuts (the keyboard device) do not depend on this —

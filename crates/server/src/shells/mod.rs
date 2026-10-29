@@ -20,8 +20,8 @@ use std::{
 use tokio::sync::{broadcast, mpsc};
 use wado_protocol::ShellInfo;
 
-use crate::pty::Pty;
 use scrollback::Scrollback;
+use wado_platform::pty::PtySession;
 
 /// More than this many open at once is a runaway client, not a person.
 pub const MAX: usize = 8;
@@ -40,7 +40,7 @@ pub enum Event {
 }
 
 struct Shell {
-    pty: Option<Pty>,
+    pty: Option<Box<dyn PtySession>>,
     title: String,
     host: Option<String>,
     scroll: Scrollback,
@@ -82,7 +82,7 @@ pub fn open(cols: u16, rows: u16, host: Option<String>) -> Result<u32, String> {
         return Err(format!("{MAX} shells are open already — close one first"));
     }
     let (tx, mut rx) = mpsc::channel::<String>(64);
-    let pty = Pty::open(cols, rows, host.as_deref(), tx).map_err(|e| e.to_string())?;
+    let pty = crate::pty::open(cols, rows, host.as_deref(), tx)?;
     let title = host.clone().unwrap_or_else(shell_name);
     let id = {
         let mut r = reg();

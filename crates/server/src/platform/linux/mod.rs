@@ -23,11 +23,17 @@
 //! - `launcher.rs` — opening apps on the desktop (`Launcher`).
 //! - `grim.rs` — screenshots (`Screenshot`).
 //! - `login.rs` — lock and sleep (`SystemPower`).
+//! - `wl_clipboard.rs` — the desktop's clipboard (`Clipboard`).
+//! - `cliphist.rs` — its history (`ClipHistory`).
+//! - `xdg_trash.rs` — the freedesktop Trash (`Trash`).
+//! - `thumbnails.rs` — file thumbnails (`Thumbnailer`).
+//! - `pty.rs` — shells on a pseudo-terminal (`PtySpawner`).
 //! - `on_desktop.rs` — running a tool on the desktop's display.
 //! - `probe.rs` — what is installed: a program on `PATH`, a session bus, a terminal.
 
 pub mod backlight;
 pub mod bluetoothctl;
+pub mod cliphist;
 pub mod cmd;
 pub mod grim;
 pub mod hyprland;
@@ -40,11 +46,15 @@ pub mod nmcli;
 pub mod on_desktop;
 pub mod pipewire;
 pub mod probe;
+pub mod pty;
 pub mod sysinfo;
+pub mod thumbnails;
 pub mod touchpad;
 pub mod uinput;
 pub mod viewer_sink;
+pub mod wl_clipboard;
 pub mod wtype;
+pub mod xdg_trash;
 
 use std::fs::OpenOptions;
 use std::io;
@@ -52,14 +62,17 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::sync::{Arc, OnceLock};
 
 use wado_platform::audio::{AudioMixer, ViewerSink};
+use wado_platform::clip::{ClipHistory, Clipboard};
 use wado_platform::desktop::{Launcher, Screenshot, WindowManager};
 use wado_platform::display::Brightness;
+use wado_platform::files::{Thumbnailer, Trash};
 use wado_platform::input::{
     GamepadInjector, InputError, KeyInjector, Opener, TextInjector, TouchInjector,
 };
 use wado_platform::media::MediaPlayers;
 use wado_platform::network::{Bluetooth, WifiRadio};
 use wado_platform::power::{PowerInhibit, SystemPower};
+use wado_platform::pty::PtySpawner;
 use wado_platform::registry::Offer;
 use wado_platform::sysinfo::SysInfoSource;
 use wado_platform::{Provider, ProviderId};
@@ -121,6 +134,7 @@ pub struct LinuxProvider {
     bluetooth: OnceLock<Arc<bluetoothctl::BlueZ>>,
     awake: OnceLock<Arc<inhibit::SystemdInhibit>>,
     sys_info: OnceLock<Arc<sysinfo::ProcSysInfo>>,
+    clipboard: OnceLock<Arc<wl_clipboard::WlClipboard>>,
 }
 
 impl LinuxProvider {
@@ -238,6 +252,35 @@ impl Provider for LinuxProvider {
         opened(login::Logind::probe(), |l| {
             Arc::new(l) as Arc<dyn SystemPower>
         })
+    }
+
+    fn clipboard(&self) -> Offer<dyn Clipboard> {
+        let found = match self.clipboard.get() {
+            Some(c) => Ok(Arc::clone(c)),
+            None => wl_clipboard::WlClipboard::probe()
+                .map(|c| Arc::clone(self.clipboard.get_or_init(|| Arc::new(c)))),
+        };
+        Some(found.map(|c| c as Arc<dyn Clipboard>))
+    }
+
+    fn clip_history(&self) -> Offer<dyn ClipHistory> {
+        opened(cliphist::Cliphist::probe(), |h| {
+            Arc::new(h) as Arc<dyn ClipHistory>
+        })
+    }
+
+    fn trash(&self) -> Offer<dyn Trash> {
+        offer(Ok(()), || Arc::new(xdg_trash::XdgTrash) as Arc<dyn Trash>)
+    }
+
+    fn thumbnailer(&self) -> Offer<dyn Thumbnailer> {
+        offer(Ok(()), || {
+            Arc::new(thumbnails::Thumbnails) as Arc<dyn Thumbnailer>
+        })
+    }
+
+    fn pty(&self) -> Offer<dyn PtySpawner> {
+        offer(Ok(()), || Arc::new(pty::NativePty) as Arc<dyn PtySpawner>)
     }
 
     fn sys_info(&self) -> Offer<dyn SysInfoSource> {

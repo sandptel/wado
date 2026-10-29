@@ -1,4 +1,5 @@
-//! The history, from `cliphist`: newest first, pinned entries on top.
+//! The desktop's clipboard history ([`ClipHistory`] on Linux), from `cliphist`: newest first,
+//! pinned entries on top.
 //!
 //! An id is cliphist's, sent back by the viewer, so it is checked to be digits before it goes
 //! anywhere near a command. Pins are wado's own (cliphist has none), kept in
@@ -10,18 +11,46 @@
 
 use std::path::PathBuf;
 
-use wado_compositor::clipboard::Clip;
+use wado_platform::clip::{Clip, ClipHistory};
+use wado_platform::{Fut, Res};
 use wado_protocol::{ClipEntry, ClipKind};
 
-use super::tool;
+use super::on_desktop::run_with;
+
+/// `cliphist`, with wado's own pins.
+pub struct Cliphist;
+
+impl Cliphist {
+    /// Offered inside a Wayland desktop — `cliphist` itself not being installed is said when the
+    /// history is asked for, as the rail always has.
+    pub fn probe() -> Result<Cliphist, String> {
+        super::on_desktop::command("cliphist")?;
+        Ok(Cliphist)
+    }
+}
+
+impl ClipHistory for Cliphist {
+    fn list(&self) -> Fut<'_, Res<Vec<ClipEntry>>> {
+        Box::pin(list())
+    }
+    fn get(&self, id: String) -> Fut<'_, Res<Clip>> {
+        Box::pin(async move { get(&id).await })
+    }
+    fn delete(&self, id: String) -> Fut<'_, Res<()>> {
+        Box::pin(async move { delete(&id).await })
+    }
+    fn pin(&self, id: String, on: bool) -> Fut<'_, Res<()>> {
+        Box::pin(async move { pin(&id, on).await })
+    }
+}
 
 /// How many entries a viewer is sent. cliphist keeps 750 by default.
 const SHOWN: usize = 120;
 /// A tile's preview, in characters.
 const PREVIEW: usize = 280;
 
-pub async fn list() -> Result<Vec<ClipEntry>, String> {
-    let out = tool::run("cliphist", &["list"], b"").await?;
+async fn list() -> Result<Vec<ClipEntry>, String> {
+    let out = run_with("cliphist", &["list"], b"").await?;
     let pins = pins();
     let mut all: Vec<ClipEntry> = String::from_utf8_lossy(&out)
         .lines()
@@ -78,27 +107,27 @@ fn check(id: &str) -> Result<(), String> {
 }
 
 /// Entry `id` in full.
-pub async fn get(id: &str) -> Result<Clip, String> {
+async fn get(id: &str) -> Result<Clip, String> {
     check(id)?;
-    let bytes = tool::run("cliphist", &["decode"], format!("{id}\t\n").as_bytes()).await?;
-    let mime = super::data::sniff(&bytes).unwrap_or("text/plain;charset=utf-8");
+    let bytes = run_with("cliphist", &["decode"], format!("{id}\t\n").as_bytes()).await?;
+    let mime = crate::clip::data::sniff(&bytes).unwrap_or("text/plain;charset=utf-8");
     Ok(Clip {
         mime: mime.into(),
         data: bytes.into(),
     })
 }
 
-pub async fn delete(id: &str) -> Result<(), String> {
+async fn delete(id: &str) -> Result<(), String> {
     check(id)?;
     // The pin goes with it.
     let line = line_of(id).await?;
     pin_line(&line, false);
-    tool::run("cliphist", &["delete"], format!("{line}\n").as_bytes())
+    run_with("cliphist", &["delete"], format!("{line}\n").as_bytes())
         .await
         .map(drop)
 }
 
-pub async fn pin(id: &str, on: bool) -> Result<(), String> {
+async fn pin(id: &str, on: bool) -> Result<(), String> {
     check(id)?;
     let line = line_of(id).await?;
     pin_line(&line, on);
@@ -107,7 +136,7 @@ pub async fn pin(id: &str, on: bool) -> Result<(), String> {
 
 /// The `id\tpreview` line cliphist knows entry `id` by.
 async fn line_of(id: &str) -> Result<String, String> {
-    let out = tool::run("cliphist", &["list"], b"").await?;
+    let out = run_with("cliphist", &["list"], b"").await?;
     String::from_utf8_lossy(&out)
         .lines()
         .find(|l| l.split_once('\t').is_some_and(|(i, _)| i == id))
