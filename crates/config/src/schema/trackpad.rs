@@ -15,6 +15,16 @@ pub struct Trackpad {
     pub finger_silence_ms: u64,
     /// No message at all for this long and held keys (a locked Super) are let go.
     pub key_silence_ms: u64,
+    /// Touch frames are played out on a steady cadence, interpolated, rather than written the
+    /// moment they land — libinput reads gesture speed from the time between events, so
+    /// network jitter would otherwise read as a hand speeding up and slowing down. Off writes
+    /// direct frames as they arrive; relayed frames are always buffered.
+    pub smoothing: bool,
+    /// The cadence frames are written at, like a real touchpad's report rate. Clamped 60..=250.
+    pub rate_hz: u32,
+    /// How far behind the phone the direct path plays, to absorb jitter (the relay path plays
+    /// at least 24 ms behind). Clamped 0..=50.
+    pub direct_delay_ms: u64,
 }
 
 impl Default for Trackpad {
@@ -24,6 +34,9 @@ impl Default for Trackpad {
             px_per_mm: 6,
             finger_silence_ms: 400,
             key_silence_ms: 5000,
+            smoothing: true,
+            rate_hz: 125,
+            direct_delay_ms: 8,
         }
     }
 }
@@ -48,6 +61,24 @@ mod tests {
         assert!(
             crate::kdl::parse("trackpad { speed 2 }").is_err(),
             "a misspelt key is an error"
+        );
+    }
+
+    #[test]
+    fn pacing_keys_default_and_parse() {
+        let d = super::Trackpad::default();
+        assert_eq!((d.smoothing, d.rate_hz, d.direct_delay_ms), (true, 125, 8));
+        let c = crate::kdl::parse(
+            "trackpad {\n  smoothing #false\n  rate-hz 200\n  direct-delay-ms 16\n}\n",
+        )
+        .unwrap();
+        assert_eq!(
+            (
+                c.trackpad.smoothing,
+                c.trackpad.rate_hz,
+                c.trackpad.direct_delay_ms
+            ),
+            (false, 200, 16)
         );
     }
 }

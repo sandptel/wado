@@ -15,6 +15,9 @@ const LIVE: &[&str] = &[
     "stream.",
     "input.",
     "trackpad.px-per-mm",
+    "trackpad.smoothing",
+    "trackpad.rate-hz",
+    "trackpad.direct-delay-ms",
     "session.app-cpu-weight",
     "session.audio",
     "binds.",
@@ -42,6 +45,10 @@ mod tests {
         assert_eq!(of("stream.max-fps"), Tier::Live);
         assert_eq!(of("input.repeat-rate"), Tier::Live);
         assert_eq!(of("session.app-cpu-weight"), Tier::Live);
+        assert_eq!(of("trackpad.smoothing"), Tier::Live);
+        assert_eq!(of("trackpad.rate-hz"), Tier::Live);
+        assert_eq!(of("trackpad.direct-delay-ms"), Tier::Live);
+        assert_eq!(of("trackpad.enabled"), Tier::Privileged);
         assert_eq!(of("session.autostart"), Tier::Privileged);
         assert_eq!(of("session.env.PATH"), Tier::Privileged);
         assert_eq!(of("shells.program"), Tier::Privileged);

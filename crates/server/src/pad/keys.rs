@@ -165,6 +165,25 @@ fn unheld(mods: &[Mod], held: &HashSet<u16>) -> Vec<Mod> {
         .collect()
 }
 
+/// Move `held` to `target` one key event at a time through `emit`: keys no longer wanted are
+/// released, then keys newly wanted pressed. `held` follows each event that succeeded, so a
+/// failure partway leaves it saying what is really down.
+fn hold_into(
+    held: &mut HashSet<u16>,
+    target: &HashSet<u16>,
+    mut emit: impl FnMut(u16, i32) -> io::Result<()>,
+) -> io::Result<()> {
+    for code in held.difference(target).copied().collect::<Vec<_>>() {
+        emit(code, 0)?;
+        held.remove(&code);
+    }
+    for code in target.difference(held).copied().collect::<Vec<_>>() {
+        emit(code, 1)?;
+        held.insert(code);
+    }
+    Ok(())
+}
+
 pub struct Keyboard {
     device: uinput::Device,
     held: HashSet<u16>,
@@ -202,22 +221,15 @@ impl Keyboard {
     /// present are released, codes newly present are pressed. `[]` releases everything.
     pub fn hold(&mut self, mods: &[Mod]) -> io::Result<()> {
         let target: HashSet<u16> = mods.iter().map(|&m| mod_code(m)).collect();
-        for &code in self.held.difference(&target).collect::<Vec<_>>() {
-            self.device.emit(&[(EV_KEY, code, 0)])?;
-        }
-        for &code in target.difference(&self.held).collect::<Vec<_>>() {
-            self.device.emit(&[(EV_KEY, code, 1)])?;
-        }
-        self.held = target;
-        Ok(())
+        let device = &self.device;
+        hold_into(&mut self.held, &target, |code, v| {
+            device.emit(&[(EV_KEY, code, v)])
+        })
     }
 
     /// Release every held key.
     pub fn release_all(&mut self) -> io::Result<()> {
-        for code in self.held.drain().collect::<Vec<_>>() {
-            self.device.emit(&[(EV_KEY, code, 0)])?;
-        }
-        Ok(())
+        self.hold(&[])
     }
 }
 
@@ -260,6 +272,41 @@ mod tests {
         let held: HashSet<u16> = [mod_code(Mod::Super)].into();
         assert_eq!(unheld(&[Mod::Super, Mod::Shift], &held), vec![Mod::Shift]);
         assert_eq!(unheld(&[Mod::Ctrl], &held), vec![Mod::Ctrl]);
+    }
+
+    #[test]
+    fn a_failed_hold_leaves_held_truthful() {
+        let (ctrl, alt, shift) = (
+            mod_code(Mod::Ctrl),
+            mod_code(Mod::Alt),
+            mod_code(Mod::Shift),
+        );
+        let mut held: HashSet<u16> = [ctrl].into();
+        let target: HashSet<u16> = [alt, shift].into();
+        // the release of Ctrl and the first press succeed; the second press fails
+        let mut ok = 2;
+        let r = hold_into(&mut held, &target, |_, _| {
+            if ok == 0 {
+                return Err(io::Error::other("device gone"));
+            }
+            ok -= 1;
+            Ok(())
+        });
+        assert!(r.is_err());
+        assert!(!held.contains(&ctrl), "Ctrl was released");
+        assert_eq!(
+            held.len(),
+            1,
+            "exactly one of Alt/Shift went down: {held:?}"
+        );
+
+        // a release that fails keeps the key counted as held
+        let mut held: HashSet<u16> = [ctrl].into();
+        let r = hold_into(&mut held, &HashSet::new(), |_, _| {
+            Err(io::Error::other("device gone"))
+        });
+        assert!(r.is_err());
+        assert_eq!(held, HashSet::from([ctrl]));
     }
 
     #[test]

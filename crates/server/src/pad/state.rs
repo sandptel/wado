@@ -3,12 +3,17 @@
 //! Shared by both transports, so a phone that starts on the relay and moves to the direct link
 //! mid-drag keeps one continuous touch. Pure apart from the [`Sink`] it drives, which is what
 //! lets the safety rules — stale frames dropped, a silent finger lifted, a resize lifting every
-//! finger first — be tested without a kernel device.
+//! finger first — be tested without a kernel device. Touch frames are written by the
+//! [`Pacer`] on the pad's tick, except direct ones with `trackpad { smoothing #false }`, which
+//! are written as they arrive.
 
+use tracing::info;
+use wado_config::schema::Trackpad;
 use wado_protocol::pad::{Contact, Mod, PadMsg, newer};
 
+use super::arrivals::Arrivals;
 use super::keys::{char_code, key_code};
-use super::playout::Playout;
+use super::pacer::Pacer;
 
 /// Where a pad's input lands. The real one is [`super::sink::Devices`].
 pub trait Sink: Send {
@@ -37,16 +42,26 @@ pub struct Pad {
     /// `trackpad { key-silence-ms }`: no message at all this long (the phone pings every 2 s)
     /// and held keys are let go too, so a locked phone never leaves Super down for good.
     key_silence_ms: u64,
-    playout: Playout,
+    /// `trackpad { smoothing }`: direct frames go through the pacer too.
+    smoothing: bool,
+    pacer: Pacer,
+    arrivals: Arrivals,
     text: Vec<String>,
 }
 
 impl Pad {
+    /// A pad with the `trackpad { }` config as it is now.
     pub fn new(sink: Box<dyn Sink>) -> Pad {
-        let cfg = wado_config::live::current().trackpad.clone();
+        Pad::with_config(sink, &wado_config::live::current().trackpad)
+    }
+
+    pub fn with_config(sink: Box<dyn Sink>, cfg: &Trackpad) -> Pad {
         Pad {
             finger_silence_ms: cfg.finger_silence_ms,
             key_silence_ms: cfg.key_silence_ms,
+            smoothing: cfg.smoothing,
+            pacer: Pacer::new(cfg.direct_delay_ms),
+            arrivals: Arrivals::default(),
             sink,
             size: None,
             last_seq: None,
@@ -54,7 +69,6 @@ impl Pad {
             last_frame_ms: 0,
             last_msg_ms: 0,
             keys_released: false,
-            playout: Playout::new(),
             text: Vec::new(),
         }
     }
@@ -77,12 +91,15 @@ impl Pad {
                 self.last_seq = Some(seq);
                 self.last_frame_ms = now_ms;
                 let c = first_of_each_id(c);
-                if relayed {
-                    self.playout.push(now_ms, t, c);
-                    return self.tick(now_ms);
+                let down = !c.is_empty();
+                if relayed || self.smoothing {
+                    let late = self.pacer.push(now_ms, t, c, relayed);
+                    self.arrivals.record(now_ms, down, late);
+                    return None; // written on the tick
                 }
-                // The direct link has caught up: relayed frames still queued are older than this.
-                self.playout.clear();
+                // Written now; relayed frames still queued are older than this.
+                let late = self.pacer.bypass(now_ms, t);
+                self.arrivals.record(now_ms, down, late);
                 self.touch(&c)
             }
             PadMsg::Key { key, mods } => match key_code(&key) {
@@ -120,16 +137,20 @@ impl Pad {
         (!self.text.is_empty()).then(|| self.text.remove(0))
     }
 
-    /// Play relayed frames now due, and lift fingers that went silent.
+    /// Write what the pacer renders now, and lift fingers that went silent. Called every
+    /// `trackpad { rate-hz }`.
     pub fn tick(&mut self, now_ms: u64) -> Option<PadMsg> {
         let mut err = None;
-        for frame in self.playout.due(now_ms) {
+        for frame in self.pacer.tick(now_ms) {
             if let Err(e) = self.touch(&frame) {
                 err.get_or_insert(e);
             }
         }
+        if let Some(line) = self.arrivals.report(now_ms) {
+            info!("{line}");
+        }
         if self.down && now_ms.saturating_sub(self.last_frame_ms) > self.finger_silence_ms {
-            self.playout.clear();
+            self.pacer.clear();
             if let Err(e) = self.touch(&[]) {
                 err.get_or_insert(e);
             }
@@ -157,7 +178,7 @@ impl Pad {
 
     /// Let go of everything: fingers, held keys.
     pub fn release_all(&mut self) {
-        self.playout.clear();
+        self.pacer.clear();
         if self.down {
             let _ = self.touch(&[]);
         }
@@ -178,7 +199,7 @@ impl Pad {
             if !moved(old.0, size.0) && !moved(old.1, size.1) {
                 return Ok(());
             }
-            self.playout.clear();
+            self.pacer.clear();
             if self.down {
                 let _ = self.touch(&[]);
             }
@@ -249,9 +270,21 @@ mod tests {
         }
     }
 
+    /// A pad that writes direct frames the moment they arrive (`smoothing #false`).
     fn pad() -> (Pad, Rec) {
+        pad_with(false)
+    }
+    /// A pad that plays every frame out on its tick (the default).
+    fn smooth_pad() -> (Pad, Rec) {
+        pad_with(true)
+    }
+    fn pad_with(smoothing: bool) -> (Pad, Rec) {
         let rec = Rec::default();
-        let mut p = Pad::new(Box::new(rec.clone()));
+        let cfg = wado_config::schema::Trackpad {
+            smoothing,
+            ..Default::default()
+        };
+        let mut p = Pad::with_config(Box::new(rec.clone()), &cfg);
         p.handle(0, PadMsg::Size { w: 390, h: 800 }, false);
         (p, rec)
     }
@@ -482,5 +515,67 @@ mod tests {
             rec.calls().iter().filter(|c| **c == Call::Release).count(),
             1
         );
+    }
+
+    #[test]
+    fn smoothed_frames_wait_for_the_tick() {
+        let (mut p, rec) = smooth_pad();
+        p.handle(1000, frame(1, vec![(0, 1, 1)]), false);
+        assert_eq!(rec.calls().len(), 0, "not written on arrival");
+        p.tick(1007);
+        assert_eq!(rec.calls().len(), 0, "the direct delay is 8 ms");
+        p.tick(1008);
+        assert_eq!(rec.calls(), vec![Call::Touch((390, 800), vec![(0, 1, 1)])]);
+    }
+
+    #[test]
+    fn a_smoothed_tap_between_ticks_still_clicks() {
+        let (mut p, rec) = smooth_pad();
+        p.handle(1000, frame(1, vec![]), false); // t 16
+        p.tick(1008);
+        p.handle(1010, frame(2, vec![(0, 5, 5)]), false); // t 32, 2 ms early
+        p.handle(1012, frame(3, vec![]), false); // t 48, 20 ms early
+        p.tick(1056);
+        assert_eq!(
+            rec.calls(),
+            vec![
+                Call::Touch((390, 800), vec![]),
+                Call::Touch((390, 800), vec![(0, 5, 5)]),
+                Call::Touch((390, 800), vec![]),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_smoothed_silent_finger_lifts_once_and_stays_up() {
+        let (mut p, rec) = smooth_pad();
+        p.handle(1000, frame(1, vec![(0, 1, 1)]), false);
+        p.tick(1008);
+        p.tick(1401);
+        p.tick(1409);
+        assert_eq!(
+            rec.calls(),
+            vec![
+                Call::Touch((390, 800), vec![(0, 1, 1)]),
+                Call::Touch((390, 800), vec![]),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_smoothed_direct_frame_drops_relayed_ones_still_queued() {
+        let (mut p, rec) = smooth_pad();
+        p.handle(
+            1000,
+            PadMsg::Frame {
+                seq: 1,
+                t: 0,
+                c: vec![(0, 1, 1)],
+            },
+            true,
+        );
+        p.handle(1005, frame(2, vec![]), false);
+        p.tick(2000);
+        assert_eq!(rec.calls(), vec![Call::Touch((390, 800), vec![])]);
     }
 }

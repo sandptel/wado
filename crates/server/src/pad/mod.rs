@@ -11,7 +11,8 @@
 //!   device that tracks what it holds.
 //! - `text.rs` — committed text, typed into the desktop via `wtype`.
 //! - `state.rs` — one phone's pad: what each message does, stale frames, silence, resizes.
-//! - `playout.rs` — evening out frames that came through the relay in bursts.
+//! - `pacer.rs` — touch frames written on a steady cadence, interpolated, by either path.
+//! - `arrivals.rs` — how evenly frames arrive, logged so jitter is measured, not assumed.
 //! - `sink.rs` — the kernel devices a pad drives, made on first use.
 //! - `gate.rs` — who may use the trackpad, asked of every message.
 //! - `live.rs` — the open pad, fed by either transport, its tick and its ordered keyboard queue.
@@ -20,11 +21,12 @@
 //! Through the relay the same messages arrive as `RelayMsg::PadIn` (`relay_client.rs`), when
 //! the phone has no direct path or before its direct link is up.
 
+pub mod arrivals;
 pub mod channel;
 pub mod gate;
 pub mod keys;
 pub mod live;
-pub mod playout;
+pub mod pacer;
 pub mod sink;
 pub mod state;
 pub mod text;
