@@ -412,3 +412,31 @@
 .tps-gest { justify-content: space-between; }
 .tps-gest .tps-title { flex: 1; font-weight: 500; }
 .tps-pick { width: min(52%, 220px); flex: none; }
+
+/* ── Phone gestures (js/pad_gestures.js) ────────────────────────────────────────────────────
+ * An edge swipe lights its edge where the finger is, growing as it comes in; when it fires the
+ * glow flares. A claim pulses the action's icon where it happened (≤ 300 ms). */
+.tpedge { position: absolute; top: 0; left: 0; z-index: 1; width: 56px; height: 180px; margin-top: -90px;
+  pointer-events: none; opacity: 0; transition: opacity 140ms var(--ease); --p: 0; }
+.tpedge[data-side="edge-right"] { left: auto; right: 0; }
+.tpedge::before { content: ""; position: absolute; inset: 0; transform-origin: 0 50%;
+  background: radial-gradient(ellipse 100% 50% at 0 50%, color-mix(in oklab, var(--accent), transparent 10%), transparent 75%);
+  scale: calc(.35 + .65 * var(--p)) 1; transition: scale 60ms linear; }
+/* A bright bead on the edge itself, stretching along it as the finger comes in. */
+.tpedge::after { content: ""; position: absolute; left: 0; top: 50%; width: 4px; height: 96px; margin-top: -48px;
+  border-radius: 999px; background: var(--accent); scale: 1 calc(.3 + .7 * var(--p)); transition: scale 60ms linear; }
+.tpedge[data-side="edge-right"]::after { left: auto; right: 0; }
+.tpedge[data-side="edge-right"]::before { transform-origin: 100% 50%;
+  background: radial-gradient(ellipse 100% 50% at 100% 50%, color-mix(in oklab, var(--accent), transparent 30%), transparent 75%); }
+.tpedge.on { opacity: calc(.35 + .65 * var(--p)); }
+.tpedge.fired { opacity: 1; }
+.tpedge.fired::before { animation: tpedge-flare 260ms var(--pop); }
+@keyframes tpedge-flare { 50% { scale: 1.5 1.15; } }
+.tppulse { position: absolute; left: 0; top: 0; z-index: 3; width: 56px; height: 56px; margin: -28px 0 0 -28px;
+  border-radius: 50%; display: grid; place-items: center; pointer-events: none; color: var(--on-accent);
+  background: var(--accent); animation: tppulse 300ms var(--pop) forwards; }
+.tppulse::after { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--accent);
+  animation: tppulse-ring 300ms ease-out forwards; }
+.tppulse svg { width: 26px; height: 26px; }
+@keyframes tppulse { 0% { scale: .4; opacity: 0; } 35% { scale: 1.08; opacity: 1; } 100% { scale: 1; opacity: 0; } }
+@keyframes tppulse-ring { from { scale: 1; opacity: .8; } to { scale: 1.9; opacity: 0; } }

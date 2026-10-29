@@ -16,9 +16,15 @@
 // x/y and the size are the landscape pad's, so the daemon's pacer and libinput only ever see a
 // landscape touchpad. Turning it mid-touch lifts every finger first, then sends the new size.
 //
+// Phone gestures (js/pad_gestures.js) stand in front: every pointer event asks them first, and
+// they may hold an edge touch back ≤ 60 ms and replay it here (`feed`), or lift fingers they
+// claimed (`drop`). Without an assigned gesture they pass everything straight through.
+//
 //   W.padTouch.attach(el) / detach()
 //   W.padTouch.size() → {w, h} in CSS px;  W.padTouch.frame() → the current contacts
 //   W.padTouch.resend()   size + current frame again (the link moved paths)
+//   W.padTouch.feed("down" | "move" | "up", e)   an event the gestures held, now let through
+//   W.padTouch.drop(pointerIds)                   lift these fingers on the computer now
 
 (() => {
   const T = (W.padTouch = {});
@@ -78,8 +84,6 @@
   function down(e) {
     const id = freeId();
     if (id < 0) return;
-    e.preventDefault();
-    try { el.setPointerCapture(e.pointerId); } catch (_) {}
     const f = { id, x: 0, y: 0 };
     place(f, e);
     fingers.set(e.pointerId, f);
@@ -88,7 +92,6 @@
   function move(e) {
     const f = fingers.get(e.pointerId);
     if (!f) return;
-    e.preventDefault();
     place(f, e);
     moved();
   }
@@ -100,8 +103,33 @@
     if (document.visibilityState === "hidden" && fingers.size) { fingers.clear(); send(); }
   }
 
-  const on = [["pointerdown", down], ["pointermove", move], ["pointerup", up],
-    ["pointercancel", up], ["lostpointercapture", up]];
+  // Every event asks the phone gestures first; they say whether it is the pad's.
+  const gate = (type, e) => !W.padGestures || W.padGestures.pass(type, e);
+  function onDown(e) {
+    e.preventDefault();
+    try { el.setPointerCapture(e.pointerId); } catch (_) {}
+    if (gate("down", e)) down(e);
+  }
+  function onMove(e) {
+    e.preventDefault();
+    if (gate("move", e)) move(e);
+  }
+  function onUp(e) { if (gate("up", e)) up(e); }
+
+  T.feed = (type, e) => {
+    if (!el) return;
+    if (type === "down") { down(e); if (dirty) send(); } // its own frame, before anything after it
+    else if (type === "move") move(e);
+    else up(e);
+  };
+  T.drop = (ids) => {
+    let any = false;
+    for (const id of ids) any = fingers.delete(id) || any;
+    if (any && el) changed();
+  };
+
+  const on = [["pointerdown", onDown], ["pointermove", onMove], ["pointerup", onUp],
+    ["pointercancel", onUp], ["lostpointercapture", onUp]];
 
   T.attach = (node) => {
     T.detach();

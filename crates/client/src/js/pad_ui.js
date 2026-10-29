@@ -84,7 +84,12 @@
     W.padSettings.mount(root);
     W.padRail.onSettings((b) => W.padSettings.open(b));
     el.gearhead.onclick = () => W.padSettings.open(el.gearhead);
+    const ran = (a, res) => {
+      W.padConfirm.show(el.area, a, res);
+      if (!res.ok) alert(res.message || `${a.name} didn't work.`);
+    };
     W.padRail.onDone((a, res) => W.padConfirm.show(el.area, a, res));
+    W.padGestures.onDone(ran);
     W.padActions.onChange(() => { if (!root.hidden) W.padRail.paint(); });
 
     W.padKeys.onMods((m) => {
@@ -159,6 +164,7 @@
     if (root.hidden) return;
     W.padRail.paint();
     if (opening) return;
+    W.padGestures.attach(el.area);
     W.padFeel.attach(el.area);
     W.padHints.attach(el.area);
     root.classList.remove("tpturn");
@@ -194,6 +200,7 @@
     W.pad.start();
     W.padActions.refresh();
     W.padTouch.attach(el.area);
+    W.padGestures.attach(el.area);
     W.padFeel.attach(el.area);
     W.padHints.attach(el.area);
     W.padCoach.attach(el.area);
@@ -212,6 +219,7 @@
     W.padOrient.detach();
     keyboard(false);
     W.padTouch.detach();
+    W.padGestures.detach();
     W.padFeel.detach();
     W.padHints.detach();
     W.padCoach.detach();

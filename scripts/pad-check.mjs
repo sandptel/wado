@@ -1,7 +1,7 @@
 // Runnable check for the trackpad's client side: js/pad_link.js, js/pad_prefs.js,
 // js/pad_orient.js, js/pad_touch.js, js/pad_keys.js, js/pad_icons.js, js/pad_actions.js,
 // js/pad_rail.js, js/pad_settings.js (views on the DOM shim in scripts/lib/pad-dom.mjs),
-// js/pad_hints.js.
+// js/pad_hints.js, js/pad_gestures.js (on the fake clock).
 //
 // Loads the real modules into a stub `W` with a fake clock, a fake relay and a fake
 // RTCPeerConnection, drives them, and asserts the wire messages.
@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { makeDocument } from "./lib/pad-dom.mjs";
 
 const js = (f) => readFileSync(new URL(`../crates/client/src/js/${f}`, import.meta.url), "utf8");
-const MODULES = ["pad_link.js", "pad_prefs.js", "pad_orient.js", "pad_touch.js", "pad_keys.js",
+const MODULES = ["pad_link.js", "pad_prefs.js", "pad_orient.js", "pad_touch.js", "pad_gestures.js", "pad_keys.js",
   "pad_icons.js", "pad_actions.js", "pad_rail.js", "pad_hints.js", "pad_settings.js"];
 const src = MODULES.map(js).join("\n");
 
@@ -80,7 +80,7 @@ function makeEnv({ storage = makeStorage(), hostConfig = null } = {}) {
   };
   const tick = () => new Promise((r) => setImmediate(r));
   return {
-    W, relay, pcs, el, rect, advance, tick, docListeners, document,
+    W, relay, pcs, el, rect, advance, tick, docListeners, document, now: () => now,
     out: (msg) => W._relayHandlers.pad_out({ msg }),
     down: (id, x, y) => listeners.pointerdown(ev(id, x, y)),
     move: (id, x, y) => listeners.pointermove(ev(id, x, y)),
@@ -447,6 +447,141 @@ await run("another browser on the same device key: the daemon's copy wins", asyn
 await run("a config_state already there at load is read too", async (e) => {
   eq(e.W.padPrefs.get().rail, "actions", "from W.hostConfig");
 }, { hostConfig: { trackpad: { rail: "actions" } } });
+
+// ── phone gestures (js/pad_gestures.js) ─────────────────────────────────────────────────
+const GACTIONS = [...ACTIONS, { id: "lock", name: "Lock screen", group: "System", icon: "lock" },
+  { id: "workspace-prev", name: "Previous workspace", group: "Workspace", icon: "left" }];
+
+await run("a gesture whose action this computer does not offer is not claimed", async (e) => {
+  e.W.pad.start();
+  e.out({ k: "action_list", actions: ACTIONS }); // no workspace-prev here
+  e.W.padPrefs.setGesture("edge-left", "workspace-prev");
+  e.W.padTouch.attach(e.el);
+  e.W.padGestures.attach(e.el);
+  e.relay.length = 0;
+  e.down(1, 5, 500);
+  eq(padIn(e.relay, "frame").map((m) => m.c.length), [1], "forwarded at once");
+});
+function gEnv(e, gestures = {}) {
+  e.W.pad.start();
+  e.out({ k: "action_list", actions: GACTIONS });
+  for (const [g, id] of Object.entries(gestures)) e.W.padPrefs.setGesture(g, id);
+  e.W.padTouch.attach(e.el);
+  e.W.padGestures.attach(e.el);
+  e.relay.length = 0;
+}
+const frames = (relay) => padIn(relay, "frame");
+const runs = (relay) => padIn(relay, "run").map((m) => m.id);
+const ALL = { "edge-left": "workspace-prev", "edge-right": "workspace-next", "four-tap": "lock", "two-hold": "play-pause" };
+
+await run("edge-left: unassigned, a touch at the edge goes straight through", async (e) => {
+  gEnv(e, {});
+  e.down(1, 5, 500);
+  eq(frames(e.relay).map((m) => m.c.length), [1], "forwarded at once");
+});
+
+await run("edge-left: assigned, a swipe in is claimed, never forwarded, and runs its action", async (e) => {
+  gEnv(e, { "edge-left": "workspace-prev" });
+  e.down(1, 8, 500); e.advance(20); e.move(1, 30, 502); e.advance(20); e.move(1, 60, 505); e.advance(100);
+  e.up(1); e.advance(100);
+  assert(frames(e.relay).every((m) => m.c.length === 0), `no contact forwarded: ${JSON.stringify(frames(e.relay))}`);
+  eq(runs(e.relay), ["workspace-prev"], "ran");
+});
+
+await run("edge-right is the right edge as held, also when the pad is turned", async (e) => {
+  Object.assign(e.rect, { width: 400, height: 800 }); // turned 90°: the pad's right edge is the screen's bottom
+  e.W.padOrient.rotate(90);
+  gEnv(e, { "edge-right": "workspace-next" });
+  e.down(1, 200, 795); e.advance(20); e.move(1, 200, 740); e.advance(40);
+  eq(runs(e.relay), ["workspace-next"], "ran");
+  e.up(1);
+});
+
+await run("an edge touch that becomes a drag is forwarded, ≤ 60 ms late on its first frame only", async (e) => {
+  gEnv(e, { "edge-left": "workspace-prev" });
+  e.down(1, 5, 500); e.advance(20); e.move(1, 7, 540); e.advance(30);
+  eq(frames(e.relay).length, 0, "held");
+  e.advance(10); // 60 ms: decided
+  const first = frames(e.relay)[0];
+  assert(first && first.c.length === 1 && first.t <= 60, `first frame at ${first && first.t}`);
+  eq(first.c[0][1], 328, "where it landed (x = 5 of 1000)");
+  e.move(1, 9, 600); e.advance(16);
+  const last = frames(e.relay).at(-1);
+  assert(last.t <= 60 + 16 + 16 && last.c[0][2] === 39321, `the next move goes as usual: ${JSON.stringify(last)}`);
+  eq(runs(e.relay), [], "no action");
+});
+
+await run("a tap at the edge is forwarded as a tap", async (e) => {
+  gEnv(e, { "edge-left": "workspace-prev" });
+  e.down(1, 5, 500); e.advance(30); e.up(1);
+  eq(frames(e.relay).map((m) => m.c.length), [1, 0], "down then lift");
+  eq(runs(e.relay), [], "no action");
+});
+
+await run("four-tap: unassigned, the four-finger touch is forwarded and nothing runs", async (e) => {
+  gEnv(e, {});
+  for (let i = 1; i <= 4; i++) { e.down(i, 200 + i * 80, 500); e.advance(10); }
+  for (let i = 1; i <= 4; i++) { e.up(i); e.advance(10); }
+  assert(frames(e.relay).some((m) => m.c.length === 4), "four contacts reached the laptop");
+  eq(runs(e.relay), [], "nothing claimed");
+});
+
+await run("four-tap: assigned, claimed — no four-contact frame, lifted past the tap timeout, runs", async (e) => {
+  gEnv(e, { "four-tap": "lock" });
+  for (let i = 1; i <= 4; i++) { e.down(i, 200 + i * 80, 500); e.advance(10); }
+  for (let i = 1; i <= 4; i++) { e.up(i); e.advance(10); }
+  e.advance(300);
+  assert(!frames(e.relay).some((m) => m.c.length === 4), "the fourth finger never went");
+  const lift = frames(e.relay).find((m) => m.c.length === 0);
+  assert(lift && lift.t >= 200, `lifted at ${lift && lift.t}`);
+  eq(runs(e.relay), ["lock"], "ran");
+});
+
+await run("four-tap assigned, but a four-finger swipe: handed back to the laptop", async (e) => {
+  gEnv(e, { "four-tap": "lock" });
+  for (let i = 1; i <= 4; i++) { e.down(i, 200 + i * 80, 500); e.advance(5); }
+  for (let i = 1; i <= 4; i++) e.move(i, 200 + i * 80 + 30, 500);
+  e.advance(16);
+  assert(frames(e.relay).some((m) => m.c.length === 4), "all four on the laptop once it moved");
+  for (let i = 1; i <= 4; i++) e.up(i);
+  e.advance(300);
+  eq(runs(e.relay), [], "not a tap");
+});
+
+await run("two-hold: assigned, two still fingers are lifted on the laptop, then the action runs", async (e) => {
+  gEnv(e, { "two-hold": "play-pause" });
+  e.down(1, 400, 500); e.down(2, 500, 500);
+  e.advance(650);
+  const msgs = padIn(e.relay).filter((m) => m.k === "frame" || m.k === "run");
+  const at = msgs.findIndex((m) => m.k === "run");
+  assert(at > 0 && msgs[at - 1].k === "frame" && msgs[at - 1].c.length === 0, "empty frame first, then run");
+  eq(runs(e.relay), ["play-pause"], "ran");
+  e.move(1, 450, 520); e.advance(200); e.up(1); e.up(2);
+  assert(frames(e.relay).slice(-1)[0].c.length === 0, "claimed fingers stay off the laptop");
+});
+
+await run("two-hold: a two-finger scroll is never claimed — it moved", async (e) => {
+  gEnv(e, { "two-hold": "play-pause" });
+  e.down(1, 400, 500); e.down(2, 500, 500);
+  e.advance(100); e.move(1, 400, 530); e.move(2, 500, 530);
+  e.advance(800);
+  eq(runs(e.relay), [], "no claim");
+  assert(frames(e.relay).at(-1).c.length === 2, "both fingers still on the laptop");
+});
+
+await run("a three-finger swipe is forwarded exactly as without gestures, with every gesture assigned", async () => {
+  const drive = (e) => {
+    for (let i = 1; i <= 3; i++) { e.down(i, 300 + i * 60, 500); e.advance(8); }
+    for (let s = 1; s <= 6; s++) { for (let i = 1; i <= 3; i++) e.move(i, 300 + i * 60 + s * 20, 500); e.advance(16); }
+    for (let i = 1; i <= 3; i++) e.up(i);
+    e.advance(50);
+    return frames(e.relay);
+  };
+  const a = makeEnv(); gEnv(a, ALL);
+  const b = makeEnv(); gEnv(b, {}); b.W.padGestures.detach();
+  eq(drive(a), drive(b), "identical frames");
+  eq(runs(a.relay), [], "nothing ran");
+});
 
 // ── gesture hints (js/pad_hints.js): what the picture says the fingers are doing ───────
 const F = (x0, y0, x, y) => ({ x0, y0, x, y });
