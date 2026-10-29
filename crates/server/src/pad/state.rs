@@ -12,6 +12,7 @@ use wado_config::schema::Trackpad;
 use wado_protocol::pad::{Contact, Mod, PadMsg, newer};
 
 use super::arrivals::Arrivals;
+use super::delay::Delay;
 use super::keys::{char_code, key_code};
 use super::pacer::Pacer;
 
@@ -60,7 +61,7 @@ impl Pad {
             finger_silence_ms: cfg.finger_silence_ms,
             key_silence_ms: cfg.key_silence_ms,
             smoothing: cfg.smoothing,
-            pacer: Pacer::new(cfg.direct_delay_ms),
+            pacer: Pacer::new(Delay::from_config(cfg)),
             arrivals: Arrivals::default(),
             sink,
             size: None,
@@ -151,7 +152,8 @@ impl Pad {
                 err.get_or_insert(e);
             }
         }
-        if let Some(line) = self.arrivals.report(now_ms) {
+        self.arrivals.starve(self.pacer.take_starved());
+        if let Some(line) = self.arrivals.report(now_ms, self.pacer.delay_ms()) {
             info!("{line}");
         }
         if self.down && now_ms.saturating_sub(self.last_frame_ms) > self.finger_silence_ms {
@@ -527,9 +529,9 @@ mod tests {
         let (mut p, rec) = smooth_pad();
         p.handle(1000, frame(1, vec![(0, 1, 1)]), false);
         assert_eq!(rec.calls().len(), 0, "not written on arrival");
-        p.tick(1007);
-        assert_eq!(rec.calls().len(), 0, "the direct delay is 8 ms");
-        p.tick(1008);
+        p.tick(1023);
+        assert_eq!(rec.calls().len(), 0, "unmeasured, the delay is 24 ms");
+        p.tick(1024);
         assert_eq!(rec.calls(), vec![Call::Touch((390, 800), vec![(0, 1, 1)])]);
     }
 
@@ -555,7 +557,7 @@ mod tests {
     fn a_smoothed_silent_finger_lifts_once_and_stays_up() {
         let (mut p, rec) = smooth_pad();
         p.handle(1000, frame(1, vec![(0, 1, 1)]), false);
-        p.tick(1008);
+        p.tick(1024);
         p.tick(1401);
         p.tick(1409);
         assert_eq!(
@@ -582,5 +584,22 @@ mod tests {
         p.handle(1005, frame(2, vec![]), false);
         p.tick(2000);
         assert_eq!(rec.calls(), vec![Call::Touch((390, 800), vec![])]);
+    }
+
+    #[test]
+    fn the_delay_comes_from_config() {
+        let rec = Rec::default();
+        let cfg = wado_config::schema::Trackpad {
+            delay: wado_config::schema::trackpad::TrackpadDelay::Fixed,
+            direct_delay_ms: 8,
+            ..Default::default()
+        };
+        let mut p = Pad::with_config(Box::new(rec.clone()), &cfg);
+        p.handle(0, PadMsg::Size { w: 390, h: 800 }, false);
+        p.handle(1000, frame(1, vec![(0, 1, 1)]), false);
+        p.tick(1007);
+        assert_eq!(rec.calls().len(), 0);
+        p.tick(1008);
+        assert_eq!(rec.calls().len(), 1);
     }
 }
