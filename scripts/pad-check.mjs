@@ -193,15 +193,18 @@ function field() {
   const l = {};
   return { value: "", addEventListener: (e, f) => { l[e] = f; }, removeEventListener: () => {}, l };
 }
+// K.attach seeds the field with the sentinel; every direct f.value assignment below stands in
+// for the real keyboard's full field content, so it must keep the sentinel on the front.
+const SENTINEL = "​";
 
 await run("latched Super then the keyboard's 1 → a shortcut, not text", async (e) => {
   e.W.pad.start();
   const f = field();
   e.W.padKeys.attach(f);
   e.W.padKeys.tapMod("super");
-  f.value = "1"; f.l.input({ isComposing: false });
+  f.value = SENTINEL + "1"; f.l.input({ isComposing: false });
   eq(padIn(e.relay).filter((m) => m.k !== "ping"), [{ k: "char", ch: "1", mods: ["super"] }], "char");
-  eq([f.value, e.W.padKeys.mods.super], ["", "off"], "field cleared, latch off");
+  eq([f.value, e.W.padKeys.mods.super], [SENTINEL, "off"], "field cleared, latch off");
 });
 
 await run("double-tap locks a modifier (hold), tap again releases", async (e) => {
@@ -220,11 +223,11 @@ await run("dictation commits one text; autocorrect is backspaces + text", async 
   const f = field();
   e.W.padKeys.attach(f);
   f.l.compositionstart();
-  f.value = "Hello"; f.l.input({ isComposing: true });
-  f.value = "Hello there."; f.l.compositionend();
+  f.value = SENTINEL + "Hello"; f.l.input({ isComposing: true });
+  f.value = SENTINEL + "Hello there."; f.l.compositionend();
   eq(padIn(e.relay, "text"), [{ k: "text", text: "Hello there." }], "one text");
-  f.value = "Hello there. teh"; f.l.input({ isComposing: false });
-  f.value = "Hello there. the "; f.l.input({ isComposing: false });
+  f.value = SENTINEL + "Hello there. teh"; f.l.input({ isComposing: false });
+  f.value = SENTINEL + "Hello there. the "; f.l.input({ isComposing: false });
   const tail = padIn(e.relay).filter((m) => m.k !== "ping").slice(2);
   eq(tail, [{ k: "key", key: "backspace", mods: [] }, { k: "key", key: "backspace", mods: [] }, { k: "text", text: "he " }], "correction");
 });
@@ -233,9 +236,19 @@ await run("Enter: flushes the text, then presses enter", async (e) => {
   e.W.pad.start();
   const f = field();
   e.W.padKeys.attach(f);
-  f.value = "ls"; f.l.input({ isComposing: false });
+  f.value = SENTINEL + "ls"; f.l.input({ isComposing: false });
   f.l.keydown({ key: "Enter", isComposing: false, preventDefault: () => {} });
   eq(padIn(e.relay).filter((m) => m.k !== "ping"), [{ k: "text", text: "ls" }, { k: "key", key: "enter", mods: [] }], "order");
+});
+
+await run("Gboard's Unidentified backspace on an empty field: sentinel gone → one backspace, restored", async (e) => {
+  e.W.pad.start();
+  const f = field();
+  e.W.padKeys.attach(f);
+  eq(f.value, SENTINEL, "field seeded with the sentinel");
+  f.value = ""; f.l.input({ isComposing: false }); // Gboard deleted it; no keydown at all
+  eq(padIn(e.relay).filter((m) => m.k !== "ping"), [{ k: "key", key: "backspace", mods: [] }], "one backspace");
+  eq(f.value, SENTINEL, "sentinel restored");
 });
 
 // ── lifecycle (from the branch review) ─────────────────────────────────────────────────
@@ -276,7 +289,7 @@ await run("locked Ctrl then the keyboard's c → a shortcut", async (e) => {
   const f = field();
   e.W.padKeys.attach(f);
   e.W.padKeys.tapMod("ctrl"); e.advance(50); e.W.padKeys.tapMod("ctrl");
-  f.value = "c"; f.l.input({ isComposing: false });
+  f.value = SENTINEL + "c"; f.l.input({ isComposing: false });
   eq(padIn(e.relay, "char"), [{ k: "char", ch: "c", mods: [] }], "char with Ctrl already held");
 });
 

@@ -164,6 +164,8 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/pad_keys.js"),
     "\n",
+    include_str!("js/pad_feel.js"),
+    "\n",
     include_str!("js/pad_ui.js"),
     "\n",
     include_str!("js/capture.js"),

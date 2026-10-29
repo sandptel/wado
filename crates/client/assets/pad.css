@@ -30,9 +30,54 @@
 .tphint { margin: 0; padding: 0 24px; text-align: center; font-size: 13px; color: var(--dim);
   pointer-events: none; transition: opacity var(--dur) var(--ease); }
 .tparea.touched .tphint { opacity: 0; }
+
+/* Ambient highlight (js/pad_feel.js): a very subtle radial wash under the fingers' centroid,
+ * `--tx`/`--ty` written every frame. Decorative only — stays under WCAG contrast concerns. */
+.tparea::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
+  background: radial-gradient(circle 180px at var(--tx, 50%) var(--ty, 50%),
+    color-mix(in oklab, var(--accent), transparent 94%), transparent 70%);
+  opacity: 0; transition: opacity 300ms var(--ease);
+}
+.tparea.tp-ambient::before { opacity: 1; }
+
+/* Finger ring: position is written straight from the pointer event every frame, never eased.
+ * Only landing (scale + fade in) and lifting (scale + fade out ripple) animate. */
 .tpfinger { position: absolute; left: 0; top: 0; width: 26px; height: 26px; margin: -13px 0 0 -13px;
   border-radius: 50%; border: 2px solid var(--accent); pointer-events: none;
   background: color-mix(in oklab, var(--accent), transparent 80%); }
+.tpfinger.land { animation: tpland-scale 160ms var(--pop), tpland-fade 90ms var(--ease); }
+.tpfinger.lift { animation: tplift 140ms ease-in forwards; }
+@keyframes tpland-scale { from { scale: .6; } to { scale: 1; } }
+@keyframes tpland-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes tplift { from { scale: 1; opacity: 1; } to { scale: 1.5; opacity: 0; } }
+
+/* Halo: a larger, fainter bloom under a landing finger that settles with it — secondary layer. */
+.tphalo { position: absolute; left: 0; top: 0; width: 60px; height: 60px; margin: -30px 0 0 -30px;
+  border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, color-mix(in oklab, var(--accent), transparent 85%), transparent 72%);
+  opacity: 0; scale: .6; }
+.tphalo.land { animation: tphalo-in 220ms var(--spring) forwards; }
+@keyframes tphalo-in { from { opacity: 0; scale: .6; } to { opacity: 1; scale: 1; } }
+
+/* Pinch connector: a thin accent line (rotated + scaled, transform only) plus a midpoint dot,
+ * both tracked 1:1 with the rings, only their opacity animates. */
+.tpconn { position: absolute; left: 0; top: 0; width: 1px; height: 2px; margin-top: -1px;
+  background: color-mix(in oklab, var(--accent), transparent 55%);
+  transform-origin: 0 50%; pointer-events: none; opacity: 0; }
+.tpconn.show { opacity: 1; }
+.tpmid { position: absolute; left: 0; top: 0; width: 6px; height: 6px; margin: -3px 0 0 -3px;
+  border-radius: 50%; background: color-mix(in oklab, var(--accent), transparent 40%);
+  pointer-events: none; opacity: 0; }
+.tpmid.show { opacity: 1; }
+
+/* Three-or-more-finger count chip: follows the centroid 1:1, signals a workspace/gesture swipe. */
+.tpchip { position: absolute; left: 0; top: 0; min-width: 22px; height: 22px; margin: -11px 0 0 -11px;
+  padding: 0 5px; border-radius: 999px; display: grid; place-items: center;
+  background: color-mix(in oklab, var(--accent), transparent 20%); color: var(--on-accent);
+  font: 700 12px var(--mono); pointer-events: none; opacity: 0; }
+.tpchip.show { opacity: 1; }
+
 .tperr[hidden] { display: none; }
 .tperr { position: absolute; left: 12px; right: 12px; top: 12px; margin: 0; font-size: 13px; cursor: pointer; }
 

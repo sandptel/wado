@@ -27,7 +27,6 @@
 
   let root = null;
   let el = {};
-  const fingers = new Map();
 
   function mount() {
     if (root) return;
@@ -94,22 +93,8 @@
       if (m.k === "err") { el.err.textContent = m.message; el.err.hidden = false; paintPill(); }
     });
 
-    // Finger rings: drawn with transform only, never laid out.
-    const ring = (e) => {
-      let f = fingers.get(e.pointerId);
-      if (!f) {
-        f = document.createElement("i");
-        f.className = "tpfinger";
-        el.area.appendChild(f);
-        fingers.set(e.pointerId, f);
-      }
-      const r = el.area.getBoundingClientRect();
-      f.style.transform = `translate(${e.clientX - r.left}px, ${e.clientY - r.top}px)`;
-    };
-    const unring = (e) => { const f = fingers.get(e.pointerId); if (f) { f.remove(); fingers.delete(e.pointerId); } };
-    el.area.addEventListener("pointerdown", (e) => { el.area.classList.add("touched"); ring(e); });
-    el.area.addEventListener("pointermove", (e) => { if (fingers.has(e.pointerId)) ring(e); });
-    for (const ev of ["pointerup", "pointercancel", "lostpointercapture"]) el.area.addEventListener(ev, unring);
+    // First-touch hint fade. The rings, connector, chip and ambient highlight are js/pad_feel.js.
+    el.area.addEventListener("pointerdown", () => el.area.classList.add("touched"));
 
     window.addEventListener("popstate", () => { if (!root.hidden) close(false); });
     if (window.visualViewport) {
@@ -155,6 +140,7 @@
     history.pushState({ wadoPad: true }, "");
     W.pad.start();
     W.padTouch.attach(el.area);
+    W.padFeel.attach(el.area);
     W.padKeys.attach(el.text, el.row);
     paintPill();
     if (saved().keyboard) keyboard(true, false);
@@ -167,10 +153,9 @@
     if (viaHistory && history.state && history.state.wadoPad) { history.back(); return; }
     keyboard(false, false); // closing the trackpad is not choosing "no keyboard"
     W.padTouch.detach();
+    W.padFeel.detach();
     W.padKeys.detach();
     W.pad.stop();
-    for (const f of fingers.values()) f.remove();
-    fingers.clear();
     root.hidden = true;
     root.style.height = "";
     root.style.transform = "";
