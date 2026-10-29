@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 /// two sides cannot disagree on a path.
 pub use apps::AppEntry;
 pub use clip::{ClipEntry, ClipKind};
-pub use config::{ConfigState, HostLimits, PinnedInput, TrackpadPrefs};
+pub use config::{ConfigState, DeviceGrants, HostLimits, PinnedInput, TrackpadPrefs};
 pub use control::{SessionControl, WindowAction, WindowInfo, WindowList};
 pub use host::{HostAction, HostState};
 pub use menu::{MenuItem, MenuSheet};

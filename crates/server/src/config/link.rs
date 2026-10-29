@@ -31,6 +31,7 @@ pub fn state_for(key: &str, gate: &Gate) -> ConfigState {
             .map(Into::into),
         // "May change privileged settings" — the owner, or a device granted `settings`.
         owner: gate.grants(key).settings,
+        grants: grants_for(key, gate),
         error: status.error,
         restart: status.restart,
         shells: cfg.shells.enabled,
@@ -39,6 +40,22 @@ pub fn state_for(key: &str, gate: &Gate) -> ConfigState {
         bind_mod: cfg.binds.modifier.clone(),
         window_rules: cfg.window_rule.len(),
     }
+}
+
+/// What `key` may do, as the phone shows it. `None` for a device the gate does not know (it is
+/// not in yet, so it may do nothing that asks).
+fn grants_for(key: &str, gate: &Gate) -> Option<wado_protocol::config::DeviceGrants> {
+    let d = gate.device(key)?;
+    let g = gate.grants(key);
+    Some(wado_protocol::config::DeviceGrants {
+        name: Gate::typed(&d.name),
+        files: gate.files_access(key).to_string(),
+        shells: g.shells,
+        settings: g.settings,
+        host: g.host,
+        input: g.input,
+        clipboard: g.clipboard,
+    })
 }
 
 /// The owner is named in `security { owner }`, else it is the first device ever trusted.
@@ -130,6 +147,17 @@ mod tests {
         // The rest of its own block is still the owner's to change.
         assert!(permit("k1", &g, "device.k1.name", false).is_err());
         assert!(permit("", &g, "device..trackpad.rail", false).is_err());
+    }
+
+    #[test]
+    fn a_device_is_told_its_own_grants() {
+        let g = gate();
+        g.allow("phone", &["host"], true).unwrap();
+        let mine = grants_for("k1", &g).unwrap();
+        assert!(mine.host && !mine.input && !mine.settings);
+        assert_eq!(mine.name, "phone");
+        assert_eq!(mine.files, "none");
+        assert_eq!(grants_for("nobody", &g), None);
     }
 
     #[test]

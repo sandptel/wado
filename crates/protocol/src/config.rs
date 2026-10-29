@@ -43,6 +43,25 @@ pub struct ConfigState {
     /// `None` when the file has no block for it, and the phone keeps its own copy.
     #[serde(default)]
     pub trackpad: Option<TrackpadPrefs>,
+    /// What this device may do here, so a page can say what is missing — and the exact command
+    /// that allows it — instead of offering a control the daemon will refuse. `None`: a daemon
+    /// from before this was sent; the client then offers everything and lets the daemon say no.
+    #[serde(default)]
+    pub grants: Option<DeviceGrants>,
+}
+
+/// One device's grants as `wado allow` names them (`crates/server/src/gate/grants.rs`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeviceGrants {
+    /// This device as it must be typed after `wado allow` — quoted when it has spaces.
+    pub name: String,
+    /// `none`, `ro` or `rw`.
+    pub files: String,
+    pub shells: bool,
+    pub settings: bool,
+    pub host: bool,
+    pub input: bool,
+    pub clipboard: bool,
 }
 
 /// One device's trackpad layout, as `wado_config::schema::DeviceTrackpad` types it. The phone
