@@ -35,6 +35,7 @@
 //! | [`sysinfo`] | what the computer is |
 //! | [`files`] | the trash, thumbnails |
 //! | [`pty`] | shells on a pseudo-terminal |
+//! | [`video`] | a video backend: its model, the thread it needs, its runner |
 //! | [`fake`] | a fake for every capability, and the contract providers must pass (`fake` feature) |
 
 pub mod audio;
@@ -52,6 +53,7 @@ pub mod registry;
 pub mod service;
 pub mod state;
 pub mod sysinfo;
+pub mod video;
 
 #[cfg(any(test, feature = "fake"))]
 pub mod fake;

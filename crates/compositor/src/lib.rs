@@ -20,6 +20,7 @@
 
 #![allow(irrefutable_let_patterns)]
 
+pub mod backend;
 mod binds;
 pub mod capture;
 pub mod clipboard;
