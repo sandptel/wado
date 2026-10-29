@@ -18,6 +18,17 @@ use std::{
 /// Kept alive for as long as the screenshots run: the sockets answer, the relay serves.
 pub struct Fixture {
     _sockets: Vec<UnixListener>,
+    /// Removed when the fixture goes: the runtime directory (outside the scratch root) and,
+    /// for a live `--fixture` window, the root too.
+    remove: Vec<std::path::PathBuf>,
+}
+
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        for p in &self.remove {
+            let _ = std::fs::remove_dir_all(p);
+        }
+    }
 }
 
 /// The made-up Remote IDs, and how many daemons the stand-in relay says each has.
@@ -25,7 +36,8 @@ const HERE: &str = "418203775";
 const STUDIO: (&str, u32) = ("507912334", 2);
 const DEN: (&str, u32) = ("661045288", 0);
 
-pub fn install(root: &Path) -> std::io::Result<Fixture> {
+/// `keep_root`: leave the scratch root behind (screenshots sit beside it).
+pub fn install(root: &Path, keep_root: bool) -> std::io::Result<Fixture> {
     let _ = std::fs::remove_dir_all(root);
     // A socket path is at most 108 bytes, so the runtime directory lives somewhere short.
     let run = std::env::temp_dir().join(format!("wdfx-{}", std::process::id()));
@@ -133,7 +145,14 @@ pub fn install(root: &Path) -> std::io::Result<Fixture> {
         .iter()
         .filter_map(|i| UnixListener::bind(dirs[1].join(format!("wado-{i}.sock"))).ok())
         .collect();
-    Ok(Fixture { _sockets: sockets })
+    let mut remove = vec![dirs[1].clone()];
+    if !keep_root {
+        remove.push(root.to_path_buf());
+    }
+    Ok(Fixture {
+        _sockets: sockets,
+        remove,
+    })
 }
 
 /// Put a typed pairing's check words to "the computer", as a daemon would.

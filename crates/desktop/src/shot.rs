@@ -44,7 +44,7 @@ pub fn run(dir: &str, size: &str, mut opts: app::Options, fixture: bool) -> i32 
         return 1;
     }
     let _fx = if fixture {
-        match caps::fixture::install(&out.join(".fixture")) {
+        match caps::fixture::install(&out.join(".fixture"), true) {
             Ok(f) => Some(f),
             Err(e) => {
                 eprintln!("fixture: {e}");

@@ -73,7 +73,7 @@ fn main() {
     let _fx = if flag("--fixture") {
         let root =
             std::env::temp_dir().join(format!("wado-desktop-fixture-{}", std::process::id()));
-        match caps::fixture::install(&root) {
+        match caps::fixture::install(&root, false) {
             Ok(f) => Some(f),
             Err(e) => {
                 eprintln!("fixture: {e}");
