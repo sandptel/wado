@@ -1,6 +1,7 @@
 // wado bridge — phone gestures: the few motions a laptop touchpad never makes, claimed for an
-// action the user picked. It sits in front of js/pad_touch.js — every pointer event asks
-// `pass(type, e)` first — and may hold back or swallow a pointer sequence only by these rules:
+// action the user picked. It sits in front of js/pad_touch.js — js/pad_pointer.js asks
+// `pass(type, p)` of every pointer first — and may hold back or swallow a pointer sequence only
+// by these rules:
 //
 //   edge-left / edge-right  one finger landing within 10 px of that edge (as held) and moving
 //                           inward ≥ 40 px within 300 ms. Only that first finger's touches are held,
@@ -20,7 +21,8 @@
 // three-finger swipes and pinches are never claimed.
 //
 //   W.padGestures.attach(el) / detach()
-//   W.padGestures.pass("down" | "move" | "up", e) → true: let js/pad_touch.js have it
+//   W.padGestures.pass("down" | "move" | "up", p) → true: let js/pad_touch.js have it
+//                                                    p = {id, x, y, w, h} in the pad's own px
 //   W.padGestures.onDone(fn(action, {ok, message}))
 
 (() => {
@@ -37,10 +39,10 @@
   const TWO_STILL_PX = 8;
 
   let el = null;
-  const fingers = new Map(); // pointerId → {x0, y0, x, y, e}
+  const fingers = new Map(); // pointerId → {x0, y0, x, y, p}
   let mode = null; // null | "edge-hold" | "edge" | "four" | "two" — the claim on this sequence
   let start = 0; // the first finger of this sequence landed
-  let edge = null; // {side, id, held: [[type, e]…], fired, timer}
+  let edge = null; // {side, id, held: [[type, p]…], fired, timer}
   let four = null; // {fourth, frozen: [ids]}
   let twoTimer = 0;
   const doneFns = [];
@@ -51,9 +53,8 @@
     const id = W.padPrefs.get().gestures[name];
     return id ? W.padActions.byId(id) : null;
   }
-  function local(e) { return W.padOrient.toPad(e.clientX, e.clientY, el.getBoundingClientRect()); }
   const dist = (f) => Math.hypot(f.x - f.x0, f.y - f.y0);
-  const feed = (type, e) => W.padTouch.feed(type, e);
+  const feed = (type, p) => W.padTouch.feed(type, p);
 
   // ── visuals: an accent glow on the edge, a pulse where a claim happened ─────────────────
   let glow = null;
@@ -130,9 +131,9 @@
     four = null;
     mode = null;
     W.padTouch.drop(f4.frozen.filter((id) => !fingers.has(id))); // lifted while held
-    for (const id of f4.frozen) { const f = fingers.get(id); if (f) feed("move", f.e); }
+    for (const id of f4.frozen) { const f = fingers.get(id); if (f) feed("move", f.p); }
     const f = fingers.get(f4.fourth);
-    if (f) feed("down", f.e);
+    if (f) feed("down", f.p);
   }
 
   function fourEnd() {
@@ -159,12 +160,11 @@
   }
 
   // ── the gate ─────────────────────────────────────────────────────────────────────────
-  function down(e) {
-    const p = local(e);
-    const f = { x0: p.x, y0: p.y, x: p.x, y: p.y, e };
+  function down(p) {
+    const f = { x0: p.x, y0: p.y, x: p.x, y: p.y, p };
     const first = fingers.size === 0;
     if (first) { start = now(); mode = null; }
-    fingers.set(e.pointerId, f);
+    fingers.set(p.id, f);
 
     if (mode === "edge-hold") { edgeRelease(); return true; } // a second finger: no edge swipe
     if (mode) return false; // claimed: later fingers are part of it
@@ -174,7 +174,7 @@
       const action = side && actionFor(side);
       if (action) {
         mode = "edge-hold";
-        edge = { side, id: e.pointerId, held: [["down", e]], fired: false, action, timer: setTimeout(edgeDecide, HOLD_BACK_MS) };
+        edge = { side, id: p.id, held: [["down", p]], fired: false, action, timer: setTimeout(edgeDecide, HOLD_BACK_MS) };
         return false;
       }
     }
@@ -183,8 +183,8 @@
       const action = actionFor("four-tap");
       if (action && [...fingers.values()].every((g) => dist(g) < FOUR_STILL_PX)) {
         mode = "four";
-        const others = [...fingers.keys()].filter((id) => id !== e.pointerId);
-        four = { fourth: e.pointerId, frozen: others, action, moved: false, x: 0, y: 0 };
+        const others = [...fingers.keys()].filter((id) => id !== p.id);
+        four = { fourth: p.id, frozen: others, action, moved: false, x: 0, y: 0 };
         const fs = [...fingers.values()];
         four.x = fs.reduce((s, g) => s + g.x, 0) / 4;
         four.y = fs.reduce((s, g) => s + g.y, 0) / 4;
@@ -198,16 +198,15 @@
     return true;
   }
 
-  function move(e) {
-    const f = fingers.get(e.pointerId);
+  function move(p) {
+    const f = fingers.get(p.id);
     if (!f) return true;
-    const p = local(e);
-    f.x = p.x; f.y = p.y; f.e = e;
+    f.x = p.x; f.y = p.y; f.p = p;
     if (mode === "edge-hold") {
-      if (e.pointerId === edge.id) { edge.held.push(["move", e]); edgeCheck(f); }
+      if (p.id === edge.id) { edge.held.push(["move", p]); edgeCheck(f); }
       return false;
     }
-    if (mode === "edge") { if (edge && e.pointerId === edge.id) edgeCheck(f); return false; }
+    if (mode === "edge") { if (edge && p.id === edge.id) edgeCheck(f); return false; }
     if (mode === "four") {
       if (dist(f) >= FOUR_STILL_PX) { four.moved = true; fourHandBack(); return true; }
       return false;
@@ -217,12 +216,12 @@
     return true;
   }
 
-  function up(e) {
-    if (!fingers.has(e.pointerId)) return true;
+  function up(p) {
+    if (!fingers.has(p.id)) return true;
     const was = mode;
     let pass = true;
     if (was === "edge-hold") {
-      if (e.pointerId === edge.id) edgeRelease(); // a tap at the edge: forwarded as a tap
+      if (p.id === edge.id) edgeRelease(); // a tap at the edge: forwarded as a tap
     } else if (was === "four") {
       pass = false;
     } else if (was) {
@@ -230,7 +229,7 @@
     } else {
       twoCancel();
     }
-    fingers.delete(e.pointerId);
+    fingers.delete(p.id);
     if (!fingers.size) {
       if (was === "four" && four) fourEnd();
       if (edge) { clearTimeout(edge.timer); edge = null; }
@@ -241,11 +240,11 @@
     return pass;
   }
 
-  G.pass = (type, e) => {
+  G.pass = (type, p) => {
     if (!el) return true;
-    if (type === "down") return down(e);
-    if (type === "move") return move(e);
-    return up(e);
+    if (type === "down") return down(p);
+    if (type === "move") return move(p);
+    return up(p);
   };
 
   G.attach = (node) => {

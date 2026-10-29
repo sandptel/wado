@@ -6,9 +6,11 @@
 // Tracking is always 1:1 and unesed — a ring's position is the pointer's position, this frame,
 // full stop; only landing, lifting and the group overlays (connector/chip/ambient) animate.
 // Pointer events can arrive faster than paint, so positions are written to a pending map and
-// flushed to the DOM once per `requestAnimationFrame`.
+// flushed to the DOM once per `requestAnimationFrame`. They come from js/pad_pointer.js, after
+// the send, already in the pad's own frame.
 //
 //   W.padFeel.attach(el) / detach()
+//   W.padFeel.input("down" | "move" | "up", p)   p = {id, x, y, w, h} in the pad's own px
 
 (() => {
   const F = (W.padFeel = {});
@@ -30,8 +32,7 @@
 
   // In the pad's own frame (js/pad_orient.js): the rings are children of the pad, so when it is
   // drawn turned they must be placed in its turned coordinates, not the screen's.
-  function place(f, e) {
-    const p = W.padOrient.toPad(e.clientX, e.clientY, el.getBoundingClientRect());
+  function place(f, p) {
     f.x = p.x;
     f.y = p.y;
   }
@@ -119,8 +120,8 @@
     chipEl.classList.remove("show");
   }
 
-  function land(e) {
-    if (fingers.has(e.pointerId)) return;
+  function land(p) {
+    if (fingers.has(p.id)) return;
     const ring = document.createElement("i");
     ring.className = "tpfinger";
     let halo = null;
@@ -131,8 +132,8 @@
       el.insertBefore(halo, ring);
     }
     const f = { ring, halo, x: 0, y: 0 };
-    place(f, e);
-    fingers.set(e.pointerId, f);
+    place(f, p);
+    fingers.set(p.id, f);
     const t = `translate(${f.x}px, ${f.y}px)`;
     ring.style.transform = t;
     if (halo) halo.style.transform = t;
@@ -147,10 +148,10 @@
     schedule();
   }
 
-  function lift(e) {
-    const f = fingers.get(e.pointerId);
+  function lift(p) {
+    const f = fingers.get(p.id);
     if (!f) return;
-    fingers.delete(e.pointerId);
+    fingers.delete(p.id);
     const { ring, halo } = f;
     if (halo) {
       if (reduced()) halo.remove();
@@ -172,25 +173,27 @@
     schedule();
   }
 
-  function move(e) {
-    const f = fingers.get(e.pointerId);
+  function move(p) {
+    const f = fingers.get(p.id);
     if (!f) return;
-    place(f, e);
+    place(f, p);
     schedule();
   }
 
-  const on = [["pointerdown", land], ["pointermove", move], ["pointerup", lift],
-    ["pointercancel", lift], ["lostpointercapture", lift]];
+  F.input = (type, p) => {
+    if (!el) return;
+    if (type === "down") land(p);
+    else if (type === "move") move(p);
+    else lift(p);
+  };
 
   F.attach = (node) => {
     F.detach();
     el = node;
-    for (const [ev, fn] of on) el.addEventListener(ev, fn);
   };
 
   F.detach = () => {
     if (!el) return;
-    for (const [ev, fn] of on) el.removeEventListener(ev, fn);
     if (raf) { cancelAnimationFrame(raf); raf = 0; }
     for (const f of fingers.values()) { f.ring.remove(); if (f.halo) f.halo.remove(); }
     fingers.clear();

@@ -7,7 +7,8 @@
 // modifier row and a text line over the phone's own keyboard, with the pad still live above.
 // Landscape (js/pad_orient.js) puts a rail down the left (js/pad_rail.js): keys, quick actions
 // (js/pad_actions.js) or nothing, per this device's settings (js/pad_prefs.js).
-// The wire is js/pad_link.js, touches js/pad_touch.js, keys js/pad_keys.js.
+// The wire is js/pad_link.js, touches js/pad_touch.js (fed by js/pad_pointer.js, the one owner of
+// the pad's pointer listeners), keys js/pad_keys.js.
 
 (() => {
   const CLOSE = W.padIcon("x");
@@ -199,6 +200,7 @@
     W.padOrient.attach(root);
     W.pad.start();
     W.padActions.refresh();
+    W.padPointer.attach(el.area);
     W.padTouch.attach(el.area);
     W.padGestures.attach(el.area);
     W.padFeel.attach(el.area);
@@ -218,6 +220,7 @@
     W.padSettings.hide();
     W.padOrient.detach();
     keyboard(false);
+    W.padPointer.detach();
     W.padTouch.detach();
     W.padGestures.detach();
     W.padFeel.detach();

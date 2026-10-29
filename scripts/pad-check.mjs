@@ -1,23 +1,23 @@
 // Runnable check for the trackpad's client side: js/pad_link.js, js/pad_prefs.js,
 // js/pad_orient.js, js/pad_touch.js, js/pad_keys.js, js/pad_icons.js, js/pad_actions.js,
 // js/pad_rail.js, js/pad_settings.js (views on the DOM shim in scripts/lib/pad-dom.mjs),
-// js/pad_hints.js, js/pad_gestures.js (on the fake clock).
+// js/pad_hints.js, js/pad_gestures.js, js/pad_feel.js, js/pad_pointer.js (on the fake clock).
 //
 // Loads the real modules into a stub `W` with a fake clock, a fake relay and a fake
 // RTCPeerConnection, drives them, and asserts the wire messages.
 //
 // Run:  node scripts/pad-check.mjs
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { makeDocument } from "./lib/pad-dom.mjs";
 
 const js = (f) => readFileSync(new URL(`../crates/client/src/js/${f}`, import.meta.url), "utf8");
 const MODULES = ["pad_link.js", "pad_prefs.js", "pad_orient.js", "pad_touch.js", "pad_gestures.js", "pad_keys.js",
-  "pad_icons.js", "pad_actions.js", "pad_rail.js", "pad_hints.js", "pad_settings.js"];
+  "pad_feel.js", "pad_icons.js", "pad_actions.js", "pad_rail.js", "pad_hints.js", "pad_pointer.js", "pad_settings.js"];
 const src = MODULES.map(js).join("\n");
 
 class FakeDC {
-  constructor(label, opts) { this.label = label; this.opts = opts; this.readyState = "connecting"; this.sent = []; }
-  send(s) { this.sent.push(JSON.parse(s)); }
+  constructor(label, opts, record) { this.label = label; this.opts = opts; this.readyState = "connecting"; this.sent = []; this.record = record; }
+  send(s) { this.sent.push(JSON.parse(s)); this.record(this.label, JSON.parse(s)); }
   open() { this.readyState = "open"; if (this.onopen) this.onopen(); }
 }
 
@@ -27,22 +27,43 @@ function makeStorage() {
   return { m, getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k) };
 }
 
-function makeEnv({ storage = makeStorage(), hostConfig = null } = {}) {
+// `faithful`: the pad's area is a DOM-shim element with every pointer module attached the way
+// js/pad_ui.js attaches them, and microtasks run as a browser runs them — after each listener
+// and each timer returns — instead of at once. The other checks keep the simpler stand-in.
+function makeEnv({ storage = makeStorage(), hostConfig = null, faithful = false } = {}) {
   let now = 0;
   let timers = [];
   const add = (f, ms, every) => { const t = { f, at: now + ms, every }; timers.push(t); return t; };
+  const micro = [];
+  const drain = () => { while (micro.length) micro.shift()(); };
+  // Animation frames: a vsync every 16 ms on the fake clock runs what was requested before it.
+  let frames = [];
+  let frameCount = 0;
+  const paintErrors = [];
   const clock = {
     performance: { now: () => now },
     setTimeout: (f, ms) => add(f, ms, 0),
     clearTimeout: (t) => { timers = timers.filter((x) => x !== t); },
     setInterval: (f, ms) => add(f, ms, ms),
     clearInterval: (t) => { timers = timers.filter((x) => x !== t); },
+    requestAnimationFrame: (f) => { const t = { f }; frames.push(t); return t; },
+    cancelAnimationFrame: (t) => { frames = frames.filter((x) => x !== t); },
   };
+  add(() => {
+    frameCount++;
+    const due = frames;
+    frames = [];
+    // The shim does not parse innerHTML, so a painter that looks inside its own markup throws
+    // here. That is the shim's gap, and painting never sends, so it is kept apart from checks.
+    for (const t of due) { try { t.f(now); } catch (err) { paintErrors.push(err.message); } drain(); }
+  }, 16, 16);
   const relay = [];
+  const log = []; // every message out, by any path, in order: [ms, path, msg]
+  const record = (path, msg) => log.push([now, path, msg]);
   const pcs = [];
   class RTCPeerConnection {
     constructor() { this.dcs = []; this.iceGatheringState = "complete"; this.connectionState = "new"; pcs.push(this); }
-    createDataChannel(label, opts) { const dc = new FakeDC(label, opts); this.dcs.push(dc); return dc; }
+    createDataChannel(label, opts) { const dc = new FakeDC(label, opts, record); this.dcs.push(dc); return dc; }
     async createOffer() { return { type: "offer", sdp: "x" }; }
     async setLocalDescription(d) { this.localDescription = d; }
     async setRemoteDescription(d) { this.remote = d; }
@@ -53,20 +74,28 @@ function makeEnv({ storage = makeStorage(), hostConfig = null } = {}) {
   document.addEventListener = (e, f) => { docListeners[e] = f; };
   const W = { _relayHandlers: {}, clientKey: "dev-1", hostConfig };
   W.relayOn = (type, fn) => { W._relayHandlers[type] = fn; };
-  W.relaySendMsg = (o) => { relay.push(o); return true; };
-  const globals = { ...clock, RTCPeerConnection, document, localStorage: storage, queueMicrotask: (f) => f() };
+  W.relaySendMsg = (o) => { relay.push(o); record("relay", o); return true; };
+  const globals = { ...clock, RTCPeerConnection, document, localStorage: storage,
+    queueMicrotask: faithful ? (f) => micro.push(f) : (f) => f(),
+    addEventListener: () => {}, removeEventListener: () => {} };
   new Function("W", ...Object.keys(globals), src)(W, ...Object.values(globals));
 
   W.configSet = (key, value) => relay.push({ type: "config_set", key, value: String(value ?? ""), confirmed: false });
   const listeners = {};
   const rect = { left: 0, top: 0, width: 1000, height: 1000 };
-  const el = {
-    getBoundingClientRect: () => ({ ...rect }),
-    addEventListener: (e, f) => { listeners[e] = f; },
-    removeEventListener: () => {},
+  const reads = { n: 0 }; // getBoundingClientRect calls on the pad
+  const el = faithful ? document.createElement("div") : {};
+  Object.assign(el, {
+    getBoundingClientRect: () => { reads.n++; return { ...rect }; },
+    addEventListener: (e, f) => { (listeners[e] ||= []).push(f); },
+    removeEventListener: (e, f) => { listeners[e] = (listeners[e] || []).filter((x) => x !== f); },
     setPointerCapture: () => {},
-  };
+  });
+  W.padPointer.attach(el); // the pad's only pointer listeners, as js/pad_ui.js attaches them
+  if (faithful) for (const m of ["padTouch", "padGestures", "padFeel", "padHints"]) W[m].attach(el); // js/pad_ui.js's order
   const ev = (id, x, y) => ({ pointerId: id, clientX: x, clientY: y, preventDefault: () => {} });
+  // A browser runs each listener, then the microtasks it queued, before the next listener.
+  const fire = (type, e) => { for (const f of listeners[type] || []) { f(e); drain(); } };
   const advance = (ms) => {
     const end = now + ms;
     for (;;) {
@@ -75,17 +104,19 @@ function makeEnv({ storage = makeStorage(), hostConfig = null } = {}) {
       now = due.at;
       if (due.every) due.at += due.every; else timers = timers.filter((x) => x !== due);
       due.f();
+      drain();
     }
     now = end;
   };
-  const tick = () => new Promise((r) => setImmediate(r));
+  const tick = () => new Promise((r) => setImmediate(r)).then(drain);
   return {
-    W, relay, pcs, el, rect, advance, tick, docListeners, document, now: () => now,
+    W, relay, log, pcs, el, rect, reads, advance, tick, docListeners, document, now: () => now,
+    frames: () => frameCount, paintErrors,
     out: (msg) => W._relayHandlers.pad_out({ msg }),
-    down: (id, x, y) => listeners.pointerdown(ev(id, x, y)),
-    move: (id, x, y) => listeners.pointermove(ev(id, x, y)),
-    up: (id) => listeners.pointerup(ev(id, 0, 0)),
-    cancel: (id) => listeners.pointercancel(ev(id, 0, 0)),
+    down: (id, x, y) => fire("pointerdown", ev(id, x, y)),
+    move: (id, x, y) => fire("pointermove", ev(id, x, y)),
+    up: (id) => fire("pointerup", ev(id, 0, 0)),
+    cancel: (id) => fire("pointercancel", ev(id, 0, 0)),
   };
 }
 
@@ -462,12 +493,11 @@ await run("a gesture whose action this computer does not offer is not claimed", 
   e.down(1, 5, 500);
   eq(padIn(e.relay, "frame").map((m) => m.c.length), [1], "forwarded at once");
 });
-function gEnv(e, gestures = {}) {
+function gEnv(e, gestures = {}, attach = true) {
   e.W.pad.start();
   e.out({ k: "action_list", actions: GACTIONS });
   for (const [g, id] of Object.entries(gestures)) e.W.padPrefs.setGesture(g, id);
-  e.W.padTouch.attach(e.el);
-  e.W.padGestures.attach(e.el);
+  if (attach) { e.W.padTouch.attach(e.el); e.W.padGestures.attach(e.el); }
   e.relay.length = 0;
 }
 const frames = (relay) => padIn(relay, "frame");
@@ -723,6 +753,129 @@ await run("switching to direct re-holds locked modifiers", async (e) => {
   await goDirect(e);
   const keys = e.pcs[0].dcs[1];
   assert(keys.sent.some((m) => m.k === "hold" && m.mods[0] === "super"), "hold re-sent on the keys channel");
+});
+
+// ── one pointer pipeline (js/pad_pointer.js) ─────────────────────────────────────────────
+// Every message out, by every path, timed, for the touch and gesture scenarios above, driven
+// with the whole pad attached (touch, gestures, rings, hints) and browser-order microtasks.
+// `scripts/fixtures/pad-sends.json` was recorded from the pad before js/pad_pointer.js, when
+// each module listened on its own (commit c86b6d8): the send path must match it byte for byte.
+// Re-record only for a deliberate wire change:  node scripts/pad-check.mjs --record
+const SENDS = new URL("./fixtures/pad-sends.json", import.meta.url);
+const SCENARIOS = {
+  "direct down, move, up": async (e) => {
+    e.W.pad.start(); await goDirect(e);
+    e.down(1, 500, 500); e.move(1, 510, 500); e.up(1); e.advance(100);
+  },
+  "direct two fingers, several moves per frame": async (e) => {
+    e.W.pad.start(); await goDirect(e);
+    e.down(1, 300, 500); e.advance(4); e.down(2, 500, 500);
+    for (let s = 1; s <= 8; s++) { for (let k = 0; k < 2; k++) { e.move(1, 300 + s * 9 + k, 500); e.move(2, 500 + s * 9 + k, 500); } e.advance(16); }
+    e.up(1); e.advance(3); e.up(2); e.advance(100);
+  },
+  "relayed coalescing, tap, keepalive, cancel": async (e) => {
+    e.W.pad.start();
+    e.down(1, 100, 100); for (let i = 0; i < 10; i++) e.move(1, 100 + i, 100); e.advance(16);
+    e.advance(250); e.up(1); e.advance(16);
+    e.down(2, 0, 0); e.down(3, 0, 0); e.up(2); e.down(4, 0, 0); e.cancel(3); e.cancel(4); e.advance(50);
+  },
+  "turned, then turning and flipping mid-touch": async (e) => {
+    Object.assign(e.rect, { width: 400, height: 800 });
+    e.W.padOrient.rotate(90); e.W.pad.start();
+    e.down(1, 200, 0); e.move(1, 200, 400); e.advance(16);
+    Object.assign(e.rect, { width: 1000, height: 600 }); e.W.padOrient.rotate(-90);
+    e.move(1, 200, 200); e.advance(200); e.up(1);
+    e.down(2, 300, 300); e.advance(16); e.W.padOrient.rotate(90); e.advance(50);
+  },
+  "gestures: edge swipe, edge drag, edge tap": async (e) => {
+    gEnv(e, { "edge-left": "workspace-prev" }, false);
+    e.down(1, 8, 500); e.advance(20); e.move(1, 30, 502); e.advance(20); e.move(1, 60, 505); e.advance(100); e.up(1); e.advance(100);
+    e.down(2, 5, 500); e.advance(20); e.move(2, 7, 540); e.advance(40); e.move(2, 9, 600); e.advance(16); e.up(2); e.advance(50);
+    e.down(3, 5, 500); e.advance(30); e.up(3); e.advance(100);
+  },
+  "gestures: edge-right turned": async (e) => {
+    Object.assign(e.rect, { width: 400, height: 800 }); e.W.padOrient.rotate(90);
+    gEnv(e, { "edge-right": "workspace-next" }, false);
+    e.down(1, 200, 795); e.advance(20); e.move(1, 200, 740); e.advance(40); e.up(1); e.advance(50);
+  },
+  "gestures: four-tap claimed, then a four-finger swipe handed back": async (e) => {
+    gEnv(e, { "four-tap": "lock" }, false);
+    for (let i = 1; i <= 4; i++) { e.down(i, 200 + i * 80, 500); e.advance(10); }
+    for (let i = 1; i <= 4; i++) { e.up(i); e.advance(10); }
+    e.advance(300);
+    for (let i = 1; i <= 4; i++) { e.down(i, 200 + i * 80, 500); e.advance(5); }
+    for (let i = 1; i <= 4; i++) e.move(i, 200 + i * 80 + 30, 500);
+    e.advance(16); for (let i = 1; i <= 4; i++) e.up(i); e.advance(300);
+  },
+  "gestures: two-hold claimed, a two-finger scroll not": async (e) => {
+    gEnv(e, { "two-hold": "play-pause" }, false);
+    e.down(1, 400, 500); e.down(2, 500, 500); e.advance(650);
+    e.move(1, 450, 520); e.advance(200); e.up(1); e.up(2); e.advance(50);
+    e.down(3, 400, 500); e.down(4, 500, 500); e.advance(100); e.move(3, 400, 530); e.move(4, 500, 530); e.advance(800);
+    e.up(3); e.up(4); e.advance(50);
+  },
+  "gestures: a three-finger swipe with every gesture assigned": async (e) => {
+    gEnv(e, ALL, false);
+    for (let i = 1; i <= 3; i++) { e.down(i, 300 + i * 60, 500); e.advance(8); }
+    for (let s = 1; s <= 6; s++) { for (let i = 1; i <= 3; i++) e.move(i, 300 + i * 60 + s * 20, 500); e.advance(16); }
+    for (let i = 1; i <= 3; i++) e.up(i);
+    e.advance(50);
+  },
+};
+{
+  const got = {};
+  for (const [name, steps] of Object.entries(SCENARIOS)) {
+    const e = makeEnv({ faithful: true });
+    await steps(e);
+    await e.tick(); // the offer settles
+    got[name] = JSON.parse(JSON.stringify(e.log));
+  }
+  if (process.argv.includes("--record")) {
+    mkdirSync(new URL("./fixtures/", import.meta.url), { recursive: true });
+    writeFileSync(SENDS, JSON.stringify(got, null, 1) + "\n");
+    console.log(`recorded ${SENDS.pathname}`);
+  }
+  const want = JSON.parse(readFileSync(SENDS, "utf8"));
+  for (const name of Object.keys(SCENARIOS)) {
+    await run(`same sends as before the pipeline: ${name}`, async () => {
+      assert(got[name].length > 0, "nothing was sent");
+      eq(got[name], want[name], "sends");
+    });
+  }
+}
+
+await run("the pad's box is read at most once per animation frame, however many pointers move", async () => {
+  const e = makeEnv({ faithful: true });
+  e.W.pad.start();
+  for (let i = 1; i <= 3; i++) e.down(i, 200 + i * 100, 500);
+  e.advance(16);
+  const before = { reads: e.reads.n, frames: e.frames() };
+  let moves = 0;
+  for (let f = 1; f <= 20; f++) {
+    for (let k = 0; k < 2; k++) for (let i = 1; i <= 3; i++) { e.move(i, 200 + i * 100 + f * 5 + k, 500); moves++; }
+    e.advance(16);
+  }
+  const reads = e.reads.n - before.reads, frames = e.frames() - before.frames;
+  console.log(`     getBoundingClientRect: ${reads} reads for ${moves} moves over ${frames} frames`);
+  assert(reads <= frames, `${reads} reads in ${frames} frames`);
+});
+
+await run("the pictures get each pointer after its frame is sent, and one failing breaks nothing", async () => {
+  const e = makeEnv({ faithful: true });
+  e.W.pad.start();
+  const order = [];
+  const send = e.W.pad.send;
+  e.W.pad.send = (m, lossy) => { if (m.k === "frame") order.push("send"); return send(m, lossy); };
+  const feel = e.W.padFeel.input;
+  e.W.padFeel.input = (t, p) => { order.push("feel"); feel(t, p); throw new Error("a broken picture"); };
+  const hints = e.W.padHints.input;
+  e.W.padHints.input = (t, p) => { order.push("hints"); return hints(t, p); };
+  const quiet = console.error;
+  console.error = () => {};
+  try { e.down(1, 500, 500); } finally { console.error = quiet; }
+  eq(order, ["send", "feel", "hints"], "frame first, then the rings, then the hints");
+  eq(e.el.querySelectorAll(".tpfinger").length, 1, "a ring was drawn");
+  eq(frames(e.relay).at(-1).c, [[0, 32768, 32768]], "the frame went");
 });
 
 if (failures) { console.log(`\n${failures} failed`); process.exit(1); }

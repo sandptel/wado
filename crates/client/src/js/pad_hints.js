@@ -3,12 +3,13 @@
 // closing get pinch arrows and the live scale; three or four fingers sliding get a swipe arrow;
 // four fingers down get their own label; one finger held still fills a ring.
 //
-// Purely a picture. It reads the same pointer events as js/pad_touch.js but on its own passive
-// listeners, sends nothing and delays nothing: libinput on the computer decides what a gesture
-// is, and these hints only mirror the obvious cases. Positions are the pad's own frame
+// Purely a picture. It is handed the same pointers as js/pad_touch.js, after the send, by
+// js/pad_pointer.js; it sends nothing and delays nothing: libinput on the computer decides what
+// a gesture is, and these hints only mirror the obvious cases. Positions are the pad's own frame
 // (js/pad_orient.js) and written once per animation frame, transform/opacity only.
 //
 //   W.padHints.attach(el) / detach()
+//   W.padHints.input("down" | "move" | "up", p)   p = {id, x, y, w, h} in the pad's own px
 //   W.padHints.classify(fingers, ms) → {kind, …} | null   fingers: [{x0, y0, x, y}], ms since
 //                                                         this set of fingers came down
 
@@ -82,8 +83,7 @@
     el.appendChild(g);
   }
 
-  function place(f, e) {
-    const p = W.padOrient.toPad(e.clientX, e.clientY, el.getBoundingClientRect());
+  function place(f, p) {
     f.x = p.x;
     f.y = p.y;
   }
@@ -142,10 +142,10 @@
   }
   function schedule() { if (!raf) raf = requestAnimationFrame(paint); }
 
-  function down(e) {
+  function down(p) {
     const f = { x: 0, y: 0, x0: 0, y0: 0 };
-    place(f, e);
-    fingers.set(e.pointerId, f);
+    place(f, p);
+    fingers.set(p.id, f);
     restart();
     solo = fingers.size === 1;
     // A held finger fills its ring even while nothing moves.
@@ -153,32 +153,34 @@
     if (fingers.size === 1) tick = setTimeout(schedule, HOLD_MS);
     schedule();
   }
-  function move(e) {
-    const f = fingers.get(e.pointerId);
+  function move(p) {
+    const f = fingers.get(p.id);
     if (!f) return;
-    place(f, e);
+    place(f, p);
     schedule();
   }
-  function up(e) {
-    if (!fingers.delete(e.pointerId)) return;
+  function up(p) {
+    if (!fingers.delete(p.id)) return;
     solo = false;
     restart();
     schedule();
   }
 
-  const on = [["pointerdown", down], ["pointermove", move], ["pointerup", up],
-    ["pointercancel", up], ["lostpointercapture", up]];
+  H.input = (type, p) => {
+    if (!el) return;
+    if (type === "down") down(p);
+    else if (type === "move") move(p);
+    else up(p);
+  };
 
   H.attach = (node) => {
     H.detach();
     el = node;
     build();
-    for (const [ev, fn] of on) el.addEventListener(ev, fn, { passive: true });
   };
 
   H.detach = () => {
     if (!el) return;
-    for (const [ev, fn] of on) el.removeEventListener(ev, fn, { passive: true });
     if (raf) { cancelAnimationFrame(raf); raf = 0; }
     clearTimeout(tick);
     fingers.clear();
