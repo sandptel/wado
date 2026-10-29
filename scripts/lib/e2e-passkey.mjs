@@ -97,7 +97,7 @@ export async function enrolAndUnlock(send, waitFor, pk, origin = "https://wado.t
   send({ type: "passkey_begin", purpose: "register" });
   const c1 = await waitFor((m) => m.type === "passkey_challenge" && m.purpose === "register");
   send({ type: "passkey_register", ...(await pk.register(c1.challenge, origin)) });
-  await waitFor((m) => m.type === "passkey_state" && m.registered);
+  await waitFor((m) => m.type === "passkey_state" && m.state.registered);
   return unlock(send, waitFor, pk, origin);
 }
 
@@ -105,5 +105,5 @@ export async function unlock(send, waitFor, pk, origin = "https://wado.test") {
   send({ type: "passkey_begin", purpose: "unlock" });
   const c = await waitFor((m) => m.type === "passkey_challenge" && m.purpose === "unlock");
   send({ type: "passkey_unlock", ...(await pk.assert(c.challenge, origin)) });
-  return waitFor((m) => m.type === "passkey_state" && m.unlocked);
+  return waitFor((m) => m.type === "passkey_state" && m.state.unlocked);
 }
