@@ -95,7 +95,7 @@ mod tests {
     fn back_walks_up_one_level() {
         let k = "r|1".to_string();
         assert_eq!(
-            View::Sub(Some(k.clone()), Page::Trackpad).back(),
+            View::Sub(Some(k.clone()), Page::SoundDevices).back(),
             View::Computer(k.clone())
         );
         assert_eq!(View::Computer(k.clone()).back(), View::Home);
