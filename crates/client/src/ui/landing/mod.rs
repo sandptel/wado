@@ -60,6 +60,16 @@ pub fn render(ui: Ui) -> Element {
                         Icon { name: "term" }
                     }
                 }
+                // The trackpad: this phone as the computer's touchpad and keyboard — no video.
+                if (s.conn_mode)() == "relay" {
+                    button {
+                        class: "iconbtn",
+                        "aria-label": "Use as trackpad — no video",
+                        title: "Use as trackpad — no video",
+                        onclick: move |_| bridge::call("window.__wado.padOpen();".to_string()),
+                        Icon { name: "trackpad" }
+                    }
+                }
                 // The file manager: browse, upload, download — no session needed either.
                 if (s.conn_mode)() == "relay" {
                     button {

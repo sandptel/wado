@@ -156,6 +156,16 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/files_view.js"),
     "\n",
+    // The trackpad. After `relay_link.js` (it registers relay handlers and chains `__up`) and
+    // `wakelock.js`; `pad_link` first, as the others call the `W.pad` it creates.
+    include_str!("js/pad_link.js"),
+    "\n",
+    include_str!("js/pad_touch.js"),
+    "\n",
+    include_str!("js/pad_keys.js"),
+    "\n",
+    include_str!("js/pad_ui.js"),
+    "\n",
     include_str!("js/capture.js"),
     "\n",
     include_str!("js/audio.js"),

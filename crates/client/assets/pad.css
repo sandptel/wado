@@ -1,0 +1,50 @@
+/* The Trackpad screen (js/pad_ui.js). Above the landing (40) and the control centre's sheet
+ * (50), below toasts (70). Colour only from base16 tokens (DESIGN.md). The session's link badge
+ * hides while it is open: the pad has its own pill, for its own link. */
+
+#wado-pad {
+  position: fixed; inset: 0 0 auto 0; height: 100dvh; z-index: 60;
+  display: flex; flex-direction: column; gap: 10px;
+  padding: calc(10px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right))
+    calc(12px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));
+  background: var(--s0); color: var(--text); font-family: var(--body);
+  animation: padin var(--dur-sheet) var(--spring) both;
+}
+#wado-pad[hidden] { display: none; }
+@keyframes padin { from { opacity: 0; translate: 0 16px; } }
+.pad-open .linkbadge { display: none; }
+
+.padhead { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; }
+.padpill { --tone: var(--dim); min-height: 44px; }
+.padpill.good { --tone: var(--good); }
+.padpill.warn { --tone: var(--warn); }
+.padpill.warn .linkdot { animation: breathe 2.4s ease-in-out infinite; }
+.padwhy { flex: none; margin: 0 4px; font-size: 12.5px; line-height: 1.45; color: var(--text); }
+
+.padarea {
+  flex: 1; min-height: 140px; position: relative; overflow: hidden;
+  display: grid; place-items: center;
+  border-radius: var(--r4); background: var(--s1); border: 1px solid var(--line);
+  touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+}
+.padhint { margin: 0; padding: 0 24px; text-align: center; font-size: 13px; color: var(--dim);
+  pointer-events: none; transition: opacity var(--dur) var(--ease); }
+.padarea.touched .padhint { opacity: 0; }
+.padfinger { position: absolute; left: 0; top: 0; width: 26px; height: 26px; margin: -13px 0 0 -13px;
+  border-radius: 50%; border: 2px solid var(--accent); pointer-events: none;
+  background: color-mix(in oklab, var(--accent), transparent 80%); }
+.paderr { position: absolute; left: 12px; right: 12px; top: 12px; margin: 0; font-size: 13px; cursor: pointer; }
+
+.padkeys { flex: none; display: grid; gap: 8px; }
+.padkeys[hidden] { display: none; }
+.padrow { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.padrow button { flex: none; min-width: 44px; height: 44px; padding: 0 12px; border-radius: var(--r2);
+  background: var(--s2); color: var(--bright); font: 600 13px var(--mono);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease), box-shadow var(--dur) var(--ease), scale 120ms var(--ease); }
+.padrow button.latched { color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
+.padrow button.locked { background: var(--accent); color: var(--on-accent); }
+.padsep { flex: none; width: 1px; margin: 8px 2px; background: var(--line); }
+.padtext { min-height: 44px; resize: none; font: 16px/1.4 var(--body); }
+
+.padkb { flex: none; }
+.padkb svg { width: 20px; height: 20px; }
