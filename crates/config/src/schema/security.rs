@@ -17,8 +17,8 @@ pub struct Security {
     /// Anything else reads as `"ask"`.
     pub join: String,
     /// What a newly trusted device may do beyond the desktop, as grant tokens: `files-ro`,
-    /// `files-rw`, `shells`, `settings`, `host`. A pairing code's checklist starts from this;
-    /// a device approved "always" gets exactly this. Files still need a QR pin to count.
+    /// `files-rw`, `shells`, `settings`, `host`, `input`. A pairing code's checklist starts from
+    /// this; a device approved "always" gets exactly this. Files still need a QR pin to count.
     pub new_device: String,
     /// The client key of the device allowed to change privileged settings from the client.
     /// Unset: the first device in `trusted_clients`.

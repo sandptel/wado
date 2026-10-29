@@ -1,7 +1,8 @@
 //! What a trusted device may do beyond seeing and driving the desktop.
 //!
-//! Written as tokens — `files-ro`, `files-rw`, `shells`, `settings`, `host`, `clipboard` — in three places
-//! that must agree: `security { new-device }`, a pairing code's checklist, and `wado allow`.
+//! Written as tokens — `files-ro`, `files-rw`, `shells`, `settings`, `host`, `input`, `clipboard` —
+//! in three places that must agree: `security { new-device }`, a pairing code's checklist, and
+//! `wado allow`.
 //! On a device's `trusted_clients` line, files keep their own column (5) and the rest are
 //! column 6, comma-joined, `-` for none. A line without column 6 predates grants and keeps what
 //! it had then: shells and host controls.
@@ -14,6 +15,7 @@ pub const TOKENS: &[&str] = &[
     "shells",
     "settings",
     "host",
+    "input",
     "clipboard",
 ];
 
@@ -27,6 +29,9 @@ pub struct Grants {
     pub settings: bool,
     /// The computer's sound, Bluetooth and sleep.
     pub host: bool,
+    /// Typing and touching into the host desktop — terminal-equivalent power. Off by default,
+    /// including for every line from before this grant existed.
+    pub input: bool,
     /// The computer's clipboard history — it holds whatever was copied there, passwords too.
     pub clipboard: bool,
 }
@@ -37,6 +42,7 @@ impl Grants {
         shells: false,
         settings: false,
         host: false,
+        input: false,
         clipboard: false,
     };
     pub const ALL: Self = Self {
@@ -44,6 +50,7 @@ impl Grants {
         shells: true,
         settings: true,
         host: true,
+        input: true,
         clipboard: true,
     };
 
@@ -53,6 +60,7 @@ impl Grants {
         shells: true,
         settings: false,
         host: true,
+        input: false,
         clipboard: false,
     };
 
@@ -79,6 +87,7 @@ impl Grants {
             ("shells", _) => self.shells = on,
             ("settings", _) => self.settings = on,
             ("host", _) => self.host = on,
+            ("input", _) => self.input = on,
             ("clipboard", _) => self.clipboard = on,
             _ => {
                 return Err(format!(
@@ -107,6 +116,7 @@ impl Grants {
             shells: self.shells || o.shells,
             settings: self.settings || o.settings,
             host: self.host || o.host,
+            input: self.input || o.input,
             clipboard: self.clipboard || o.clipboard,
         }
     }
@@ -117,6 +127,7 @@ impl Grants {
             (self.shells, "shells"),
             (self.settings, "settings"),
             (self.host, "host"),
+            (self.input, "input"),
             (self.clipboard, "clipboard"),
         ]
         .into_iter()
@@ -190,5 +201,15 @@ mod tests {
         let u = had.union(&code);
         assert_eq!(u.files, "rw");
         assert!(u.shells && u.host);
+    }
+
+    #[test]
+    fn input_is_its_own_token_and_off_by_default() {
+        let g = Grants::parse("host input").unwrap();
+        assert!(g.input && g.host && !g.shells);
+        assert_eq!(Grants::parse(&g.tokens()).unwrap(), g);
+        assert!(!Grants::LEGACY.input);
+        assert!(!Grants::parse("host").unwrap().input);
+        assert!(Grants::ALL.input);
     }
 }
