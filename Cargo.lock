@@ -5960,6 +5960,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "wado-config",
+ "wado-platform",
  "wado-protocol",
  "x264",
 ]
@@ -5972,6 +5973,14 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_path_to_error",
+ "wado-protocol",
+]
+
+[[package]]
+name = "wado-platform"
+version = "0.0.3"
+dependencies = [
+ "tokio",
  "wado-protocol",
 ]
 
