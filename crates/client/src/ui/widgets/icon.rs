@@ -68,16 +68,25 @@ fn path(name: &str) -> &'static str {
         "link" => "M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71",
         "image" => "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM9 7a2 2 0 1 0 0 4a2 2 0 1 0 0-4zM21 15l-5-5L5 21",
         "text" => "M4 6h16M4 12h16M4 18h10",
+        "laptop" => "M5 5h14a1 1 0 0 1 1 1v10H4V6a1 1 0 0 1 1-1zM2 19h20",
+        "grip" => "M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01",
+        "minus" => "M5 12h14",
+        "copy" => "M9 9h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H11a2 2 0 0 1-2-2zM5 15H4a1 1 0 0 1-1-1V5a2 2 0 0 1 2-2h9a1 1 0 0 1 1 1v1",
+        // Filled glyphs (drawn with `fill`): transport controls read heavier solid.
+        "prev-f" => "M5 5h2.5v14H5zM20 5v14L9 12z",
+        "next-f" => "M16.5 5H19v14h-2.5zM4 5l11 7-11 7z",
         "paste" => "M9 4h6v3H9zM8 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M12 18v-7M9 14l3-3 3 3",
         _ => "",
     }
 }
 
+/// `fill`: drawn solid in `currentColor` instead of stroked — for `play`, `pause`, `prev-f`,
+/// `next-f`, where a transport control should read heavier than a line icon.
 #[component]
-pub fn Icon(name: String) -> Element {
+pub fn Icon(name: String, #[props(default)] fill: bool) -> Element {
     rsx! {
         svg {
-            class: "i",
+            class: if fill { "i fill" } else { "i" },
             view_box: "0 0 24 24",
             "aria-hidden": "true",
             path { d: path(&name) }

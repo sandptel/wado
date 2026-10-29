@@ -77,6 +77,7 @@ html, body {
 
 svg.i { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8;
   stroke-linecap: round; stroke-linejoin: round; flex: none; }
+svg.i.fill { fill: currentColor; stroke: none; }
 
 button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; padding: 0;
   transition: scale var(--dur-press) var(--ease), background var(--dur) var(--ease), color var(--dur) var(--ease); }
