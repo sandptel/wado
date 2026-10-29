@@ -56,6 +56,8 @@ pub const OWNER_COL: usize = 6;
 #[derive(Clone, Copy)]
 pub enum Target {
     Cell(Card, usize, usize),
+    /// The answer to a typed pairing's check words: they match, or not.
+    Check(bool),
     /// The QR code: compact ↔ large.
     Zoom,
 }
@@ -197,6 +199,14 @@ impl App {
             self.quit = true;
             return;
         }
+        // A device's check words are on screen: y and n answer them, before anything else.
+        if !self.snap.asking.is_empty() {
+            match k.code {
+                KeyCode::Char('y') => return self.hit(Target::Check(true)),
+                KeyCode::Char('n') => return self.hit(Target::Check(false)),
+                _ => {}
+            }
+        }
         if let Some((key, _)) = self.confirm.take() {
             if k.code == KeyCode::Char('y') {
                 self.done(actions::unpair(&key));
@@ -264,6 +274,21 @@ impl App {
                 self.flip(card, r, c);
             }
             Target::Zoom => self.big_qr = !self.big_qr,
+            Target::Check(yes) => {
+                if let Some(a) = self.snap.asking.first() {
+                    let (typed, device) = (a.typed.clone(), a.device.clone());
+                    let o = if Gate::default().answer(&typed, yes) {
+                        Ok(if yes {
+                            format!("{device} is paired")
+                        } else {
+                            format!("{device} was turned away")
+                        })
+                    } else {
+                        Err(format!("{device} is no longer waiting"))
+                    };
+                    self.done(o);
+                }
+            }
         }
     }
 

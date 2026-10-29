@@ -149,6 +149,7 @@ fn footer(app: &App) -> Paragraph<'static> {
     }
     let mut spans = vec![Span::raw(" ")];
     let hints: &[(&str, &str)] = match app.focus {
+        _ if !app.snap.asking.is_empty() => &[("y", "the words match"), ("n", "they don't")],
         Card::Pair => &[
             ("space", "allow/deny"),
             ("n", "new code"),

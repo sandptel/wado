@@ -27,9 +27,11 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
+pub mod confirm;
 pub mod grants;
 pub mod pairing;
 pub mod typed_code;
+pub use confirm::{CONFIRM_WAIT, Check};
 pub use grants::Grants;
 pub use pairing::{CodeState, Minted, PAIR_TTL};
 use tracing::{info, warn};
@@ -45,6 +47,12 @@ pub const WRONG_CODE: &str = "That code didn't work — check it, or make a new 
 /// Refusal for a QR code that was already used or has run out.
 pub const STALE_CODE: &str = "That pairing code was already used or has expired — make a new \
     one on the computer with `wado pair` (or `wado tui` → Pair).";
+/// Refusal for a typed pairing whose check words someone said did not match, on the computer.
+pub const DECLINED: &str = "The computer said the check words didn't match, so this device \
+    wasn't paired — make a new code on the computer with `wado pair` and try again.";
+/// Refusal for a typed pairing nobody confirmed on the computer in time.
+pub const NO_ANSWER: &str = "Nobody confirmed the check words on the computer within two \
+    minutes, so this device wasn't paired — make a new code with `wado pair` and try again.";
 /// Refusal for an unknown device asking to take a desktop someone is using.
 pub const BUSY_UNPAIRED: &str = "Every desktop on this computer is in use, and this device isn't \
     paired yet — pair it when one is free.";
@@ -60,12 +68,25 @@ fn now_s() -> u64 {
 pub enum Proof {
     /// It sent no code.
     None,
-    /// A live code, in either form — not yet spent.
-    Code(String),
+    /// A live QR code — not yet spent.
+    Qr(String),
+    /// A live typed code — not yet spent. Pairs only once a person confirms the check words.
+    Typed(String),
     /// A QR code that is not live: used, expired or revoked.
     Stale,
     /// A typed code that matched nothing live — a guess, as far as the limit is concerned.
     Wrong,
+}
+
+/// What [`Gate::admit`] let through.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Admitted {
+    /// In: trusted, or just paired by QR.
+    In,
+    /// A typed code checked out and is spent, but the device is **not** trusted yet: the check
+    /// words must be confirmed on the computer first (`confirm`), then [`Gate::confirmed`] pins
+    /// it with these grants.
+    Confirm(Grants),
 }
 
 /// One line of `trusted_clients`, read.
@@ -324,20 +345,28 @@ impl Gate {
         name: &str,
         pk: &str,
         proof: &Proof,
-    ) -> Result<(), &'static str> {
+    ) -> Result<Admitted, &'static str> {
         // A code is the owner's say-so, and it pins whatever key proved it — a re-pair is how
         // a device that lost its key comes back.
         let unknown = match proof {
-            Proof::Code(c) => match self.redeem(c) {
+            Proof::Qr(c) => match self.redeem(c) {
                 Some(g) => {
                     info!(
-                        "gate: {name} paired with a code — trusted and pinned, may: {}",
+                        "gate: {name} paired with a QR code — trusted and pinned, may: {}",
                         g.tokens()
                     );
                     self.set(key, name, pk, true, Some(&g));
-                    return Ok(());
+                    return Ok(Admitted::In);
                 }
                 // Spent between the proof and here — by another daemon of the pool, say.
+                None => STALE_CODE,
+            },
+            // Spent now, so it works once whatever the answer; trusted only on a yes.
+            Proof::Typed(c) => match self.redeem(c) {
+                Some(g) => {
+                    info!("gate: {name} proved a typed code — waiting for the check words");
+                    return Ok(Admitted::Confirm(g));
+                }
                 None => STALE_CODE,
             },
             Proof::Stale => STALE_CODE,
@@ -348,23 +377,33 @@ impl Gate {
             Proof::None => UNPAIRED,
         };
         match self.entry(key) {
-            Some((on_file, _)) if on_file == pk => Ok(()),
+            Some((on_file, _)) if on_file == pk => Ok(Admitted::In),
             Some((on_file, _)) if !on_file.is_empty() => {
                 Err("this device's key is not the one this computer trusts for it")
             }
             Some(_) => {
                 info!("gate: {name} proved a key for the first time — remembered (not pinned)");
                 self.set(key, name, pk, false, None);
-                Ok(())
+                Ok(Admitted::In)
             }
             None => Err(unknown),
         }
+    }
+
+    /// The check words of a typed pairing were confirmed on the computer: trust and pin.
+    pub fn confirmed(&self, key: &str, name: &str, pk: &str, grants: &Grants) {
+        info!(
+            "gate: {name} paired with a typed code, check words confirmed — trusted and pinned, \
+             may: {}",
+            grants.tokens()
+        );
+        self.set(key, name, pk, true, Some(grants));
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Gate, Proof, STALE_CODE, UNPAIRED, WRONG_CODE};
+    use super::{Admitted, Gate, Grants, Proof, STALE_CODE, UNPAIRED, WRONG_CODE};
 
     fn temp() -> Gate {
         let dir = std::env::temp_dir().join(format!("wado-gate-{}", rand::random::<u64>()));
@@ -407,29 +446,52 @@ mod tests {
     }
 
     #[test]
-    fn a_qr_code_and_a_typed_code_each_pair_exactly_once() {
+    fn a_qr_code_pairs_exactly_once_and_at_once() {
         let g = temp();
         let qr = g.mint_pair();
         assert_eq!(
-            g.admit("phone", "Phone", "PK1", &Proof::Code(qr.code.clone())),
-            Ok(())
+            g.admit("phone", "Phone", "PK1", &Proof::Qr(qr.code.clone())),
+            Ok(Admitted::In)
         );
         assert!(g.knows("phone"));
         assert_eq!(g.entry("phone"), Some(("PK1".into(), true)), "pinned");
         // Used: the next device holding the same code gets nothing.
         assert_eq!(
-            g.admit("tab", "Tab", "PK2", &Proof::Code(qr.code.clone())),
+            g.admit("tab", "Tab", "PK2", &Proof::Qr(qr.code.clone())),
             Err(STALE_CODE)
         );
-        let typed = g.mint_pair();
-        assert_eq!(
-            g.admit("laptop", "Laptop", "PK3", &Proof::Code(typed.typed.clone())),
-            Ok(())
+    }
+
+    #[test]
+    fn a_typed_code_is_spent_once_and_pins_nothing_until_confirmed() {
+        let g = temp();
+        let m = g.mint_pair_with(&Grants::parse("shells").unwrap());
+        let got = g.admit("laptop", "Laptop", "PK3", &Proof::Typed(m.typed.clone()));
+        assert_eq!(got, Ok(Admitted::Confirm(Grants::parse("shells").unwrap())));
+        assert!(
+            !g.knows("laptop"),
+            "not trusted before the words are confirmed"
         );
-        assert_eq!(g.entry("laptop"), Some(("PK3".into(), true)), "pinned");
+        assert_eq!(g.entry("laptop"), None, "not pinned either");
+        assert!(
+            !g.pair_live(&m.typed) && !g.pair_live(&m.code),
+            "spent all the same"
+        );
         assert_eq!(
-            g.admit("tab", "Tab", "PK2", &Proof::Code(typed.typed)),
-            Err(STALE_CODE)
+            g.admit("tab", "Tab", "PK2", &Proof::Typed(m.typed)),
+            Err(STALE_CODE),
+            "single use, even while the first waits"
+        );
+        g.confirmed("laptop", "Laptop", "PK3", &Grants::parse("shells").unwrap());
+        assert_eq!(
+            g.entry("laptop"),
+            Some(("PK3".into(), true)),
+            "pinned on a yes"
+        );
+        assert!(g.device("laptop").unwrap().grants.shells);
+        assert_eq!(
+            g.admit("laptop", "Laptop", "PK3", &Proof::None),
+            Ok(Admitted::In)
         );
         assert!(!g.knows("tab"));
     }
@@ -446,7 +508,7 @@ mod tests {
         assert!(!g.pair_live(&m.typed) && !g.pair_live(&m.code), "revoked");
         assert!(g.locked_out());
         assert_eq!(
-            g.admit("z", "Z", "PKZ", &Proof::Code(m.code)),
+            g.admit("z", "Z", "PKZ", &Proof::Qr(m.code)),
             Err(STALE_CODE),
             "the real code is gone too"
         );
@@ -456,11 +518,14 @@ mod tests {
     fn a_trusted_device_keeps_working_untouched() {
         let g = temp();
         let m = g.mint_pair();
-        g.admit("phone", "Phone", "PK1", &Proof::Code(m.code))
+        g.admit("phone", "Phone", "PK1", &Proof::Qr(m.code))
             .unwrap();
         let line = std::fs::read_to_string(g.trusted_path()).unwrap();
         for _ in 0..3 {
-            assert_eq!(g.admit("phone", "Phone", "PK1", &Proof::None), Ok(()));
+            assert_eq!(
+                g.admit("phone", "Phone", "PK1", &Proof::None),
+                Ok(Admitted::In)
+            );
         }
         assert_eq!(
             std::fs::read_to_string(g.trusted_path()).unwrap(),
@@ -471,7 +536,10 @@ mod tests {
         // the first key proven for it.
         g.trust("legacy", "Old phone");
         assert!(g.knows("legacy"));
-        assert_eq!(g.admit("legacy", "Old phone", "PKL", &Proof::None), Ok(()));
+        assert_eq!(
+            g.admit("legacy", "Old phone", "PKL", &Proof::None),
+            Ok(Admitted::In)
+        );
         assert_eq!(g.entry("legacy"), Some(("PKL".into(), false)));
     }
 
@@ -490,12 +558,12 @@ mod tests {
         // A proven code trusts and pins, and replaces a lost key.
         let c = g.mint_pair().code;
         assert!(
-            g.admit("phone", "Phone", "PK3", &Proof::Code(c.clone()))
+            g.admit("phone", "Phone", "PK3", &Proof::Qr(c.clone()))
                 .is_ok()
         );
         assert_eq!(g.entry("phone"), Some(("PK3".into(), true)));
         assert!(
-            g.admit("phone", "Phone", "PK1", &Proof::Code(c)).is_err(),
+            g.admit("phone", "Phone", "PK1", &Proof::Qr(c)).is_err(),
             "single use"
         );
         assert_eq!(g.trusted().len(), 1, "rewritten in place, not appended");
@@ -510,7 +578,7 @@ mod tests {
         assert_eq!(g.grant("pho", "rw").unwrap(), "Phone");
         assert_eq!(g.files_access("phone"), "none", "a legacy line, not pinned");
         let c = g.mint_pair().code;
-        assert!(g.admit("phone", "Phone", "PK1", &Proof::Code(c)).is_ok());
+        assert!(g.admit("phone", "Phone", "PK1", &Proof::Qr(c)).is_ok());
         assert_eq!(g.files_access("phone"), "rw", "a re-pair keeps the grant");
         assert!(g.grant("phone", "root").is_err());
         assert!(g.grant("nobody", "ro").is_err());

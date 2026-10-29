@@ -2440,13 +2440,40 @@ async fn e2e_finish(
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .finish(dev_pk, sig, pair_mac, typed_mac, &codes);
-    let verdict = done.and_then(|d| ctx.gate.admit(&key, &name, dev_pk, &d.proof).map(|()| d));
+    let verdict = done.and_then(|d| {
+        ctx.gate
+            .admit(&key, &name, dev_pk, &d.proof)
+            .map(|a| (a, d))
+    });
     let mut link = ctx.link.lock().unwrap_or_else(|e| e.into_inner());
     let out = match verdict {
-        Ok(d) => {
+        Ok((crate::gate::Admitted::In, d)) => {
             info!("e2e: {name} proved its key — the link is end-to-end sealed");
             link.open(d.sealer, d.opener);
             crate::e2e::link::WAKE.to_string()
+        }
+        // A typed code: not in until the check words are confirmed on the computer.
+        Ok((crate::gate::Admitted::Confirm(grants), d)) => {
+            let crate::gate::Proof::Typed(typed) = d.proof.clone() else {
+                unreachable!("only a typed code asks for the check words")
+            };
+            let p = crate::e2e::check::Pending {
+                key,
+                name,
+                pk: dev_pk.to_string(),
+                grants,
+                typed,
+            };
+            let out = crate::e2e::check::begin(&mut link, &ctx.gate, &p, d);
+            tokio::spawn(crate::e2e::check::settle(
+                ctx.gate.clone(),
+                Arc::clone(&ctx.link),
+                Arc::clone(&ctx.room),
+                link.room().to_string(),
+                out_tx.clone(),
+                p,
+            ));
+            out
         }
         Err(why) => {
             warn!("e2e: refused {name} — {why}");
