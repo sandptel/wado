@@ -1,0 +1,569 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-29T16:51:46+00:00",
+  "title": "Design System: wado",
+  "extensions": {
+    "colorMeta": {
+      "base00": {
+        "role": "neutral",
+        "displayName": "Ground",
+        "canonical": "#181818",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#242424",
+          "#404040",
+          "#5d5d5d",
+          "#7d7d7d",
+          "#9e9e9e",
+          "#c4c4c4",
+          "#eeeeee"
+        ]
+      },
+      "base01": {
+        "role": "neutral",
+        "displayName": "Scheme Surface",
+        "canonical": "#282828",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#242424",
+          "#404040",
+          "#5d5d5d",
+          "#7d7d7d",
+          "#9e9e9e",
+          "#c4c4c4",
+          "#eeeeee"
+        ]
+      },
+      "base02": {
+        "role": "neutral",
+        "displayName": "Scheme Selection",
+        "canonical": "#383838",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#242424",
+          "#404040",
+          "#5d5d5d",
+          "#7d7d7d",
+          "#9e9e9e",
+          "#c4c4c4",
+          "#eeeeee"
+        ]
+      },
+      "base03": {
+        "role": "neutral",
+        "displayName": "Scheme Dim",
+        "canonical": "#585858",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#242424",
+          "#404040",
+          "#5d5d5d",
+          "#7d7d7d",
+          "#9e9e9e",
+          "#c4c4c4",
+          "#eeeeee"
+        ]
+      },
+      "base04": {
+        "role": "neutral",
+        "displayName": "Scheme Text Dark",
+        "canonical": "#b8b8b8",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#242424",
+          "#404040",
+          "#5d5d5d",
+          "#7d7d7d",
+          "#9e9e9e",
+          "#c4c4c4",
+          "#eeeeee"
+        ]
+      },
+      "base05": {
+        "role": "neutral",
+        "displayName": "Scheme Text",
+        "canonical": "#d8d8d8",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#242424",
+          "#404040",
+          "#5d5d5d",
+          "#7d7d7d",
+          "#9e9e9e",
+          "#c4c4c4",
+          "#eeeeee"
+        ]
+      },
+      "base06": {
+        "role": "neutral",
+        "displayName": "Scheme Bright",
+        "canonical": "#e8e8e8",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#242424",
+          "#404040",
+          "#5d5d5d",
+          "#7d7d7d",
+          "#9e9e9e",
+          "#c4c4c4",
+          "#eeeeee"
+        ]
+      },
+      "base07": {
+        "role": "neutral",
+        "displayName": "Scheme Brightest",
+        "canonical": "#f8f8f8",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#242424",
+          "#404040",
+          "#5d5d5d",
+          "#7d7d7d",
+          "#9e9e9e",
+          "#c4c4c4",
+          "#eeeeee"
+        ]
+      },
+      "base08": {
+        "role": "tertiary",
+        "displayName": "Bad Red",
+        "canonical": "#ab4642",
+        "tonalRamp": [
+          "#1d0102",
+          "#421010",
+          "#6a2624",
+          "#963d3a",
+          "#bd5c56",
+          "#d8847d",
+          "#f5b0aa",
+          "#ffe1dc"
+        ]
+      },
+      "base09": {
+        "role": "tertiary",
+        "displayName": "Warn Orange",
+        "canonical": "#dc9656",
+        "tonalRamp": [
+          "#190500",
+          "#3a1b00",
+          "#5f3300",
+          "#874e0e",
+          "#ab6d30",
+          "#c89162",
+          "#e6ba95",
+          "#ffe8ce"
+        ]
+      },
+      "base0A": {
+        "role": "tertiary",
+        "displayName": "Caution Yellow",
+        "canonical": "#f7ca88",
+        "tonalRamp": [
+          "#150800",
+          "#331f00",
+          "#553a08",
+          "#79561a",
+          "#9c7539",
+          "#ba9868",
+          "#dac09a",
+          "#ffecd1"
+        ]
+      },
+      "base0B": {
+        "role": "tertiary",
+        "displayName": "Good Green",
+        "canonical": "#a1b56c",
+        "tonalRamp": [
+          "#090d00",
+          "#202803",
+          "#3a4513",
+          "#566526",
+          "#748643",
+          "#97a66f",
+          "#becb9f",
+          "#eaf3d5"
+        ]
+      },
+      "base0C": {
+        "role": "tertiary",
+        "displayName": "Cyan Slot",
+        "canonical": "#86c1b9",
+        "tonalRamp": [
+          "#000f0d",
+          "#0c2a26",
+          "#204843",
+          "#356862",
+          "#538982",
+          "#7ca9a2",
+          "#aacdc7",
+          "#dcf5f1"
+        ]
+      },
+      "base0D": {
+        "role": "primary",
+        "displayName": "Accent Slot",
+        "canonical": "#7cafc2",
+        "tonalRamp": [
+          "#010d13",
+          "#0e2830",
+          "#234551",
+          "#396574",
+          "#578596",
+          "#7fa5b4",
+          "#abcad6",
+          "#ddf3fb"
+        ]
+      },
+      "base0E": {
+        "role": "secondary",
+        "displayName": "Mauve Wash",
+        "canonical": "#ba8baf",
+        "tonalRamp": [
+          "#130610",
+          "#311c2c",
+          "#52344b",
+          "#754f6d",
+          "#986d8e",
+          "#b691ad",
+          "#d8bad0",
+          "#fde7f7"
+        ]
+      },
+      "base0F": {
+        "role": "tertiary",
+        "displayName": "Brown Slot",
+        "canonical": "#a16946",
+        "tonalRamp": [
+          "#170600",
+          "#371c0b",
+          "#5a351d",
+          "#805032",
+          "#a46f4e",
+          "#c19377",
+          "#e1bba5",
+          "#ffe8d9"
+        ]
+      },
+      "ground": {
+        "role": "neutral",
+        "displayName": "Ground"
+      },
+      "surface-1": {
+        "role": "neutral",
+        "displayName": "Surface 1"
+      },
+      "surface-2": {
+        "role": "neutral",
+        "displayName": "Surface 2"
+      },
+      "surface-3": {
+        "role": "neutral",
+        "displayName": "Surface 3"
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Hairline"
+      },
+      "bright": {
+        "role": "neutral",
+        "displayName": "Bright"
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Text"
+      },
+      "dim": {
+        "role": "neutral",
+        "displayName": "Dim"
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Accent Slot"
+      },
+      "on-accent": {
+        "role": "primary",
+        "displayName": "On-Accent"
+      },
+      "good": {
+        "role": "tertiary",
+        "displayName": "Good"
+      },
+      "warn": {
+        "role": "tertiary",
+        "displayName": "Warn"
+      },
+      "bad": {
+        "role": "tertiary",
+        "displayName": "Bad"
+      },
+      "stage": {
+        "role": "neutral",
+        "displayName": "Stage Black"
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "The landing wordmark only."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Page heads, hero host name, the Start button."
+      },
+      "numeral": {
+        "displayName": "Numeral",
+        "purpose": "Live meters, tabular figures."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Tile, row and card titles."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Default reading text."
+      },
+      "small": {
+        "displayName": "Small",
+        "purpose": "Subtitles, hints, captions."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Uppercase section heads and meter keys."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "Machine-produced values: IDs, resolutions, numbers."
+      }
+    },
+    "shadows": [
+      {
+        "name": "dock-float",
+        "value": "0 6px 24px -10px rgb(0 0 0 / .55)",
+        "purpose": "Dock pill groups floating over the video."
+      },
+      {
+        "name": "sheet-lift",
+        "value": "0 -20px 60px rgb(0 0 0 / .35)",
+        "purpose": "The control-centre sheet."
+      },
+      {
+        "name": "popover",
+        "value": "0 18px 50px -20px #000a",
+        "purpose": "Menus and floating cards."
+      },
+      {
+        "name": "modal",
+        "value": "0 40px 100px rgb(0 0 0 / .5)",
+        "purpose": "Full dialogs such as the file viewer."
+      },
+      {
+        "name": "accent-glow",
+        "value": "0 10px 30px color-mix(in oklab, var(--accent), transparent 70%)",
+        "purpose": "The Start button only."
+      }
+    ],
+    "motion": [
+      {
+        "name": "spring",
+        "value": "cubic-bezier(.32, .72, 0, 1)",
+        "purpose": "Sheets, pages, knobs: settles with mass. The default --ease."
+      },
+      {
+        "name": "pop",
+        "value": "cubic-bezier(.34, 1.56, .64, 1)",
+        "purpose": "Small things a finger just flipped: switch thumbs, accents, entrances."
+      },
+      {
+        "name": "dur",
+        "value": "220ms",
+        "purpose": "State transitions (120ms when reduced)."
+      },
+      {
+        "name": "dur-sheet",
+        "value": "480ms",
+        "purpose": "Sheet and page slides (200ms when reduced)."
+      },
+      {
+        "name": "press",
+        "value": "scale .96 over 120ms",
+        "purpose": "Active state of every pressable."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "xs",
+        "value": "380px"
+      },
+      {
+        "name": "phone",
+        "value": "430px"
+      },
+      {
+        "name": "narrow",
+        "value": "520px"
+      },
+      {
+        "name": "desktop",
+        "value": "720px"
+      },
+      {
+        "name": "wide",
+        "value": "1100px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Default Button",
+      "kind": "button",
+      "refersTo": "button",
+      "description": "Secondary action on a tonal surface.",
+      "html": "<button class=\"ds-btn\">Resync</button>",
+      "css": ".ds-btn{min-height:48px;padding:0 16px;border-radius:var(--r2,16px);font:600 14px Figtree,system-ui,sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:8px;background:var(--s2);color:var(--bright);border:0;cursor:pointer;transition:scale 120ms cubic-bezier(.32,.72,0,1),background 220ms cubic-bezier(.32,.72,0,1)}.ds-btn:hover{background:var(--s3)}.ds-btn:active{scale:.96}.ds-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}"
+    },
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one committing action in a view.",
+      "html": "<button class=\"ds-btn-primary\">Apply</button>",
+      "css": ".ds-btn-primary{min-height:48px;padding:0 16px;border-radius:var(--r2,16px);font:600 14px Figtree,system-ui,sans-serif;display:inline-flex;align-items:center;justify-content:center;background:var(--accent);color:var(--on-accent);border:0;cursor:pointer;transition:scale 120ms cubic-bezier(.32,.72,0,1)}.ds-btn-primary:active{scale:.96}.ds-btn-primary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}"
+    },
+    {
+      "name": "Start Button",
+      "kind": "button",
+      "refersTo": "button-go",
+      "description": "The landing's single call to action.",
+      "html": "<button class=\"ds-go\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M7 4l12 8-12 8z\"/></svg>Start</button>",
+      "css": ".ds-go{min-height:58px;width:100%;border-radius:var(--r3,22px);font:700 17px 'Bricolage Grotesque',Figtree,system-ui,sans-serif;background:var(--accent);color:var(--on-accent);display:flex;align-items:center;justify-content:center;gap:10px;border:0;cursor:pointer;box-shadow:0 10px 30px color-mix(in oklab,var(--accent),transparent 70%);transition:scale 120ms cubic-bezier(.32,.72,0,1)}.ds-go:active{scale:.96}.ds-go:focus-visible{outline:2px solid var(--accent);outline-offset:2px}"
+    },
+    {
+      "name": "Quick Tile",
+      "kind": "custom",
+      "refersTo": "tile",
+      "description": "Control-centre toggle; tap toggles, long-press opens its page; morphs when on.",
+      "html": "<div class=\"ds-tiles\"><button class=\"ds-tile on\"><span class=\"ic\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\"><circle cx=\"12\" cy=\"12\" r=\"4\"/><path d=\"M12 2v2M12 20v2M2 12h2M20 12h2\"/></svg></span><span><b>Keep awake</b><small>On</small></span></button><button class=\"ds-tile\"><span class=\"ic\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\"><path d=\"M3 12h4l3-8 4 16 3-8h4\"/></svg></span><span><b>Stats</b><small>Off</small></span></button></div>",
+      "css": ".ds-tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.ds-tile{display:flex;align-items:center;gap:10px;min-height:62px;padding:8px 12px 8px 8px;border-radius:var(--r3,22px);background:var(--s2);color:var(--bright);border:0;text-align:left;cursor:pointer;font:14px Figtree,system-ui,sans-serif;transition:background 220ms cubic-bezier(.32,.72,0,1),border-radius 360ms cubic-bezier(.32,.72,0,1),scale 120ms}.ds-tile:active{scale:.96}.ds-tile:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.ds-tile .ic{width:42px;height:42px;border-radius:var(--r2,16px);display:grid;place-items:center;background:var(--s3);transition:border-radius 360ms cubic-bezier(.32,.72,0,1)}.ds-tile b{display:block;font-weight:600;font-size:13px}.ds-tile small{display:block;font-size:11px;color:var(--dim)}.ds-tile.on{background:var(--accent);color:var(--on-accent);border-radius:calc(var(--r3,22px) + 8px)}.ds-tile.on small{color:var(--on-accent)}.ds-tile.on .ic{background:color-mix(in oklab,var(--on-accent),transparent 84%);border-radius:50%}"
+    },
+    {
+      "name": "Settings List",
+      "kind": "nav",
+      "refersTo": "nav-row",
+      "description": "Subject pages in the control centre.",
+      "html": "<div class=\"ds-list\"><button class=\"ds-navrow\"><span class=\"ds-disc\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"><rect x=\"3\" y=\"5\" width=\"18\" height=\"12\" rx=\"2\"/><path d=\"M8 21h8\"/></svg></span><span class=\"ds-navtext\"><b>Display</b><small>1170 × 2532 · 60 fps</small></span><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\"><path d=\"M9 6l6 6-6 6\"/></svg></button><button class=\"ds-navrow\"><span class=\"ds-disc\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\"><path d=\"M5 12a10 10 0 0 1 14 0M8.5 15.5a5 5 0 0 1 7 0\"/><circle cx=\"12\" cy=\"19\" r=\"1\"/></svg></span><span class=\"ds-navtext\"><b>Connection</b><small>Direct · LAN</small></span><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\"><path d=\"M9 6l6 6-6 6\"/></svg></button></div>",
+      "css": ".ds-list{border-radius:var(--r3,22px);background:var(--s1);overflow:hidden}.ds-navrow{width:100%;display:flex;align-items:center;gap:14px;padding:12px 14px;min-height:60px;text-align:left;border:0;background:none;color:var(--text);cursor:pointer;font:14px Figtree,system-ui,sans-serif;transition:background 220ms cubic-bezier(.32,.72,0,1)}.ds-navrow:hover{background:var(--s2)}.ds-navrow:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}.ds-navrow+.ds-navrow{border-top:1px solid color-mix(in oklab,var(--line),transparent 40%)}.ds-navrow>svg:last-child{margin-left:auto;color:var(--dim)}.ds-disc{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;flex:none;color:var(--accent);background:color-mix(in oklab,var(--accent),transparent 84%)}.ds-navtext b{display:block;font-weight:600;color:var(--bright)}.ds-navtext small{display:block;font-size:12px;color:var(--dim)}"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Ground-coloured well, always 16px text.",
+      "html": "<label class=\"ds-field\"><span>Relay address</span><input class=\"ds-input\" value=\"wss://relay.example\"></label>",
+      "css": ".ds-field{display:grid;gap:4px;font:14px Figtree,system-ui,sans-serif}.ds-field>span{font-size:12px;color:var(--dim)}.ds-input{width:100%;min-height:44px;background:var(--s0);color:var(--bright);border:1px solid var(--line);border-radius:var(--r1,10px);padding:8px 12px;font:16px Figtree,system-ui,sans-serif;transition:border-color 220ms cubic-bezier(.32,.72,0,1)}.ds-input:focus{outline:none;border-color:var(--accent)}"
+    },
+    {
+      "name": "Segmented Control",
+      "kind": "custom",
+      "refersTo": "segmented",
+      "description": "One-of-few choice with a spring knob.",
+      "html": "<div class=\"ds-seg\" style=\"--n:3;--i:1\"><span class=\"knob\"></span><button>Sharp</button><button class=\"on\">Round</button><button>Pill</button></div>",
+      "css": ".ds-seg{position:relative;display:grid;grid-auto-flow:column;grid-auto-columns:1fr;padding:4px;border-radius:var(--r2,16px);background:var(--s0)}.ds-seg .knob{position:absolute;top:4px;bottom:4px;left:calc(4px + (100% - 8px) / var(--n) * var(--i));width:calc((100% - 8px) / var(--n));border-radius:calc(var(--r2,16px) - 4px);background:var(--accent);transition:left 420ms cubic-bezier(.32,.72,0,1)}.ds-seg button{position:relative;z-index:1;min-height:40px;border:0;background:none;font:600 13px Figtree,system-ui,sans-serif;color:var(--dim);cursor:pointer}.ds-seg button.on{color:var(--on-accent)}.ds-seg button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:12px}"
+    },
+    {
+      "name": "Switch",
+      "kind": "custom",
+      "refersTo": "switch",
+      "description": "On/off with a morphing thumb.",
+      "html": "<button class=\"ds-sw on\" role=\"switch\" aria-checked=\"true\" aria-label=\"Keep awake\"></button> <button class=\"ds-sw\" role=\"switch\" aria-checked=\"false\" aria-label=\"Stats\"></button>",
+      "css": ".ds-sw{width:52px;height:32px;border-radius:999px;background:var(--s3);position:relative;border:0;cursor:pointer;transition:background 220ms cubic-bezier(.32,.72,0,1)}.ds-sw::after{content:'';position:absolute;top:8px;left:8px;width:16px;height:16px;border-radius:50%;background:var(--dim);transition:left 340ms cubic-bezier(.34,1.56,.64,1),top 340ms cubic-bezier(.34,1.56,.64,1),width 340ms cubic-bezier(.34,1.56,.64,1),height 340ms cubic-bezier(.34,1.56,.64,1)}.ds-sw.on{background:var(--accent)}.ds-sw.on::after{left:24px;top:4px;width:24px;height:24px;background:var(--on-accent)}.ds-sw:focus-visible{outline:2px solid var(--accent);outline-offset:2px}"
+    },
+    {
+      "name": "Link Badge",
+      "kind": "chip",
+      "refersTo": "link-pill",
+      "description": "Always-visible plain-words link state.",
+      "html": "<span class=\"ds-link warn\"><i></i>Relayed — limited</span> <span class=\"ds-link\"><i></i>Direct · LAN</span>",
+      "css": ".ds-link{--tone:var(--good);display:inline-flex;align-items:center;gap:7px;min-height:32px;padding:0 12px 0 10px;border-radius:999px;background:color-mix(in oklab,var(--s1),transparent 12%);border:1px solid color-mix(in oklab,var(--tone),transparent 60%);color:var(--bright);font:600 13px/1 Figtree,system-ui,sans-serif}.ds-link.warn{--tone:var(--warn)}.ds-link i{width:8px;height:8px;border-radius:50%;background:var(--tone)}"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Grouped content inside a page; flat, tonal.",
+      "html": "<div class=\"ds-card\"><b>Software encoding</b><p>This computer has no working video encoder, so the picture uses more CPU and may lag.</p></div>",
+      "css": ".ds-card{border-radius:var(--r3,22px);background:var(--s1);padding:14px;display:grid;gap:10px;color:var(--text);font:14px/1.45 Figtree,system-ui,sans-serif}.ds-card b{color:var(--bright);font-weight:600}.ds-card p{margin:0}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Pocket Console, then Glass Cockpit",
+    "overview": "wado's chrome is the shell around someone else's screen. It works in two phases, and the second\nis the one already built. **Glass Cockpit** (incumbent): the streamed desktop owns the whole\ndisplay and every control floats over it as an instrument: a thumb-reachable dock that fades when\nidle, a link badge in the corner, a control centre that slides up as a sheet. Nothing reflows the\npicture. **Pocket Console** (decided `2026-10-29`, not yet built): by default, a session opens\nwith the screen drawn smaller at its true aspect ratio, held inside a console-like shell whose\ncontrols sit *around* it. Going full screen grows the picture to take the whole display, and the\nsame controls morph outward into the floating cockpit instruments. They are one set of controls\nin two arrangements, never two UIs. The candidates for the console's surround are window controls\n(resize, close, minimise, switching), input controls (touchpad, keys, gamepad, playback), and\nstatus with quick tiles. The final arrangement is undecided.\n\nThe mood is **calm, tactile, honest**. Surfaces are soft, filled and pressable, moving on a spring\nwith a little mass. The chrome stays quiet until something is wrong, then says so in plain words\nand the theme's own warning colours. Personality comes from the user's chosen base16 scheme and\nfrom motion. Decoration is not where it lives.",
+    "keyCharacteristics": [
+      "Every colour comes from sixteen swappable base16 slots; derived tokens are mixes, never hex.",
+      "The stage behind the video is always black, whatever the theme.",
+      "Tonal elevation (a mixed surface ladder) plus soft shadows only on floating chrome.",
+      "Two motion curves for the whole UI: a massy spring and a small overshoot pop.",
+      "The user tunes corner radius, motion level and accent slot from the Appearance page."
+    ],
+    "rules": [
+      {
+        "name": "The Sixteen Slots Rule",
+        "body": "No stylesheet hard-codes a colour. Every value is a base16 slot or a `color-mix` of slots. The only exceptions are Stage Black and black shadow/scrim mixes.",
+        "section": "colors"
+      },
+      {
+        "name": "The Mixed Ladder Rule",
+        "body": "Elevation is mixed from base00 toward base05, never read from base01 or base02. Schemes disagree about whether base01 is lighter or darker than base00, and only the mix gives a correct ladder on every scheme, light ones included.",
+        "section": "colors"
+      },
+      {
+        "name": "The Untouchable Picture Rule",
+        "body": "The theme may never change how the stream reads. A light ground bleeds onto the picture, so the stage stays black.",
+        "section": "colors"
+      },
+      {
+        "name": "The Sixteen-Pixel Input Rule",
+        "body": "Every text input is exactly 16px. Below that, iOS Safari zooms on focus and the streamed picture jumps sideways.",
+        "section": "typography"
+      },
+      {
+        "name": "The Machine Speaks Mono Rule",
+        "body": "A value the system generated (an address, a resolution, a count) is set in mono. Words a person reads are set in Figtree.",
+        "section": "typography"
+      },
+      {
+        "name": "The Picture Owns The Screen Rule",
+        "body": "In the cockpit phase no chrome takes layout space from the video. Chrome floats over it and only dims what is behind. The Pocket Console phase relaxes this deliberately: the picture is inset at its true aspect ratio until the user goes full screen.",
+        "section": "layout"
+      },
+      {
+        "name": "The Float-Only Shadow Rule",
+        "body": "A shadow means \"this is floating over the picture\". Content inside a sheet or card stays flat and gets its depth from tone.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Morphing Toggle Rule",
+        "body": "A control that turns on changes shape as well as colour. A tile's radius grows by 8px and its icon well becomes a circle. A switch's thumb grows from 16 to 24px.",
+        "section": "shapes"
+      }
+    ],
+    "dos": [
+      "Do take every colour from a base16 slot or a `color-mix` of slots; add new roles as mixes in `base.css`.",
+      "Do keep the stage behind the video `#000`, whatever the scheme.",
+      "Do move things only with `transform`/`opacity` or the independent `translate`/`scale` properties, so the motion stays off the main thread and away from video decode.",
+      "Do use `--spring` (cubic-bezier(.32, .72, 0, 1)) for sheets and pages, and `--pop` (cubic-bezier(.34, 1.56, .64, 1)) for small things a finger just flipped. Use `--dur` (220ms) and `--dur-sheet` (480ms).",
+      "Do honour `prefers-reduced-motion` and the user's `data-motion` (full / reduced / off).",
+      "Do keep touch targets at 44px or more, and text inputs at exactly 16px.",
+      "Do state a degraded link or encoder in plain words with its tone colour, and keep the technical name one tap away.",
+      "Do make the cockpit and console arrangements of a control the same control, morphing between them."
+    ],
+    "donts": [
+      "Don't hard-code hex or `rgb()` in chrome. `files.css` currently does (`#888`, `#eee`, `#fff`, `rgb(20 20 22 / .94)` in the viewer). That is drift, and it should be brought back to tokens.",
+      "Don't read elevation from base01 or base02. Mix it.",
+      "Don't let chrome reflow the picture in the cockpit phase, or put a banner across it. Health lives in the dock LED, a toast or a hero chip.",
+      "Don't put shadows on content inside a sheet or card.",
+      "Don't enable backdrop blur on coarse-pointer devices.",
+      "Don't introduce a third easing curve, or a fourth font family.",
+      "Don't show a control that does nothing yet. A feature lands its tile when it lands."
+    ]
+  }
+}
