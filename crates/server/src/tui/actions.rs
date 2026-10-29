@@ -4,7 +4,7 @@
 
 use std::{io::Write, os::unix::net::UnixStream};
 
-use crate::gate::{Gate, Grants, Verdict};
+use crate::gate::{Gate, Grants};
 
 pub type Outcome = Result<String, String>;
 
@@ -20,19 +20,8 @@ pub fn unpair(key: &str) -> Outcome {
         .map(|name| format!("unpaired {name}"))
 }
 
-pub fn answer(id: &str, name: &str, v: Verdict) -> Outcome {
-    if !Gate::default().answer(id, v) {
-        return Err(format!("{name} stopped waiting"));
-    }
-    Ok(match v {
-        Verdict::Once => format!("let {name} in once"),
-        Verdict::Always => format!("trusted {name}"),
-        Verdict::Deny => format!("turned {name} away"),
-    })
-}
-
-/// A fresh pairing link carrying `grants`.
-pub fn pair(grants: &Grants) -> Result<String, String> {
+/// A fresh pairing code carrying `grants`, and its link.
+pub fn pair(grants: &Grants) -> Result<crate::cli::qr::Pairing, String> {
     crate::cli::qr::pair_link(None, None, grants)
 }
 

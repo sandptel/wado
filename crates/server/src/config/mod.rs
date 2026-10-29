@@ -23,6 +23,16 @@ pub struct Status {
     pub generation: u64,
 }
 
+/// One line for each removed key the config still sets: it loads, and the key does nothing.
+pub fn warn_deprecated(cfg: &wado_config::Config) {
+    for key in cfg.security.deprecated() {
+        tracing::warn!(
+            "config: `{key}` is no longer used and is ignored — a new device pairs with a code \
+             shown on this computer (`wado pair`); remove it from config.kdl"
+        );
+    }
+}
+
 fn channel() -> &'static tw::Sender<Status> {
     static TX: OnceLock<tw::Sender<Status>> = OnceLock::new();
     TX.get_or_init(|| tw::channel(Status::default()).0)

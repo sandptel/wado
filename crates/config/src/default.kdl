@@ -16,8 +16,7 @@ server {
 }
 
 security {
-    // trust-first-device #true        // with an empty trust list, trust the first device
-    // join "ask"                      // "ask" (a connected device approves) | "open" (anyone, let in once)
+    // A new device gets in only with a code shown here: `wado pair` (or `wado tui` → Pair).
     // new-device "host"               // what a new device may do: files-ro|files-rw shells settings host input clipboard
 }
 

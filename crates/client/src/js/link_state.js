@@ -4,7 +4,7 @@
 //
 //   offline           this device has no network, or the relay does not answer
 //   computer_offline  the relay is up, but no daemon is registered for this Remote ID
-//   waiting           parked by the relay for another reason (approval, a held desktop): `why`
+//   waiting           parked by the relay for another reason (a held desktop): `why`
 //   ready             joined, no session: nothing needs a peer connection yet (files make their own)
 //   connecting        a session whose peer connection is still being set up
 //   relayed           a session whose peer connection failed or dropped: only small messages flow

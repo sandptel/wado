@@ -36,7 +36,7 @@ const CLEAR_IN: &[&str] = &[
     "error",
 ];
 /// ponytail: a bounded hold for what the daemon says before the handshake finishes (log lines,
-/// approval prompts). Past this the oldest go; nothing held is load-bearing.
+/// say). Past this the oldest go; nothing held is load-bearing.
 const HOLD_MAX: usize = 512;
 
 /// Sent through the writer's channel to make it flush what was held.
@@ -68,6 +68,7 @@ pub enum Inbound {
         dev_pk: String,
         sig: String,
         pair_mac: String,
+        typed_mac: String,
     },
     /// Not acted on. Logged by the caller once.
     Drop(&'static str),
@@ -181,10 +182,12 @@ impl Link {
                 dev_pk,
                 sig,
                 pair_mac,
+                typed_mac,
             }) => Inbound::Finish {
                 dev_pk,
                 sig,
                 pair_mac,
+                typed_mac,
             },
             _ => Inbound::Drop("a plaintext message from the device side — refused unsealed"),
         }
@@ -220,12 +223,13 @@ impl Link {
         dev_pk: &str,
         sig: &str,
         pair_mac: &str,
-        pair_codes: &[String],
+        typed_mac: &str,
+        codes: &handshake::Codes,
     ) -> Result<Done, &'static str> {
         let State::Replied(r) = std::mem::replace(&mut self.state, State::Failed) else {
             return Err("a finish without a hello");
         };
-        handshake::finish(r, dev_pk, sig, pair_mac, pair_codes)
+        handshake::finish(r, dev_pk, sig, pair_mac, typed_mac, codes)
     }
 
     /// Let the device in: `e2e_ok` goes first, then whatever was held. The caller wakes the
@@ -274,8 +278,10 @@ mod tests {
 
         let mut c = Client::new();
         let reply = l.hello(&host, VERSION, &B64.encode(&c.eph_pub)).unwrap();
-        let ((pk, sig, mac), c2d, d2c) = c.answer("room", "ck", &reply, None);
-        let done = l.finish(&pk, &sig, &mac, &[]).unwrap();
+        let ((pk, sig, mac, tmac), c2d, d2c) = c.answer("room", "ck", &reply, None, None);
+        let done = l
+            .finish(&pk, &sig, &mac, &tmac, &handshake::Codes::default())
+            .unwrap();
         l.open(done.sealer, done.opener);
 
         // The writer's next frame flushes e2e_ok, then the held log line, in counter order.

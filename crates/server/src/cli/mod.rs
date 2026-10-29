@@ -4,7 +4,7 @@
 //! - [`status`] — what is running, read from outside the daemons.
 //! - [`style`] — terminal colour.
 
-pub mod approve;
+pub mod countdown;
 pub mod devices;
 pub mod files;
 pub mod landing;
@@ -43,7 +43,14 @@ pub fn dispatch(args: &[String]) -> Run {
             0
         }
         Some("tui") => crate::tui::run(rest),
-        Some("approve") => approve::run(rest),
+        // Gone with remote approval (`2026-10-27`); said plainly for the hands that remember it.
+        Some("approve") => {
+            eprintln!(
+                "  devices are no longer approved — pair one with {}",
+                style::accent("wado pair")
+            );
+            2
+        }
         Some("devices") => devices::list(),
         Some("unpair") => devices::unpair(rest),
         Some("allow") => devices::allow(rest, true),

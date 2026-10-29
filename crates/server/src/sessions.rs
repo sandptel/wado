@@ -3,7 +3,7 @@
 //! Each daemon writes its own while it has a session — every few seconds, so the file's age is
 //! its heartbeat — and removes it when the session ends. Any daemon can then list all of them,
 //! which is what lets a device landing on daemon 2 see, and get back to, the session on daemon 1.
-//! Files, like the approval requests (`crate::gate`): the daemons share one machine and one
+//! Files, like the trust list (`crate::gate`): the daemons share one machine and one
 //! config directory, and the relay is kept out of anything that is not routing.
 
 use std::{path::PathBuf, time::Duration};

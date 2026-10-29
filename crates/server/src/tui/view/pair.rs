@@ -1,5 +1,6 @@
-//! The Pair card: a QR code that always works, built from block glyphs in the panel's colours
-//! ([`super::qr`]) — compact by default, `z` for large — then the grants it carries and the link.
+//! The Pair card: a QR code built from block glyphs in the panel's colours ([`super::qr`]) —
+//! compact by default, `z` for large — the same code to type, how long it has, then the grants
+//! it carries and the link. A code that ran out or was revoked is not drawn: `n` makes another.
 
 use ratatui::{
     Frame,
@@ -11,17 +12,23 @@ use ratatui::{
 
 use super::qr::Qr;
 use super::{card, row, toggle};
+use crate::gate::{CodeState, typed_code};
 use crate::tui::app::{App, Card, GRANTS, Target};
 use crate::tui::theme;
 
-/// Rows under the code: gap, grants title, grants, gap, link (wrapped), hint.
-const BELOW: u16 = 8;
+/// Rows under the code: typed code, its state, gap, grants title, grants, gap, link (wrapped),
+/// hint.
+const BELOW: u16 = 10;
 /// The narrowest the card gets: the row of grants.
 const MIN_W: u16 = 44;
 /// The large code's light: the terminal's own white, light on dark themes.
 const LIGHT: Color = Color::White;
 
+/// The QR, while its code still works.
 fn qr(app: &App) -> Option<Qr> {
+    if !matches!(app.pair_state, CodeState::Live(_)) {
+        return None;
+    }
     Qr::new(&app.pair.as_ref().ok()?.link)
 }
 
@@ -66,7 +73,7 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
             };
             f.render_widget(Paragraph::new(q.lines(large, ink)), r);
             app.hits.borrow_mut().push((r, Target::Zoom));
-            y += qh + 1;
+            y += qh;
         }
         (Ok(_), Some(_)) => {
             f.render_widget(
@@ -78,6 +85,13 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
             );
             y += 2;
         }
+        (Ok(_), None) => {
+            f.render_widget(
+                Line::styled(" No live code", theme::bold()),
+                Rect::new(inner.x, y, inner.width, 1),
+            );
+            y += 1;
+        }
         (Err(e), _) => {
             let p = Paragraph::new(vec![
                 Line::styled(" No code yet", theme::bold()),
@@ -87,7 +101,37 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
             f.render_widget(p, Rect::new(inner.x, y, inner.width, 5));
             y += 6;
         }
-        _ => {}
+    }
+
+    // The same code to type, and how long it has.
+    if let Ok(p) = &app.pair {
+        let live = matches!(app.pair_state, CodeState::Live(_));
+        if live && y < inner.bottom() {
+            f.render_widget(
+                Line::styled(
+                    format!("type  {}", typed_code::display(&p.code.typed)),
+                    theme::key(),
+                )
+                .centered(),
+                Rect::new(inner.x, y, inner.width, 1),
+            );
+            y += 1;
+        }
+        if y < inner.bottom() {
+            let (text, style) = if live {
+                (app.pair_state.say(), theme::dim())
+            } else {
+                (
+                    format!("{} · n", app.pair_state.say()),
+                    Style::new().fg(theme::WARN),
+                )
+            };
+            f.render_widget(
+                Line::styled(text, style).centered(),
+                Rect::new(inner.x, y, inner.width, 1),
+            );
+            y += 2;
+        }
     }
 
     // The grants it carries, one toggle each.
@@ -145,10 +189,7 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
             .trim_start_matches("https://");
         let p = Paragraph::new(vec![
             Line::styled(short.to_string(), theme::accent()),
-            Line::styled(
-                "single use, renewed once scanned · c copy · z size",
-                theme::dim(),
-            ),
+            Line::styled("single use, 10 min · n new · c copy · z size", theme::dim()),
         ])
         .wrap(ratatui::widgets::Wrap { trim: true });
         let r = Rect::new(inner.x + 1, y, inner.width - 2, bottom.saturating_sub(y));

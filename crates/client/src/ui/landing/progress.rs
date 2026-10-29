@@ -62,6 +62,7 @@ pub fn render(ui: Ui) -> Element {
                 }
             }
         }
-        if failed { p { class: "connerr", "{error}" } }
+        // Not paired: the pairing form says why, and what to do.
+        if failed && (ui.live.unpaired)().is_empty() { p { class: "connerr", "{error}" } }
     }
 }

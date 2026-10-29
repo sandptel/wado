@@ -42,7 +42,9 @@ const env = {
   XDG_STATE_HOME: join(HOME, ".local/state"), XDG_CACHE_HOME: join(HOME, ".cache"),
 };
 mkdirSync(join(HOME, ".config/wado"), { recursive: true });
-writeFileSync(join(HOME, ".config/wado/trusted_clients"), "");
+// The phone is already trusted (a line from before keys) and, as the first line, the owner. No
+// device gets in unpaired (Decision Log 2026-10-27); the laptop pairs with a QR code below.
+writeFileSync(join(HOME, ".config/wado/trusted_clients"), "Phone-key\tPhone\n");
 
 let logs = "";
 const start = (cmd, args, e = {}) => {
@@ -140,7 +142,7 @@ const laptop = new Browser("laptop", 9362, "Laptop-key", false,
   `&pair=${(qr.match(/pair=([A-Za-z0-9]+)/) || [])[1]}&hk=${(qr.match(/hk=([A-Za-z0-9_-]+)/) || [])[1]}`);
 try {
   await phone.open();
-  check("phone connects (first device: the owner)", await phone.until(`!!window.__wado && window.__wado.e2eReady`, 20000));
+  check("phone connects (trusted, the owner)", await phone.until(`!!window.__wado && window.__wado.e2eReady`, 20000));
 
   // history
   deskCopy("hello from the desktop");

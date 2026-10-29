@@ -36,16 +36,13 @@ pub struct Who {
 }
 
 /// Why `who` may not open files at all, or `None` when it may.
-pub fn refused(gate: &Gate, who: &Who, once: bool) -> Option<String> {
+pub fn refused(gate: &Gate, who: &Who) -> Option<String> {
     if !wado_config::live::current().files.enabled {
         return Some("file access is turned off on this computer (files { enabled })".into());
     }
-    if once {
-        return Some("a device let in \"once\" gets no file access".into());
-    }
     match gate.entry(&who.key) {
         Some((_, false)) => Some(
-            "file access needs this device paired by QR — scan the computer's code (`wado qr`)"
+            "file access needs this device paired with a code — on the computer run `wado pair`"
                 .into(),
         ),
         _ if gate.files_access(&who.key) == "none" => Some(format!(

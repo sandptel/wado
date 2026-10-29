@@ -54,6 +54,9 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/relay_link.js"),
     "\n",
+    // After `relay_link.js`: it pairs through `relayKick`, and the link and the envelope call it.
+    include_str!("js/pair.js"),
+    "\n",
     include_str!("js/relay.js"),
     "\n",
     // After `relay.js`: `seat.js` wraps the `__up` handler `relay.js` registers.
@@ -324,6 +327,8 @@ pub fn run(ui: Ui) {
                     live.conn_error.set(string("error"));
                 }
                 "stagebar" => live.stagebar.set(text()),
+                // Refused for not being paired (`js/pair.js`), or cleared on a typed code.
+                "unpaired" => live.unpaired.set(string("reason")),
                 "health" => {
                     live.health.set(Health {
                         state: string("state"),

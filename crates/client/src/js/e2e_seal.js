@@ -16,6 +16,15 @@ W.e2eDerive = async (shared, salt) => {
   return { c2d: await key(okm.slice(0, 32), "encrypt"), d2c: await key(okm.slice(32), "decrypt") };
 };
 
+// `k_pair` — the raw key a typed pairing code is proven with — from the same secret and salt.
+// Only the two ends of the X25519 exchange can compute it, so the proof is no offline oracle for
+// the short code to whoever carries the frame.
+W.e2ePairKey = async (shared, salt) => {
+  const ikm = await crypto.subtle.importKey("raw", shared, "HKDF", false, ["deriveBits"]);
+  return new Uint8Array(await crypto.subtle.deriveBits(
+    { name: "HKDF", hash: "SHA-256", salt, info: new TextEncoder().encode("wado-e2e-v1 pair") }, ikm, 256));
+};
+
 const nonceOf = (n) => {
   const iv = new Uint8Array(12);
   new DataView(iv.buffer).setBigUint64(4, BigInt(n));

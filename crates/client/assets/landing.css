@@ -36,6 +36,17 @@
 .connerr { margin: 0; padding: 10px 12px; border-radius: var(--r1); background: var(--s1); border-left: 3px solid var(--bad);
   color: var(--text); font-size: 12.5px; line-height: 1.45; }
 
+/* "Pair this device" (ui/landing/pair.rs): the computer does not know this device yet. */
+.pairform { display: grid; gap: 10px; padding: 14px; border-radius: var(--r3); background: var(--s1);
+  border: 1px solid var(--line); border-left: 3px solid var(--base0A); }
+.pairhead { display: flex; align-items: center; gap: 10px; }
+.pairhead b { font: 700 16px var(--display); color: var(--bright); }
+.pairwhy { margin: 0; color: var(--text); font-size: 13px; line-height: 1.45; }
+.pairlabel { font-size: 12px; color: var(--dim); }
+.pairrow { display: flex; gap: 10px; }
+.pairrow input { flex: 1; min-width: 0; min-height: 48px; font: 600 16px var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+.pairrow .btn { width: auto; flex: none; min-width: 96px; }
+
 .devices { display: grid; gap: 8px; }
 .dev { display: flex; align-items: center; gap: 6px; padding: 6px 6px 6px 12px; border-radius: var(--r3); background: var(--s1);
   border: 1.5px solid transparent; text-align: left; min-height: 64px; transition: border-color var(--dur) var(--ease); }

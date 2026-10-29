@@ -26,6 +26,10 @@ const RID = "999000222";
 const HOME = mkdtempSync(join(tmpdir(), "wado-shells-e2e-"));
 mkdirSync(join(HOME, ".ssh"));
 writeFileSync(join(HOME, ".ssh/config"), "Host fakebox\n  HostName 192.0.2.1\nHost *.lan\n");
+// The phone is already trusted — a line from before keys, so it takes the first key it proves —
+// and, as the first line, the owner. No device gets in unpaired (Decision Log 2026-10-27).
+mkdirSync(join(HOME, ".config/wado"), { recursive: true });
+writeFileSync(join(HOME, ".config/wado/trusted_clients"), "Phone-key\tPhone\n");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const procs = [];
 let failures = 0;
@@ -67,7 +71,7 @@ class Client {
 try {
   start("wado-relay", ["--bind", `127.0.0.1:${PORT}`], {});
   await sleep(400);
-  start("wado", [], {
+  start("wado", ["daemon"], {
     WADO_RELAY_URL: RELAY, WADO_REMOTE_ID: RID, WADO_INSTANCE: "e2e-shells", WADO_UDP_SLICE: "20",
     HOME, XDG_CONFIG_HOME: join(HOME, ".config"), SHELL: "/bin/sh",
   });
