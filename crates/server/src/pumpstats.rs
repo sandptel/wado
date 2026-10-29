@@ -33,6 +33,12 @@ pub struct Summary {
     pub over_budget: u64,
 }
 
+impl Default for PumpStats {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PumpStats {
     pub fn new() -> Self {
         Self {

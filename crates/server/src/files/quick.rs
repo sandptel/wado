@@ -116,12 +116,11 @@ pub fn quick(sc: &Scope) -> Value {
     // Recents: the xbel list, then the newest files directly in the pinned folders.
     let mut recent: Vec<(String, u64, u64)> = Vec::new();
     let mut add = |sc: &Scope, path: String| {
-        if let Ok(o) = sc.open(&path, libc::O_PATH) {
-            if let Ok(md) = o.file.metadata() {
-                if md.is_file() {
-                    recent.push((path, super::secs(md.modified()), md.len()));
-                }
-            }
+        if let Ok(o) = sc.open(&path, libc::O_PATH)
+            && let Ok(md) = o.file.metadata()
+            && md.is_file()
+        {
+            recent.push((path, super::secs(md.modified()), md.len()));
         }
     };
     for p in xbel().into_iter().rev().take(RECENT * 2) {
@@ -138,14 +137,15 @@ pub fn quick(sc: &Scope) -> Value {
                 break;
             }
             budget -= 1;
-            if let Ok(n) = e.file_name().into_string() {
-                if sc.shows(&d.real, &n) && e.file_type().is_ok_and(|t| t.is_file()) {
-                    add(sc, format!("{dir}/{n}"));
-                }
+            if let Ok(n) = e.file_name().into_string()
+                && sc.shows(&d.real, &n)
+                && e.file_type().is_ok_and(|t| t.is_file())
+            {
+                add(sc, format!("{dir}/{n}"));
             }
         }
     }
-    recent.sort_by(|a, b| b.1.cmp(&a.1));
+    recent.sort_by_key(|b| std::cmp::Reverse(b.1));
     recent.dedup_by(|a, b| a.0 == b.0);
     let recent: Vec<_> = recent
         .into_iter()

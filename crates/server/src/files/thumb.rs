@@ -56,12 +56,11 @@ pub async fn thumb(sc: &Scope, path: &str) -> Result<String, Refusal> {
     ] {
         // ponytail: a cache entry newer than the file is taken as current; the spec's
         // Thumb::MTime check is the stricter upgrade.
-        if let Ok(m) = std::fs::metadata(&p) {
-            if super::secs(m.modified()) >= mtime {
-                if let Ok(b) = std::fs::read(&p) {
-                    return Ok(base64::engine::general_purpose::STANDARD.encode(b));
-                }
-            }
+        if let Ok(m) = std::fs::metadata(&p)
+            && super::secs(m.modified()) >= mtime
+            && let Ok(b) = std::fs::read(&p)
+        {
+            return Ok(base64::engine::general_purpose::STANDARD.encode(b));
         }
     }
     let ext = real.rsplit('.').next().unwrap_or("").to_ascii_lowercase();

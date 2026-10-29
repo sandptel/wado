@@ -37,7 +37,7 @@ pub async fn state() -> Option<Bluetooth> {
             icon: field("Icon:").unwrap_or_default(),
         });
     }
-    devices.sort_by(|a, b| b.connected.cmp(&a.connected));
+    devices.sort_by_key(|b| std::cmp::Reverse(b.connected));
     Some(Bluetooth { powered, devices })
 }
 

@@ -84,21 +84,20 @@ fn gpu() -> String {
         .find_map(|l| l.strip_prefix("DRIVER="))
         .unwrap_or("")
         .to_string();
-    if !slot.is_empty() {
-        if let Ok(out) = std::process::Command::new("lspci")
+    if !slot.is_empty()
+        && let Ok(out) = std::process::Command::new("lspci")
             .args(["-mm", "-s", &slot])
             .output()
-        {
-            // `62:00.0 "Display controller" "Vendor" "Device" …` — the vendor and device fields.
-            let line = String::from_utf8_lossy(&out.stdout);
-            let quoted: Vec<&str> = line.split('"').skip(1).step_by(2).collect();
-            if let (Some(v), Some(d)) = (quoted.get(1), quoted.get(2)) {
-                let v = v
-                    .replace("Advanced Micro Devices, Inc. [AMD/ATI]", "AMD")
-                    .replace("Intel Corporation", "Intel")
-                    .replace("NVIDIA Corporation", "NVIDIA");
-                return format!("{v} {d}");
-            }
+    {
+        // `62:00.0 "Display controller" "Vendor" "Device" …` — the vendor and device fields.
+        let line = String::from_utf8_lossy(&out.stdout);
+        let quoted: Vec<&str> = line.split('"').skip(1).step_by(2).collect();
+        if let (Some(v), Some(d)) = (quoted.get(1), quoted.get(2)) {
+            let v = v
+                .replace("Advanced Micro Devices, Inc. [AMD/ATI]", "AMD")
+                .replace("Intel Corporation", "Intel")
+                .replace("NVIDIA Corporation", "NVIDIA");
+            return format!("{v} {d}");
         }
     }
     driver

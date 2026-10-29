@@ -85,12 +85,12 @@ pub fn slot_events(state: &mut Slots, next: &[Contact], w: i32, h: i32) -> Vec<(
 
     let mut events = Vec::new();
     for s in 0..SLOTS {
-        if let Some((id, _)) = state.slots[s] {
-            if !next_ids.contains(&id) {
-                events.push((EV_ABS, ABS_MT_SLOT, s as i32));
-                events.push((EV_ABS, ABS_MT_TRACKING_ID, -1));
-                state.slots[s] = None;
-            }
+        if let Some((id, _)) = state.slots[s]
+            && !next_ids.contains(&id)
+        {
+            events.push((EV_ABS, ABS_MT_SLOT, s as i32));
+            events.push((EV_ABS, ABS_MT_TRACKING_ID, -1));
+            state.slots[s] = None;
         }
     }
 

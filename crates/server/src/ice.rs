@@ -85,7 +85,6 @@ fn turn_from(turn: wado_config::schema::Turn) -> Option<RTCIceServer> {
         urls,
         username: turn.user,
         credential: turn.pass,
-        ..Default::default()
     })
 }
 
