@@ -63,8 +63,12 @@ trackpad {
     // smoothing #true                 // play touches on a steady cadence (gesture speed reads
     //                                 // true); #false writes direct frames as they land
     // rate-hz 125                     // that cadence, like a real touchpad (60..=250)
-    // direct-delay-ms 8               // how far behind the phone the direct path plays (0..=50);
-    //                                 // the relay path plays at least 24 ms behind
+    // delay "adaptive"                // how far behind the phone the direct path plays:
+    //                                 // "adaptive" (frame interval + how late frames run) |
+    //                                 // "fixed" (direct-delay-ms); the relay plays >= 24 ms behind
+    // direct-delay-ms 24              // the "fixed" delay (0..=50)
+    // direct-delay-min 8              // the "adaptive" delay's bounds (0..=50)
+    // direct-delay-max 40
 }
 
 binds {

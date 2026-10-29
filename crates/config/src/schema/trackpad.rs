@@ -22,9 +22,26 @@ pub struct Trackpad {
     pub smoothing: bool,
     /// The cadence frames are written at, like a real touchpad's report rate. Clamped 60..=250.
     pub rate_hz: u32,
-    /// How far behind the phone the direct path plays, to absorb jitter (the relay path plays
-    /// at least 24 ms behind). Clamped 0..=50.
+    /// How far behind the phone the direct path plays, to absorb jitter: measured from how the
+    /// frames arrive (`adaptive`), or `direct-delay-ms` (`fixed`). The relay path plays at least
+    /// 24 ms behind, or more when the measurement says so.
+    pub delay: TrackpadDelay,
+    /// The delay when `delay "fixed"`. Clamped 0..=50.
     pub direct_delay_ms: u64,
+    /// The bounds of the `adaptive` delay. Clamped 0..=50, max at least min.
+    pub direct_delay_min: u64,
+    pub direct_delay_max: u64,
+}
+
+/// `trackpad { delay }`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TrackpadDelay {
+    /// The phone's frame interval plus how late its frames run, re-measured continuously.
+    #[default]
+    Adaptive,
+    /// `direct-delay-ms`, always.
+    Fixed,
 }
 
 impl Default for Trackpad {
@@ -36,7 +53,10 @@ impl Default for Trackpad {
             key_silence_ms: 5000,
             smoothing: true,
             rate_hz: 125,
-            direct_delay_ms: 8,
+            delay: TrackpadDelay::Adaptive,
+            direct_delay_ms: 24,
+            direct_delay_min: 8,
+            direct_delay_max: 40,
         }
     }
 }
@@ -67,7 +87,16 @@ mod tests {
     #[test]
     fn pacing_keys_default_and_parse() {
         let d = super::Trackpad::default();
-        assert_eq!((d.smoothing, d.rate_hz, d.direct_delay_ms), (true, 125, 8));
+        assert_eq!((d.smoothing, d.rate_hz), (true, 125));
+        assert_eq!(
+            (
+                d.delay,
+                d.direct_delay_ms,
+                d.direct_delay_min,
+                d.direct_delay_max
+            ),
+            (super::TrackpadDelay::Adaptive, 24, 8, 40)
+        );
         let c = crate::kdl::parse(
             "trackpad {\n  smoothing #false\n  rate-hz 200\n  direct-delay-ms 16\n}\n",
         )
@@ -80,5 +109,19 @@ mod tests {
             ),
             (false, 200, 16)
         );
+    }
+
+    #[test]
+    fn delay_is_adaptive_or_fixed() {
+        let c = crate::kdl::parse(
+            "trackpad {\n  delay \"fixed\"\n  direct-delay-min 4\n  direct-delay-max 30\n}\n",
+        )
+        .unwrap();
+        assert_eq!(c.trackpad.delay, super::TrackpadDelay::Fixed);
+        assert_eq!(
+            (c.trackpad.direct_delay_min, c.trackpad.direct_delay_max),
+            (4, 30)
+        );
+        assert!(crate::kdl::parse("trackpad { delay \"smooth\" }").is_err());
     }
 }
