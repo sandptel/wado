@@ -4,6 +4,7 @@
 //
 //   const phone = device();                 one browser: one device key, one set of host pins
 //   phone.store.setItem("wado.pair", code)  as the QR link's storage.js would
+//   phone.W.events                          what the page told the UI (`emit`), e.g. pair_sas
 //   link(ws, phone, msgs)                   speak the envelope on a relay socket
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
@@ -11,6 +12,9 @@ import vm from "node:vm";
 const JS = ["e2e_keys", "e2e_seal", "e2e_handshake"]
   .map((f) => readFileSync(new URL(`../../crates/client/src/js/${f}.js`, import.meta.url), "utf8"))
   .join("\n");
+// The check words, as bridge.rs bundles them.
+const SAS_WORDS = readFileSync(new URL("../../crates/protocol/src/sas_words.txt", import.meta.url), "utf8")
+  .trim().split(/\s+/);
 
 export function device(clientKey = "") {
   const m = new Map();
@@ -19,12 +23,13 @@ export function device(clientKey = "") {
     setItem: (k, v) => m.set(k, String(v)),
     removeItem: (k) => m.delete(k),
   };
-  const W = { clientKey, log: [] };
+  const W = { clientKey, log: [], events: [], SAS_WORDS };
   W.rlog = (l) => W.log.push(l);
   // No indexedDB here: the key lives as long as this object, i.e. one "browser".
   const ctx = vm.createContext({
     W, crypto, atob, btoa, TextEncoder, TextDecoder, WebSocket, BigInt, DataView,
     Uint8Array, setTimeout, clearTimeout, localStorage: store, status: () => {}, console,
+    emit: (e) => W.events.push(e),
   });
   vm.runInContext(JS, ctx);
   return { W, store };
@@ -39,6 +44,7 @@ export function onFrame(dev, ws, remoteId, m, push) {
     return true;
   }
   if (m.type === "e2e_reply") { W.e2eOnReply(m); return true; }
+  if (m.type === "e2e_sas") { push(m); W.e2eOnSas(m); return true; }
   if (m.type === "e2e_fail") { push(m); W.e2eOnFail(m); return true; }
   if (m.type === "sealed") { W.e2eOnSealed(m, push); return true; }
   return false;

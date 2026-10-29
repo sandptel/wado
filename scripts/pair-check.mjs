@@ -7,7 +7,9 @@
 //      code redials once, claiming a code (`pair=1`) — and the code itself never goes on the URL.
 //   4. The proof: e2e_finish carries typed_mac = HMAC(k_pair, H(T2) ‖ code), checked here against
 //      an independent computation of the daemon's side; the code is never in the frame, and is
-//      gone from storage after one try.
+//      gone from storage after one try. Then the check words: the device's are the daemon's, a
+//      session's differ from another's, a nonce that was not committed to is refused, the device
+//      waits until e2e_ok — and a QR pairing has none of it.
 //
 // Run:  node scripts/pair-check.mjs
 import { readFileSync } from "node:fs";
@@ -47,7 +49,7 @@ const rustConst = (name) => {
   const ctx = vm.createContext({ W: {}, emit: () => {}, localStorage: storage() });
   vm.runInContext(js("pair.js"), ctx);
   const re = ctx.W.PAIR_REFUSAL;
-  for (const n of ["UNPAIRED", "WRONG_CODE", "STALE_CODE"]) check(`the form opens on the daemon's ${n}`, re.test(rustConst(n)), true);
+  for (const n of ["UNPAIRED", "WRONG_CODE", "STALE_CODE", "DECLINED", "NO_ANSWER"]) check(`the form opens on the daemon's ${n}`, re.test(rustConst(n)), true);
   check("…but not when every desktop is busy (a code would not help now)", re.test(rustConst("BUSY_UNPAIRED")), false);
   check("…nor for a trusted device's key mismatch",
     re.test("this device's key is not the one this computer trusts for it"), false);
@@ -114,30 +116,43 @@ const rustConst = (name) => {
   delete globalThis.localStorage;
 }
 
-// ── 4. The proof ────────────────────────────────────────────────────────────
+// ── 4. The proof, and the check words ───────────────────────────────────────
 // The client's envelope code, run unchanged, against a daemon computed here from the wire spec
 // (crates/protocol/src/envelope.rs).
-{
+const WORDS = readFileSync(new URL("../crates/protocol/src/sas_words.txt", import.meta.url), "utf8").trim().split(/\s+/);
+const b64 = {
+  enc: (u8) => Buffer.from(u8).toString("base64url"),
+  dec: (s) => new Uint8Array(Buffer.from(String(s), "base64url")),
+};
+const cat = (...p) => { const o = new Uint8Array(p.reduce((n, x) => n + x.length, 0)); let i = 0; for (const x of p) { o.set(x, i); i += x.length; } return o; };
+const lp = (s) => { const b = enc.encode(s); return cat(new Uint8Array([b.length >> 8, b.length & 255]), b); };
+const sha = async (b) => new Uint8Array(await subtle.digest("SHA-256", b));
+const hkdf = async (shared, salt, info, bits) => {
+  const ikm = await subtle.importKey("raw", shared, "HKDF", false, ["deriveBits"]);
+  return new Uint8Array(await subtle.deriveBits({ name: "HKDF", hash: "SHA-256", salt, info: enc.encode(info) }, ikm, bits));
+};
+const hmac = async (key, data) => new Uint8Array(await subtle.sign("HMAC",
+  await subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]), data));
+
+// One device and one daemon, up to the device's e2e_finish. `stored` is what the device holds.
+async function session(stored) {
   const store = storage();
-  const W = { clientKey: "Laptop-key", log: [] };
+  for (const [k, v] of Object.entries(stored)) store.setItem(k, v);
+  const events = [];
+  const W = { clientKey: "Laptop-key", log: [], SAS_WORDS: WORDS };
   W.rlog = (l) => W.log.push(l);
   const ctx = vm.createContext({
     W, crypto, atob, btoa, TextEncoder, TextDecoder, BigInt, DataView, Uint8Array, setTimeout,
-    clearTimeout, localStorage: store, status: () => {}, emit: () => {}, console,
+    clearTimeout, localStorage: store, status: () => {}, emit: (e) => events.push(e), console,
     WebSocket: { OPEN: 1 },
   });
   vm.runInContext(["e2e_keys.js", "e2e_seal.js", "e2e_handshake.js", "pair.js"].map(js).join("\n"), ctx);
-  store.setItem("wado.pairTyped", "K7QF2MXP");
   const sent = [];
   const ws = { readyState: 1, send: (s) => sent.push(JSON.parse(s)), close() {} };
-  await W.e2eBegin(ws, "room-1", "872990894", () => {});
+  let up = false;
+  await W.e2eBegin(ws, "room-1", "872990894", () => { up = true; });
   const hello = sent.find((m) => m.type === "e2e_hello");
-
   // The daemon's half.
-  const b64 = { enc: W.b64u.enc, dec: W.b64u.dec };
-  const cat = (...p) => { const o = new Uint8Array(p.reduce((n, x) => n + x.length, 0)); let i = 0; for (const x of p) { o.set(x, i); i += x.length; } return o; };
-  const lp = (s) => { const b = enc.encode(s); return cat(new Uint8Array([b.length >> 8, b.length & 255]), b); };
-  const sha = async (b) => new Uint8Array(await subtle.digest("SHA-256", b));
   const eph = await subtle.generateKey({ name: "X25519" }, true, ["deriveBits"]);
   const ephD = new Uint8Array(await subtle.exportKey("raw", eph.publicKey));
   const host = await subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"]);
@@ -146,17 +161,31 @@ const rustConst = (name) => {
   const t1 = cat(enc.encode("wado-e2e-v1"), lp("room-1"), lp("Laptop-key"), ephC, ephD, hpk);
   const h1 = await sha(t1);
   const sig = new Uint8Array(await subtle.sign({ name: "Ed25519" }, host.privateKey, h1));
-  await W.e2eOnReply({ type: "e2e_reply", eph: b64.enc(ephD), host_pk: b64.enc(hpk), sig: b64.enc(sig) });
+  const nonce = crypto.getRandomValues(new Uint8Array(32));
+  await W.e2eOnReply({ type: "e2e_reply", eph: b64.enc(ephD), host_pk: b64.enc(hpk), sig: b64.enc(sig), sas_commit: b64.enc(await sha(nonce)) });
   const fin = sent.find((m) => m.type === "e2e_finish");
+  const peer = await subtle.importKey("raw", ephC, { name: "X25519" }, false, []);
+  const shared = await subtle.deriveBits({ name: "X25519", public: peer }, eph.privateKey, 256);
+  const h2 = await sha(cat(t1, b64.dec(fin.dev_pk)));
+  const kSas = await hkdf(shared, h1, "wado-e2e-v1 sas", 256);
+  const daemonWords = [...(await hmac(kSas, cat(h2, nonce))).slice(0, 4)].map((b) => WORDS[b]);
+  // Sealed e2e_ok, as the daemon sends it once the words are confirmed.
+  const okm = await hkdf(shared, h1, "wado-e2e-v1", 512);
+  const d2c = await subtle.importKey("raw", okm.slice(32), "AES-GCM", false, ["encrypt"]);
+  const sealedOk = async () => ({ type: "sealed", n: 0,
+    c: b64.enc(new Uint8Array(await subtle.encrypt({ name: "AES-GCM", iv: new Uint8Array(12) }, d2c, enc.encode('{"type":"e2e_ok"}')))) });
+  return { W, ctx, store, events, fin, shared, h1, h2, nonce, daemonWords, sealedOk, isUp: () => up };
+}
+const settle = () => new Promise((r) => setTimeout(r, 50));
+const shown = (s) => s.events.filter((e) => e.type === "pair_sas").map((e) => e.words);
+
+{
+  const s = await session({ "wado.pairTyped": "K7QF2MXP" });
+  const { fin, h2 } = s;
   check("the handshake finishes with a typed proof", !!(fin && fin.typed_mac), true);
   check("…and no QR proof (it holds none)", fin && fin.pair_mac, "");
   check("…and the code itself is nowhere in the frame", /K7QF|2MXP/i.test(JSON.stringify(fin)), false);
-  const peer = await subtle.importKey("raw", ephC, { name: "X25519" }, false, []);
-  const shared = await subtle.deriveBits({ name: "X25519", public: peer }, eph.privateKey, 256);
-  const ikm = await subtle.importKey("raw", shared, "HKDF", false, ["deriveBits"]);
-  const kPair = new Uint8Array(await subtle.deriveBits(
-    { name: "HKDF", hash: "SHA-256", salt: h1, info: enc.encode("wado-e2e-v1 pair") }, ikm, 256));
-  const h2 = await sha(cat(t1, b64.dec(fin.dev_pk)));
+  const kPair = await hkdf(s.shared, s.h1, "wado-e2e-v1 pair", 256);
   const verify = async (code) => {
     const k = await subtle.importKey("raw", kPair, { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
     return subtle.verify("HMAC", k, b64.dec(fin.typed_mac), cat(h2, enc.encode(code)));
@@ -167,12 +196,55 @@ const rustConst = (name) => {
   const pub = await subtle.importKey("raw", enc.encode("K7QF2MXP"), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
   check("…and it is no oracle over the public transcript",
     await subtle.verify("HMAC", pub, b64.dec(fin.typed_mac), h2), false);
-  check("the typed code is tried once: gone from storage", store.getItem("wado.pairTyped"), null);
-  // A refusal for a wrong code opens the form again.
-  const shown = [];
-  ctx.emit = (e) => shown.push(e);
-  vm.runInContext("W.e2eOnFail({ reason: " + JSON.stringify(rustConst("WRONG_CODE")) + " })", ctx);
-  check("a wrong code reopens the form", shown.map((e) => e.type), ["unpaired"]);
+  check("the typed code is tried once: gone from storage", s.store.getItem("wado.pairTyped"), null);
+
+  // The check words.
+  check("no words before the computer reveals its nonce", shown(s), []);
+  await s.W.e2eOnSas({ type: "e2e_sas", nonce: b64.enc(s.nonce) });
+  await settle();
+  check("the device's words are the daemon's words", shown(s), [s.daemonWords]);
+  check("…four of them, from the shared list", s.daemonWords.every((w) => WORDS.includes(w)) && s.daemonWords.length === 4, true);
+  check("…and the device waits: not in yet", s.isUp(), false);
+  s.W.e2eOnSealed(await s.sealedOk(), () => {});
+  await settle();
+  check("the computer's yes lets it in", s.isUp(), true);
+  check("…and the words go away", shown(s).at(-1), []);
+
+  const other = await session({ "wado.pairTyped": "K7QF2MXP" });
+  await other.W.e2eOnSas({ type: "e2e_sas", nonce: b64.enc(other.nonce) });
+  await settle();
+  check("another session has other words", JSON.stringify(shown(other)[0]) !== JSON.stringify(shown(s)[0]), true);
+}
+{
+  // A nonce other than the one committed to — a relay steering the words — is refused outright.
+  const s = await session({ "wado.pairTyped": "K7QF2MXP" });
+  await s.W.e2eOnSas({ type: "e2e_sas", nonce: b64.enc(crypto.getRandomValues(new Uint8Array(32))) });
+  await settle();
+  check("a nonce that was not promised shows no words", shown(s), []);
+  check("…and stops the link", s.W._e2eBlocked === true && s.W.log.some((l) => /not the ones it promised/.test(l)), true);
+}
+{
+  // The QR path is untouched: no typed proof, and a stray e2e_sas does nothing.
+  const s = await session({ "wado.pair": "QRCODEQRCODEQRCODEQRCODE" });
+  check("a QR pairing sends no typed proof", !!s.fin.typed_mac, false);
+  await s.W.e2eOnSas({ type: "e2e_sas", nonce: b64.enc(s.nonce) });
+  await settle();
+  check("…and shows no check words", shown(s), []);
+  s.W.e2eOnSealed(await s.sealedOk(), () => {});
+  await settle();
+  check("…and is in on e2e_ok, as before", s.isUp(), true);
+}
+{
+  // Refusals that reopen the form: a wrong code, and a declined or unanswered check.
+  const s = await session({ "wado.pairTyped": "K7QF2MXP" });
+  await s.W.e2eOnSas({ type: "e2e_sas", nonce: b64.enc(s.nonce) });
+  await settle();
+  vm.runInContext("W.e2eOnFail({ reason: " + JSON.stringify(rustConst("DECLINED")) + " })", s.ctx);
+  check("declined on the computer: the words go and the form reopens",
+    s.events.slice(-2).map((e) => e.type === "pair_sas" ? "words:" + e.words.length : e.type), ["words:0", "unpaired"]);
+  const t = await session({ "wado.pairTyped": "K7QF2MXP" });
+  vm.runInContext("W.e2eOnFail({ reason: " + JSON.stringify(rustConst("WRONG_CODE")) + " })", t.ctx);
+  check("a wrong code reopens the form", t.events.map((e) => e.type), ["unpaired"]);
 }
 
 console.log(failures ? `\n${failures} failure(s)` : "\nall pairing checks passed");

@@ -10,7 +10,8 @@
 //   park       a client that arrives first waits, and is paired when a daemon registers
 //   gate       (Decision Log 2026-10-27) a device gets in only with a code shown on the computer:
 //              the first one too; an unknown one is refused at once with how to pair; a typed
-//              code pairs; five wrong typed codes revoke every live code
+//              code pairs only once the check words are confirmed at `wado pair` (2026-10-30) —
+//              a "no" there refuses it; five wrong typed codes revoke every live code
 //   hold       a dropped device keeps its seat; another device is refused, the owner reclaims
 //   takeover   one tap moves a seat; the displaced device is told; an unknown device is refused
 //              without disturbing it
@@ -96,6 +97,20 @@ const mint = () => {
   const q = new URLSearchParams(out.match(/open: \S+\?(\S+)/)[1]);
   return { out, pair: q.get("pair"), hk: q.get("hk"), typed: (out.match(/type this code on it: (\S+)/) || [])[1] };
 };
+// `wado pair --wait`, as a person at the computer runs it: its output so far, the typed code it
+// shows, and `say(line)` to answer the check-words question on its stdin.
+async function pairAt() {
+  const p = spawn(join(ROOT, "target/release/wado"), ["pair", "--wait", "--relay", "http://r.example", "--id", RID],
+    { env: { ...process.env, XDG_CONFIG_HOME: CFG }, stdio: ["pipe", "pipe", "pipe"] });
+  p.out = "";
+  p.stdout.on("data", (d) => { p.out += d.toString().replace(/\x1b\[[0-9;]*m/g, ""); });
+  procs.add(p);
+  p.on("exit", () => procs.delete(p));
+  await waitFor(p, /type this code on it: \S+/, 5000);
+  p.typed = (p.out.match(/type this code on it: (\S+)/) || [])[1] || "";
+  p.say = (line) => p.stdin.write(line + "\n");
+  return p;
+}
 const trustList = () => { try { return readFileSync(join(CFG, "wado/trusted_clients"), "utf8"); } catch { return ""; } };
 // A client: records every frame (sealed ones opened), answers pings.
 class Client {
@@ -177,15 +192,27 @@ try {
   await laptop.waitClosed(3000);
   await sleep(300);
   // The laptop types the code from the computer's screen.
-  const second = mint();
-  check("`wado qr` shows a typed code, grouped", /^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/.test(second.typed || ""), second.out);
+  const second = await pairAt();
+  check("`wado pair` shows a typed code, grouped", /^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/.test(second.typed), second.out);
   check("…and how long it has", /expires in (10:00|9:\d\d)/.test(second.out), second.out);
   devices["Laptop-key"].store.setItem("wado.pairTyped", second.typed.replace("-", ""));
   const laptopIn = new Client("Laptop", { pair: true });
   const lacc = await laptopIn.wait("join_accepted", 5000);
-  check("a typed code lets it in, on the other daemon", lacc && lacc.instance_id === `${RID}:2`, lacc && lacc.instance_id);
-  check("…the secure link comes up", !!(await laptopIn.up()), JSON.stringify(laptopIn.msgs) + devices["Laptop-key"].W.log.join("\n"));
+  check("a typed code is let through to prove itself, on the other daemon", lacc && lacc.instance_id === `${RID}:2`, lacc && lacc.instance_id);
+  const sas = await laptopIn.wait("e2e_sas", 8000);
+  check("…then the computer reveals the nonce for the check words", !!sas, JSON.stringify(laptopIn.msgs));
+  await waitFor(second, /Does it show these four words\?\n\s+(\S+ ){3}\S+/, 5000);
+  const atComputer = (second.out.match(/Does it show these four words\?\n\s+((\S+ ){3}\S+)/) || [])[1];
+  await sleep(200);
+  const onDevice = (devices["Laptop-key"].W.events.filter((e) => e.type === "pair_sas").at(-1) || {}).words;
+  check("…both screens show the same four words", !!atComputer && onDevice && onDevice.join(" ") === atComputer,
+    `${atComputer} | ${onDevice}`);
+  check("…and the device is not in, nor trusted, before anyone answers",
+    !laptopIn.has("__up") && !trustList().includes("Laptop-key"), trustList());
+  second.say("y");
+  check("a yes at the computer lets it in", !!(await laptopIn.up()), JSON.stringify(laptopIn.msgs) + devices["Laptop-key"].W.log.join("\n"));
   check("…and the trust list pins its key", /Laptop-key\tLaptop\t\S+\t1/.test(trustList()), trustList());
+  check("…and `wado pair` says so", await waitFor(second, /paired/, 3000), second.out);
   check("…the code never reached the relay", !(await waitFor(r, new RegExp(second.typed.replace("-", "")), 300)));
   laptopIn.close();
   await sleep(300);
@@ -194,6 +221,20 @@ try {
   await stop(d2);
   const d3 = daemon(3);
   await waitFor(d3, /registered — Remote ID/);
+  // A "no" at the computer: the device is refused, told why, and trusts nothing.
+  const fourth = await pairAt();
+  devices["Desk-key"] = device("Desk-key");
+  devices["Desk-key"].store.setItem("wado.pairTyped", fourth.typed.replace("-", ""));
+  const desk = new Client("Desk", { pair: true });
+  await waitFor(fourth, /Does it show these four words/, 8000);
+  fourth.say("n");
+  const dfail = await desk.wait("e2e_fail", 8000);
+  check("a no at the computer refuses the device", !!dfail && /wasn't paired/.test(dfail.reason) && !desk.has("__up"),
+    JSON.stringify(desk.msgs));
+  check("…trusts nothing", !trustList().includes("Desk-key"), trustList());
+  check("…and spends the code", await waitFor(fourth, /declined/, 3000), fourth.out);
+  await desk.waitClosed(3000);
+  await sleep(300);
   const third = mint();
   const guessed = [];
   for (let i = 0; i < 5; i++) {
