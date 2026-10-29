@@ -7,6 +7,11 @@
 //! - `uinput.rs` — the raw `/dev/uinput` device: open, describe, emit events, destroy on drop.
 //! - `touchpad.rs` — the virtual touchpad: device setup, and the pure slot-assignment logic
 //!   that turns a `Contact` frame into evdev events.
+//! - `keys.rs` — the virtual keyboard: US-layout key/char lookup, chord construction, and the
+//!   device that tracks what it holds.
+//! - `text.rs` — committed text, typed into the desktop via `wtype`.
 
+pub mod keys;
+pub mod text;
 pub mod touchpad;
 pub mod uinput;
