@@ -168,6 +168,9 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/pad_ui.js"),
     "\n",
+    // After the pad files: it chains the `pad_out` handler `pad_link` registers.
+    include_str!("js/actions.js"),
+    "\n",
     include_str!("js/capture.js"),
     "\n",
     include_str!("js/audio.js"),
@@ -176,7 +179,20 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/online.js"),
     "\n",
+    // After the envelope files: it reuses their helpers for its own per-link handshakes.
+    include_str!("js/side_link.js"),
+    "\n",
     include_str!("js/sessions.js"),
+    "\n",
+    include_str!("js/hero_flip.js"),
+    "\n",
+    include_str!("js/cbar.js"),
+    "\n",
+    include_str!("js/widget_flip.js"),
+    "\n",
+    include_str!("js/widget_drag.js"),
+    "\n",
+    include_str!("js/widget_touch.js"),
     "\n",
     include_str!("js/chrome.js"),
     "\n",
@@ -199,6 +215,14 @@ pub fn call(code: String) {
     spawn(async move {
         let _ = document::eval(&code).await;
     });
+}
+
+/// Wait `ms` on the browser's clock — for a confirmation that undoes itself (a copied tick).
+pub async fn sleep(ms: u32) {
+    let _ = document::eval(&format!(
+        "return new Promise((r) => setTimeout(() => r(1), {ms}));"
+    ))
+    .await;
 }
 
 /// Write the settings blob. Cheap enough to call on every change: one `JSON.stringify` and one
@@ -263,6 +287,35 @@ pub fn run(ui: Ui) {
 
             match kind {
                 "status" => live.status.set(text()),
+                // A Back whose exit motion has run (`js/hero_flip.js`).
+                "viewBack" => crate::route::back(ui),
+                // Home's widgets: one removed after its exit, one dropped in a new place.
+                "widgetRemove" => {
+                    let mut s = ui.set;
+                    crate::widget::remove(&mut s.widgets.write(), &string("id"));
+                }
+                "widgetPlace" => {
+                    let mut s = ui.set;
+                    let (from, to) = (
+                        num("from").unwrap_or(0.0) as usize,
+                        num("to").unwrap_or(0.0) as usize,
+                    );
+                    crate::widget::place(&mut s.widgets.write(), from, to);
+                }
+                "actions" => {
+                    if let Some(list) = msg
+                        .get("actions")
+                        .and_then(|v| serde_json::from_value(v.clone()).ok())
+                    {
+                        live.actions.set(list);
+                    }
+                }
+                "ran" => {
+                    let m = string("message");
+                    if !m.is_empty() {
+                        live.note.set(m);
+                    }
+                }
                 "link" => {
                     if let Ok(l) = serde_json::from_value(msg.clone()) {
                         live.link.set(l);
@@ -467,6 +520,7 @@ pub fn run(ui: Ui) {
                             call("window.__wado.listenStart();".to_string());
                         }
                         crate::profile::learn_host(ui, &st.info.hostname);
+                        crate::profile::learn_info(ui, &crate::profile::current_key(ui), &st);
                         live.hoststate.set(Some(st));
                     }
                 }
@@ -476,6 +530,25 @@ pub fn run(ui: Ui) {
                         .and_then(|v| serde_json::from_value(v.clone()).ok())
                         .unwrap_or_default();
                     live.sessions.set((string("here"), list));
+                }
+                // A light link's news about one computer: only the fields that changed.
+                "side" => {
+                    let key = string("key");
+                    let mut side = live.side.write();
+                    let e = side.entry(key).or_default();
+                    e.state = string("state");
+                    if let Some(v) = msg.get("host") {
+                        e.host = serde_json::from_value(v.clone()).ok();
+                    }
+                    if let Some(v) = msg.get("config") {
+                        e.config = serde_json::from_value(v.clone()).ok();
+                    }
+                    if let Some(v) = msg.get("clips") {
+                        e.clips = serde_json::from_value(v.clone()).unwrap_or_default();
+                    }
+                    if let Some(v) = msg.get("actions") {
+                        e.actions = serde_json::from_value(v.clone()).unwrap_or_default();
+                    }
                 }
                 "online" => {
                     let key = string("key");
