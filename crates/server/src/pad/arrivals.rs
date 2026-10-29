@@ -36,6 +36,11 @@ impl Arrivals {
         self.starved += n;
     }
 
+    /// When [`Arrivals::report`] next has something to sum up (pad-clock ms), if anything.
+    pub fn due(&self) -> Option<u64> {
+        self.since.map(|since| since + REPORT_MS)
+    }
+
     /// The summary, with the pacer's delay `delay_ms` now, once [`REPORT_MS`] has passed since
     /// the first frame it covers; then starts over. Nothing while no finger has been down.
     pub fn report(&mut self, now_ms: u64, delay_ms: f64) -> Option<String> {

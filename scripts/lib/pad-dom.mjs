@@ -50,6 +50,13 @@ class El {
   hasAttribute(k) { return k in this.attrs; }
   appendChild(c) { if (c.parentNode) c.remove(); c.parentNode = this; this.children.push(c); return c; }
   append(...cs) { for (const c of cs) this.appendChild(c); }
+  insertBefore(c, ref) {
+    if (c.parentNode) c.remove();
+    const at = this.children.indexOf(ref);
+    c.parentNode = this;
+    this.children.splice(at < 0 ? this.children.length : at, 0, c);
+    return c;
+  }
   replaceChildren(...cs) { for (const c of this.children) c.parentNode = null; this.children = []; this._text = ""; this.append(...cs); }
   remove() { if (!this.parentNode) return; const p = this.parentNode; p.children = p.children.filter((x) => x !== this); this.parentNode = null; }
   addEventListener(t, f) { (this.listeners[t] ||= []).push(f); }

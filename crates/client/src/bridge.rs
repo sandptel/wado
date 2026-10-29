@@ -180,6 +180,9 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/pad_hints.js"),
     "\n",
+    // The one owner of the pad's pointer listeners: gestures, then touch, then the pictures.
+    include_str!("js/pad_pointer.js"),
+    "\n",
     include_str!("js/pad_confirm.js"),
     "\n",
     include_str!("js/pad_coach.js"),

@@ -3,16 +3,17 @@
 //! One [`Pad`] serves both transports, so a phone can begin on the relay and move to its direct
 //! link mid-drag without a ghost finger. Touch frames are written on the pad's tick, every
 //! `trackpad { rate-hz }`, by the pacer (`pacer.rs`) — or as they land, on the direct link with
-//! `trackpad { smoothing #false }`. Keyboard messages go through one ordered queue, so text typed
+//! `trackpad { smoothing #false }`. The tick parks while the pad is idle (`ticker.rs`); every
+//! message applied wakes it. Keyboard messages go through one ordered queue, so text typed
 //! by `wtype` can never be overtaken by the Enter pressed after it. Every message is checked
 //! against the gate first; a refusal answers why and closes the pad.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
 
-use tokio::sync::mpsc;
+use tokio::sync::{Notify, mpsc};
 use tokio::task::JoinHandle;
+use tokio::time::Instant;
 use tracing::{info, warn};
 use webrtc::api::API;
 use webrtc::data_channel::RTCDataChannel;
@@ -24,6 +25,7 @@ use wado_protocol::relay::RelayMsg;
 
 use super::sink::Devices;
 use super::state::Pad;
+use super::ticker::{self, Pace};
 use crate::files::channel::Who;
 use crate::gate::Gate;
 
@@ -38,6 +40,8 @@ pub struct Peer {
 #[derive(Clone, Default)]
 pub struct Live {
     inner: Arc<Mutex<Inner>>,
+    /// Signalled after every message the pad takes, so a parked tick resumes.
+    wake: Arc<Notify>,
 }
 
 #[derive(Default)]
@@ -142,10 +146,11 @@ impl Live {
             }
             return;
         }
-        if let Some(reply) = self
+        let reply = self
             .with_pad(|pad, now| pad.handle(now, msg, relayed))
-            .flatten()
-        {
+            .flatten();
+        self.wake.notify_one();
+        if let Some(reply) = reply {
             self.answer(reply);
         }
     }
@@ -210,20 +215,21 @@ impl Live {
         inner.pad = Some(pad);
         inner.epoch = Some(Instant::now());
 
-        // How often touch frames are written and silent fingers checked.
+        // How often touch frames are written and silent fingers checked, while anything is in
+        // flight; parked otherwise (`ticker.rs`).
         let tick = super::pacer::period(wado_config::live::current().trackpad.rate_hz);
         let ticker = {
             let live = self.clone();
-            tokio::spawn(async move {
-                let mut every = tokio::time::interval(tick);
-                every.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-                loop {
-                    every.tick().await;
-                    if let Some(err) = live.with_pad(|pad, now| pad.tick(now)).flatten() {
-                        live.answer(err);
-                    }
+            let epoch = inner.epoch.unwrap_or_else(Instant::now);
+            tokio::spawn(ticker::run(tick, epoch, self.wake.clone(), move || {
+                let (err, pace) = live
+                    .with_pad(|pad, now| (pad.tick(now), pad.pace()))
+                    .unwrap_or((None, Pace::Park(None)));
+                if let Some(err) = err {
+                    live.answer(err);
                 }
-            })
+                pace
+            }))
         };
 
         let (tx, mut rx) = mpsc::unbounded_channel::<PadMsg>();
@@ -234,6 +240,7 @@ impl Live {
                     let (reply, text) = live
                         .with_pad(|pad, now| (pad.handle(now, msg, false), pad.take_text()))
                         .unwrap_or((None, None));
+                    live.wake.notify_one();
                     if let Some(reply) = reply {
                         live.answer(reply);
                     }
@@ -257,7 +264,7 @@ impl Live {
     /// Run `f` on the open pad with the current pad-clock time; `None` when there is no pad.
     fn with_pad<T>(&self, f: impl FnOnce(&mut Pad, u64) -> T) -> Option<T> {
         let mut inner = self.lock();
-        let now = inner.epoch?.elapsed().as_millis() as u64;
+        let now = ticker::ms_since(inner.epoch?);
         inner.pad.as_mut().map(|pad| f(pad, now))
     }
 
