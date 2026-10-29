@@ -76,6 +76,9 @@ impl AppInfo {
                 parts.push(format!("updated {}", self.updated));
             }
         }
+        if self.state == "native" {
+            parts.push("Android app".to_string());
+        }
         parts.join(" · ")
     }
 
@@ -91,6 +94,7 @@ impl AppInfo {
             "pinned" => {
                 "Installed before signing was set up. Updates are taken only when signed.".into()
             }
+            "native" => "Built into the Android app: updates arrive with the app.".into(),
             "unpinned" => "A development build: loads fresh each time, nothing kept.".into(),
             "unsupported" => "This browser loads the newest version each time.".into(),
             _ => "Checking…".into(),
@@ -128,6 +132,9 @@ mod tests {
         assert_eq!(u.line(), "wado 0.0.4 · unsigned");
         let d = AppInfo::from_msg(&json!({"state": "unpinned"}));
         assert_eq!(d.line(), format!("wado {}", env!("CARGO_PKG_VERSION")));
+        let n = AppInfo::from_msg(&json!({"state": "native", "version": "0.0.3"}));
+        assert_eq!(n.line(), "wado 0.0.3 · Android app");
+        assert!(n.sub().contains("Android app"));
     }
 
     #[test]
