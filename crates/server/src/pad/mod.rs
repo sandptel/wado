@@ -14,12 +14,14 @@
 //! - `playout.rs` — evening out frames that came through the relay in bursts.
 //! - `sink.rs` — the kernel devices a pad drives, made on first use.
 //! - `gate.rs` — who may use the trackpad, asked of every message.
+//! - `actions.rs` — listing and running the computer's actions (`crate::actions`), on `host`.
 //! - `live.rs` — the open pad, fed by either transport, its tick and its ordered keyboard queue.
 //! - `channel.rs` — the direct link: a peer connection with a touch and a keys channel.
 //!
 //! Through the relay the same messages arrive as `RelayMsg::PadIn` (`relay_client.rs`), when
 //! the phone has no direct path or before its direct link is up.
 
+pub mod actions;
 pub mod channel;
 pub mod gate;
 pub mod keys;

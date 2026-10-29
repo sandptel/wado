@@ -121,6 +121,11 @@ impl Live {
             self.close();
             return;
         }
+        // Gated on `host`, not `input`, and need no pad devices.
+        if matches!(msg, PadMsg::Actions | PadMsg::Run { .. }) {
+            super::actions::handle(self, msg, peer);
+            return;
+        }
         if let Some(why) = super::gate::refused(&peer.gate, &peer.who, approved(peer)) {
             info!(device = %peer.who.name, "pad: refused — {why}");
             self.fail(why);
@@ -257,7 +262,7 @@ impl Live {
     }
 
     /// Answer the phone on its direct link while it is open, else through the relay.
-    fn reply(&self, msg: PadMsg) {
+    pub(super) fn reply(&self, msg: PadMsg) {
         let inner = self.lock();
         if let Some(dc) = inner
             .keys_dc
