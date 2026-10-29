@@ -7,6 +7,7 @@
 //! pushed over it.
 
 pub mod clips;
+mod pair;
 
 use dioxus::prelude::*;
 
@@ -45,6 +46,8 @@ pub fn render(ui: Ui) -> Element {
         section { id: "landing", class: "{class}", "aria-hidden": "{on || covered}",
             div { class: "wordmark", "wado" span { "." } }
             p { class: "tag", "Your computers, at this screen's own resolution." }
+            // The computer does not know this device yet: pair it before anything else.
+            {crate::ui::scoped(ui, "pair", pair::render)}
             div { class: "sect", span { "Computers" } }
             {crate::ui::scoped(ui, "cards", cards::render)}
             {crate::ui::scoped(ui, "sessions", sessions::render)}

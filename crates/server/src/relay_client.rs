@@ -134,18 +134,13 @@ struct RelayCtx {
     /// for any other room is stale — the viewer it names was already replaced — and acting on
     /// it would close the *current* viewer's peer connection.
     room: Arc<Mutex<String>>,
-    /// The viewer in `room` passed the gate. Only such a viewer is shown other devices'
-    /// approval requests, or may answer them.
+    /// The viewer in `room` passed the gate: it may use the shells, files and trackpad its
+    /// grants allow.
     viewer_ok: Arc<AtomicBool>,
-    /// The trust list and pending approvals — see [`crate::gate`].
+    /// The trust list and the pairing codes — see [`crate::gate`].
     gate: crate::gate::Gate,
-    /// Takeover checks (`PeerCheck`) still being decided, by room id. Cleared by that room's
-    /// `PeerDisconnected`, which withdraws its approval request.
-    checking: Arc<Mutex<std::collections::HashSet<String>>>,
     /// Rooms a takeover check approved. Their `PeerConnected` is let in without asking twice.
     approved: Arc<Mutex<std::collections::HashSet<String>>>,
-    /// Rooms let in "once" — admitted at the envelope's finish without joining the trust list.
-    once: Arc<Mutex<std::collections::HashSet<String>>>,
     /// The end-to-end envelope with the device on the seat — see [`crate::e2e`]. Every frame
     /// in or out of the relay link passes through it.
     link: Arc<Mutex<crate::e2e::link::Link>>,
@@ -477,9 +472,7 @@ async fn run(
         room: Arc::new(Mutex::new(String::new())),
         viewer_ok: Arc::new(AtomicBool::new(false)),
         gate: crate::gate::Gate::default(),
-        checking: Arc::default(),
         approved: Arc::default(),
-        once: Arc::default(),
         link: Arc::default(),
         host_key: Arc::new(crate::e2e::host_key::HostKey::load_or_create(
             &crate::remote_id::config_dir(),
@@ -623,21 +616,14 @@ async fn run(
 /// if a shell burst ever shows up in a profile.
 fn shell_refusal(ctx: &RelayCtx) -> impl Fn() -> Option<&'static str> + Send + 'static {
     let viewer = Arc::clone(&ctx.viewer);
-    let room = Arc::clone(&ctx.room);
-    let once = Arc::clone(&ctx.once);
     let ok = Arc::clone(&ctx.viewer_ok);
     let gate = ctx.gate.clone();
     move || {
         if !ok.load(Ordering::SeqCst) {
-            return Some("this device has not been approved yet");
+            return Some("this device has not been let in yet");
         }
         let key = viewer.lock().unwrap_or_else(|e| e.into_inner()).0.clone();
-        let room = room.lock().unwrap_or_else(|e| e.into_inner()).clone();
-        let once = once
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .contains(&room);
-        crate::shells::access::refused(&gate, &key, once)
+        crate::shells::access::refused(&gate, &key)
     }
 }
 
@@ -761,16 +747,6 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             ));
         }
     }
-
-    // ── 3a. Approval prompts (per connection) ────────────────────────────────
-    // Other devices waiting to join this computer — on this daemon or another of its pool —
-    // shown to this daemon's viewer once it has itself been let in. See `crate::gate`.
-    let approval_task = tokio::spawn(show_approvals(
-        ctx.gate.clone(),
-        out_tx.clone(),
-        Arc::clone(&ctx.room),
-        Arc::clone(&ctx.viewer_ok),
-    ));
 
     // ── 3. Log forwarding task (per connection) ──────────────────────────────
     let log_task = {
@@ -1106,8 +1082,9 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 dev_pk,
                 sig,
                 pair_mac,
+                typed_mac,
             } => {
-                e2e_finish(ctx, &out_tx, &dev_pk, &sig, &pair_mac).await;
+                e2e_finish(ctx, &out_tx, &dev_pk, &sig, &pair_mac, &typed_mac).await;
                 continue;
             }
             Inbound::Drop(why) => {
@@ -1175,11 +1152,8 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                             .await
                             .ok();
                     } else {
-                        let room = Arc::clone(&ctx.room);
                         let room_now = Arc::clone(&ctx.room);
                         let ok = Arc::clone(&ctx.viewer_ok);
-                        let once = Arc::clone(&ctx.once);
-                        let rid = room_id.clone();
                         let rid_now = room_id.clone();
                         tokio::spawn(decide_join(
                             ctx.gate.clone(),
@@ -1192,15 +1166,8 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                                 pair,
                             },
                             false,
-                            move || *room.lock().unwrap_or_else(|e| e.into_inner()) == rid,
-                            move |_, just_once| {
-                                if just_once {
-                                    once.lock()
-                                        .unwrap_or_else(|e| e.into_inner())
-                                        .insert(rid_now.clone());
-                                }
-                                // Only if it is still the viewer here — it may have left while
-                                // it waited.
+                            move |_| {
+                                // Only if it is still the viewer here — it may have left.
                                 if *room_now.lock().unwrap_or_else(|e| e.into_inner()) == rid_now {
                                     ok.store(true, Ordering::SeqCst);
                                 }
@@ -1221,15 +1188,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 // join, but without touching `room` — the current viewer is still the current
                 // viewer until the relay says otherwise.
                 info!(room_id = %room_id, device = %client_name, "relay client: takeover check");
-                ctx.checking
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .insert(room_id.clone());
-                let checking = Arc::clone(&ctx.checking);
-                let checking_done = Arc::clone(&ctx.checking);
                 let approved = Arc::clone(&ctx.approved);
-                let once = Arc::clone(&ctx.once);
-                let rid = room_id.clone();
                 tokio::spawn(decide_join(
                     ctx.gate.clone(),
                     out_tx.clone(),
@@ -1241,22 +1200,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                         pair,
                     },
                     true,
-                    move || {
-                        checking
-                            .lock()
-                            .unwrap_or_else(|e| e.into_inner())
-                            .contains(&rid)
-                    },
-                    move |room_id, just_once| {
-                        if just_once {
-                            once.lock()
-                                .unwrap_or_else(|e| e.into_inner())
-                                .insert(room_id.to_string());
-                        }
-                        checking_done
-                            .lock()
-                            .unwrap_or_else(|e| e.into_inner())
-                            .remove(room_id);
+                    move |room_id| {
                         approved
                             .lock()
                             .unwrap_or_else(|e| e.into_inner())
@@ -1265,23 +1209,14 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 ));
             }
 
-            RelayMsg::ApproveAnswer { id, verdict } => {
-                // Only a viewer that was itself let in may let others in.
-                if !ctx.viewer_ok.load(Ordering::SeqCst) {
-                    warn!(
-                        "relay client: approval answer from a viewer that is not approved — ignored"
-                    );
-                } else if let Some(v) = crate::gate::Verdict::parse(&verdict) {
-                    ctx.gate.answer(&id, v);
-                }
+            RelayMsg::ApproveAnswer { .. } => {
+                // From a client older than pairing-only (`2026-10-27`): no device approves
+                // another any more.
+                warn!("relay client: an approval answer — remote approval is gone; ignored");
             }
 
             RelayMsg::PeerDisconnected { room_id } => {
-                // A takeover check abandoned, or a check-approved room that never connected.
-                ctx.checking
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .remove(&room_id);
+                // A check-approved room that never connected.
                 ctx.approved
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
@@ -1296,10 +1231,6 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 }
                 ctx.link.lock().unwrap_or_else(|e| e.into_inner()).clear();
                 crate::links::clear(&ctx.remote_id);
-                ctx.once
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .remove(&room_id);
                 ctx.viewer_ok.store(false, Ordering::SeqCst);
                 // Nobody back within 30 s and no session to keep playing into it: the sink goes,
                 // so the computer's mixer shows no output for a device that is not there.
@@ -1623,16 +1554,10 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             RelayMsg::FilesOffer { sdp } => {
                 let (key, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
                 let who = crate::files::channel::Who { key, name };
-                let room = ctx.room.lock().unwrap_or_else(|e| e.into_inner()).clone();
-                let once = ctx
-                    .once
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .contains(&room);
                 let refused = if ctx.viewer_ok.load(Ordering::SeqCst) {
-                    crate::files::channel::refused(&ctx.gate, &who, once)
+                    crate::files::channel::refused(&ctx.gate, &who)
                 } else {
-                    Some("this device has not been approved yet".into())
+                    Some("this device has not been let in yet".into())
                 };
                 let reply = match refused {
                     Some(err) => {
@@ -2030,7 +1955,6 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
         }
     }
 
-    approval_task.abort();
     log_task.abort();
     text_input_task.abort();
     shedding_task.abort();
@@ -2491,13 +2415,11 @@ struct Join {
     key: String,
     name: String,
     addr: String,
-    /// A pairing code from the host's QR (`wado qr`), or empty.
+    /// Non-empty when the device says it holds a pairing code (the relay's `pair`). Only a
+    /// claim: the code itself is proven inside the envelope, never sent.
     pair: String,
 }
 
-/// Answer the relay's question about one join (or takeover check): trusted, first device, or
-/// ask a connected one. `still_wanted` turns false when the device gives up waiting;
-/// `on_accept` runs before the relay is told yes.
 /// The device's `e2e_finish`: check its proof, then let `Gate::admit` decide on the key it
 /// proved — not on the id the relay named.
 async fn e2e_finish(
@@ -2506,32 +2428,52 @@ async fn e2e_finish(
     dev_pk: &str,
     sig: &str,
     pair_mac: &str,
+    typed_mac: &str,
 ) {
-    let codes = ctx.gate.live_pairs();
-    let (key, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
-    let once = {
-        let room = ctx.room.lock().unwrap_or_else(|e| e.into_inner()).clone();
-        ctx.once
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .contains(&room)
+    let codes = crate::e2e::handshake::Codes {
+        qr: ctx.gate.live_pairs(),
+        typed: ctx.gate.live_typed(),
     };
+    let (key, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
     let done = ctx
         .link
         .lock()
         .unwrap_or_else(|e| e.into_inner())
-        .finish(dev_pk, sig, pair_mac, &codes);
+        .finish(dev_pk, sig, pair_mac, typed_mac, &codes);
     let verdict = done.and_then(|d| {
         ctx.gate
-            .admit(&key, &name, dev_pk, once, d.pair.as_deref())
-            .map(|()| d)
+            .admit(&key, &name, dev_pk, &d.proof)
+            .map(|a| (a, d))
     });
     let mut link = ctx.link.lock().unwrap_or_else(|e| e.into_inner());
     let out = match verdict {
-        Ok(d) => {
+        Ok((crate::gate::Admitted::In, d)) => {
             info!("e2e: {name} proved its key — the link is end-to-end sealed");
             link.open(d.sealer, d.opener);
             crate::e2e::link::WAKE.to_string()
+        }
+        // A typed code: not in until the check words are confirmed on the computer.
+        Ok((crate::gate::Admitted::Confirm(grants), d)) => {
+            let crate::gate::Proof::Typed(typed) = d.proof.clone() else {
+                unreachable!("only a typed code asks for the check words")
+            };
+            let p = crate::e2e::check::Pending {
+                key,
+                name,
+                pk: dev_pk.to_string(),
+                grants,
+                typed,
+            };
+            let out = crate::e2e::check::begin(&mut link, &ctx.gate, &p, d);
+            tokio::spawn(crate::e2e::check::settle(
+                ctx.gate.clone(),
+                Arc::clone(&ctx.link),
+                Arc::clone(&ctx.room),
+                link.room().to_string(),
+                out_tx.clone(),
+                p,
+            ));
+            out
         }
         Err(why) => {
             warn!("e2e: refused {name} — {why}");
@@ -2542,15 +2484,16 @@ async fn e2e_finish(
     out_tx.send(out).await.ok();
 }
 
+/// Answer the relay's question about one join (or takeover check), at once: a trusted device,
+/// or one that says it holds a pairing code, goes on to the envelope to prove it; anything else
+/// is refused with how to pair. `on_accept` runs before the relay is told yes.
 async fn decide_join(
     gate: crate::gate::Gate,
     out_tx: mpsc::Sender<String>,
     j: Join,
     takeover: bool,
-    still_wanted: impl Fn() -> bool + Send + 'static,
-    on_accept: impl FnOnce(&str, bool) + Send + 'static,
+    on_accept: impl FnOnce(&str) + Send + 'static,
 ) {
-    use crate::gate::{Decision, Request, Verdict};
     let Join {
         room_id,
         key,
@@ -2558,114 +2501,35 @@ async fn decide_join(
         addr,
         pair,
     } = j;
-    let label = if name.is_empty() {
-        addr.clone()
+    let label = if name.is_empty() { addr } else { name };
+    // Everything here is the relay's claim. It only decides whether the join is let through to
+    // the envelope, where the device proves its key and `Gate::admit` decides.
+    let verdict: Result<(), &str> = if gate.knows(&key) {
+        Ok(())
+    } else if takeover {
+        // A claim alone must never displace a live viewer, code or not.
+        Err(crate::gate::BUSY_UNPAIRED)
+    } else if !pair.is_empty() && !key.is_empty() {
+        info!("gate: {label} says it holds a pairing code — it must prove it");
+        Ok(())
     } else {
-        name.clone()
-    };
-    // Everything here is the relay's claim. It only decides whether the join is parked or let
-    // through to the envelope, where the device proves its key and `Gate::admit` decides.
-    let decision = gate.decide(&key, &name);
-    let mut once = false;
-    let verdict: Result<(), String> = match decision {
-        Decision::Trusted => Ok(()),
-        Decision::FirstDevice => {
-            warn!("gate: no device was trusted yet — trusting the first one to connect, {label}");
-            Ok(())
-        }
-        // Holds a QR code, it says: let through to prove it in the envelope, where a code that
-        // does not check out gets nothing. Never for a takeover — a claim alone must not
-        // displace a live viewer.
-        Decision::Unknown if !pair.is_empty() && !key.is_empty() && !takeover => {
-            info!("gate: {label} says it holds a pairing code — it must prove it");
-            Ok(())
-        }
-        // `security { join "open" }`: in as if approved once. Never for a takeover — that
-        // displaces a live viewer, and still needs someone's say-so.
-        Decision::Unknown if !takeover && wado_config::live::current().security.open_join() => {
-            warn!("gate: join is open — letting {label} in once without asking");
-            once = true;
-            Ok(())
-        }
-        Decision::Unknown => {
-            let req = Request {
-                id: room_id.clone(),
-                name: label.clone(),
-                addr: addr.clone(),
-            };
-            if !gate.post(&req) {
-                Err("this computer could not ask for approval".into())
-            } else {
-                info!(
-                    "gate: {label} is waiting for a connected device to approve it — or run `wado approve` on this computer"
-                );
-                let v = gate.wait(&room_id, still_wanted).await;
-                gate.withdraw(&room_id);
-                match v {
-                    Some(Verdict::Once) => {
-                        once = true;
-                        Ok(())
-                    }
-                    Some(Verdict::Always) => {
-                        gate.trust(&key, &name);
-                        Ok(())
-                    }
-                    Some(Verdict::Deny) => {
-                        Err("a device already using this computer said no".into())
-                    }
-                    None => Err("nobody approved this device in time".into()),
-                }
-            }
-        }
+        Err(crate::gate::UNPAIRED)
     };
     let msg = match verdict {
         Ok(()) => {
-            on_accept(&room_id, once);
-            info!("gate: let {label} in");
+            on_accept(&room_id);
+            info!("gate: let {label} through");
             RelayMsg::PeerAccept { room_id }
         }
         Err(reason) => {
-            info!("gate: refused {label} — {reason}");
-            RelayMsg::PeerReject { room_id, reason }
+            info!("gate: refused {label} — not paired");
+            RelayMsg::PeerReject {
+                room_id,
+                reason: reason.into(),
+            }
         }
     };
     send_relay(&out_tx, &msg).await.ok();
-}
-
-/// Keep this daemon's approved viewer shown exactly the approval requests that are pending.
-async fn show_approvals(
-    gate: crate::gate::Gate,
-    out_tx: mpsc::Sender<String>,
-    room: Arc<Mutex<String>>,
-    viewer_ok: Arc<AtomicBool>,
-) {
-    let mut shown: Vec<String> = Vec::new();
-    let mut tick = tokio::time::interval(Duration::from_millis(1000));
-    loop {
-        tick.tick().await;
-        let now: Vec<crate::gate::Request> = if viewer_ok.load(Ordering::SeqCst) {
-            let own = room.lock().unwrap_or_else(|e| e.into_inner()).clone();
-            gate.pending().into_iter().filter(|r| r.id != own).collect()
-        } else {
-            Vec::new()
-        };
-        for r in now.iter().filter(|r| !shown.contains(&r.id)) {
-            let msg = RelayMsg::ApproveRequest {
-                id: r.id.clone(),
-                name: r.name.clone(),
-                addr: r.addr.clone(),
-            };
-            if send_relay(&out_tx, &msg).await.is_err() {
-                return;
-            }
-        }
-        for id in shown.iter().filter(|id| !now.iter().any(|r| &r.id == *id)) {
-            send_relay(&out_tx, &RelayMsg::ApproveCleared { id: id.clone() })
-                .await
-                .ok();
-        }
-        shown = now.into_iter().map(|r| r.id).collect();
-    }
 }
 
 async fn send_relay(tx: &mpsc::Sender<String>, msg: &RelayMsg) -> crate::Result<()> {

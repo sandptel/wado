@@ -46,6 +46,10 @@ pub const JS: &str = concat!(
     // this is what defines it. The dial at the bottom of `relay_link` is safe here — opening a
     // socket takes at least a tick, and `relay.js` registers synchronously in the same eval.
     // The envelope (`e2e_*`) before `relay_link.js`, whose hooks call into it.
+    // The check words of a typed pairing — one list, shared with the daemon.
+    "W.SAS_WORDS = `",
+    include_str!("../../protocol/src/sas_words.txt"),
+    "`.trim().split(/\\s+/);\n",
     include_str!("js/e2e_keys.js"),
     "\n",
     include_str!("js/e2e_seal.js"),
@@ -53,6 +57,9 @@ pub const JS: &str = concat!(
     include_str!("js/e2e_handshake.js"),
     "\n",
     include_str!("js/relay_link.js"),
+    "\n",
+    // After `relay_link.js`: it pairs through `relayKick`, and the link and the envelope call it.
+    include_str!("js/pair.js"),
     "\n",
     include_str!("js/relay.js"),
     "\n",
@@ -160,11 +167,35 @@ pub const JS: &str = concat!(
     // `wakelock.js`; `pad_link` first, as the others call the `W.pad` it creates.
     include_str!("js/pad_link.js"),
     "\n",
+    // Settings after `config.js` (it chains `config_state`), orientation before touch.
+    include_str!("js/pad_prefs.js"),
+    "\n",
+    include_str!("js/pad_orient.js"),
+    "\n",
     include_str!("js/pad_touch.js"),
+    "\n",
+    include_str!("js/pad_gestures.js"),
     "\n",
     include_str!("js/pad_keys.js"),
     "\n",
     include_str!("js/pad_feel.js"),
+    "\n",
+    include_str!("js/pad_icons.js"),
+    "\n",
+    include_str!("js/pad_hints.js"),
+    "\n",
+    // The one owner of the pad's pointer listeners: gestures, then touch, then the pictures.
+    include_str!("js/pad_pointer.js"),
+    "\n",
+    include_str!("js/pad_confirm.js"),
+    "\n",
+    include_str!("js/pad_coach.js"),
+    "\n",
+    include_str!("js/pad_actions.js"),
+    "\n",
+    include_str!("js/pad_rail.js"),
+    "\n",
+    include_str!("js/pad_settings.js"),
     "\n",
     include_str!("js/pad_ui.js"),
     "\n",
@@ -356,6 +387,19 @@ pub fn run(ui: Ui) {
                     live.conn_error.set(string("error"));
                 }
                 "stagebar" => live.stagebar.set(text()),
+                // Refused for not being paired (`js/pair.js`), or cleared on a typed code.
+                "unpaired" => live.unpaired.set(string("reason")),
+                // A typed pairing's check words, until the computer answers (empty clears them).
+                "pair_sas" => live.pair_sas.set(
+                    msg.get("words")
+                        .and_then(|w| w.as_array())
+                        .map(|w| {
+                            w.iter()
+                                .filter_map(|x| x.as_str().map(String::from))
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                ),
                 "health" => {
                     live.health.set(Health {
                         state: string("state"),

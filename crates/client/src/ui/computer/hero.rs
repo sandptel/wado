@@ -58,59 +58,68 @@ pub fn Hero(ui: Ui, pk: String, r: Reach) -> Element {
     // ── Link ──
     let link = (live.link)();
     let session_list = (live.sessions)().1;
-    let (ltone, lval, lms, lsub, explain): (&str, &str, Option<u32>, String, String) =
-        if !r.online && r.tone == "bad" {
-            (
+    let confirming = !(live.pair_sas)().is_empty();
+    let (ltone, lval, lms, lsub, explain): (&str, &str, Option<u32>, String, String) = if confirming
+    {
+        (
+            "warn",
+            "Waiting",
+            None,
+            "confirm on the computer".into(),
+            String::new(),
+        )
+    } else if !r.online && r.tone == "bad" {
+        (
+            "bad",
+            "None",
+            None,
+            "nothing to reach".into(),
+            String::new(),
+        )
+    } else {
+        match link.state.as_str() {
+            "direct" => (
+                "ok",
+                "Direct",
+                link.rtt_ms,
+                "round trip, now".into(),
+                link.detail(),
+            ),
+            "ready" => ("ok", "Ready", None, "relay joined".into(), link.detail()),
+            "relayed" => (
+                "warn",
+                "Relayed",
+                None,
+                "limited · tap for why".into(),
+                link.detail(),
+            ),
+            "waiting" => (
+                "warn",
+                "Waiting",
+                None,
+                if r.busy {
+                    "in use elsewhere".into()
+                } else {
+                    "held by the relay".into()
+                },
+                link.detail(),
+            ),
+            "connecting" | "reconnecting" | "" => (
+                "warn",
+                "Connecting…",
+                None,
+                "setting up".into(),
+                String::new(),
+            ),
+            _ => (
                 "bad",
                 "None",
                 None,
                 "nothing to reach".into(),
-                String::new(),
-            )
-        } else {
-            match link.state.as_str() {
-                "direct" => (
-                    "ok",
-                    "Direct",
-                    link.rtt_ms,
-                    "round trip, now".into(),
-                    link.detail(),
-                ),
-                "ready" => ("ok", "Ready", None, "relay joined".into(), link.detail()),
-                "relayed" => (
-                    "warn",
-                    "Relayed",
-                    None,
-                    "limited · tap for why".into(),
-                    link.detail(),
-                ),
-                "waiting" => (
-                    "warn",
-                    "Waiting",
-                    None,
-                    if r.busy {
-                        "in use elsewhere".into()
-                    } else {
-                        "held by the relay".into()
-                    },
-                    link.detail(),
-                ),
-                "connecting" | "reconnecting" | "" => (
-                    "warn",
-                    "Connecting…",
-                    None,
-                    "setting up".into(),
-                    String::new(),
-                ),
-                _ => (
-                    "bad",
-                    "None",
-                    None,
-                    "nothing to reach".into(),
-                    link.detail(),
-                ),
-            }
-        };
+                link.detail(),
+            ),
+        }
+    };
     let ldot = match ltone {
         "ok" => "lstate ok",
         "warn" => "lstate warn",

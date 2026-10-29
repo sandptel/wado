@@ -81,7 +81,12 @@ pub fn of(ui: Ui, key: &str) -> Reach {
         let host = (live.hoststate)();
         let config = (live.host_seen)().then(|| (live.host)());
         let online = host.is_some() || stage >= 2;
+        // Pairing: the relay let this device through, but the computer has not said yes.
+        let confirming = !(live.pair_sas)().is_empty();
+        let unpaired = !(live.unpaired)().is_empty();
         let (tone, words) = match link.state.as_str() {
+            _ if confirming => ("warn", "Waiting for the computer to confirm".to_string()),
+            _ if unpaired => ("warn", "Not paired with this phone yet".to_string()),
             _ if (live.session_on)() && stage >= 4 => ("ok", "Streaming".to_string()),
             "direct" => (
                 "ok",
@@ -103,7 +108,7 @@ pub fn of(ui: Ui, key: &str) -> Reach {
             _ => ("wait", "Connecting…".into()),
         };
         // A stale state from before the daemon went is not "online".
-        let online = online && tone != "bad";
+        let online = online && tone != "bad" && !confirming && !unpaired;
         return Reach {
             selected: true,
             tone,

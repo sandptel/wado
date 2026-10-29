@@ -23,6 +23,10 @@ pub fn render(ui: Ui) -> Element {
     let error = (ui.live.conn_error)();
     let failed = !error.is_empty();
     let starting = (ui.live.session_on)();
+    // A typed pairing waits on a person at the computer: the relay let this device through, but
+    // the daemon has not — so Daemon is the hop in progress, not a done one.
+    let confirming = !(ui.live.pair_sas)().is_empty();
+    let stage = if confirming { stage.min(1) } else { stage };
     // Joined and idle is not "connecting": the bar has said all it has to.
     if !relay || (stage >= 2 && !failed && !starting) {
         return rsx! {};
@@ -41,6 +45,10 @@ pub fn render(ui: Ui) -> Element {
                 }
             }
         }
-        if failed { p { class: "connerr", "{error}" } }
+        if confirming {
+            p { class: "hopnote", span { class: "pairdot", "aria-hidden": "true" } "Waiting for the computer to confirm the check words." }
+        }
+        // Not paired: the pairing form on home says why, and what to do.
+        if failed && (ui.live.unpaired)().is_empty() { p { class: "connerr", "{error}" } }
     }
 }

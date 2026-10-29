@@ -143,6 +143,19 @@ impl Pacer {
         out
     }
 
+    /// Nothing to play and nothing to settle: a tick now would write nothing and change
+    /// nothing — no frame queued, the last one (no fingers) already written, no starved ticks
+    /// to report, the delay where it is headed.
+    pub fn idle(&self) -> bool {
+        self.queue.is_empty()
+            && self
+                .base
+                .as_ref()
+                .is_none_or(|(_, b)| b.is_empty() && self.sent.as_ref() == Some(b))
+            && self.starved == 0
+            && self.delay.settled()
+    }
+
     /// Forget every frame (the pad lifted its fingers, or resized); the sink's state is no
     /// longer known.
     pub fn clear(&mut self) {

@@ -54,14 +54,9 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .then(|| config.server.relay_url().map(str::to_owned))
         .flatten();
     if let Some(relay_url) = relay {
+        // Nothing to pair with is shown here: a code is made only when asked for (`wado pair`,
+        // `wado tui` → Pair), so a terminal left open never holds a live way in.
         let remote_id = wado::remote_id::resolve();
-        // In a terminal, show the way in: the connect QR code, every start.
-        {
-            use std::io::IsTerminal;
-            if std::io::stdout().is_terminal() && config.server.public_url().is_some() {
-                wado::cli::qr::print(None, Some(&remote_id));
-            }
-        }
 
         tracing::info!(
             relay_url = %relay_url,
@@ -114,6 +109,7 @@ fn load_config() -> std::sync::Arc<wado_config::Config> {
             if !l.env.is_empty() {
                 tracing::info!("config overridden by environment: {}", l.env.join(", "));
             }
+            wado::config::warn_deprecated(&l.config);
             wado_config::live::install(l.config);
             l.files
         }

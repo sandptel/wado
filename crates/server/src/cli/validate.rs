@@ -13,6 +13,9 @@ pub fn run(file: Option<&str>) -> i32 {
             if !l.env.is_empty() {
                 println!("overridden by environment: {}", l.env.join(", "));
             }
+            for key in l.config.security.deprecated() {
+                println!("ignored, no longer used: {key} — new devices pair with `wado pair`");
+            }
             0
         }
         Err(e) => {

@@ -21,7 +21,7 @@
 //   W.padKeys.attach(textarea, row) / detach()
 //   W.padKeys.diffText(prev, next) → {back, ins}
 //   W.padKeys.mods  {super, ctrl, alt, shift} each "off" | "latched" | "locked"
-//   W.padKeys.tapMod(name), W.padKeys.key(name), W.padKeys.onMods(fn)
+//   W.padKeys.tapMod(name), W.padKeys.key(name), W.padKeys.onMods(fn), W.padKeys.repaint()
 
 (() => {
   const K = (W.padKeys = {});
@@ -51,6 +51,7 @@
   const inState = (st) => NAMES.filter((n) => K.mods[n] === st);
   K.onMods = (fn) => modFns.push(fn);
   const paint = () => { for (const fn of modFns) { try { fn({ ...K.mods }); } catch (_) {} } };
+  K.repaint = paint;
   function clearLatches() {
     let any = false;
     for (const n of NAMES) if (K.mods[n] === "latched") { K.mods[n] = "off"; any = true; }

@@ -83,12 +83,9 @@ pub fn unpair(args: &[String]) -> i32 {
         return 2;
     };
     let gate = Gate::default();
-    let r = gate.unpair(who).map(|name| {
-        format!(
-            "unpaired {} — it must be approved or paired again",
-            bold(&name)
-        )
-    });
+    let r = gate
+        .unpair(who)
+        .map(|name| format!("unpaired {} — it must be paired again", bold(&name)));
     report(r).max(pick_help(&gate, who, "unpair", ""))
 }
 

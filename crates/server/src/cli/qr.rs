@@ -1,14 +1,17 @@
-//! `wado pair [--relay URL] [--id ID] [<grant>…]` (or `wado qr`) — the connect link and a QR
-//! code of it, in the terminal.
+//! `wado pair [--relay URL] [--id ID] [<grant>…]` (or `wado qr`) — a pairing code for a new
+//! device, in the terminal: a QR of the connect link, the same code to type, and how long it has.
 //!
 //! Scanning it opens the web client with the relay and Remote ID filled in; a device that has
-//! never seen this computer adds it, one that has is pointed at it again. Each code carries a
-//! single-use pairing code (a day's validity) that trusts the device that scans it with the
-//! grants named — its checklist — and the pin of this computer's identity key. Defaults come
-//! from the config (`server { public-relay }`, `security { new-device }`), the rig's tunnel and
-//! the saved Remote ID.
+//! never seen this computer adds it, one that has is pointed at it again. On a desktop browser,
+//! or when scanning is awkward, the typed code goes into the device's "Pair this device" form.
+//! Either one trusts the device with the grants named (its checklist), once, for ten minutes;
+//! the QR also pins this computer's identity key. Defaults come from the config
+//! (`server { public-relay }`, `security { new-device }`), the rig's tunnel and the saved
+//! Remote ID.
 
 use qrcode::{QrCode, render::unicode};
+
+use crate::gate::{Gate, Minted, typed_code};
 
 /// The link a phone opens to connect: the client, told where the relay is and which computer.
 pub fn link(client: &str, relay: &str, id: &str) -> String {
@@ -28,6 +31,12 @@ pub fn render(link: &str) -> Option<String> {
     )
 }
 
+/// A fresh pairing code and the connect link that carries it.
+pub struct Pairing {
+    pub link: String,
+    pub code: Minted,
+}
+
 /// A pairing link for this computer whose code gives the device that redeems it `grants`.
 ///
 /// The relay is `relay`, else `server { public-relay }` or the dialled relay, else the rig's
@@ -36,7 +45,7 @@ pub fn pair_link(
     relay: Option<&str>,
     id: Option<&str>,
     grants: &crate::gate::Grants,
-) -> Result<String, String> {
+) -> Result<Pairing, String> {
     let cfg = wado_config::live::current();
     let relay = relay
         .map(str::to_string)
@@ -54,7 +63,7 @@ pub fn pair_link(
         );
     };
     // A fresh single-use pairing code: whoever scans this was shown this computer's screen,
-    // so their device is trusted without another device approving it.
+    // so their device is trusted.
     //
     // `hk` pins this computer's identity key on the device that scans it, so a relay can never
     // stand in for this computer to it (`crate::e2e`). Neither the code nor the pin reach the
@@ -62,35 +71,43 @@ pub fn pair_link(
     let hk = crate::e2e::host_key::HostKey::load_or_create(&crate::remote_id::config_dir())
         .map_err(|e| format!("could not read this computer's identity key: {e}"))?
         .pin();
-    let pair = crate::gate::Gate::default().mint_pair_with(grants);
-    Ok(format!(
-        "{}&pair={pair}&hk={hk}",
-        link(&cfg.server.client_url, &relay, &id)
-    ))
+    let code = Gate::default().mint_pair_with(grants);
+    Ok(Pairing {
+        link: format!(
+            "{}&pair={}&hk={hk}",
+            link(&cfg.server.client_url, &relay, &id),
+            code.code
+        ),
+        code,
+    })
 }
 
-/// Print link and code for this computer, or say what is missing.
-pub fn print(relay: Option<&str>, id: Option<&str>) -> bool {
-    print_with(relay, id, &crate::gate::Grants::new_device())
-}
-
-fn print_with(relay: Option<&str>, id: Option<&str>, grants: &crate::gate::Grants) -> bool {
-    let l = match pair_link(relay, id, grants) {
-        Ok(l) => l,
+/// Print a QR and a typed code for this computer, or say what is missing. `None` on failure.
+fn print_with(
+    relay: Option<&str>,
+    id: Option<&str>,
+    grants: &crate::gate::Grants,
+) -> Option<Minted> {
+    let p = match pair_link(relay, id, grants) {
+        Ok(p) => p,
         Err(e) => {
             eprintln!("{e}");
-            return false;
+            return None;
         }
     };
-    if let Some(q) = render(&l) {
+    if let Some(q) = render(&p.link) {
         println!("{q}");
     }
     println!(
-        "  Scan to connect — the device may: {}",
+        "  Scan to pair — the device may: {}",
         super::devices::describe(grants)
     );
-    println!("  or open: {l}\n");
-    true
+    println!(
+        "  or type this code on it: {}",
+        super::style::bold(&typed_code::display(&p.code.typed))
+    );
+    println!("  or open: {}\n", p.link);
+    Some(p.code)
 }
 
 fn saved_id() -> Option<String> {
@@ -100,16 +117,19 @@ fn saved_id() -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
-/// `wado pair [--relay URL] [--id ID] [<grant>…]` — no grants named: `security { new-device }`.
+/// `wado pair [--relay URL] [--id ID] [--wait] [<grant>…]` — no grants named: `security {
+/// new-device }`. `--wait`: keep going when piped, answering the check words from stdin.
 pub fn run(args: &[String]) -> i32 {
     let mut relay = None;
     let mut id = None;
+    let mut wait = false;
     let mut tokens = Vec::new();
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
             "--relay" => relay = it.next().cloned(),
             "--id" => id = it.next().cloned(),
+            "--wait" => wait = true,
             t => tokens.push(t),
         }
     }
@@ -124,7 +144,13 @@ pub fn run(args: &[String]) -> i32 {
             }
         }
     };
-    i32::from(!print_with(relay.as_deref(), id.as_deref(), &grants))
+    match print_with(relay.as_deref(), id.as_deref(), &grants) {
+        Some(code) => {
+            super::countdown::run(&code, wait);
+            0
+        }
+        None => 1,
+    }
 }
 
 #[cfg(test)]

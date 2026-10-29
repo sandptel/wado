@@ -1,5 +1,6 @@
-//! The Pair card: a QR code that always works, built from block glyphs in the panel's colours
-//! ([`super::qr`]) — compact by default, `z` for large — then the grants it carries and the link.
+//! The Pair card: a QR code built from block glyphs in the panel's colours ([`super::qr`]) —
+//! compact by default, `z` for large — the same code to type, how long it has, then the grants
+//! it carries and the link. A code that ran out or was revoked is not drawn: `n` makes another.
 
 use ratatui::{
     Frame,
@@ -11,17 +12,23 @@ use ratatui::{
 
 use super::qr::Qr;
 use super::{card, row, toggle};
+use crate::gate::{CodeState, typed_code};
 use crate::tui::app::{App, Card, GRANTS, Target};
 use crate::tui::theme;
 
-/// Rows under the code: gap, grants title, grants, gap, link (wrapped), hint.
-const BELOW: u16 = 8;
+/// Rows under the code: typed code, its state, gap, grants title, grants, gap, link (wrapped),
+/// hint.
+const BELOW: u16 = 10;
 /// The narrowest the card gets: the row of grants.
 const MIN_W: u16 = 44;
 /// The large code's light: the terminal's own white, light on dark themes.
 const LIGHT: Color = Color::White;
 
+/// The QR, while its code still works.
 fn qr(app: &App) -> Option<Qr> {
+    if !matches!(app.pair_state, CodeState::Live(_)) {
+        return None;
+    }
     Qr::new(&app.pair.as_ref().ok()?.link)
 }
 
@@ -41,6 +48,9 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
     let block = card("Pair a device", focused);
     let inner = block.inner(area);
     f.render_widget(block, area);
+    if let Some(a) = app.snap.asking.first() {
+        return check(f, app, a, inner);
+    }
 
     let code = qr(app);
     // Large only when asked for and there is room; compact otherwise.
@@ -66,7 +76,7 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
             };
             f.render_widget(Paragraph::new(q.lines(large, ink)), r);
             app.hits.borrow_mut().push((r, Target::Zoom));
-            y += qh + 1;
+            y += qh;
         }
         (Ok(_), Some(_)) => {
             f.render_widget(
@@ -78,6 +88,13 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
             );
             y += 2;
         }
+        (Ok(_), None) => {
+            f.render_widget(
+                Line::styled(" No live code", theme::bold()),
+                Rect::new(inner.x, y, inner.width, 1),
+            );
+            y += 1;
+        }
         (Err(e), _) => {
             let p = Paragraph::new(vec![
                 Line::styled(" No code yet", theme::bold()),
@@ -87,7 +104,37 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
             f.render_widget(p, Rect::new(inner.x, y, inner.width, 5));
             y += 6;
         }
-        _ => {}
+    }
+
+    // The same code to type, and how long it has.
+    if let Ok(p) = &app.pair {
+        let live = matches!(app.pair_state, CodeState::Live(_));
+        if live && y < inner.bottom() {
+            f.render_widget(
+                Line::styled(
+                    format!("type  {}", typed_code::display(&p.code.typed)),
+                    theme::key(),
+                )
+                .centered(),
+                Rect::new(inner.x, y, inner.width, 1),
+            );
+            y += 1;
+        }
+        if y < inner.bottom() {
+            let (text, style) = if live {
+                (app.pair_state.say(), theme::dim())
+            } else {
+                (
+                    format!("{} · n", app.pair_state.say()),
+                    Style::new().fg(theme::WARN),
+                )
+            };
+            f.render_widget(
+                Line::styled(text, style).centered(),
+                Rect::new(inner.x, y, inner.width, 1),
+            );
+            y += 2;
+        }
     }
 
     // The grants it carries, one toggle each.
@@ -145,13 +192,56 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
             .trim_start_matches("https://");
         let p = Paragraph::new(vec![
             Line::styled(short.to_string(), theme::accent()),
-            Line::styled(
-                "single use, renewed once scanned · c copy · z size",
-                theme::dim(),
-            ),
+            Line::styled("single use, 10 min · n new · c copy · z size", theme::dim()),
         ])
         .wrap(ratatui::widgets::Wrap { trim: true });
         let r = Rect::new(inner.x + 1, y, inner.width - 2, bottom.saturating_sub(y));
         f.render_widget(p, r);
+    }
+}
+
+/// A device typed a code: its check words, to compare with its screen, and the answer keys.
+fn check(f: &mut Frame, app: &App, a: &crate::gate::confirm::Ask, inner: Rect) {
+    let words = a.words.split(' ').collect::<Vec<_>>().join("   ");
+    let lines = [
+        Line::styled(format!("{} typed a code", a.device), theme::bold()).centered(),
+        Line::raw(""),
+        Line::styled("Does it show these four words?", theme::dim()).centered(),
+        Line::raw(""),
+        Line::styled(words, theme::key()).centered(),
+        Line::raw(""),
+    ];
+    let mut y = inner.y + inner.height.saturating_sub(lines.len() as u16 + 4) / 2;
+    for l in lines {
+        f.render_widget(l, Rect::new(inner.x, y, inner.width, 1));
+        y += 1;
+    }
+    let btn = |k: &str, what: &str, t: Target| {
+        vec![
+            (Span::styled(format!(" {k} "), theme::cursor()), Some(t)),
+            (Span::styled(format!(" {what}   "), theme::bold()), Some(t)),
+        ]
+    };
+    let mut spans = btn("y", "they match", Target::Check(true));
+    spans.extend(btn("n", "they don't", Target::Check(false)));
+    let w: u16 = spans.iter().map(|(s, _)| s.width() as u16).sum();
+    row(
+        f,
+        app,
+        inner.x + inner.width.saturating_sub(w) / 2,
+        y,
+        inner.right(),
+        spans,
+    );
+    y += 2;
+    if y < inner.bottom() {
+        f.render_widget(
+            Line::styled(
+                format!("{} s left · no answer counts as no", a.left()),
+                theme::dim(),
+            )
+            .centered(),
+            Rect::new(inner.x, y, inner.width, 1),
+        );
     }
 }

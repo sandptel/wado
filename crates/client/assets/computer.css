@@ -217,3 +217,4 @@ button.hcell:active:not(:disabled) { scale: .97; }
   .hmeta .hcell:last-child { grid-column: 1 / -1; }
 }
 .navtext small.mono { font-size: 11px; }
+.hopnote { margin: -8px 0 0; display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text); }

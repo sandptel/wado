@@ -50,3 +50,7 @@ crc = "3"
 md-5 = "0.10"
 percent-encoding = "2"
 zbus = { version = "5", default-features = false, features = ["tokio"] }
+
+[dev-dependencies]
+# Paused time for the pad tick's tests (`pad/ticker.rs`): the same tokio, one more feature.
+tokio = { version = "1", features = ["test-util"] }

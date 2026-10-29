@@ -8,10 +8,13 @@
 // 2026-10-02):
 //
 //   park       a client that arrives first waits, and is paired when a daemon registers
-//   gate       the first device is trusted; a new one waits until a connected device approves
+//   gate       (Decision Log 2026-10-27) a device gets in only with a code shown on the computer:
+//              the first one too; an unknown one is refused at once with how to pair; a typed
+//              code pairs only once the check words are confirmed at `wado pair` (2026-10-30) —
+//              a "no" there refuses it; five wrong typed codes revoke every live code
 //   hold       a dropped device keeps its seat; another device is refused, the owner reclaims
-//   takeover   one tap moves a seat; the displaced device is told; an unknown device must be
-//              approved by the device it would displace
+//   takeover   one tap moves a seat; the displaced device is told; an unknown device is refused
+//              without disturbing it
 //   away       a daemon restart parks its client, which gets the same daemon back
 //   leave      a client closing with the leave code frees its seat instead of holding it
 //   silence    a frozen daemon is noticed and its client released
@@ -62,7 +65,7 @@ function start(bin, args, env, log) {
 }
 const relay = (extra = []) => start("wado-relay", ["--bind", `127.0.0.1:${PORT}`, ...extra], {}, "relay");
 const daemon = (n) =>
-  start("wado", [], {
+  start("wado", ["daemon"], {
     WADO_RELAY_URL: RELAY,
     WADO_REMOTE_ID: RID,
     WADO_INSTANCE: String(n),
@@ -86,6 +89,29 @@ async function stop(p) {
 
 // One "browser" per client key unless a test hands in another: same key, same device key.
 const devices = {};
+// A fresh pairing code from `wado qr`, as the computer's screen shows it: the QR link's code and
+// pin, and the same code to type.
+const mint = () => {
+  const out = execFileSync(join(ROOT, "target/release/wado"), ["qr", "--relay", "http://r.example", "--id", RID],
+    { env: { ...process.env, XDG_CONFIG_HOME: CFG } }).toString().replace(/\x1b\[[0-9;]*m/g, "");
+  const q = new URLSearchParams(out.match(/open: \S+\?(\S+)/)[1]);
+  return { out, pair: q.get("pair"), hk: q.get("hk"), typed: (out.match(/type this code on it: (\S+)/) || [])[1] };
+};
+// `wado pair --wait`, as a person at the computer runs it: its output so far, the typed code it
+// shows, and `say(line)` to answer the check-words question on its stdin.
+async function pairAt() {
+  const p = spawn(join(ROOT, "target/release/wado"), ["pair", "--wait", "--relay", "http://r.example", "--id", RID],
+    { env: { ...process.env, XDG_CONFIG_HOME: CFG }, stdio: ["pipe", "pipe", "pipe"] });
+  p.out = "";
+  p.stdout.on("data", (d) => { p.out += d.toString().replace(/\x1b\[[0-9;]*m/g, ""); });
+  procs.add(p);
+  p.on("exit", () => procs.delete(p));
+  await waitFor(p, /type this code on it: \S+/, 5000);
+  p.typed = (p.out.match(/type this code on it: (\S+)/) || [])[1] || "";
+  p.say = (line) => p.stdin.write(line + "\n");
+  return p;
+}
+const trustList = () => { try { return readFileSync(join(CFG, "wado/trusted_clients"), "utf8"); } catch { return ""; } };
 // A client: records every frame (sealed ones opened), answers pings.
 class Client {
   constructor(name, { key = name + "-key", instance = "", takeover = false, dev = null, pair = false } = {}) {
@@ -135,7 +161,12 @@ try {
 
   // ── park ────────────────────────────────────────────────────────────────────
   console.log("park");
-  const phone = new Client("Phone");
+  // The phone scanned the computer's QR: nothing gets in without a code, the first device too.
+  const first = mint();
+  devices["Phone-key"] = device("Phone-key");
+  devices["Phone-key"].store.setItem("wado.pair", first.pair);
+  devices["Phone-key"].store.setItem("wado.hostpins", JSON.stringify({ [RID]: { pin: first.hk, from: "qr" } }));
+  const phone = new Client("Phone", { pair: true });
   const w = await phone.wait("waiting");
   check("a client that arrives first is parked, not refused", !!w && !phone.has("join_denied"), JSON.stringify(phone.msgs));
   let d1 = daemon(1);
@@ -147,37 +178,83 @@ try {
 
   // ── gate ────────────────────────────────────────────────────────────────────
   console.log("gate");
-  check("the first device was trusted (empty trust list)",
-    readFileSync(join(CFG, "wado/trusted_clients"), "utf8").includes("Phone-key"));
+  check("the first device got in with its code, and is pinned", /Phone-key\tPhone\t\S+\t1/.test(trustList()), trustList());
+  check("…which is spent", !trustList().includes("Laptop") && devices["Phone-key"].store.getItem("wado.pair") === null);
   const d2 = daemon(2);
   await waitFor(d2, /registered — Remote ID/);
   const laptop = new Client("Laptop");
-  const ask = await phone.wait("approve_request", 8000);
-  check("a new device is shown to the connected one for approval", ask && ask.name === "Laptop", JSON.stringify(phone.msgs.slice(-3)));
-  check("…and is not let in meanwhile", !laptop.has("join_accepted"));
-  const lw = await laptop.wait("waiting", 4000);
-  check("…and is told it is waiting for approval", lw && /approv/.test(lw.reason), lw && lw.reason);
-  phone.send({ type: "approve_answer", id: ask.id, verdict: "always" });
-  const lacc = await laptop.wait("join_accepted", 5000);
-  check("approving lets it in, on the other daemon", lacc && lacc.instance_id === `${RID}:2`, lacc && lacc.instance_id);
-  check("…and 'always' remembers it",
-    readFileSync(join(CFG, "wado/trusted_clients"), "utf8").includes("Laptop-key"));
-  check("…and the prompt is withdrawn", !!(await phone.wait("approve_cleared", 4000)));
-  laptop.close();
+  const lden = await laptop.wait("join_denied", 5000);
+  check("an unknown device with no code is refused at once", !!lden && !laptop.has("join_accepted"), JSON.stringify(laptop.msgs));
+  check("…told how to pair", lden && /doesn't know this device yet/.test(lden.reason) && /wado pair/.test(lden.reason), lden && lden.reason);
+  check("…not left waiting for an approval", !laptop.has("waiting"));
+  check("…and no connected device is asked", !phone.has("approve_request"));
+  check("…and nothing is trusted", !trustList().includes("Laptop-key"));
+  await laptop.waitClosed(3000);
   await sleep(300);
-  // A stranger, denied. Daemon 2's seat is now *held* for the laptop, so the stranger needs a
-  // free daemon to be assigned at all: replace daemon 2 with a third.
+  // The laptop types the code from the computer's screen.
+  const second = await pairAt();
+  check("`wado pair` shows a typed code, grouped", /^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/.test(second.typed), second.out);
+  check("…and how long it has", /expires in (10:00|9:\d\d)/.test(second.out), second.out);
+  devices["Laptop-key"].store.setItem("wado.pairTyped", second.typed.replace("-", ""));
+  const laptopIn = new Client("Laptop", { pair: true });
+  const lacc = await laptopIn.wait("join_accepted", 5000);
+  check("a typed code is let through to prove itself, on the other daemon", lacc && lacc.instance_id === `${RID}:2`, lacc && lacc.instance_id);
+  const sas = await laptopIn.wait("e2e_sas", 8000);
+  check("…then the computer reveals the nonce for the check words", !!sas, JSON.stringify(laptopIn.msgs));
+  await waitFor(second, /Does it show these four words\?\n\s+(\S+ ){3}\S+/, 5000);
+  const atComputer = (second.out.match(/Does it show these four words\?\n\s+((\S+ ){3}\S+)/) || [])[1];
+  await sleep(200);
+  const onDevice = (devices["Laptop-key"].W.events.filter((e) => e.type === "pair_sas").at(-1) || {}).words;
+  check("…both screens show the same four words", !!atComputer && onDevice && onDevice.join(" ") === atComputer,
+    `${atComputer} | ${onDevice}`);
+  check("…and the device is not in, nor trusted, before anyone answers",
+    !laptopIn.has("__up") && !trustList().includes("Laptop-key"), trustList());
+  second.say("y");
+  check("a yes at the computer lets it in", !!(await laptopIn.up()), JSON.stringify(laptopIn.msgs) + devices["Laptop-key"].W.log.join("\n"));
+  check("…and the trust list pins its key", /Laptop-key\tLaptop\t\S+\t1/.test(trustList()), trustList());
+  check("…and `wado pair` says so", await waitFor(second, /paired/, 3000), second.out);
+  check("…the code never reached the relay", !(await waitFor(r, new RegExp(second.typed.replace("-", "")), 300)));
+  laptopIn.close();
+  await sleep(300);
+  // Guessing. Daemon 2's seat is now *held* for the laptop, so the guesses need a free daemon:
+  // replace daemon 2 with a third.
   await stop(d2);
   const d3 = daemon(3);
   await waitFor(d3, /registered — Remote ID/);
-  const stranger = new Client("Stranger");
-  const sask = await phone.waitWhere((m) => m.type === "approve_request" && m.name === "Stranger", 8000);
-  check("a stranger is put to the connected device too", !!sask);
-  if (sask) phone.send({ type: "approve_answer", id: sask.id, verdict: "deny" });
-  const sden = await stranger.wait("join_denied", 5000);
-  check("…and denying refuses it", !!sden && !stranger.has("join_accepted"), sden && sden.reason);
-  check("…and does not trust it",
-    !readFileSync(join(CFG, "wado/trusted_clients"), "utf8").includes("Stranger-key"));
+  // A "no" at the computer: the device is refused, told why, and trusts nothing.
+  const fourth = await pairAt();
+  devices["Desk-key"] = device("Desk-key");
+  devices["Desk-key"].store.setItem("wado.pairTyped", fourth.typed.replace("-", ""));
+  const desk = new Client("Desk", { pair: true });
+  await waitFor(fourth, /Does it show these four words/, 8000);
+  fourth.say("n");
+  const dfail = await desk.wait("e2e_fail", 8000);
+  check("a no at the computer refuses the device", !!dfail && /wasn't paired/.test(dfail.reason) && !desk.has("__up"),
+    JSON.stringify(desk.msgs));
+  check("…trusts nothing", !trustList().includes("Desk-key"), trustList());
+  check("…and spends the code", await waitFor(fourth, /declined/, 3000), fourth.out);
+  await desk.waitClosed(3000);
+  await sleep(300);
+  const third = mint();
+  const guessed = [];
+  for (let i = 0; i < 5; i++) {
+    const dev = device(`Guess${i}-key`);
+    dev.store.setItem("wado.pairTyped", "ZZZZZZZZ");
+    const g = new Client(`Guess${i}`, { dev, pair: true });
+    const f = await g.wait("e2e_fail", 8000);
+    guessed.push(!!f && /code didn't work/.test(f.reason));
+    await g.waitClosed(3000);
+    await sleep(200);
+  }
+  check("a wrong typed code is refused, five times", guessed, [true, true, true, true, true]);
+  check("…and the fifth revokes every live code", await waitFor(d3, /every live code is revoked/, 3000));
+  devices["Tab-key"] = device("Tab-key");
+  devices["Tab-key"].store.setItem("wado.pairTyped", third.typed.replace("-", ""));
+  const late = new Client("Tab", { pair: true });
+  const lf = await late.wait("e2e_fail", 8000);
+  check("…so even the right code no longer works", !!lf && !late.has("__up"), JSON.stringify(late.msgs));
+  check("…and nobody was trusted for guessing", !/Guess|Tab-key/.test(trustList()), trustList());
+  await late.waitClosed(3000);
   await stop(d3);
 
   // ── hold ────────────────────────────────────────────────────────────────────
@@ -197,15 +274,12 @@ try {
 
   // ── takeover ────────────────────────────────────────────────────────────────
   console.log("takeover");
-  // An untrusted device cannot knock a viewer off: the takeover is put to that viewer first.
+  // An unknown device cannot knock a viewer off: refused before anyone is displaced.
   const intruder = new Client("Intruder", { takeover: true });
-  const iask = await phone2.waitWhere((m) => m.type === "approve_request" && m.name === "Intruder", 8000);
-  check("an unknown device's takeover is put to the device it would displace", !!iask);
-  check("…which keeps its seat meanwhile", !phone2.has("taken_over") && !phone2.closed);
-  if (iask) phone2.send({ type: "approve_answer", id: iask.id, verdict: "deny" });
   const iden = await intruder.wait("join_denied", 5000);
-  check("…and a denial leaves it where it is", !!iden && !phone2.closed && !phone2.has("taken_over"),
+  check("an unknown device's takeover is refused at once", !!iden && /isn't paired yet/.test(iden.reason),
     JSON.stringify(intruder.msgs));
+  check("…and the viewer keeps its seat, unasked", !phone2.closed && !phone2.has("taken_over") && !phone2.has("approve_request"));
   const laptop2 = new Client("Laptop", { takeover: true });
   const tacc = await laptop2.wait("join_accepted", 5000);
   check("one tap takes the seat (a trusted device, so no prompt)", tacc && tacc.assignment === "taken over", JSON.stringify(laptop2.msgs));
@@ -272,16 +346,15 @@ try {
   check("…and says so", real.W.log.some((l) => /identity has changed/.test(l)));
   real.store.setItem("wado.hostpins", pinsWere);
   await sleep(300);
-  // A QR code: pairs a new device with no approval, pins both ends.
-  const qr = execFileSync(join(ROOT, "target/release/wado"), ["qr", "--relay", "http://r.example", "--id", RID],
-    { env: { ...process.env, XDG_CONFIG_HOME: CFG } }).toString();
-  const lq = new URLSearchParams(qr.match(/open: \S+\?(\S+)/)[1]);
+  // A QR code: pairs a new device, pins both ends.
+  const fresh = mint();
+  const qr = fresh.out;
   const tab = device("Tab-key");
-  tab.store.setItem("wado.pair", lq.get("pair"));
-  tab.store.setItem("wado.hostpins", JSON.stringify({ [RID]: { pin: lq.get("hk"), from: "qr" } }));
+  tab.store.setItem("wado.pair", fresh.pair);
+  tab.store.setItem("wado.hostpins", JSON.stringify({ [RID]: { pin: fresh.hk, from: "qr" } }));
   const paired = new Client("Tab", { dev: tab, pair: true });
-  check("a QR-paired device gets in with no approval, pinned", !!(await paired.up()), JSON.stringify(paired.msgs) + tab.W.log.join("\n"));
-  check("…the code never went to the relay", !qr.includes("pair=1") && !(await waitFor(r, new RegExp(lq.get("pair")), 300)));
+  check("a QR-paired device gets in, pinned", !!(await paired.up()), JSON.stringify(paired.msgs) + tab.W.log.join("\n"));
+  check("…the code never went to the relay", !qr.includes("pair=1") && !(await waitFor(r, new RegExp(fresh.pair), 300)));
   check("…and the trust list pins its key",
     /Tab-key\tTab\t\S+\t1/.test(readFileSync(join(CFG, "wado/trusted_clients"), "utf8")));
   check("…and the code is used up", tab.store.getItem("wado.pair") === null);

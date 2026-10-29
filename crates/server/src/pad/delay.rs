@@ -97,6 +97,11 @@ impl Delay {
         self.applied += (self.target - self.applied).clamp(-SLEW_MS, SLEW_MS);
     }
 
+    /// The delay in use has reached the estimate: [`Delay::tick`] would not move it.
+    pub fn settled(&self) -> bool {
+        self.applied == self.target
+    }
+
     /// The delay in use, in ms, on the direct or relay path.
     pub fn ms(&self, relayed: bool) -> f64 {
         if relayed {

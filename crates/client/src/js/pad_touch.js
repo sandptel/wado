@@ -12,9 +12,21 @@
 //   • a finger rests → re-sent every 100 ms, so the daemon's silence check (400 ms) only ever
 //     lifts a finger whose phone is really gone
 //
+// Coordinates are the pad's own (js/pad_orient.js): when the pad is drawn turned for landscape,
+// x/y and the size are the landscape pad's, so the daemon's pacer and libinput only ever see a
+// landscape touchpad. Turning it mid-touch lifts every finger first, then sends the new size.
+//
+// Pointer events come from js/pad_pointer.js, already mapped into the pad's frame, after the
+// phone gestures (js/pad_gestures.js) let them through. Those may hold an edge touch back
+// ≤ 60 ms and replay it here (`feed`), or lift fingers they claimed (`drop`). Without an
+// assigned gesture they pass everything straight through.
+//
 //   W.padTouch.attach(el) / detach()
 //   W.padTouch.size() → {w, h} in CSS px;  W.padTouch.frame() → the current contacts
 //   W.padTouch.resend()   size + current frame again (the link moved paths)
+//   W.padTouch.input("down" | "move" | "up", p)  a pointer, p = {id, x, y, w, h} in the pad's px
+//   W.padTouch.feed("down" | "move" | "up", p)   one the gestures held, now let through
+//   W.padTouch.drop(pointerIds)                   lift these fingers on the computer now
 
 (() => {
   const T = (W.padTouch = {});
@@ -28,6 +40,7 @@
   let lastSent = 0;
   let timers = [];
   let size = { w: 0, h: 0 };
+  let offTurn = null;
 
   T.frame = () => [...fingers.values()].sort((a, b) => a.id - b.id).map((f) => [f.id, f.x, f.y]);
   T.size = () => size;
@@ -59,10 +72,9 @@
   T.resend = () => { sendSize(); send(); };
 
   const clamp = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
-  function place(f, e) {
-    const r = el.getBoundingClientRect();
-    f.x = Math.round(clamp((e.clientX - r.left) / r.width) * 65535);
-    f.y = Math.round(clamp((e.clientY - r.top) / r.height) * 65535);
+  function place(f, p) {
+    f.x = Math.round(clamp(p.x / p.w) * 65535);
+    f.y = Math.round(clamp(p.y / p.h) * 65535);
   }
   function freeId() {
     const used = new Set([...fingers.values()].map((f) => f.id));
@@ -70,46 +82,62 @@
     return -1;
   }
 
-  function down(e) {
+  function down(p) {
     const id = freeId();
     if (id < 0) return;
-    e.preventDefault();
-    try { el.setPointerCapture(e.pointerId); } catch (_) {}
     const f = { id, x: 0, y: 0 };
-    place(f, e);
-    fingers.set(e.pointerId, f);
+    place(f, p);
+    fingers.set(p.id, f);
     changed();
   }
-  function move(e) {
-    const f = fingers.get(e.pointerId);
+  function move(p) {
+    const f = fingers.get(p.id);
     if (!f) return;
-    e.preventDefault();
-    place(f, e);
+    place(f, p);
     moved();
   }
-  function up(e) {
-    if (!fingers.delete(e.pointerId)) return;
+  function up(p) {
+    if (!fingers.delete(p.id)) return;
     changed();
   }
   function hidden() {
     if (document.visibilityState === "hidden" && fingers.size) { fingers.clear(); send(); }
   }
 
-  const on = [["pointerdown", down], ["pointermove", move], ["pointerup", up],
-    ["pointercancel", up], ["lostpointercapture", up]];
+  T.input = (type, p) => {
+    if (!el) return;
+    if (type === "down") down(p);
+    else if (type === "move") move(p);
+    else up(p);
+  };
+  T.feed = (type, p) => {
+    if (!el) return;
+    if (type === "down") { down(p); if (dirty) send(); } // its own frame, before anything after it
+    else T.input(type, p);
+  };
+  T.drop = (ids) => {
+    let any = false;
+    for (const id of ids) any = fingers.delete(id) || any;
+    if (any && el) changed();
+  };
 
   T.attach = (node) => {
     T.detach();
     el = node;
-    for (const [ev, fn] of on) el.addEventListener(ev, fn);
     document.addEventListener("visibilitychange", hidden);
     const measure = () => {
-      const r = el.getBoundingClientRect();
-      const s = { w: Math.round(r.width), h: Math.round(r.height) };
+      const r = W.padOrient.size(el.getBoundingClientRect());
+      const s = { w: Math.round(r.w), h: Math.round(r.h) };
       if (s.w !== size.w || s.h !== size.h) { size = s; sendSize(); }
     };
     if (typeof ResizeObserver !== "undefined") { ro = new ResizeObserver(measure); ro.observe(el); }
     measure();
+    // Turned: the fingers down are in the old frame, so they lift here before the new size goes
+    // (the daemon also lifts on a resize; a flip keeps the size, so this lift is what covers it).
+    offTurn = W.padOrient.onChange(() => {
+      if (fingers.size) { fingers.clear(); send(); }
+      measure();
+    });
     timers = [
       setInterval(() => { if (dirty && W.pad.state !== "direct") send(); }, 16),
       setInterval(() => { if (fingers.size && performance.now() - lastSent >= 100) send(); }, 50),
@@ -118,9 +146,9 @@
 
   T.detach = () => {
     if (!el) return;
-    for (const [ev, fn] of on) el.removeEventListener(ev, fn);
     document.removeEventListener("visibilitychange", hidden);
     if (ro) { ro.disconnect(); ro = null; }
+    if (offTurn) { offTurn(); offTurn = null; }
     for (const t of timers) clearInterval(t);
     timers = [];
     if (fingers.size) { fingers.clear(); send(); }

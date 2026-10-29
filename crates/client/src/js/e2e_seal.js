@@ -16,6 +16,33 @@ W.e2eDerive = async (shared, salt) => {
   return { c2d: await key(okm.slice(0, 32), "encrypt"), d2c: await key(okm.slice(32), "decrypt") };
 };
 
+// `k_pair` — the raw key a typed pairing code is proven with — from the same secret and salt.
+// Only the two ends of the X25519 exchange can compute it, so the proof is no offline oracle for
+// the short code to whoever carries the frame.
+W.e2ePairKey = async (shared, salt) => {
+  const ikm = await crypto.subtle.importKey("raw", shared, "HKDF", false, ["deriveBits"]);
+  return new Uint8Array(await crypto.subtle.deriveBits(
+    { name: "HKDF", hash: "SHA-256", salt, info: new TextEncoder().encode("wado-e2e-v1 pair") }, ikm, 256));
+};
+
+// `k_sas` — the key a typed pairing's check words come from — from the same secret and salt.
+W.e2eSasKey = async (shared, salt) => {
+  const ikm = await crypto.subtle.importKey("raw", shared, "HKDF", false, ["deriveBits"]);
+  return new Uint8Array(await crypto.subtle.deriveBits(
+    { name: "HKDF", hash: "SHA-256", salt, info: new TextEncoder().encode("wado-e2e-v1 sas") }, ikm, 256));
+};
+
+// The four check words: HMAC(k_sas, H(T2) ‖ nonce), first four bytes, one word each from the
+// list crates/protocol/src/sas_words.txt (bundled as `W.SAS_WORDS`).
+W.e2eSasWords = async (kSas, h2, nonce) => {
+  const k = await crypto.subtle.importKey("raw", kSas, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const all = new Uint8Array(h2.length + nonce.length);
+  all.set(h2, 0);
+  all.set(nonce, h2.length);
+  const mac = new Uint8Array(await crypto.subtle.sign("HMAC", k, all));
+  return [...mac.slice(0, 4)].map((b) => W.SAS_WORDS[b]);
+};
+
 const nonceOf = (n) => {
   const iv = new Uint8Array(12);
   new DataView(iv.buffer).setBigUint64(4, BigInt(n));

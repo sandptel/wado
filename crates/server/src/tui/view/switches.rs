@@ -35,26 +35,6 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
             )
         };
         let (name, on, says, warn) = match s {
-            Switch::Join => (
-                "join",
-                c.security.open_join(),
-                if c.security.open_join() {
-                    "anyone, once"
-                } else {
-                    "asks you first"
-                },
-                c.security.open_join(),
-            ),
-            Switch::TrustFirst => (
-                "first device",
-                c.security.trust_first_device,
-                if c.security.trust_first_device {
-                    "trusted on sight"
-                } else {
-                    "needs the QR"
-                },
-                false,
-            ),
             Switch::Files => (
                 "file manager",
                 c.files.enabled,
