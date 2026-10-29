@@ -290,6 +290,9 @@ pub struct Wado {
     /// Set once the device has failed to open, so the failure is logged once rather than on
     /// every stick sample. Cleared with the session.
     pub gamepad_failed: bool,
+    /// Who may do what when several devices drive the seat at once — see
+    /// [`crate::input::arbiter`]. Fresh per session.
+    pub arbiter: crate::input::arbiter::Arbiter,
     /// Toplevels mapped but awaiting placement (Center/Cascade need the post-commit size).
     /// Drained by `Wado::apply_pending_placement`. See `placement.rs`.
     pub pending_placement: Vec<Window>,
@@ -511,6 +514,7 @@ impl Wado {
             pre_fullscreen: std::collections::HashMap::new(),
             gamepad: None,
             gamepad_failed: false,
+            arbiter: Default::default(),
             pending_placement: Vec::new(),
             cascade_count: 0,
             glow: crate::glow::Glow::new(),

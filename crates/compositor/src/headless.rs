@@ -723,6 +723,8 @@ pub fn stop_session(state: &mut Wado) {
     // Counted before the apps are killed, or the verdict below reports whatever survived the
     // teardown race rather than what the session actually had.
     let mapped_at_stop = state.space.elements().count();
+    // Nothing one session's devices held carries into the next.
+    state.arbiter = Default::default();
 
     if let Some(token) = state.render_timer_token.take() {
         state.loop_handle.remove(token);
