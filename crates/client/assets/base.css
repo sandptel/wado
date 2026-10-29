@@ -47,13 +47,19 @@
   --ease: var(--spring);
   --dur: 220ms;
   --dur-sheet: 480ms;
+  /* The motion extension (DESIGN.md, approved 2026-10-30): three durations and a stagger step,
+   * no new curve. `--dur-hero` is the card → Computer page shared element, `--dur-press` the
+   * press feedback every button gets, `--stagger` the step between sections rising in. */
+  --dur-hero: 520ms;
+  --dur-press: 120ms;
+  --stagger: 40ms;
 
   color-scheme: dark;
 }
 :root[data-ground="light"] { color-scheme: light; }
 :root[data-radius="sharp"] { --r1: 3px; --r2: 4px; --r3: 6px; --r4: 8px; }
 :root[data-radius="pill"] { --r1: 14px; --r2: 22px; --r3: 28px; --r4: 34px; }
-:root[data-motion="reduced"] { --dur: 120ms; --dur-sheet: 200ms; --pop: var(--spring); }
+:root[data-motion="reduced"] { --dur: 120ms; --dur-sheet: 200ms; --dur-hero: 160ms; --stagger: 0ms; --pop: var(--spring); }
 
 * { box-sizing: border-box; }
 
@@ -73,7 +79,7 @@ svg.i { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-widt
   stroke-linecap: round; stroke-linejoin: round; flex: none; }
 
 button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; padding: 0;
-  transition: scale 120ms var(--ease), background var(--dur) var(--ease), color var(--dur) var(--ease); }
+  transition: scale var(--dur-press) var(--ease), background var(--dur) var(--ease), color var(--dur) var(--ease); }
 button:active:not(:disabled) { scale: .96; }
 button:disabled { opacity: .4; cursor: default; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

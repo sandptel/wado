@@ -106,7 +106,7 @@
 .tile { display: flex; align-items: center; gap: 10px; min-height: 62px; padding: 8px 12px 8px 8px; border-radius: var(--r3);
   background: var(--s2); text-align: left; cursor: pointer; user-select: none; -webkit-user-select: none;
   -webkit-touch-callout: none; min-width: 0;
-  transition: background var(--dur) var(--ease), color var(--dur) var(--ease), border-radius 360ms var(--spring), scale 120ms var(--ease); }
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease), border-radius 360ms var(--spring), scale var(--dur-press) var(--ease); }
 .tile:active { scale: .96; }
 .tile .ic { width: 42px; height: 42px; flex: none; border-radius: var(--r2); display: grid; place-items: center; background: var(--s3);
   transition: background var(--dur) var(--ease), border-radius 360ms var(--spring); }
@@ -162,8 +162,10 @@ details.card > summary { cursor: pointer; font-weight: 600; color: var(--bright)
 
 /* Segmented control. Equal widths, so the knob is placed by --i / --n alone. */
 .seg { position: relative; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; padding: 4px; border-radius: var(--r2); background: var(--s0); }
-.seg .knob { position: absolute; top: 4px; bottom: 4px; left: calc(4px + (100% - 8px) / var(--n) * var(--i)); width: calc((100% - 8px) / var(--n));
-  border-radius: calc(var(--r2) - 4px); background: var(--accent); transition: left 420ms var(--spring); }
+/* The knob moves by `translate` (its own width × index) so the slide stays on the compositor. */
+.seg .knob { position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc((100% - 8px) / var(--n));
+  translate: calc(100% * var(--i)) 0;
+  border-radius: calc(var(--r2) - 4px); background: var(--accent); transition: translate 420ms var(--spring); }
 .seg.none .knob { opacity: 0; }
 .seg button { position: relative; z-index: 1; min-height: 40px; border-radius: calc(var(--r2) - 4px); font-weight: 600; font-size: 13px;
   color: var(--dim); transition: color var(--dur) var(--ease); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 4px; }
@@ -222,7 +224,7 @@ details.card > summary { cursor: pointer; font-weight: 600; color: var(--bright)
 /* Appearance gallery. */
 .themes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .theme { border-radius: var(--r3); padding: 8px; display: grid; gap: 8px; text-align: left; border: 2px solid transparent;
-  transition: border-color var(--dur) var(--ease), scale 120ms var(--ease); }
+  transition: border-color var(--dur) var(--ease), scale var(--dur-press) var(--ease); }
 .theme.on { border-color: var(--accent); }
 .theme .pv { position: relative; height: 54px; border-radius: var(--r2); overflow: hidden; display: block; }
 .theme .pv i { position: absolute; border-radius: 6px; }

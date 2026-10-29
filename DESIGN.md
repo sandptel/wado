@@ -39,6 +39,12 @@ typography:
     fontWeight: 700
     lineHeight: 1
     letterSpacing: "-0.045em"
+  hero-name:
+    fontFamily: "Bricolage Grotesque, Figtree, system-ui, sans-serif"
+    fontSize: "30px"
+    fontWeight: 700
+    lineHeight: 1.05
+    letterSpacing: "-0.025em"
   headline:
     fontFamily: "Bricolage Grotesque, Figtree, system-ui, sans-serif"
     fontSize: "20px"
@@ -240,7 +246,9 @@ heads, live numbers), a friendly geometric sans for everything read, and a mono 
 machine produced: addresses, resolutions, workspace numbers, values.
 
 ### Hierarchy
-- **Display** (700, clamp(42px, 12vw, 64px), 1, -0.045em): the wordmark on the landing only.
+- **Display** (700, clamp(42px, 12vw, 64px), 1, -0.045em): the wordmark on the home page only.
+- **Hero name** (700, 30px/1.05, -0.025em; 38px from 960px): a computer's name in its Computer
+  page hero. Between Display and Headline; nothing else uses it.
 - **Headline** (700, 19–20px, -0.01em): control-centre page heads, the hero host name, and the
   Start button at 17px.
 - **Numeral** (600, 17px, tabular figures): live meters such as fps, ping and bitrate.
@@ -371,9 +379,33 @@ A top-left status pill that shows the true link state in plain words, with a ton
 healthy direct session it collapses to the dot alone (still a 32px target), so a game keeps its
 corner. Tapping it opens a card that explains the state and offers a fix.
 
-### Progress Ring
-The landing's 64px ring tracks four connection hops, beside a step list. A step is dim while
-pending, spins in base0A while active, and turns good or bad when it finishes.
+### Hop Bar
+While a computer is being dialled, its Computer page hero shows the four connection hops (Relay,
+Daemon, Session, Video) as a bar of four segments under the meta strip. A hop fills good when it
+completes; a failure names the hop that stopped and its fix.
+
+### Computer Card and Computer Page (signature)
+Home lists computers as 80px cards (surface-1, line hairline, r3): a 46px hue disc, the name in
+Bricolage 17/700, OS · compositor in mono, the live link words with a tone dot, and a trailing
+48px ▶ that starts or rejoins the desktop directly (accent tint; solid accent with glow while a
+session runs; disabled offline). Tapping the card grows it into that computer's page by a
+shared-element transition (`--dur-hero`): the card surface becomes the r4 hero with the hue wash,
+its disc and name fly to the hero's. The page holds the hero with a three-cell meta strip (Link,
+Computer, Sessions), four big actions (Desktop, Trackpad, Files, Shell; 104px tiles), Now
+playing, Quick (volume, brightness, three vertical toggle tiles) and the four settings rows for
+that computer. Its sub-pages carry an eyebrow with the computer's hue dot and name, so a setting
+is never ambiguous about which computer it changes.
+
+### Link Words
+`.lstate`: a tone dot and plain words. Direct ripples once per ping sample; Relayed and
+Reconnecting breathe; Offline is still — stillness means nothing is alive.
+
+### Widgets
+Home's last section: cards that each follow one computer (header: type label and a host chip
+with that computer's status dot). Media, Volume, Brightness, Clipboard, Trackpad. Stored on the
+phone. Edit mode folds every body to a 64px row with remove, ↑ ↓ and a drag grip; a dragged
+widget lifts (`scale` 1.03 with the Popover shadow — it now floats) and its neighbours make room.
+A widget never hides for a missing grant: it says what is missing.
 
 ## Do's and Don'ts
 
@@ -386,6 +418,11 @@ pending, spins in base0A while active, and turns good or bad when it finishes.
 - **Do** use `--spring` (cubic-bezier(.32, .72, 0, 1)) for sheets and pages, and `--pop`
   (cubic-bezier(.34, 1.56, .64, 1)) for small things a finger just flipped. Use `--dur` (220ms)
   and `--dur-sheet` (480ms).
+- **Do** time things from the duration tokens: `--dur` (220ms), `--dur-sheet` (480ms),
+  `--dur-hero` (520ms, shared-element transitions), `--dur-press` (120ms, press feedback) and
+  `--stagger` (40ms between sections rising in). Reduced motion: 120 / 200 / 160 / 120 / 0ms.
+- **Do** let exits run on `--spring` at about 80% of the entrance (520 → 420ms); a departing
+  opacity-only fade may use a plain accelerate (`cubic-bezier(.3, 0, 1, 1)`, ≤180ms).
 - **Do** honour `prefers-reduced-motion` and the user's `data-motion` (full / reduced / off).
 - **Do** keep touch targets at 44px or more, and text inputs at exactly 16px.
 - **Do** state a degraded link or encoder in plain words with its tone colour, and keep the
@@ -402,5 +439,9 @@ pending, spins in base0A while active, and turns good or bad when it finishes.
   lives in the dock LED, a toast or a hero chip.
 - **Don't** put shadows on content inside a sheet or card.
 - **Don't** enable backdrop blur on coarse-pointer devices.
-- **Don't** introduce a third easing curve, or a fourth font family.
+- **Don't** introduce a third easing curve, or a fourth font family. Two named exceptions are not
+  curves: **direct manipulation** (a dragged widget, a slider thumb under the finger, the trackpad
+  surface) follows the pointer 1:1 with no easing, and the curve applies only on release or a
+  discrete jump; **clocks and ambient loops** (progress bars run `linear`; the link dot's
+  `breathe` is `ease-in-out`, its ripple decelerates) are timekeepers, not motion.
 - **Don't** show a control that does nothing yet. A feature lands its tile when it lands.
