@@ -15,6 +15,7 @@ pub mod files;
 pub mod host;
 pub mod link;
 pub mod menu;
+pub mod pad;
 pub mod relay;
 pub mod relay_wire;
 pub mod sessions;

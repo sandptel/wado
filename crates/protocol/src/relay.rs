@@ -688,6 +688,29 @@ pub enum RelayMsg {
         path: String,
     },
 
+    // ── Trackpad mode: its own peer connection (see `crate::pad`) ─────────────
+    // Post-handshake, forwarded by the relay unread — no mirror in `relay_wire.rs`.
+    /// Client → server: the offer for the trackpad peer connection — its own connection, so a
+    /// no-picture session never shares a session or an SCTP association with a video one.
+    PadOffer {
+        sdp: String,
+    },
+    /// Server → client: the answer, or `err` when this device may not use trackpad mode.
+    PadAnswer {
+        #[serde(default)]
+        sdp: String,
+        #[serde(default)]
+        err: String,
+    },
+    /// Client → daemon: a [`crate::pad::PadMsg`] (touch or key) arrived over the relay.
+    PadIn {
+        msg: crate::pad::PadMsg,
+    },
+    /// Daemon → client: a [`crate::pad::PadMsg`] (e.g. `Pong`, `Err`) over the relay.
+    PadOut {
+        msg: crate::pad::PadMsg,
+    },
+
     // ── Device approval: daemon ↔ an already-connected client (relay forwards) ──
     /// A device the daemon does not trust is waiting to join (it may be waiting on another
     /// daemon of the same pool — they share one trust list). Shown to a connected viewer.
