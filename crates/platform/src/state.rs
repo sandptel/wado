@@ -9,7 +9,9 @@
 
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+use tokio::time::Instant;
 
 use tokio::sync::{Mutex, watch};
 

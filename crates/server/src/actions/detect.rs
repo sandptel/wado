@@ -132,7 +132,7 @@ fn terminal(exists: &dyn Fn(&str) -> bool, env: Option<String>) -> Option<String
         .map(|t| t.trim().to_string())
 }
 
-fn session_bus() -> bool {
+pub fn session_bus() -> bool {
     std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_some_and(|a| !a.is_empty())
         || std::env::var_os("XDG_RUNTIME_DIR").is_some_and(|d| Path::new(&d).join("bus").exists())
 }

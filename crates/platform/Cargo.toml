@@ -13,9 +13,10 @@ fake = []
 [dependencies]
 # Wire types the capabilities speak (HostAudio, Wifi, Player, ClipEntry, Capability, …).
 wado-protocol = { path = "../protocol" }
-# `watch` for published state, `mpsc` for the PTY's output lane, `Mutex` for coalesced refresh.
-# Only `sync`: no runtime runs in this crate.
-tokio = { version = "1", features = ["sync"] }
+# `watch` for published state, `mpsc` for the PTY's output lane, `Mutex` for coalesced refresh,
+# `time::Instant` so a test can drive refresh ages on a paused clock.
+# No runtime runs in this crate.
+tokio = { version = "1", features = ["sync", "time"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["sync", "rt", "macros", "time", "test-util"] }

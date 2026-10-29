@@ -1,5 +1,5 @@
-//! The media player, through MPRIS (`host::media`): play/pause, next and previous track, on the
-//! player that is playing — else the first one open.
+//! The media player, through the platform's media players (`wado_platform::media`): play/pause,
+//! next and previous track, on the player that is playing — else the first one open.
 
 use wado_protocol::host::MediaOp;
 
@@ -19,10 +19,14 @@ pub fn all() -> Vec<Action> {
 }
 
 pub async fn run(op: MediaOp) -> Result<(), String> {
+    let media = crate::platform::get().media().map_err(|a| a.why)?;
+    media.fresh(std::time::Duration::ZERO).await;
     // Playing ones come first.
-    let players = crate::host::media::state(&[]).await;
-    let player = players
+    let bus = media
+        .state()
+        .borrow()
         .first()
+        .map(|p| p.bus.clone())
         .ok_or("no media player is open on this computer")?;
-    crate::host::media::act(&player.bus, op).await
+    media.act(bus, op).await
 }

@@ -67,13 +67,14 @@ pub fn all() -> Vec<Action> {
 }
 
 pub async fn run(op: Op) -> Result<(), String> {
-    use crate::host::cmd::run;
+    use crate::platform::linux::cmd::run;
     match op {
         Op::Lock => run("loginctl", &["lock-session"]).await.map(drop),
         Op::Suspend => run("systemctl", &["suspend"]).await.map(drop),
-        Op::Brightness { up } => run("brightnessctl", &["set", if up { "10%+" } else { "10%-" }])
-            .await
-            .map(drop),
+        Op::Brightness { up } => {
+            let b = crate::platform::get().brightness().map_err(|a| a.why)?;
+            b.step(up).await
+        }
         Op::Screenshot { region } => screenshot(region).await,
     }
 }

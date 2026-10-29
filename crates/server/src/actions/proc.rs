@@ -1,6 +1,6 @@
 //! Running a tool on the desktop's display — awaited with a deadline, or started and left to
 //! run. Arguments are arguments, never a shell string. (Tools that need no display go through
-//! `host::cmd`.)
+//! `platform::linux::cmd`.)
 
 use std::process::Stdio;
 use std::time::Duration;

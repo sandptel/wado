@@ -1,11 +1,13 @@
-//! "This phone": a PipeWire null sink whose sound goes to the viewer instead of a speaker.
+//! "This phone" ([`ViewerSink`] on Linux): a PipeWire null sink whose sound goes to the viewer
+//! instead of a speaker.
 //!
 //! It exists only while a device is connected, and is described after that device ("wado ·
 //! Android · Chrome"), so the computer's mixer shows who it plays to — not a "wado viewer" per
-//! daemon left standing with nobody connected (reported 2026-10-04). See `crate::host::viewer`. Session apps are pointed at it
-//! (`PULSE_SINK`, via `CompositorCommand::AudioSink`), so a session plays on the phone by
-//! default; host apps play where they always did until moved here from the Sound page.
-//! `crate::audio` captures its monitor while a viewer is listening.
+//! daemon left standing with nobody connected (reported 2026-10-04). When it is made and remade
+//! is the daemon's policy (`crate::host::viewer`). Session apps are pointed at it (`PULSE_SINK`,
+//! via `CompositorCommand::AudioSink`), so a session plays on the phone by default; host apps
+//! play where they always did until moved here from the Sound page. `crate::audio` captures its
+//! monitor while a viewer is listening.
 //!
 //! The node lives exactly as long as the `pw-cli` process that created it, which is what makes
 //! cleanup automatic: kill the child, the sink is gone — even if the daemon itself dies.
@@ -17,10 +19,51 @@ use std::{
 };
 
 use tracing::{info, warn};
+use wado_platform::Res;
+use wado_platform::audio::{SinkHandle, ViewerSink};
 
+/// Shown when session audio is turned off in the config.
+pub const AUDIO_OFF: &str = "session audio is off (session { audio #false })";
+
+/// The null sink under a name fixed for this daemon run.
+pub struct NullSink {
+    name: String,
+}
+
+impl NullSink {
+    /// The viewer sink, or why there is none (audio turned off).
+    pub fn new() -> Result<NullSink, String> {
+        name()
+            .map(|name| NullSink { name })
+            .ok_or_else(|| AUDIO_OFF.to_string())
+    }
+}
+
+impl ViewerSink for NullSink {
+    fn name(&self) -> String {
+        self.name.clone()
+    }
+
+    fn open(&self, description: String) -> Res<Box<dyn SinkHandle>> {
+        start(&self.name, &description)
+            .map(|s| Box::new(s) as Box<dyn SinkHandle>)
+            .ok_or_else(|| "the viewer's sound output could not be made".to_string())
+    }
+}
+
+/// A live sink: the `pw-cli` process holding it. Dropping it removes the sink.
 pub struct AudioSink {
     pub name: String,
     child: Child,
+}
+
+impl SinkHandle for AudioSink {}
+
+impl Drop for AudioSink {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
 }
 
 /// The sink's node name for this daemon run, or `None` when audio is off. Fixed for the run, so
@@ -74,9 +117,4 @@ pub fn start(name: &str, description: &str) -> Option<AudioSink> {
     }
     info!(sink = name, description, "viewer audio sink created");
     Some(AudioSink { name, child })
-}
-
-pub fn terminate(mut sink: AudioSink) {
-    let _ = sink.child.kill();
-    let _ = sink.child.wait();
 }

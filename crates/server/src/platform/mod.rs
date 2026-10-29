@@ -17,7 +17,7 @@ static PLATFORM: OnceLock<Platform> = OnceLock::new();
 
 /// This OS's providers, in the order they are asked.
 pub fn os_default() -> PlatformBuilder {
-    PlatformBuilder::empty().with(linux::LinuxProvider)
+    PlatformBuilder::empty().with(linux::LinuxProvider::default())
 }
 
 /// The daemon's platform, probed on first use. The daemon probes it at start, after capturing

@@ -1,6 +1,6 @@
 //! The session's sound, streamed: its audio sink's monitor → Opus → a WebRTC audio track.
 //!
-//! Captures the daemon's "This phone" sink (`crate::host::phone_sink`) while a viewer is
+//! Captures the daemon's "This phone" sink (`crate::platform::linux::viewer_sink`) while a viewer is
 //! listening: a thread reads PCM from it, encodes 10 ms Opus frames and hands them to the track. Audio
 //! has its own track and its own RTP stream, so it never waits behind a video frame, and it
 //! travels over SRTP/UDP like the video (invariant #2).

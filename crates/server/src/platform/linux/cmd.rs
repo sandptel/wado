@@ -1,16 +1,26 @@
 //! Running the host's own tools — `wpctl`, `nmcli`, `bluetoothctl` — with a deadline.
 //!
 //! Arguments are passed as arguments, never through a shell, so an SSID or a device name from a
-//! client cannot become a command.
+//! client cannot become a command. Every run is counted ([`spawned`]), so what a poll costs in
+//! processes is measured, not guessed.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use tokio::process::Command;
 
 const DEADLINE: Duration = Duration::from_secs(8);
 
+static SPAWNED: AtomicU64 = AtomicU64::new(0);
+
+/// How many tools [`run`] has started since the daemon began.
+pub fn spawned() -> u64 {
+    SPAWNED.load(Ordering::Relaxed)
+}
+
 /// Run `prog args…`; stdout on success, a human message otherwise.
 pub async fn run(prog: &str, args: &[&str]) -> Result<String, String> {
+    SPAWNED.fetch_add(1, Ordering::Relaxed);
     let out = tokio::time::timeout(
         DEADLINE,
         Command::new(prog).args(args).kill_on_drop(true).output(),
