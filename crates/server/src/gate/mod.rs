@@ -349,7 +349,7 @@ impl Gate {
         // A code is the owner's say-so, and it pins whatever key proved it — a re-pair is how
         // a device that lost its key comes back.
         let unknown = match proof {
-            Proof::Qr(c) => match self.redeem(c) {
+            Proof::Qr(c) => match self.redeem(c).map(|g| g.union(&Grants::CODE_PAIRED)) {
                 Some(g) => {
                     info!(
                         "gate: {name} paired with a QR code — trusted and pinned, may: {}",
@@ -392,6 +392,7 @@ impl Gate {
 
     /// The check words of a typed pairing were confirmed on the computer: trust and pin.
     pub fn confirmed(&self, key: &str, name: &str, pk: &str, grants: &Grants) {
+        let grants = &grants.union(&Grants::CODE_PAIRED);
         info!(
             "gate: {name} paired with a typed code, check words confirmed — trusted and pinned, \
              may: {}",

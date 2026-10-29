@@ -13,11 +13,13 @@ server {
     // turn { url "turn:turn.example:3478"; user "wado"; pass "secret"; }
     // public-relay "https://relay.example"   // the relay as a phone reaches it — for `wado qr`
     // client-url "https://sandptel.github.io/wado/"
+    // max-sessions 4                  // sessions this computer runs at once; "Start new" starts a daemon per session up to this
+    // max-participants 4              // devices in one session; the link speed test may lower it
 }
 
 security {
     // A new device gets in only with a code shown here: `wado pair` (or `wado tui` → Pair).
-    // new-device "host"               // what a new device may do: files-ro|files-rw shells settings host input clipboard
+    // new-device "host"               // what a new device may do: files-ro|files-rw shells settings host input clipboard join takeover
 }
 
 stream {

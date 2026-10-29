@@ -48,9 +48,18 @@ pub const SWITCHES: [Switch; 4] = [
 ];
 
 /// The grant columns, in the order every checklist shows them.
-pub const GRANTS: [&str; 6] = ["files", "shells", "settings", "host", "input", "clipboard"];
+pub const GRANTS: [&str; 8] = [
+    "files",
+    "shells",
+    "settings",
+    "host",
+    "input",
+    "clipboard",
+    "join",
+    "takeover",
+];
 /// The Devices matrix: the grants, then who is owner.
-pub const OWNER_COL: usize = 6;
+pub const OWNER_COL: usize = 8;
 
 /// What a click on a drawn region does.
 #[derive(Clone, Copy)]
@@ -404,6 +413,8 @@ fn flip(g: &Grants, col: usize) -> (String, bool) {
         2 => ("settings".into(), !g.settings),
         3 => ("host".into(), !g.host),
         4 => ("input".into(), !g.input),
+        6 => ("join".into(), !g.join),
+        7 => ("takeover".into(), !g.takeover),
         _ => ("clipboard".into(), !g.clipboard),
     }
 }

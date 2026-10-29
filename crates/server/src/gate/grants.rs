@@ -17,6 +17,8 @@ pub const TOKENS: &[&str] = &[
     "host",
     "input",
     "clipboard",
+    "join",
+    "takeover",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,6 +36,11 @@ pub struct Grants {
     pub input: bool,
     /// The computer's clipboard history — it holds whatever was copied there, passwords too.
     pub clipboard: bool,
+    /// Join a session another device is in, and control it with them (Decision Log
+    /// `2026-10-30`): it sees everything on that screen.
+    pub join: bool,
+    /// Take a session over: become its lead and disconnect everyone else in it.
+    pub takeover: bool,
 }
 
 impl Grants {
@@ -44,6 +51,8 @@ impl Grants {
         host: false,
         input: false,
         clipboard: false,
+        join: false,
+        takeover: false,
     };
     pub const ALL: Self = Self {
         files: "rw",
@@ -52,6 +61,8 @@ impl Grants {
         host: true,
         input: true,
         clipboard: true,
+        join: true,
+        takeover: true,
     };
 
     /// What a line from before grants had.
@@ -62,6 +73,18 @@ impl Grants {
         host: true,
         input: false,
         clipboard: false,
+        join: false,
+        takeover: false,
+    };
+
+    /// What pairing with a code adds, whatever the code's checklist said (Decision Log
+    /// `2026-10-30`, S1): a device proven to have seen this computer's own screen is one of its
+    /// owner's, so it may join and take over the owner's sessions. Any other line gets them only
+    /// from `wado allow`.
+    pub const CODE_PAIRED: Self = Self {
+        join: true,
+        takeover: true,
+        ..Self::NONE
     };
 
     /// `security { new-device }`: what a newly trusted device starts with.
@@ -89,6 +112,8 @@ impl Grants {
             ("host", _) => self.host = on,
             ("input", _) => self.input = on,
             ("clipboard", _) => self.clipboard = on,
+            ("join", _) => self.join = on,
+            ("takeover", _) => self.takeover = on,
             _ => {
                 return Err(format!(
                     "`{token}` is not a grant — use {}",
@@ -118,6 +143,8 @@ impl Grants {
             host: self.host || o.host,
             input: self.input || o.input,
             clipboard: self.clipboard || o.clipboard,
+            join: self.join || o.join,
+            takeover: self.takeover || o.takeover,
         }
     }
 
@@ -129,6 +156,8 @@ impl Grants {
             (self.host, "host"),
             (self.input, "input"),
             (self.clipboard, "clipboard"),
+            (self.join, "join"),
+            (self.takeover, "takeover"),
         ]
         .into_iter()
         .filter_map(|(on, t)| on.then_some(t))
@@ -211,5 +240,20 @@ mod tests {
         assert!(!Grants::LEGACY.input);
         assert!(!Grants::parse("host").unwrap().input);
         assert!(Grants::ALL.input);
+    }
+
+    #[test]
+    fn join_and_takeover_are_tokens_and_off_for_old_lines() {
+        let g = Grants::parse("host join takeover").unwrap();
+        assert!(g.join && g.takeover);
+        assert_eq!(Grants::parse(&g.tokens()).unwrap(), g);
+        assert_eq!(Grants::from_columns("none", Some(&g.flags())), g);
+        // A line from before grants, and one from before these two: neither may join.
+        assert!(!Grants::LEGACY.join && !Grants::LEGACY.takeover);
+        let before = Grants::from_columns("none", Some("shells,host"));
+        assert!(!before.join && !before.takeover);
+        // A code adds them, and only them.
+        let paired = before.union(&Grants::CODE_PAIRED);
+        assert!(paired.join && paired.takeover && paired.shells && !paired.input);
     }
 }

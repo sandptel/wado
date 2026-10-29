@@ -71,6 +71,8 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
                         2 => g.settings,
                         3 => g.host,
                         4 => g.input,
+                        6 => g.join,
+                        7 => g.takeover,
                         _ => g.clipboard,
                     };
                     let mark = if on { theme::ON } else { theme::OFF };
