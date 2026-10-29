@@ -9,6 +9,20 @@ pub fn act(action: HostAction) {
     bridge::call(format!("window.__wado.hostDo({});", bridge::js(&action)));
 }
 
+/// Act on the computer `key`: over the selected computer's own link, or over the light link a
+/// widget holds to another one (`js/side_link.js`).
+pub fn act_on(ui: crate::state::Ui, key: &str, action: HostAction) {
+    if crate::reach::of(ui, key).selected {
+        act(action);
+    } else {
+        bridge::call(format!(
+            "window.__wado.sideDo({}, {{type: 'host_do', action: {}}});",
+            bridge::js(&key),
+            bridge::js(&action)
+        ));
+    }
+}
+
 /// Sound is going to the phone: the default output is the phone sink.
 pub fn on_phone(h: &HostState) -> bool {
     h.audio
