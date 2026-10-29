@@ -80,14 +80,15 @@ pub async fn follow(tx: tokio::sync::mpsc::Sender<(String, String, String)>) {
         pos += upto as u64;
         for l in text[..upto].lines() {
             let f: Vec<&str> = l.split('\t').collect();
-            if f.len() >= 7 && f[1] != me && f[6] == "ok" {
-                if tx
+            if f.len() >= 7
+                && f[1] != me
+                && f[6] == "ok"
+                && tx
                     .send((f[2].into(), f[3].into(), f[4].into()))
                     .await
                     .is_err()
-                {
-                    return;
-                }
+            {
+                return;
             }
         }
     }

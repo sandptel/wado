@@ -31,10 +31,10 @@ pub fn write(s: &SessionSummary) {
     };
     let _ = std::fs::create_dir_all(dir());
     let tmp = path.with_extension("tmp");
-    if let Ok(json) = serde_json::to_vec(s) {
-        if std::fs::write(&tmp, json).is_ok() {
-            let _ = std::fs::rename(&tmp, &path);
-        }
+    if let Ok(json) = serde_json::to_vec(s)
+        && std::fs::write(&tmp, json).is_ok()
+    {
+        let _ = std::fs::rename(&tmp, &path);
     }
 }
 

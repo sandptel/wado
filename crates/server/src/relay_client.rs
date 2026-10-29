@@ -325,7 +325,7 @@ async fn run(
                 } else {
                     p_bytes_total += bytes;
                 }
-                if frames % 300 == 0 {
+                if frames.is_multiple_of(300) {
                     // Tell the viewer what actually left here. Without it the viewer sees only
                     // what arrived and has to guess which end lost the difference — and it has
                     // guessed wrong twice, measured: 2026-09-12 22:33 (2.4 Mbps of 5.35 sent) and
@@ -402,7 +402,7 @@ async fn run(
                         worst = took;
                     }
                     // Same once-per-60 cadence as the drop counter, so the two lines pair up.
-                    if slow % 60 == 0 {
+                    if slow.is_multiple_of(60) {
                         warn!(
                             slow,
                             worst_ms = worst.as_millis() as u64,
@@ -962,7 +962,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             use crate::shells::Event;
             loop {
                 let ev = rx.recv().await;
-                if matches!(ev, Ok(_)) && refusal().is_some() {
+                if ev.is_ok() && refusal().is_some() {
                     continue;
                 }
                 let msg = match ev {
@@ -1346,7 +1346,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 // "a session is already active" and closing the socket — which is what this did —
                 // left a reconnecting phone with a session it could see in the logs and no way to
                 // reach. See `RelayMsg::SessionAlive`.
-                if let Some(info) = live_session(&ctx).await {
+                if let Some(info) = live_session(ctx).await {
                     info!("relay client: a session is already running — offering rejoin or drop");
                     send_relay(&out_tx, &RelayMsg::SessionAlive { info })
                         .await
@@ -1415,7 +1415,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             }
 
             RelayMsg::SessionRejoin => {
-                match live_session(&ctx).await {
+                match live_session(ctx).await {
                     Some(info) => {
                         ctx.session_started.store(true, Ordering::SeqCst);
                         ctx.detached.store(false, Ordering::SeqCst);
@@ -1556,7 +1556,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 let (pad, api, peer, out_tx) = (
                     ctx.pad.clone(),
                     Arc::clone(&ctx.api),
-                    pad_peer(&ctx),
+                    pad_peer(ctx),
                     out_tx.clone(),
                 );
                 tokio::spawn(async move {
@@ -1578,7 +1578,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             }
 
             RelayMsg::PadIn { msg } => {
-                ctx.pad.relayed(msg, &pad_peer(&ctx), &out_tx);
+                ctx.pad.relayed(msg, &pad_peer(ctx), &out_tx);
             }
 
             RelayMsg::FilesOffer { sdp } => {
@@ -1625,7 +1625,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 // compositor logged `launch ignored — no active session` and the viewer was told
                 // the application was starting. It then waited for a window that was never
                 // coming, with the only evidence in a log it cannot see.
-                if live_session(&ctx).await.is_none() {
+                if live_session(ctx).await.is_none() {
                     send_relay(
                         &out_tx,
                         &RelayMsg::SessionError {
@@ -1797,10 +1797,10 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
 
             RelayMsg::ConfigSetPrefs { prefs } => {
                 let (device, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
-                if ctx.viewer_ok.load(Ordering::SeqCst) {
-                    if let Err(e) = crate::config::link::set_prefs(&device, &name, &prefs) {
-                        warn!("could not save device settings: {e}");
-                    }
+                if ctx.viewer_ok.load(Ordering::SeqCst)
+                    && let Err(e) = crate::config::link::set_prefs(&device, &name, &prefs)
+                {
+                    warn!("could not save device settings: {e}");
                 }
             }
 
@@ -1947,10 +1947,10 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
                     .clone();
-                if let Some(pc) = pc {
-                    if let Ok(cand) = serde_json::from_str(&candidate) {
-                        let _ = pc.add_ice_candidate(cand).await;
-                    }
+                if let Some(pc) = pc
+                    && let Ok(cand) = serde_json::from_str(&candidate)
+                {
+                    let _ = pc.add_ice_candidate(cand).await;
                 }
             }
 
@@ -2141,41 +2141,41 @@ async fn handle_sdp_offer(
                     let order = Arc::clone(&order);
                     Box::pin(async move {
                         // A sequenced copy ("Redundant input"): released once, in order.
-                        if let Ok(mut v) = serde_json::from_slice::<serde_json::Value>(&msg.data) {
-                            if let Some(q) = v.get("q").and_then(|q| q.as_u64()) {
-                                if let Some(o) = v.as_object_mut() {
-                                    o.remove("q");
-                                }
-                                let ready = {
-                                    let mut o = order.lock().unwrap_or_else(|e| e.into_inner());
-                                    let r = o.arrive(q, v);
-                                    // Every 500 released: how often a copy was a duplicate, a move
-                                    // stale, or a strict event held for a gap.
-                                    if !r.is_empty()
-                                        && o.stats.released / 500
-                                            != (o.stats.released - r.len() as u64) / 500
-                                    {
-                                        let st = o.stats;
-                                        info!(
-                                            released = st.released,
-                                            duplicates = st.duplicates,
-                                            stale_moves = st.stale_moves,
-                                            held = st.held,
-                                            "redundant input"
-                                        );
-                                    }
-                                    r
-                                };
-                                for ev in ready {
-                                    match serde_json::from_value::<InputEvent>(ev) {
-                                        Ok(ev) => {
-                                            let _ = input_tx.send(ev);
-                                        }
-                                        Err(e) => warn!("relay client: bad input event: {e}"),
-                                    }
-                                }
-                                return;
+                        if let Ok(mut v) = serde_json::from_slice::<serde_json::Value>(&msg.data)
+                            && let Some(q) = v.get("q").and_then(|q| q.as_u64())
+                        {
+                            if let Some(o) = v.as_object_mut() {
+                                o.remove("q");
                             }
+                            let ready = {
+                                let mut o = order.lock().unwrap_or_else(|e| e.into_inner());
+                                let r = o.arrive(q, v);
+                                // Every 500 released: how often a copy was a duplicate, a move
+                                // stale, or a strict event held for a gap.
+                                if !r.is_empty()
+                                    && o.stats.released / 500
+                                        != (o.stats.released - r.len() as u64) / 500
+                                {
+                                    let st = o.stats;
+                                    info!(
+                                        released = st.released,
+                                        duplicates = st.duplicates,
+                                        stale_moves = st.stale_moves,
+                                        held = st.held,
+                                        "redundant input"
+                                    );
+                                }
+                                r
+                            };
+                            for ev in ready {
+                                match serde_json::from_value::<InputEvent>(ev) {
+                                    Ok(ev) => {
+                                        let _ = input_tx.send(ev);
+                                    }
+                                    Err(e) => warn!("relay client: bad input event: {e}"),
+                                }
+                            }
+                            return;
                         }
                         match serde_json::from_slice::<InputEvent>(&msg.data) {
                             // The input round-trip probe: answered straight back on the channel it

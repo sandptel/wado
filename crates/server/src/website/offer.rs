@@ -132,12 +132,12 @@ pub(super) async fn handle_offer(ctx: &ServerCtx, offer_json: &str) -> crate::Re
                 let _ = cmd_tx.send(CompositorCommand::ForceKeyframe);
             }
             // Only the current viewer tears the session down (generation guard).
-            RTCPeerConnectionState::Failed | RTCPeerConnectionState::Closed => {
-                if generation.load(Ordering::SeqCst) == my_gen {
-                    info!("viewer gone — stopping session");
-                    let _ = cmd_tx.send(CompositorCommand::Stop);
-                    *active_pc.lock().unwrap_or_else(|e| e.into_inner()) = None;
-                }
+            RTCPeerConnectionState::Failed | RTCPeerConnectionState::Closed
+                if generation.load(Ordering::SeqCst) == my_gen =>
+            {
+                info!("viewer gone — stopping session");
+                let _ = cmd_tx.send(CompositorCommand::Stop);
+                *active_pc.lock().unwrap_or_else(|e| e.into_inner()) = None;
             }
             _ => {}
         }
