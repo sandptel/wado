@@ -13,11 +13,22 @@
 //! - `state.rs` — one phone's pad: what each message does, stale frames, silence, resizes.
 //! - `playout.rs` — evening out frames that came through the relay in bursts.
 //! - `sink.rs` — the kernel devices a pad drives, made on first use.
+//! - `gate.rs` — who may use the trackpad, asked of every message.
+//! - `live.rs` — the open pad, fed by either transport, its tick and its ordered keyboard queue.
+//! - `channel.rs` — the direct link: a peer connection with a touch and a keys channel.
+//!
+//! Through the relay the same messages arrive as `RelayMsg::PadIn` (`relay_client.rs`), when
+//! the phone has no direct path or before its direct link is up.
 
+pub mod channel;
+pub mod gate;
 pub mod keys;
+pub mod live;
 pub mod playout;
 pub mod sink;
 pub mod state;
 pub mod text;
 pub mod touchpad;
 pub mod uinput;
+
+pub use live::{Live, Peer};

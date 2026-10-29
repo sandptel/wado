@@ -79,6 +79,8 @@ struct RelayCtx {
     /// The viewer's files peer connection — a second one, so transfers never share an SCTP
     /// association with input. See [`crate::files::channel`].
     files_pc: Arc<Mutex<Option<Arc<RTCPeerConnection>>>>,
+    /// The viewer's trackpad, if it opened one (see [`crate::pad`]).
+    pad: crate::pad::Live,
     /// Bumped on every accepted offer; lets a stale viewer's teardown be ignored.
     generation: Arc<AtomicU64>,
     relay_url: String,
@@ -484,6 +486,7 @@ async fn run(
         )?),
         viewer: Arc::default(),
         files_pc: Arc::default(),
+        pad: crate::pad::Live::default(),
         media_sent: Arc::default(),
         audio_track,
         listening: listening_tx,
@@ -1327,6 +1330,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     .take();
                 // Files go with the device: no transfer outlives the link that authorised it.
                 close_files(&ctx.files_pc);
+                ctx.pad.close(); // and the trackpad: no key stays held after the device leaves
                 if let Some(pc) = dead {
                     tokio::spawn(async move {
                         if let Err(e) = pc.close().await {
@@ -1581,6 +1585,28 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 // decision window rather than per message.
                 let _ = ctx.cmd_tx.send(CompositorCommand::ViewerStrain(strained));
                 crate::files::pace::strained(strained);
+            }
+
+            RelayMsg::PadOffer { sdp } => {
+                let peer = pad_peer(&ctx);
+                let reply = match ctx.pad.open(&ctx.api, &sdp, peer, out_tx.clone()).await {
+                    Ok(sdp) => RelayMsg::PadAnswer {
+                        sdp,
+                        err: String::new(),
+                    },
+                    Err(err) => {
+                        info!("pad: direct link refused — {err}");
+                        RelayMsg::PadAnswer {
+                            sdp: String::new(),
+                            err,
+                        }
+                    }
+                };
+                send_relay(&out_tx, &reply).await.ok();
+            }
+
+            RelayMsg::PadIn { msg } => {
+                ctx.pad.relayed(msg, &pad_peer(&ctx), &out_tx);
             }
 
             RelayMsg::FilesOffer { sdp } => {
@@ -2006,6 +2032,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     notify_task.abort();
     files_note_task.abort();
     close_files(&ctx.files_pc);
+    ctx.pad.close(); // and the trackpad: no key stays held after the device leaves
     menu_task.abort();
     write_task.abort();
     Ok(())
@@ -2395,6 +2422,16 @@ async fn handle_sdp_offer(
 
 /// Close the files peer connection, if there is one. Closed, not dropped: webrtc-rs frees its ICE
 /// sockets only on `close()` (see the session's peer connection).
+/// The device on the relay link, for the trackpad's per-message check.
+fn pad_peer(ctx: &RelayCtx) -> crate::pad::Peer {
+    let (key, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    crate::pad::Peer {
+        who: crate::files::channel::Who { key, name },
+        gate: ctx.gate.clone(),
+        approved: Arc::clone(&ctx.viewer_ok),
+    }
+}
+
 fn close_files(slot: &Mutex<Option<Arc<RTCPeerConnection>>>) {
     if let Some(pc) = slot.lock().unwrap_or_else(|e| e.into_inner()).take() {
         tokio::spawn(async move {
