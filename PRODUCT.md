@@ -48,8 +48,8 @@ switching apps, and quick actions, both in a session and outside it.
 ## Operating Context
 
 - The client is a web app (Dioxus 0.7, WASM) opened in the device's browser, installable as a
-  PWA whose service worker serves a pinned client and takes only signed updates
-  (`docs/release-signing.md`); Web Push is planned (P1).
+  PWA whose service worker serves a pinned client and, once a release key is set up, takes only
+  signed updates (`docs/release-signing.md`); Web Push is planned (P1).
 - The daemon (`wado daemon`) runs on the user's Linux computer and idles until a client starts
   a session. `wado tui` manages devices and grants on the host.
 - Connection goes through a public rendezvous relay by default; the media path is direct when

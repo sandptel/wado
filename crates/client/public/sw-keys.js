@@ -4,8 +4,10 @@
 // raw bytes, as `node scripts/release-sign.mjs keygen` prints it. A new client version is adopted
 // only when its release.sig verifies against one of these (docs/release-signing.md).
 //
-// Empty, nothing can be adopted: an installed app keeps the version it first installed and says
-// "an unsigned update was refused" until a key is added here and a release is signed with it.
+// Empty (no non-DEV key), signing is not set up: an installed app takes every new release, signed
+// or not, and Diagnostics says "Updates aren't signed yet — set up a release key". The first key
+// added here switches pinning on — signature, hashes, no rollback — for every app that has taken
+// the release carrying it.
 //
 // Rotating: add the new key next to the old one, publish and sign that release with the OLD key;
 // sign the next release with the new key; then drop the old one. A private key never goes here.

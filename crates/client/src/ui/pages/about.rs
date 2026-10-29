@@ -15,7 +15,7 @@ pub fn render(ui: Ui) -> Element {
     rsx! {
         div { class: "card appver", role: "group", "aria-label": "This app",
             div { class: "avhead",
-                span { class: if app.pinned() && app.signed { "avdot ok" } else { "avdot" } }
+                span { class: if app.pinned() && app.signing && app.signed { "avdot ok" } else { "avdot" } }
                 b { class: "avline", "{line}" }
             }
             p { class: "avsub", "{sub}" }

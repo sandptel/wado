@@ -1,9 +1,10 @@
 // wado bridge — the installed app: registers the service worker that pins this client
 // (public/sw.js) and tells Rust what it says.
-//   {type:"app", state, version, signed, dev, updated, key, pending, refused, refusedKind,
+//   {type:"app", state, version, signed, dev, signing, updated, key, pending, refused, refusedKind,
 //    refusedVersion, firstWhy}
 // `state` is "pinned" (served from a release the worker holds), "unpinned" (no release here — a
 // development server) or "unsupported" (no service worker: plain http, or a browser without one).
+// `signing` is false while sw-keys.js holds no release key: updates are then taken unsigned.
 // A launch asks the worker to look for a newer release; a page coming back to the front asks
 // again (the worker throttles that). An update it refused is also written to the log panel.
 (() => {
@@ -19,7 +20,7 @@
     const r = s.refused;
     emit({
       type: "app", state: s.pinned ? "pinned" : "unpinned", version: s.version || "", signed: !!s.signed,
-      dev: !!s.dev, updated: s.updated ? day(s.updated) : "", key: s.key || "", pending: s.pending || "",
+      dev: !!s.dev, signing: !!s.signing, updated: s.updated ? day(s.updated) : "", key: s.key || "", pending: s.pending || "",
       refused: r ? r.why : "", refusedKind: r ? r.kind : "", refusedVersion: r ? r.version : "",
       firstWhy: s.firstWhy || "",
     });

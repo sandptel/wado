@@ -1,4 +1,5 @@
-// wado service worker — serves the pinned client, and adopts a new one only when it is signed.
+// wado service worker — serves the installed client from its cache; once a release key is set up,
+// adopts a new one only when it is signed.
 //
 // Installed as an app, wado opens from this worker's cache, not from the network: the exact files
 // of one release, offline included. A new deploy is downloaded in the background but only taken
@@ -8,6 +9,10 @@
 //
 // Trust on first use: the very first install pins whatever the server hands it, signed or not,
 // and says which. See docs/release-signing.md for what this does and does not protect.
+//
+// Two modes, chosen by sw-keys.js (`R.admit`): with no release key in it, signing is not set up
+// and every new release is taken (still downloaded whole, still used from the next launch);
+// once it holds a key, only signed releases are. A DEV key counts only on localhost.
 //
 // State lives in the Cache API: one cache per release (`wado-rel-<id>`, the id being release.json's
 // SHA-256) and one small JSON record (`wado-meta`) naming the active, pending and previous ones.
@@ -60,7 +65,7 @@ function mutate(fn) {
 
 const entry = (r, id, v) => ({
   id, cache: cacheOf(id), version: r.version, commit: r.commit || "", built: r.built || "",
-  signed: !!(v && v.ok), key: v && v.ok ? v.key : "", dev: !!(v && v.dev), at: Date.now(),
+  signed: !!(v && v.ok && v.key), key: (v && v.ok && v.key) || "", dev: !!(v && v.dev), at: Date.now(),
 });
 
 // ── fetching a release ───────────────────────────────────────────────────────────────────
@@ -144,11 +149,13 @@ async function doCheck(force) {
   meta = await mutate((m) => { m.checked = Date.now(); return m; });
   if (!got || got.id === meta.active.id || (meta.pending && got.id === meta.pending.id)) return;
 
-  const v = await R.verifyRelease(crypto.subtle, got.bytes, got.sig, keys(), meta.active);
+  const v = await R.admit(crypto.subtle, got.bytes, got.sig, keys(), meta.active);
   if (!v.ok) return refuse(got.id, v);
   const d = await download(v.release, got.id);
   if (!d.ok) {
-    if (d.kind === "fetch") { log("update", v.release.version, "not downloaded yet:", d.why); return; }
+    // Without signing, a file that does not match is a deploy still landing (or a cache mixing
+    // two): try again later rather than cache a broken mix. With signing, it is a refusal.
+    if (d.kind === "fetch" || !v.signing) { log("update", v.release.version, "not downloaded yet:", d.why); return; }
     return refuse(got.id, { ...d, release: v.release });
   }
   const dropped = await mutate((m) => {
@@ -158,7 +165,7 @@ async function doCheck(force) {
     return old;
   });
   if (dropped) await caches.delete(dropped);
-  log("update", v.release.version, "verified — used from the next launch");
+  log("update", v.release.version, v.signing ? "verified" : "downloaded (signing not set up)", "— used from the next launch");
   await broadcast();
 }
 let checking = null;
@@ -220,10 +227,13 @@ async function status() {
     updated: a ? a.at : 0,
     key: a && a.key ? await R.keyId(crypto.subtle, a.key) : "",
     keys: keys().length,
+    // Signing is set up: updates are taken only when signed. Off, every release is taken.
+    signing: keys().length > 0,
     firstWhy: m.firstWhy || "",
     pending: m.pending ? m.pending.version : "",
     pendingId: m.pending ? m.pending.id : "",
-    refused: m.refused || null,
+    // A refusal is only news while signing is on; one from before is not a refusal now.
+    refused: keys().length ? m.refused || null : null,
   };
 }
 async function broadcast() {

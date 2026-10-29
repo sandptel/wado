@@ -2,9 +2,20 @@
 
 wado installs as an app (a PWA: `crates/client/public/manifest.webmanifest`). Once installed, it
 opens from its own service worker (`public/sw.js`), which serves the exact files of one release —
-offline too — and adopts a newer release **only when it is signed with your offline release key**.
-Every push to `main` still builds and deploys the client to GitHub Pages; that deploy simply sits
-there, refused by installed apps, until you sign it.
+offline too — and, once a release key is set up, adopts a newer release **only when it is signed
+with your offline release key**. Every push to `main` still builds and deploys the client to
+GitHub Pages.
+
+## Two modes, chosen by `sw-keys.js`
+
+| `sw-keys.js` | installed apps | Diagnostics |
+|---|---|---|
+| **no key** (as shipped) | take every new release, signed or not, newer or older — like any web app, but still downloaded whole and used from the next launch | *Updates aren't signed yet — set up a release key (docs/release-signing.md)* |
+| **a key** | take only a release signed with a listed key, every file matching, not older than the one in use; refuse the rest | `wado 0.0.3 · signed ✓ · updated 30 Oct`, or *An unsigned update was refused* |
+
+Pinning switches on by itself: the release whose `sw-keys.js` first lists a key is taken like any
+other (signing is still off), and from the next launch the worker carrying the key is in charge.
+A DEV key (`dev: true`) counts as a key only on localhost, never on a deployed address.
 
 ## What a release is
 
@@ -14,7 +25,8 @@ there, refused by installed apps, until you sign it.
 | `release.sig` | you, offline (`release-sign.mjs sign`) | base64 Ed25519 signature over release.json's exact bytes |
 | `sw-keys.js` | you, in the repo | the public keys the app trusts |
 
-The worker, on each launch (and when the app comes back to the front, at most every 10 min):
+With a key set up, the worker, on each launch (and when the app comes back to the front, at most
+every 10 min):
 
 1. fetches `release.json` and `release.sig`;
 2. verifies the signature against a key in `sw-keys.js`, and that the release is not older than
@@ -34,7 +46,8 @@ and the signing key's short name (`release key 3f9a 21c0`).
 
 The **first** install trusts whatever the server hands it, signed or not — there is nothing yet
 to check it against except the key the same server just sent. Diagnostics says whether that first
-version was signed. From then on, only signed updates are taken.
+version was signed. From then on, once a key is set up, only signed updates are taken. Until a key
+is set up, none of this protects anything: every release is taken.
 
 ## What this protects, and what it does not
 
@@ -76,9 +89,10 @@ It writes the private key (mode 0600, never overwrites) and prints a line like
 { key: "u0Q…=", note: "release key, made 2026-10-30" },
 ```
 
-Paste that line into `crates/client/public/sw-keys.js`, commit and push. **Until a key is in
-`sw-keys.js`, installed apps refuse every update** ("no release key is set up") — they stay on the
-version they installed.
+Paste that line into `crates/client/public/sw-keys.js`, commit and push. Until then signing is
+off and installed apps take every update unsigned. That push's build is taken unsigned like the
+ones before it; from the launch after, installed apps take only signed releases — **so sign every
+release from that one on**, or they stay on it and say *An unsigned update was refused*.
 
 Back the private key up offline. Never commit it, never give it to CI.
 

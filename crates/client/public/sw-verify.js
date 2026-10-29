@@ -9,7 +9,8 @@
 // Every answer is {ok:true, ...} or {ok:false, kind, why}; `kind` is one of
 //   unsigned    no release.sig was published
 //   bad         a signature that no trusted key made, or one that is not a signature at all
-//   nokey       this app trusts no release key, so nothing can be adopted
+//   nokey       (verifyRelease only) no key to check with — `admit` treats this as "signing is
+//               not set up" and takes the release instead
 //   unsupported this browser cannot check an Ed25519 signature
 //   shape       release.json is not a release
 //   rollback    a signed release older than the one in use
@@ -115,5 +116,19 @@
     return { ok: true, release: shape.release, key: sig.key, dev: sig.dev };
   }
 
-  root.WadoRelease = { b64, hex, sha256hex, trusted, keyId, verifySignature, parseRelease, notOlder, checkFile, verifyRelease };
+  // Whether to take a new release, in the mode the key list puts the app in:
+  //   no trusted key  → signing is not set up: any well-formed release is taken (`signing:false`),
+  //                     signed or not, newer or older — the app updates like any web app;
+  //   a trusted key   → pinned: only a release that `verifyRelease` accepts.
+  // A DEV key counts as a key only where `trusted` lets it (localhost).
+  async function admit(subtle, bytes, sigText, keys, current) {
+    if (!keys.length) {
+      const shape = parseRelease(bytes);
+      return shape.ok ? { ok: true, release: shape.release, signing: false } : shape;
+    }
+    const v = await verifyRelease(subtle, bytes, sigText, keys, current);
+    return { ...v, signing: true };
+  }
+
+  root.WadoRelease = { b64, hex, sha256hex, trusted, keyId, verifySignature, parseRelease, notOlder, checkFile, verifyRelease, admit };
 })(typeof self !== "undefined" ? self : globalThis);

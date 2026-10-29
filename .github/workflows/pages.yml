@@ -56,8 +56,9 @@ jobs:
       # --base-path, not Dioxus.toml: Pages serves under /wado/, local `dx serve` at root.
       - run: dx build -p wado-client --release --platform web --base-path wado
 
-      # The hashes a release key signs. No key here: unsigned, installed apps refuse this build
-      # until its signature is deployed by the `sign` job; a first visit still gets it.
+      # The hashes a release key signs. No key here: deployed unsigned. While sw-keys.js lists no
+      # key, installed apps take it as it is; once it does, they refuse it until its signature is
+      # deployed by the `sign` job. A first visit gets it either way.
       - run: node scripts/release-sign.mjs manifest target/dx/wado-client/release/web/public --commit "$GITHUB_SHA"
 
       - uses: actions/upload-pages-artifact@v3

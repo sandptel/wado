@@ -53,7 +53,27 @@ v = await R.verifyRelease(subtle, bytes, "bm90IGEgc2lnbmF0dXJl", keys, current);
 ok(!v.ok && v.kind === "bad", "release.sig that is not a signature → refused (bad)");
 
 v = await R.verifyRelease(subtle, bytes, sig, [], current);
-ok(!v.ok && v.kind === "nokey", "an app with no release key adopts nothing (nokey)");
+ok(!v.ok && v.kind === "nokey", "verifyRelease with no key verifies nothing (nokey) — `admit` decides what that means");
+
+// ── the two modes: no release key (signing not set up) and a key (pinned) ──
+v = await R.admit(subtle, bytes, "", [], current);
+ok(v.ok && v.signing === false, "no release key: an unsigned release is taken (signing not set up)");
+v = await R.admit(subtle, bytes, await signB64(other.priv, bytes), [], current);
+ok(v.ok && v.signing === false, "no release key: a release signed by anyone is taken too");
+v = await R.admit(subtle, bytes, "", [], { built: "2026-10-31T00:00:00Z" });
+ok(v.ok, "no release key: an older release is taken (a Pages rollback works)");
+v = await R.admit(subtle, enc.encode("<html>404</html>"), "", [], current);
+ok(!v.ok && v.kind === "shape", "no release key: something that is not a release is still not taken");
+v = await R.admit(subtle, bytes, "", keys, current);
+ok(!v.ok && v.kind === "unsigned" && v.signing, "with a key: an unsigned release is refused");
+v = await R.admit(subtle, bytes, sig, keys, current);
+ok(v.ok && v.signing, "with a key: a signed release is taken");
+v = await R.admit(subtle, bytes, sig, keys, { built: "2026-10-31T00:00:00Z" });
+ok(!v.ok && v.kind === "rollback", "with a key: an older signed release is refused");
+v = await R.admit(subtle, bytes, "", R.trusted([{ key: good.pub, dev: true }], "sandptel.github.io"), current);
+ok(v.ok && v.signing === false, "a DEV key alone on a deployed address leaves signing off");
+v = await R.admit(subtle, bytes, "", R.trusted([{ key: good.pub, dev: true }], "localhost"), current);
+ok(!v.ok && v.kind === "unsigned", "a DEV key on localhost switches signing on");
 
 // ── file hashes ──
 const r = R.parseRelease(bytes).release;
@@ -78,7 +98,7 @@ ok(R.trusted(devKeys, "localhost").length === 1, "a DEV key is trusted on localh
 ok(R.trusted(devKeys, "127.0.0.1").length === 1, "…and on 127.0.0.1");
 ok(R.trusted(devKeys, "sandptel.github.io").length === 0, "…and never on a deployed address");
 v = await R.verifyRelease(subtle, bytes, sig, R.trusted(devKeys, "sandptel.github.io"), current);
-ok(!v.ok && v.kind === "nokey", "a release signed only by a DEV key is refused when deployed");
+ok(!v.ok && v.kind === "nokey", "deployed, a DEV signature verifies against nothing (no key to check with)");
 
 // ── the keys file shipped in the client parses and holds no DEV key ──
 const ctx = { self: {} };

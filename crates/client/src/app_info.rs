@@ -21,8 +21,9 @@ pub struct AppInfo {
     pub refused: String,
     pub refused_kind: String,
     pub refused_version: String,
-    /// Why the first install was not signed, when it was not.
-    pub first_why: String,
+    /// Signing is set up (`sw-keys.js` holds a release key): only signed updates are taken. Off,
+    /// every update is taken, and Diagnostics says signing still needs setting up.
+    pub signing: bool,
 }
 
 impl AppInfo {
@@ -45,7 +46,7 @@ impl AppInfo {
             refused: s("refused"),
             refused_kind: s("refusedKind"),
             refused_version: s("refusedVersion"),
-            first_why: s("firstWhy"),
+            signing: b("signing"),
         }
     }
 
@@ -81,17 +82,15 @@ impl AppInfo {
     /// The line under it, in plain words.
     pub fn sub(&self) -> String {
         match self.state.as_str() {
+            "pinned" if !self.signing => {
+                "Updates aren't signed yet — set up a release key (docs/release-signing.md)".into()
+            }
             "pinned" if self.signed => {
                 "Opens from this phone, offline too. Updates are taken only when signed.".into()
             }
-            "pinned" => format!(
-                "Installed before it was signed{}. Later updates are taken only when signed.",
-                if self.first_why.is_empty() {
-                    String::new()
-                } else {
-                    format!(" ({})", self.first_why)
-                }
-            ),
+            "pinned" => {
+                "Installed before signing was set up. Updates are taken only when signed.".into()
+            }
             "unpinned" => "A development build: loads fresh each time, nothing kept.".into(),
             "unsupported" => "This browser loads the newest version each time.".into(),
             _ => "Checking…".into(),
@@ -105,8 +104,6 @@ impl AppInfo {
         }
         Some(match self.refused_kind.as_str() {
             "unsigned" => "An unsigned update was refused",
-            // Signed, but this copy of wado has no release key yet to check it with.
-            "nokey" => "An update was refused — no release key is set up",
             "rollback" => "An older update was refused",
             "unsupported" => "Updates can't be checked in this browser",
             "shape" => "A broken update was refused",
@@ -141,13 +138,23 @@ mod tests {
             Some("An unsigned update was refused")
         );
         assert_eq!(
-            r("nokey").refused_words(),
-            Some("An update was refused — no release key is set up")
-        );
-        assert_eq!(
             r("hash").refused_words(),
             Some("An update failed its signature check and was refused")
         );
         assert_eq!(r("").refused_words(), None);
+    }
+
+    #[test]
+    fn says_when_signing_is_not_set_up() {
+        let off = AppInfo::from_msg(&json!({"state": "pinned", "version": "0.0.4"}));
+        assert_eq!(
+            off.sub(),
+            "Updates aren't signed yet — set up a release key (docs/release-signing.md)"
+        );
+        let on = AppInfo::from_msg(&json!({"state": "pinned", "signing": true, "signed": true}));
+        assert_eq!(
+            on.sub(),
+            "Opens from this phone, offline too. Updates are taken only when signed."
+        );
     }
 }

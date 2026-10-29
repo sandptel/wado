@@ -53,8 +53,8 @@ In the client: pick **resolution / fps / quality / encoder** (Auto · Hardware �
 then type for keyboard. The hardware (VA-API) path needs a GPU with a DRM render node; with none
 (or if you pick Software) it falls back to x264 and shows a banner.
 
-The client installs as an app (PWA) and, installed, takes a new version only when it is signed with
-an offline release key — see [`docs/release-signing.md`](docs/release-signing.md).
+The client installs as an app (PWA). Once a release key is set up, an installed app takes a new
+version only when it is signed with that offline key — see [`docs/release-signing.md`](docs/release-signing.md).
 
 Build gate is `cargo build` (the WASM client is built with `dx`, not host cargo).
 

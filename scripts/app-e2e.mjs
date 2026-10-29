@@ -2,6 +2,7 @@
 // home-screen shortcuts. Serves a built client at http://localhost:8770/wado/ (as Pages does) and
 // drives headless Chrome over DevTools on port 9339. Needs no daemon: a computer's answers are
 // played through the page's `?fixture` hook. Uses a throwaway DEV key (release-sign.mjs dev).
+// Both modes: no release key set up (updates taken unsigned), then a key (only signed ones).
 //
 //   dx build -p wado-client --release --platform web --base-path wado
 //   node scripts/app-e2e.mjs [built-tree] [--shots <dir>]
@@ -22,6 +23,8 @@ const BUILT = resolve(args.find((a, i) => !a.startsWith("--") && i !== shotsAt +
   join(ROOT, "target/dx/wado-client/release/web/public"));
 const HTTP = 8770, DEBUG = 9339;
 const BASE = `http://localhost:${HTTP}/wado/`;
+// A second origin on the same server, for the no-key phase: its own worker, caches and storage.
+const BASE2 = `http://127.0.0.1:${HTTP}/wado/`;
 const WORK = mkdtempSync(join(tmpdir(), "wado-app-e2e-"));
 mkdirSync(SHOTS, { recursive: true });
 
@@ -30,14 +33,17 @@ const ok = (cond, what) => { console.log((cond ? "ok   " : "FAIL ") + what); if 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ── trees: the pristine build, copied and released under a version each ──────────────────
-function tree(name, { version, marker, unsigned, tamper } = {}) {
+// `nokey`: released as CI releases with no key set up — release.json only, sw-keys.js untouched.
+function tree(name, { version, marker, unsigned, tamper, nokey } = {}) {
   const dir = join(WORK, name);
   cpSync(BUILT, dir, { recursive: true });
   if (marker) {
     const p = join(dir, "index.html");
     writeFileSync(p, readFileSync(p, "utf8").replace("</head>", `<!-- ${marker} --></head>`));
   }
-  const a = [join(ROOT, "scripts/release-sign.mjs"), "dev", dir, "--version", version];
+  const a = nokey
+    ? [join(ROOT, "scripts/release-sign.mjs"), "manifest", dir, "--version", version]
+    : [join(ROOT, "scripts/release-sign.mjs"), "dev", dir, "--version", version];
   if (unsigned) a.push("--unsigned");
   execFileSync(process.execPath, a, { stdio: "ignore" });
   if (tamper) appendFileSync(join(dir, tamper), "tampered");
@@ -127,6 +133,52 @@ try {
   await cdp("Runtime.enable");
   await cdp("Page.addScriptToEvaluateOnNewDocument", { source: SW_PROBE });
   await cdp("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+
+  // ── 0. no release key set up (on 127.0.0.1, an origin of its own): updates are just taken ──
+  const N1 = tree("n1", { version: "0.0.2-n1", nokey: true });
+  const N2 = tree("n2", { version: "0.0.2-n2", marker: "release n2", nokey: true });
+  served = N1;
+  await go(BASE2);
+  ok(await ready(), "no key: the landing renders");
+  ok(await until("navigator.serviceWorker.controller !== null", 30000), "no key: a service worker controls the page");
+  await hello();
+  ok(await sw("__sw.pinned && !__sw.signing && __sw.version === '0.0.2-n1'"), "no key: 0.0.2-n1 is installed, signing off");
+  await js("[...document.querySelectorAll('#landing .navrow')].find((b) => /Diagnostics/.test(b.textContent))?.click()");
+  ok(await until("/Updates aren't signed yet — set up a release key \\(docs\\/release-signing\\.md\\)/.test(document.body.innerText)"),
+    "no key: Diagnostics says \"Updates aren't signed yet — set up a release key (docs/release-signing.md)\"");
+  await sleep(600);
+  await shot("00-diagnostics-no-key");
+  served = N2;
+  await go(BASE2);
+  await ready();
+  await hello();
+  ok(await sw("__sw.pending === '0.0.2-n2' && !__sw.refused"), "no key: an unsigned 0.0.2-n2 is taken, not refused");
+  await go(BASE2);
+  await ready();
+  ok(await js("document.documentElement.outerHTML.includes('release n2')"), "no key: the next launch runs 0.0.2-n2");
+
+  // The key arrives with a release (here a DEV key, honoured on 127.0.0.1): taken like any other,
+  // and the new worker that carries the key switches signing on once the app is closed.
+  served = A;
+  await go(BASE2);
+  await ready();
+  await js("navigator.serviceWorker.getRegistration().then((r) => r.update())");
+  await hello();
+  ok(await sw("__sw.pending === '0.0.3-a'"), "no key: the release carrying the first key is taken");
+  ok(await until("navigator.serviceWorker.getRegistration().then((r) => !!(r && (r.waiting || r.installing)))", 20000),
+    "…and the worker carrying the key is waiting");
+  await go("about:blank");
+  await sleep(1500);
+  await go(BASE2);
+  await ready();
+  await hello();
+  ok(await sw("__sw.signing && __sw.version === '0.0.3-a' && !__sw.signed"), "after a relaunch signing is on, 0.0.3-a in use");
+  served = B0;
+  await go(BASE2);
+  await ready();
+  await hello();
+  ok(await sw("__sw.refused && __sw.refused.kind === 'unsigned'"), "with the key in place, an unsigned update is refused");
+  served = A;
 
   // ── 1. first install: manifest, worker, pinned (trust on first use) ──
   await go(BASE);
