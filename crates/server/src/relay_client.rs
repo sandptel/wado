@@ -211,6 +211,8 @@ pub fn start(
                 // Daemon-lifetime, not connection-lifetime: notifications arrive whether or not
                 // a viewer is connected at that moment.
                 tokio::spawn(crate::notify::run(app_bus));
+                // "Transfer finished" pushes, from this daemon's own lines of the files log.
+                tokio::spawn(crate::push::transfer::follow());
                 crate::clip::watch::start();
                 crate::clip::sync::start(cmd_tx.clone(), clipboard.clone());
                 if let Err(e) = run(
@@ -760,6 +762,10 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
         }
     }
 
+    // Registered: "back online" is pushed if the computer was away (`crate::push::online`);
+    // dropping this when the link ends marks when it went.
+    let _online = crate::push::online::registered();
+
     // ── 3. Log forwarding task (per connection) ──────────────────────────────
     let log_task = {
         let mut log_rx: broadcast::Receiver<String> = ctx.log_bus.subscribe();
@@ -997,6 +1003,19 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     break;
                 }
             }
+        })
+    };
+
+    // Claude's cards, on every change, for a device with the `shells` grant (`crate::claude`).
+    let claude_task = {
+        let (viewer, ok, gate) = (
+            Arc::clone(&ctx.viewer),
+            Arc::clone(&ctx.viewer_ok),
+            ctx.gate.clone(),
+        );
+        crate::claude::relay::follow(out_tx.clone(), move || {
+            let key = viewer.lock().unwrap_or_else(|e| e.into_inner()).0.clone();
+            ok.load(Ordering::SeqCst) && crate::shells::access::refused(&gate, &key).is_none()
         })
     };
 
@@ -1989,6 +2008,47 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 crate::passkey::relay::handle(msg, dev, &out_tx).await;
             }
 
+            msg @ (RelayMsg::ClaudeGet
+            | RelayMsg::ClaudeAnswer { .. }
+            | RelayMsg::ClaudeOpen { .. }
+            | RelayMsg::ClaudeNew { .. }
+            | RelayMsg::ClaudeDirsGet { .. }) => {
+                let (key, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                let (ok, gate, out_tx) = (
+                    ctx.viewer_ok.load(Ordering::SeqCst),
+                    ctx.gate.clone(),
+                    out_tx.clone(),
+                );
+                // A task: a new session runs tmux, and a folder listing reads the disk.
+                tokio::spawn(async move {
+                    let dev = crate::claude::relay::Device {
+                        key: &key,
+                        name: &name,
+                        ok,
+                        gate: &gate,
+                    };
+                    crate::claude::relay::handle(msg, dev, &out_tx).await;
+                });
+            }
+
+            msg @ (RelayMsg::PushGet
+            | RelayMsg::PushSubscribe { .. }
+            | RelayMsg::PushKindsSet { .. }
+            | RelayMsg::PushUnsubscribe
+            | RelayMsg::PushTest) => {
+                let (key, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                let (ok, out_tx) = (ctx.viewer_ok.load(Ordering::SeqCst), out_tx.clone());
+                // A task: a test push waits on the push service.
+                tokio::spawn(async move {
+                    let dev = crate::push::relay::Device {
+                        key: &key,
+                        name: &name,
+                        ok,
+                    };
+                    crate::push::relay::handle(msg, dev, &out_tx).await;
+                });
+            }
+
             RelayMsg::Ping => {
                 send_relay(&out_tx, &RelayMsg::Pong).await.ok();
             }
@@ -2006,6 +2066,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     windows_task.abort();
     config_task.abort();
     shells_task.abort();
+    claude_task.abort();
     clipboard_task.abort();
     clip_task.abort();
     notify_task.abort();

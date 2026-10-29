@@ -50,21 +50,6 @@ impl Pty {
         host: Option<&str>,
         out: mpsc::Sender<String>,
     ) -> std::io::Result<Self> {
-        if !wado_config::live::current().shells.enabled {
-            return Err(std::io::Error::other(
-                "shells are disabled on this host (shells.enabled)",
-            ));
-        }
-        let size = PtySize {
-            rows,
-            cols,
-            pixel_width: 0,
-            pixel_height: 0,
-        };
-        let pair = native_pty_system()
-            .openpty(size)
-            .map_err(|e| std::io::Error::other(format!("openpty: {e}")))?;
-
         // The user's own shell, as a login shell, so their prompt and aliases are there.
         let shell = wado_config::live::current()
             .shells
@@ -87,6 +72,52 @@ impl Pty {
         if let Ok(home) = std::env::var("HOME") {
             cmd.cwd(home);
         }
+        Self::run(cmd, cols, rows, out, &shell)
+    }
+
+    /// Open a PTY running `argv` — a program and its arguments, never a shell string — in `cwd`,
+    /// with `env` added. For Claude's sessions (`crate::claude::spawn`).
+    pub fn open_cmd(
+        cols: u16,
+        rows: u16,
+        argv: &[String],
+        cwd: &std::path::Path,
+        env: &[(String, String)],
+        out: mpsc::Sender<String>,
+    ) -> std::io::Result<Self> {
+        let (prog, args) = argv
+            .split_first()
+            .ok_or_else(|| std::io::Error::other("nothing to run"))?;
+        let mut cmd = CommandBuilder::new(prog);
+        cmd.args(args);
+        cmd.cwd(cwd);
+        for (k, v) in env {
+            cmd.env(k, v);
+        }
+        Self::run(cmd, cols, rows, out, prog)
+    }
+
+    fn run(
+        mut cmd: CommandBuilder,
+        cols: u16,
+        rows: u16,
+        out: mpsc::Sender<String>,
+        shell: &str,
+    ) -> std::io::Result<Self> {
+        if !wado_config::live::current().shells.enabled {
+            return Err(std::io::Error::other(
+                "shells are disabled on this host (shells.enabled)",
+            ));
+        }
+        let size = PtySize {
+            rows,
+            cols,
+            pixel_width: 0,
+            pixel_height: 0,
+        };
+        let pair = native_pty_system()
+            .openpty(size)
+            .map_err(|e| std::io::Error::other(format!("openpty: {e}")))?;
         // Without a TERM the shell assumes a dumb terminal and turns off everything the PTY
         // was opened for. 256-colour because that is what the browser emulator implements.
         cmd.env("TERM", "xterm-256color");

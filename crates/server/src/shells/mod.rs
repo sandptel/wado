@@ -81,9 +81,36 @@ pub fn open(cols: u16, rows: u16, host: Option<String>) -> Result<u32, String> {
     if reg().shells.len() >= MAX {
         return Err(format!("{MAX} shells are open already — close one first"));
     }
-    let (tx, mut rx) = mpsc::channel::<String>(64);
+    let (tx, rx) = mpsc::channel::<String>(64);
     let pty = Pty::open(cols, rows, host.as_deref(), tx).map_err(|e| e.to_string())?;
     let title = host.clone().unwrap_or_else(shell_name);
+    Ok(adopt(pty, rx, title, host))
+}
+
+/// Open a shell running `argv` in `cwd` — Claude's sessions (`crate::claude::spawn`). The same
+/// tab as any other shell, titled `title`.
+pub fn open_cmd(
+    cols: u16,
+    rows: u16,
+    argv: &[String],
+    cwd: &std::path::Path,
+    env: &[(String, String)],
+    title: String,
+) -> Result<u32, String> {
+    if reg().shells.len() >= MAX {
+        return Err(format!("{MAX} shells are open already — close one first"));
+    }
+    let (tx, rx) = mpsc::channel::<String>(64);
+    let pty = Pty::open_cmd(cols, rows, argv, cwd, env, tx).map_err(|e| e.to_string())?;
+    Ok(adopt(pty, rx, title, None))
+}
+
+/// Is shell `id` still running?
+pub fn alive(id: u32) -> bool {
+    reg().shells.get(&id).is_some_and(|s| s.pty.is_some())
+}
+
+fn adopt(pty: Pty, mut rx: mpsc::Receiver<String>, title: String, host: Option<String>) -> u32 {
     let id = {
         let mut r = reg();
         r.next += 1;
@@ -114,7 +141,7 @@ pub fn open(cols: u16, rows: u16, host: Option<String>) -> Result<u32, String> {
         let _ = bus().send(Event::Changed);
     });
     let _ = bus().send(Event::Changed);
-    Ok(id)
+    id
 }
 
 pub fn write(id: u32, data: &str) {

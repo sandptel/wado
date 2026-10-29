@@ -48,12 +48,67 @@ pub struct PushInfo {
     pub error: String,
 }
 
-/// A `PushSubscription`, as `toJSON()` gives it.
+/// Where to deliver: a browser's `PushSubscription` (`toJSON()`'s fields), or a UnifiedPush
+/// endpoint from the Android app. Both are RFC 8030 endpoints taking RFC 8291 (aes128gcm)
+/// payloads with VAPID (RFC 8292), so the computer sends to them the same way.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PushSub {
     pub endpoint: String,
-    /// The browser's P-256 key, base64url.
+    /// The receiver's P-256 key, base64url (65 bytes, uncompressed).
     pub p256dh: String,
     /// Its 16-byte auth secret, base64url.
     pub auth: String,
+    /// [`SUB_WEB`] (the default) or [`SUB_UNIFIEDPUSH`] — told apart for the record only.
+    #[serde(default)]
+    pub kind: String,
 }
+
+pub const SUB_WEB: &str = "web";
+pub const SUB_UNIFIEDPUSH: &str = "unifiedpush";
+
+/// The kinds of notification, as [`PushNote::kind`] names them.
+pub const NOTE_CLAUDE_PERMISSION: &str = "claude_permission";
+pub const NOTE_CLAUDE_DONE: &str = "claude_done";
+pub const NOTE_ONLINE: &str = "online";
+pub const NOTE_TRANSFER: &str = "transfer";
+pub const NOTE_TEST: &str = "test";
+
+/// What one push carries, decrypted — the same for the web app's service worker and a native
+/// app, so both render the same notification with the same buttons.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PushNote {
+    /// One of the `NOTE_*` names.
+    pub kind: String,
+    pub title: String,
+    #[serde(default)]
+    pub body: String,
+    /// The computer's Remote ID (digits), so a tap opens the right one.
+    pub computer: String,
+    /// Its name, for the title of a list of them.
+    #[serde(default)]
+    pub computer_name: String,
+    /// A later notification with the same tag replaces this one.
+    #[serde(default)]
+    pub tag: String,
+    /// Buttons, in order. A tap on the body itself means "open".
+    #[serde(default)]
+    pub actions: Vec<PushAction>,
+    /// For the Claude kinds: its session, and the question an action answers.
+    #[serde(default)]
+    pub session: String,
+    #[serde(default)]
+    pub ask: String,
+    /// Unix seconds when it was sent; a stale question is not offered for an answer.
+    #[serde(default)]
+    pub at: u64,
+}
+
+/// A notification button. `id` is what the app acts on: [`ACTION_ALLOW`], [`ACTION_DENY`].
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PushAction {
+    pub id: String,
+    pub title: String,
+}
+
+pub const ACTION_ALLOW: &str = "allow";
+pub const ACTION_DENY: &str = "deny";

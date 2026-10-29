@@ -45,6 +45,15 @@ fn serve(mut stream: UnixStream) {
     if BufReader::new(&stream).read_line(&mut line).is_err() {
         return;
     }
+    // Claude's hooks (`wado claude-event`): a permission request holds its connection open
+    // until a phone answers, so each gets a thread rather than this loop.
+    if line.starts_with("claude") {
+        let line = line.trim().to_string();
+        let _ = std::thread::Builder::new()
+            .name("wado-claude-hook".into())
+            .spawn(move || crate::claude::socket::serve(&line, stream));
+        return;
+    }
     let answer = answer(line.trim());
     let _ = stream.write_all(answer.as_bytes());
 }
