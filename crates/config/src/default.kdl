@@ -60,6 +60,11 @@ trackpad {
     // px-per-mm 6                     // larger = smaller virtual pad = slower pointer
     // finger-silence-ms 400           // a finger with no update this long is lifted
     // key-silence-ms 5000             // no message at all this long: held keys are let go
+    // smoothing #true                 // play touches on a steady cadence (gesture speed reads
+    //                                 // true); #false writes direct frames as they land
+    // rate-hz 125                     // that cadence, like a real touchpad (60..=250)
+    // direct-delay-ms 8               // how far behind the phone the direct path plays (0..=50);
+    //                                 // the relay path plays at least 24 ms behind
 }
 
 binds {
