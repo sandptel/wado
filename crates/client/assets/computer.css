@@ -216,3 +216,4 @@ button.hcell:active:not(:disabled) { scale: .97; }
   .hmeta { grid-template-columns: 1fr 1fr; }
   .hmeta .hcell:last-child { grid-column: 1 / -1; }
 }
+.navtext small.mono { font-size: 11px; }

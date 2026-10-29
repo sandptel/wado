@@ -164,3 +164,7 @@ button.wtitle.linky::after { content: ""; width: 5px; height: 5px; border-right:
 .pickrow .check svg { width: 16px; height: 16px; stroke-width: 2.6; }
 .pickrow .navtext small { display: flex; gap: 6px; align-items: center; }
 .pickrow .lstate { font-weight: 500; }
+
+/* Folded away, the clipboard rail casts nothing onto the cards' edge. */
+@media (max-width: 1099px) { #landing #cliprail:not(.open) { box-shadow: none; } }
+.sessioncard .navtext small.mono { font-size: 11px; }

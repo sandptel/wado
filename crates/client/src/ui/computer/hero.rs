@@ -198,7 +198,7 @@ pub fn Hero(ui: Ui, pk: String, r: Reach) -> Element {
                     p { "{explain}" }
                 }
             }
-            {hops::render(ui)}
+            if r.online || r.tone != "bad" { {hops::render(ui)} }
         }
     }
 }

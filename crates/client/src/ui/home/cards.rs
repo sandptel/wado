@@ -103,7 +103,7 @@ pub fn render(ui: Ui) -> Element {
                         div { key: "{key}", class: "ccard", "data-key": "{key}", style: "--hue:var(--base{profile::hue(i)})",
                             button { class: "cpick", "aria-label": "{name} — open its page",
                                 onclick: move |_| route::open_computer(ui, &k1),
-                                span { class: "disc", Icon { name: profile::icon(&p) } }
+                                span { class: "disc", style: "--hue:var(--base{profile::hue(i)})", Icon { name: profile::icon(&p) } }
                                 span { class: "ctext",
                                     b { class: "cname", "{name}" }
                                     span { class: "cos", "{os}" }

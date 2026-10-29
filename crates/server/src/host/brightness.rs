@@ -34,7 +34,10 @@ pub async fn set(level: f32) -> Result<(), String> {
 fn parse(out: &str) -> Option<f32> {
     let line = out.lines().find(|l| !l.trim().is_empty())?;
     let f: Vec<&str> = line.trim().split(',').collect();
-    let (cur, max) = (f.get(2)?.parse::<f32>().ok()?, f.get(4)?.parse::<f32>().ok()?);
+    let (cur, max) = (
+        f.get(2)?.parse::<f32>().ok()?,
+        f.get(4)?.parse::<f32>().ok()?,
+    );
     (max > 0.0).then(|| (cur / max).clamp(0.0, 1.0))
 }
 
