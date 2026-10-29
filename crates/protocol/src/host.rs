@@ -17,6 +17,10 @@ pub struct HostState {
     /// The computer is being kept from sleeping by this daemon.
     #[serde(default)]
     pub awake: bool,
+    /// The screen's backlight, 0..1. `None`: no backlight (a desktop monitor), or no
+    /// `brightnessctl` to read and set it with.
+    #[serde(default)]
+    pub brightness: Option<f32>,
     /// A Wi-Fi change is on probation: seconds until it is undone unless someone confirms it.
     #[serde(default)]
     pub wifi_revert_in: Option<u32>,
@@ -234,6 +238,10 @@ pub enum HostAction {
     KeepAwake {
         on: bool,
     },
+    /// The screen's backlight to `level`, 0..1 — read back in `HostState::brightness`.
+    Brightness {
+        level: f32,
+    },
     /// Control a media player.
     Media {
         bus: String,
@@ -248,5 +256,21 @@ impl HostAction {
             self,
             HostAction::WifiRadio { .. } | HostAction::WifiConnect { .. } | HostAction::WifiKeep
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn brightness_rides_the_wire_and_an_old_state_has_none() {
+        let a = HostAction::Brightness { level: 0.4 };
+        let j = serde_json::to_string(&a).unwrap();
+        assert_eq!(j, r#"{"do":"brightness","level":0.4}"#);
+        assert_eq!(serde_json::from_str::<HostAction>(&j).unwrap(), a);
+        // A daemon from before brightness sends no field: the slider is simply not offered.
+        let old: HostState = serde_json::from_str(r#"{"awake":true}"#).unwrap();
+        assert_eq!(old.brightness, None);
     }
 }

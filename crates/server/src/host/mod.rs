@@ -8,11 +8,13 @@
 //! - [`wifi`] — NetworkManager, with changes on probation.
 //! - [`bluetooth`] — BlueZ.
 //! - [`awake`] — a sleep inhibitor.
+//! - [`brightness`] — the screen's backlight, as a level.
 //! - [`cmd`] — running the tools.
 
 pub mod audio;
 pub mod awake;
 pub mod bluetooth;
+pub mod brightness;
 pub mod cmd;
 pub mod media;
 pub mod phone_sink;
@@ -97,10 +99,11 @@ pub fn phone() -> Option<String> {
 
 pub async fn state() -> HostState {
     let phone = phone();
-    let (audio, wifi, bluetooth) = tokio::join!(
+    let (audio, wifi, bluetooth, brightness) = tokio::join!(
         audio::state(phone.as_deref()),
         wifi::state(),
-        bluetooth::state()
+        bluetooth::state(),
+        brightness::level()
     );
     let media = media::state(&audio.streams).await;
     HostState {
@@ -110,6 +113,7 @@ pub async fn state() -> HostState {
         wifi,
         bluetooth,
         awake: awake::on(),
+        brightness,
         wifi_revert_in: wifi::revert_in(),
     }
 }
@@ -139,6 +143,7 @@ pub async fn act(action: HostAction) -> Result<(), String> {
         HostAction::BtPower { on } => bluetooth::power(on).await,
         HostAction::BtConnect { addr, connect } => bluetooth::connect(&addr, connect).await,
         HostAction::KeepAwake { on } => awake::set(on),
+        HostAction::Brightness { level } => brightness::set(level).await,
         HostAction::Media { bus, op } => media::act(&bus, op).await,
     }
 }
