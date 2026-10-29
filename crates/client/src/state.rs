@@ -580,9 +580,10 @@ impl Live {
 /// that is not the selected one. Control only — no picture, no sound.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Side {
-    /// `connecting` | `up` | `offline` (no daemon for its Remote ID) | `waiting` (parked by the
-    /// relay for another reason) | `busy` (every seat in use)
-    /// | `refused` (the computer or the secure handshake said no) | `unreachable` (no relay).
+    /// `connecting` | `up` | `offline` (no daemon for its Remote ID) | `refused` (the computer
+    /// or the secure handshake said no) | `unreachable` (no relay) | `old_relay` / `old_daemon`
+    /// (the computer is there, but its relay or its wado serves no seatless link — so there is
+    /// none, rather than one that would take a seat).
     pub state: String,
     pub host: Option<wado_protocol::HostState>,
     pub config: Option<wado_protocol::ConfigState>,
