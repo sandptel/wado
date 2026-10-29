@@ -65,7 +65,7 @@ pub fn Hero(ui: Ui, pk: String, r: Reach) -> Element {
             "warn",
             "Waiting",
             None,
-            "confirm on the computer".into(),
+            "answer on the computer".into(),
             String::new(),
         )
     } else if !r.online && r.tone == "bad" {
