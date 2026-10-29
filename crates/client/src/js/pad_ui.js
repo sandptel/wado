@@ -1,4 +1,4 @@
-// wado bridge — the Trackpad screen. Owns `#wado-pad` outright (Dioxus only calls `padOpen()`),
+// wado bridge — the Trackpad screen. Owns `#wado-trackpad` outright (Dioxus only calls `padOpen()`),
 // like the file manager owns `#wado-files`: fingers move it 60–120 times a second, which must
 // not re-render the app.
 //
@@ -26,34 +26,34 @@
   function mount() {
     if (root) return;
     root = document.createElement("div");
-    root.id = "wado-pad";
+    root.id = "wado-trackpad";
     root.hidden = true;
     root.setAttribute("role", "dialog");
     root.setAttribute("aria-label", "Trackpad");
     root.innerHTML = `
-      <header class="padhead">
-        <button class="linkpill padpill dim" aria-expanded="false"><span class="linkdot"></span><span class="padpilltext">Connecting…</span></button>
-        <button class="iconbtn padclose" aria-label="Close trackpad">${CLOSE}</button>
+      <header class="tphead">
+        <button class="linkpill tppill dim" aria-expanded="false"><span class="linkdot"></span><span class="tppilltext">Connecting…</span></button>
+        <button class="iconbtn tpclose" aria-label="Close trackpad">${CLOSE}</button>
       </header>
-      <p class="padwhy" hidden></p>
-      <div class="padarea">
-        <p class="padhint">Two fingers to scroll · your computer's gestures work here</p>
-        <div class="card alertcard paderr" role="alert" hidden></div>
+      <p class="tpwhy" hidden></p>
+      <div class="tparea">
+        <p class="tphint">Two fingers to scroll · your computer's gestures work here</p>
+        <div class="card alertcard tperr" role="alert" hidden></div>
       </div>
-      <div class="padkeys" hidden>
-        <div class="padrow" role="toolbar" aria-label="Modifiers and keys">
+      <div class="tpkeys" hidden>
+        <div class="tprow" role="toolbar" aria-label="Modifiers and keys">
           ${MODS.map(([k, l]) => `<button data-mod="${k}" aria-pressed="false">${l}</button>`).join("")}
-          <span class="padsep" aria-hidden="true"></span>
+          <span class="tpsep" aria-hidden="true"></span>
           ${KEYS.map(([k, l]) => `<button data-key="${k}" aria-label="${k === "esc" ? "Escape" : k === "tab" ? "Tab" : k + " arrow"}">${l}</button>`).join("")}
         </div>
-        <textarea class="padtext" rows="1" autocapitalize="sentences" autocomplete="off" autocorrect="on"
+        <textarea class="tptext" rows="1" autocapitalize="sentences" autocomplete="off" autocorrect="on"
           spellcheck="false" enterkeyhint="enter" aria-label="Type on the computer"
           placeholder="Type here — it goes to the computer"></textarea>
       </div>
-      <button class="btn padkb" aria-expanded="false">${KEYBOARD}<span>Keyboard</span></button>`;
+      <button class="btn tpkb" aria-expanded="false">${KEYBOARD}<span>Keyboard</span></button>`;
     document.body.appendChild(root);
     for (const k of ["pill", "pilltext", "close", "why", "area", "hint", "err", "keys", "row", "text", "kb"]) {
-      el[k] = root.querySelector(".pad" + k);
+      el[k] = root.querySelector(".tp" + k);
     }
 
     el.close.onclick = () => close(true);
@@ -93,7 +93,7 @@
       let f = fingers.get(e.pointerId);
       if (!f) {
         f = document.createElement("i");
-        f.className = "padfinger";
+        f.className = "tpfinger";
         el.area.appendChild(f);
         fingers.set(e.pointerId, f);
       }
@@ -140,7 +140,7 @@
     mount();
     if (!root.hidden) return;
     root.hidden = false;
-    document.documentElement.classList.add("pad-open");
+    document.documentElement.classList.add("trackpad-open");
     el.err.hidden = true;
     el.why.hidden = true;
     el.area.classList.remove("touched");
@@ -165,7 +165,7 @@
     root.hidden = true;
     root.style.height = "";
     root.style.transform = "";
-    document.documentElement.classList.remove("pad-open");
+    document.documentElement.classList.remove("trackpad-open");
     if (W.wake && !W.sessionOn) W.wake.release();
   }
   W.padClose = () => close(true);
