@@ -21,6 +21,7 @@ pub mod links;
 pub mod menu_sheet;
 pub mod nat;
 pub mod notify;
+pub mod pad;
 pub mod panic_log;
 pub mod pty;
 pub mod pumpstats;
