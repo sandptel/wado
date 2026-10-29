@@ -72,7 +72,9 @@ impl Live {
             inner.relay = Some(relay);
             inner.generation
         };
-        if let Some(why) = super::gate::refused(&peer.gate, &peer.who, approved(&peer)) {
+        if let Some(why) = super::gate::refused(&peer.gate, &peer.who, approved(&peer))
+            .or_else(|| super::gate::step_up(&peer.who, true))
+        {
             return Err(why);
         }
         let (pc, answer) = super::channel::open(api, offer, self.clone(), peer)
@@ -128,7 +130,10 @@ impl Live {
             super::actions::handle(self, msg, peer);
             return;
         }
-        if let Some(why) = super::gate::refused(&peer.gate, &peer.who, approved(peer)) {
+        let acting = !matches!(msg, PadMsg::Ping { .. });
+        if let Some(why) = super::gate::refused(&peer.gate, &peer.who, approved(peer))
+            .or_else(|| super::gate::step_up(&peer.who, acting))
+        {
             info!(device = %peer.who.name, "pad: refused — {why}");
             self.fail(why);
             return;

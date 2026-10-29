@@ -36,6 +36,23 @@ pub const COMMANDS: &[(&str, &[(&str, &str)])] = &[
                 "allow|deny <device> <grant>…",
                 "files-ro files-rw shells settings host",
             ),
+            (
+                "passkey [remove <device>]",
+                "who has a passkey; remove one a device lost",
+            ),
+        ],
+    ),
+    (
+        "CLAUDE",
+        &[
+            (
+                "claude hooks install|uninstall",
+                "status cards and Allow/Deny on your phone (shows the diff)",
+            ),
+            (
+                "claude-event",
+                "what the hooks run — reads Claude's JSON on stdin",
+            ),
         ],
     ),
     (

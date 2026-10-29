@@ -21,6 +21,18 @@ pub fn refused(gate: &Gate, who: &Who, approved: bool) -> Option<String> {
     None
 }
 
+/// Why `who` may not drive input *now*: the trackpad and keyboard also need a fresh passkey
+/// unlock (`crate::passkey`, F3). `use_it` is false for what is not the person acting (a ping),
+/// which must not keep the unlock alive on its own.
+pub fn step_up(who: &Who, use_it: bool) -> Option<String> {
+    let why = if use_it {
+        crate::passkey::refused(&who.key)
+    } else {
+        crate::passkey::refused_quiet(&who.key)
+    };
+    why.map(String::from)
+}
+
 /// Why `who` may not list or run actions (`crate::actions`), or `None` when it may. Actions are
 /// the computer's own controls — the `host` grant — not input, so a device may have either.
 pub fn refused_host(gate: &Gate, who: &Who, approved: bool) -> Option<String> {
@@ -104,6 +116,20 @@ mod tests {
             why.ends_with("wado allow \"Android · Chrome\" input"),
             "{why}"
         );
+    }
+
+    #[test]
+    fn a_granted_device_still_needs_a_fresh_unlock() {
+        let key = format!("pad-stepup-{}", rand::random::<u64>());
+        let w = who(&key, "phone");
+        assert_eq!(
+            step_up(&w, true).as_deref(),
+            Some(crate::passkey::NO_PASSKEY)
+        );
+        crate::passkey::unlock::open(&key);
+        assert_eq!(step_up(&w, true), None);
+        crate::passkey::unlock::lock(&key);
+        assert!(step_up(&w, false).is_some(), "locked again");
     }
 
     #[test]

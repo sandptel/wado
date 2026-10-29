@@ -7,6 +7,7 @@
 //! both the host (server) and the `wasm32` (web client) targets.
 
 pub mod apps;
+pub mod claude;
 pub mod clip;
 pub mod config;
 pub mod control;
@@ -16,6 +17,8 @@ pub mod host;
 pub mod link;
 pub mod menu;
 pub mod pad;
+pub mod passkey;
+pub mod push;
 pub mod relay;
 pub mod relay_wire;
 pub mod sessions;
