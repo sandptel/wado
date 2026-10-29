@@ -8,6 +8,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="theme-color" content="#181818" />
+    <!-- Installable as an app (public/manifest.webmanifest; public/sw.js pins the client and
+         takes a new one only when signed — docs/release-signing.md). Relative hrefs on purpose:
+         the same files serve at /wado/ on Pages and at / under `dx serve`. -->
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="wado" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <!-- Terminal emulator for the console's shell tab. A PTY sends ANSI — cursor
          addressing, colour, alternate screen — and interpreting that is a real terminal's
          job, not something to hand-roll. Pinned exactly; the fit addon must match the
