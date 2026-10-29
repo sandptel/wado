@@ -57,26 +57,25 @@ pub fn render(ui: Ui) -> Element {
                 ("Side inset", 0.0, 160.0, 4.0, (s.pad_inset_x)(), 2),
                 ("Top/bottom inset", 0.0, 120.0, 4.0, (s.pad_inset_y)(), 3),
             ] {
-                div { key: "{label}", class: "slide",
-                    input {
-                        r#type: "range", min: "{min}", max: "{max}", step: "{step}", "aria-label": "{label}",
-                        value: "{value}",
-                        oninput: move |e| if let Ok(v) = e.value().parse::<f64>() {
-                            match field {
-                                0 => s.pad_scale.set(v),
-                                1 => s.pad_opacity.set(v),
-                                2 => s.pad_inset_x.set(v),
-                                _ => s.pad_inset_y.set(v),
-                            }
-                            apply(ui);
-                        },
-                    }
-                    span { class: "slidelab", "{label}" }
-                    span { class: "slideval",
-                        if field == 1 { "{(value * 100.0).round()}%" }
-                        else if field == 0 { "{value:.2}×" }
-                        else { "{value:.0} px" }
-                    }
+                crate::ui::widgets::Slider {
+                    key: "{label}",
+                    label: label,
+                    value,
+                    min,
+                    max,
+                    step,
+                    shown: if field == 1 { format!("{}%", (value * 100.0).round()) }
+                        else if field == 0 { format!("{value:.2}×") }
+                        else { format!("{value:.0} px") },
+                    oninput: move |v: f64| {
+                        match field {
+                            0 => s.pad_scale.set(v),
+                            1 => s.pad_opacity.set(v),
+                            2 => s.pad_inset_x.set(v),
+                            _ => s.pad_inset_y.set(v),
+                        }
+                        apply(ui);
+                    },
                 }
             }
             button {

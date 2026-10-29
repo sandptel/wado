@@ -10,7 +10,7 @@ use super::opts;
 use crate::{
     bridge, res,
     state::Ui,
-    ui::widgets::{Info, Seg, SwitchRow, When, WhenBadge},
+    ui::widgets::{Info, Seg, Slider, SwitchRow, When, WhenBadge},
 };
 
 const SCALE_INFO: &str = "How large apps draw themselves, as Hyprland's monitor scale does. The \
@@ -170,15 +170,14 @@ pub fn render(ui: Ui) -> Element {
                 onpick: move |v| s.quality.set(v),
             }
             if (s.quality)() == "custom" {
-                div { class: "slide",
-                    input {
-                        r#type: "range", min: "500", max: "{limits.max_bitrate.unwrap_or(20000)}", step: "500",
-                        "aria-label": "Bitrate",
-                        value: "{(s.bitrate)()}",
-                        oninput: move |e| if let Ok(v) = e.value().parse() { s.bitrate.set(v) },
-                    }
-                    span { class: "slidelab", "Bitrate" }
-                    span { class: "slideval", "{(s.bitrate)()} kbps" }
+                Slider {
+                    label: "Bitrate",
+                    value: (s.bitrate)() as f64,
+                    min: 500.0,
+                    max: limits.max_bitrate.unwrap_or(20000) as f64,
+                    step: 500.0,
+                    shown: format!("{} kbps", (s.bitrate)()),
+                    oninput: move |v: f64| s.bitrate.set(v as u32),
                 }
             }
             SwitchRow {

@@ -7,7 +7,10 @@ use wado_protocol::HostAction;
 
 use crate::{
     state::Ui,
-    ui::{host::act, widgets::Icon},
+    ui::{
+        host::act,
+        widgets::{Icon, Slider},
+    },
 };
 
 /// A sink label short enough for a chip.
@@ -62,13 +65,12 @@ pub fn render(ui: Ui) -> Element {
                         onclick: move |_| act(HostAction::StreamMute { id: st.id, muted: !st.muted }),
                         Icon { name: if st.muted { "mute" } else { "sound" } }
                     }
-                    div { class: "slide thin",
-                        input {
-                            r#type: "range", min: "0", max: "1", step: "0.02", "aria-label": "Volume of {st.app}",
-                            value: "{st.volume}",
-                            onchange: move |e| if let Ok(v) = e.value().parse::<f32>() { act(HostAction::StreamVolume { id: st.id, volume: v }) },
-                        }
-                        span { class: "slideval", "{(st.volume * 100.0).round()}%" }
+                    Slider {
+                        label: "Volume of {st.app}",
+                        value: st.volume as f64,
+                        thin: true,
+                        quiet: true,
+                        onchange: move |v: f64| act(HostAction::StreamVolume { id: st.id, volume: v as f32 }),
                     }
                 }
                 if chips.len() > 1 {
@@ -116,13 +118,12 @@ pub fn render(ui: Ui) -> Element {
                         onclick: move |_| act(HostAction::SinkMute { id: s.id, muted: !s.muted }),
                         Icon { name: if s.muted { "mute" } else { "sound" } }
                     }
-                    div { class: "slide thin",
-                        input {
-                            r#type: "range", min: "0", max: "1", step: "0.02", "aria-label": "Volume of {s.label}",
-                            value: "{s.volume}",
-                            onchange: move |e| if let Ok(v) = e.value().parse::<f32>() { act(HostAction::SinkVolume { id: s.id, volume: v }) },
-                        }
-                        span { class: "slideval", "{(s.volume * 100.0).round()}%" }
+                    Slider {
+                        label: "Volume of {s.label}",
+                        value: s.volume as f64,
+                        thin: true,
+                        quiet: true,
+                        onchange: move |v: f64| act(HostAction::SinkVolume { id: s.id, volume: v as f32 }),
                     }
                 }
             }

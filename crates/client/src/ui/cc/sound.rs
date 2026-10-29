@@ -8,7 +8,7 @@ use crate::{
     ui::{
         host::{self, act},
         pages::Page,
-        widgets::Icon,
+        widgets::{Icon, Slider},
     },
 };
 use wado_protocol::HostAction;
@@ -74,14 +74,12 @@ pub fn render(ui: Ui) -> Element {
                         onclick: move |_| act(HostAction::SinkMute { id: s.id, muted: !s.muted }),
                         Icon { name: if s.muted { "mute" } else { "monitor" } }
                     }
-                    div { class: "slide thin",
-                        input {
-                            r#type: "range", min: "0", max: "1", step: "0.02", "aria-label": "Computer volume",
-                            value: "{s.volume}",
-                            onchange: move |e| if let Ok(v) = e.value().parse::<f32>() { act(HostAction::SinkVolume { id: s.id, volume: v }) },
-                        }
-                        span { class: "slidelab", "Computer" }
-                        span { class: "slideval", if s.muted { "muted" } else { "{(s.volume * 100.0).round()}%" } }
+                    Slider {
+                        label: "Computer",
+                        value: s.volume as f64,
+                        thin: true,
+                        shown: if s.muted { "muted".to_string() } else { String::new() },
+                        onchange: move |v: f64| act(HostAction::SinkVolume { id: s.id, volume: v as f32 }),
                     }
                 }
             }
@@ -98,19 +96,17 @@ pub fn render(ui: Ui) -> Element {
                         },
                         Icon { name: if (ui.set.muted)() { "mute" } else { "phone" } }
                     }
-                    div { class: "slide thin",
-                        input {
-                            r#type: "range", min: "0", max: "1", step: "0.02", "aria-label": "Volume on this device",
-                            value: "{(ui.set.volume)()}",
-                            oninput: move |e| if let Ok(v) = e.value().parse::<f64>() {
-                                let mut s = ui.set;
-                                s.volume.set(v);
-                                if v > 0.0 { s.muted.set(false); }
-                                crate::ui::live::apply(ui);
-                            },
-                        }
-                        span { class: "slidelab", "{here}" }
-                        span { class: "slideval", if (ui.set.muted)() { "muted" } else { "{((ui.set.volume)() * 100.0).round()}%" } }
+                    Slider {
+                        label: "{here}",
+                        value: (ui.set.volume)(),
+                        thin: true,
+                        shown: if (ui.set.muted)() { "muted".to_string() } else { String::new() },
+                        oninput: move |v: f64| {
+                            let mut s = ui.set;
+                            s.volume.set(v);
+                            if v > 0.0 { s.muted.set(false); }
+                            crate::ui::live::apply(ui);
+                        },
                     }
                 }
             }

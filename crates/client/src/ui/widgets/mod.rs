@@ -5,6 +5,7 @@ mod icon;
 mod info;
 mod navrow;
 mod seg;
+mod slider;
 mod switch;
 
 pub use badge::{When, WhenBadge};
@@ -12,4 +13,5 @@ pub use icon::Icon;
 pub use info::Info;
 pub use navrow::NavRow;
 pub use seg::Seg;
+pub use slider::Slider;
 pub use switch::SwitchRow;

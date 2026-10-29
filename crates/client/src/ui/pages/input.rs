@@ -7,7 +7,7 @@ use crate::{
     state::Ui,
     ui::{
         live::apply,
-        widgets::{Seg, SwitchRow, When, WhenBadge},
+        widgets::{Seg, Slider, SwitchRow, When, WhenBadge},
     },
 };
 
@@ -50,14 +50,14 @@ pub fn render(ui: Ui) -> Element {
         }
 
         div { class: "card",
-            div { class: "slide",
-                input {
-                    r#type: "range", min: "0.05", max: "2", step: "0.05", "aria-label": "Scroll speed",
-                    value: "{(s.scroll_speed)()}",
-                    oninput: move |e| if let Ok(v) = e.value().parse::<f64>() { s.scroll_speed.set(v); apply(ui); },
-                }
-                span { class: "slidelab", "Scroll speed" }
-                span { class: "slideval", "{(s.scroll_speed)():.2}×" }
+            Slider {
+                label: "Scroll speed",
+                value: (s.scroll_speed)(),
+                min: 0.05,
+                max: 2.0,
+                step: 0.05,
+                shown: format!("{:.2}×", (s.scroll_speed)()),
+                oninput: move |v: f64| { s.scroll_speed.set(v); apply(ui); },
             }
             SwitchRow {
                 title: "Natural scroll",
