@@ -113,6 +113,8 @@ W.e2eOnReply = async (msg) => {
       typedMac = W.b64u.enc(await crypto.subtle.sign("HMAC", k, cat(h2, new TextEncoder().encode(typed))));
     }
     if (W._e2e !== s) return;
+    // Pairing with a code now: the passkey step comes next (passkey.js).
+    W.e2eJustPaired = !!(pairMac || typedMac);
     s.chan = W.e2eChannel(keys);
     s.state = "sealed";
     const fin = { type: "e2e_finish", dev_pk: W.b64u.enc(dev.pub), sig: W.b64u.enc(sig), pair_mac: pairMac };
