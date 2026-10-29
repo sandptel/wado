@@ -6,6 +6,13 @@
 // what makes autocorrect and dictation corrections land right ("teh" → "the " is two backspaces
 // and "he "). A composition (Gboard's whole current word, a dictated phrase) is sent when it ends.
 //
+// Sentinel: the field always keeps one zero-width space at the start, never sent and excluded
+// from the diff. On Android Gboard, Backspace on an otherwise-empty field arrives as
+// `key === "Unidentified"` (keyCode 229) and fires no `input` event, so an empty field would
+// never tell us it happened. The sentinel gives it something to delete: when a flush finds the
+// sentinel gone, that deletion *was* the backspace — one `key: "backspace"` goes out and the
+// sentinel is restored.
+//
 // Modifiers: tap → latched for the next key; double-tap (300 ms) → locked (held on the computer
 // until tapped again, so Super + drag can move a window); tap a locked one → off. A latched
 // modifier turns the next single character from the keyboard into a shortcut (`char`) instead of
@@ -20,6 +27,8 @@
   const K = (W.padKeys = {});
   const NAMES = ["super", "ctrl", "alt", "shift"];
   const DOUBLE_MS = 300;
+  // Never sent as text, never part of the diff — see the sentinel note above.
+  const SENTINEL = "​";
   // ponytail: the field is a 200-code-point window; past that it clears, which keeps autocorrect
   // working on the current words without the field growing forever.
   const WINDOW = 200;
@@ -69,15 +78,22 @@
 
   function flush() {
     if (!input || composing) return;
-    const value = input.value;
-    const d = K.diffText(sent, value);
+    let value = input.value;
+    if (!value.startsWith(SENTINEL)) {
+      // The sentinel is gone: that deletion was an otherwise-invisible Backspace.
+      send({ k: "key", key: "backspace", mods: [] });
+      value = SENTINEL + value;
+      input.value = value;
+    }
+    const text = value.slice(1);
+    const d = K.diffText(sent, text);
     // A latched or locked modifier makes the next single character a shortcut (Ctrl locked,
     // then "c", is Ctrl+C — the locked key is already held on the computer).
     const latched = inState("latched");
     if ((latched.length || inState("locked").length) && d.back === 0 && cps(d.ins).length === 1) {
       send({ k: "char", ch: d.ins, mods: latched });
       clearLatches();
-      input.value = sent; // it was a shortcut, not text
+      input.value = SENTINEL + sent; // it was a shortcut, not text
       return;
     }
     for (let i = 0; i < d.back; i++) send({ k: "key", key: "backspace", mods: [] });
@@ -86,8 +102,8 @@
       if (line) send({ k: "text", text: line });
       if (i < lines.length - 1) send({ k: "key", key: "enter", mods: [] });
     });
-    sent = value;
-    if (cps(sent).length > WINDOW) { input.value = ""; sent = ""; }
+    sent = text;
+    if (cps(sent).length > WINDOW) { input.value = SENTINEL; sent = ""; }
   }
 
   // The path changed and the daemon let go of held keys: hold the locked ones again.
@@ -106,9 +122,10 @@
   function onEnd() { composing = false; flush(); }
   function onKeydown(e) {
     if (e.isComposing) return;
-    // Some keyboards never insert "\n", and an empty field sends no input event for Backspace.
+    // Some keyboards never insert "\n", and a keyboard that reports a real Backspace key (unlike
+    // Gboard's "Unidentified") on an otherwise-empty field sends no input event for it either.
     if (e.key === "Enter") { e.preventDefault(); flush(); K.key("enter"); }
-    else if (e.key === "Backspace" && input.value === "") { e.preventDefault(); K.key("backspace"); }
+    else if (e.key === "Backspace" && input.value === SENTINEL) { e.preventDefault(); K.key("backspace"); }
   }
 
   const on = [["input", onInput], ["compositionstart", onStart], ["compositionend", onEnd], ["keydown", onKeydown]];
@@ -116,7 +133,7 @@
   K.attach = (field) => {
     K.detach();
     input = field;
-    input.value = "";
+    input.value = SENTINEL;
     sent = "";
     composing = false;
     for (const [ev, fn] of on) input.addEventListener(ev, fn);
