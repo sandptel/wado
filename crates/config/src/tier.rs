@@ -4,6 +4,9 @@
 //! **Privileged** keys run code, widen access or move the daemon: only the owner device may set
 //! them, after an on-screen confirmation. The split is by consequence, not by section name —
 //! `session.app-cpu-weight` is live while `session.autostart` runs arbitrary commands.
+//!
+//! `device.*` is privileged here, with one exception that needs the requester's key and so lives
+//! in `wado_server::config::link`: a device may set its own `device.<its key>.trackpad.*`.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tier {

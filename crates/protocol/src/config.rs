@@ -39,6 +39,28 @@ pub struct ConfigState {
     /// Shells are allowed on this host.
     #[serde(default = "yes")]
     pub shells: bool,
+    /// This device's trackpad layout (`device "<key>" { trackpad { … } }`), every field filled;
+    /// `None` when the file has no block for it, and the phone keeps its own copy.
+    #[serde(default)]
+    pub trackpad: Option<TrackpadPrefs>,
+}
+
+/// One device's trackpad layout, as `wado_config::schema::DeviceTrackpad` types it. The phone
+/// changes a field with `ConfigSet` on `device.<its key>.trackpad.<field>`; `quick` is sent as a
+/// JSON list (`["fullscreen","play-pause"]`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrackpadPrefs {
+    pub landscape: bool,
+    pub fullscreen: bool,
+    pub flip: bool,
+    /// `keys`, `actions` or `none`.
+    pub rail: String,
+    /// Action ids, in order.
+    pub quick: Vec<String>,
+    /// `edge-left` / `edge-right` / `four-tap` / `two-hold` → an action id. Absent is off.
+    pub gestures: std::collections::BTreeMap<String, String>,
+    /// The keyboard opens with the pad.
+    pub keyboard: bool,
 }
 
 fn yes() -> bool {
