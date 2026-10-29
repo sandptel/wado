@@ -157,6 +157,14 @@ pub fn chord_events(mods: &[Mod], code: u16) -> Vec<(u16, i32)> {
 /// An open virtual keyboard. Tracks which codes it currently holds (from [`Self::hold`]) so
 /// `Drop` can release them — a dropped connection must never leave a modifier stuck down on
 /// the host.
+/// `mods` without the ones whose key is already in `held`, order kept.
+fn unheld(mods: &[Mod], held: &HashSet<u16>) -> Vec<Mod> {
+    mods.iter()
+        .copied()
+        .filter(|&m| !held.contains(&mod_code(m)))
+        .collect()
+}
+
 pub struct Keyboard {
     device: uinput::Device,
     held: HashSet<u16>,
@@ -181,7 +189,10 @@ impl Keyboard {
     /// Tap one key under `mods`: press mods, press/release the key, release mods. Does not
     /// touch [`Self::held`] — a tap never outlives this call.
     pub fn tap(&mut self, mods: &[Mod], code: u16) -> io::Result<()> {
-        for &(c, v) in &chord_events(mods, code) {
+        // A modifier already held (a locked one) stays down: pressing it again would be a no-op,
+        // and releasing it at the end of the chord would unlock it behind the user's back.
+        let mods = unheld(mods, &self.held);
+        for &(c, v) in &chord_events(&mods, code) {
             self.device.emit(&[(EV_KEY, c, v)])?;
         }
         Ok(())
@@ -242,6 +253,13 @@ mod tests {
             chord_events(&[Mod::Ctrl, Mod::Shift], 30),
             vec![(29, 1), (42, 1), (30, 1), (30, 0), (42, 0), (29, 0)]
         );
+    }
+
+    #[test]
+    fn a_held_modifier_is_left_alone_by_a_tap() {
+        let held: HashSet<u16> = [mod_code(Mod::Super)].into();
+        assert_eq!(unheld(&[Mod::Super, Mod::Shift], &held), vec![Mod::Shift]);
+        assert_eq!(unheld(&[Mod::Ctrl], &held), vec![Mod::Ctrl]);
     }
 
     #[test]
