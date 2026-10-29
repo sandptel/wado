@@ -1,4 +1,4 @@
-//! Wi-Fi, through NetworkManager's `nmcli`.
+//! Wi-Fi changes on probation — the policy over the platform's [`WifiRadio`].
 //!
 //! The dangerous one: on a computer that reaches the internet by Wi-Fi alone, turning it off or
 //! joining the wrong network cuts the very connection the viewer is using, and nobody can turn
@@ -6,16 +6,12 @@
 //! "keep these settings?": joining a network is undone after [`PROBATION`] unless a viewer
 //! confirms it, and turning Wi-Fi off can be for a few minutes only.
 
-use std::{
-    sync::atomic::{AtomicU64, Ordering},
-    time::{Duration, Instant},
-};
-
+use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 
-use wado_protocol::host::{Network, Wifi};
-
-use super::cmd::run;
+use wado_platform::network::WifiRadio;
 
 pub const PROBATION: Duration = Duration::from_secs(60);
 
@@ -23,70 +19,8 @@ pub const PROBATION: Duration = Duration::from_secs(60);
 static GEN: AtomicU64 = AtomicU64::new(0);
 static DEADLINE: Mutex<Option<Instant>> = Mutex::new(None);
 
-pub async fn state() -> Option<Wifi> {
-    let radio = run("nmcli", &["-t", "-f", "WIFI", "radio"]).await.ok()?;
-    let enabled = radio.trim() == "enabled";
-    let known: Vec<String> = run("nmcli", &["-t", "-f", "NAME,TYPE", "connection", "show"])
-        .await
-        .unwrap_or_default()
-        .lines()
-        .filter_map(|l| {
-            l.rsplit_once(':')
-                .filter(|(_, t)| t.contains("wireless"))
-                .map(|(n, _)| unescape(n))
-        })
-        .collect();
-    let mut networks: Vec<Network> = Vec::new();
-    if enabled {
-        let list = run(
-            "nmcli",
-            &[
-                "-t",
-                "-f",
-                "IN-USE,SSID,SIGNAL,SECURITY",
-                "dev",
-                "wifi",
-                "list",
-                "--rescan",
-                "no",
-            ],
-        )
-        .await
-        .unwrap_or_default();
-        for line in list.lines() {
-            let f = split(line);
-            let [inuse, ssid, signal, security] = &f[..] else {
-                continue;
-            };
-            if ssid.is_empty() || networks.iter().any(|n| &n.ssid == ssid) {
-                continue;
-            }
-            networks.push(Network {
-                active: inuse == "*",
-                known: known.contains(ssid),
-                signal: signal.parse().unwrap_or(0),
-                secure: !security.is_empty() && security != "--",
-                ssid: ssid.clone(),
-            });
-        }
-        networks.sort_by(|a, b| b.active.cmp(&a.active).then(b.signal.cmp(&a.signal)));
-        networks.truncate(15);
-    }
-    // The internet goes through Wi-Fi alone if no other connected device carries it.
-    let devs = run("nmcli", &["-t", "-f", "TYPE,STATE", "dev"])
-        .await
-        .unwrap_or_default();
-    let other = devs.lines().any(|l| {
-        let (t, s) = l.split_once(':').unwrap_or(("", ""));
-        s == "connected" && !matches!(t, "wifi" | "loopback" | "wifi-p2p")
-    });
-    let connected = networks.iter().find(|n| n.active).map(|n| n.ssid.clone());
-    Some(Wifi {
-        enabled,
-        uplink: connected.is_some() && !other,
-        connected,
-        networks,
-    })
+fn deadline(at: Option<Instant>) {
+    *DEADLINE.lock().unwrap_or_else(|e| e.into_inner()) = at;
 }
 
 /// Seconds until a change on probation is undone.
@@ -95,89 +29,105 @@ pub fn revert_in() -> Option<u32> {
     d.map(|t| t.saturating_duration_since(Instant::now()).as_secs() as u32)
 }
 
-pub async fn radio(on: bool, minutes: Option<u32>) -> Result<(), String> {
+/// The radio on or off. Off for `minutes` comes back on by itself.
+pub async fn radio(wifi: Arc<dyn WifiRadio>, on: bool, minutes: Option<u32>) -> Result<(), String> {
     let g = GEN.fetch_add(1, Ordering::SeqCst) + 1;
-    run("nmcli", &["radio", "wifi", if on { "on" } else { "off" }]).await?;
+    wifi.radio(on).await?;
     if !on {
         if let Some(m) = minutes.filter(|m| *m > 0) {
             let back = Duration::from_secs(u64::from(m.min(240)) * 60);
-            *DEADLINE.lock().unwrap_or_else(|e| e.into_inner()) = Some(Instant::now() + back);
+            deadline(Some(Instant::now() + back));
             tokio::spawn(async move {
                 tokio::time::sleep(back).await;
                 if GEN.load(Ordering::SeqCst) == g {
                     tracing::info!("turning Wi-Fi back on, as asked");
-                    let _ = run("nmcli", &["radio", "wifi", "on"]).await;
-                    *DEADLINE.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                    let _ = wifi.radio(true).await;
+                    deadline(None);
                 }
             });
         }
     } else {
-        *DEADLINE.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        deadline(None);
     }
     Ok(())
 }
 
 /// Join `ssid`, on probation: if nobody confirms within [`PROBATION`], go back to the network
 /// this computer was on.
-pub async fn connect(ssid: &str, password: Option<&str>) -> Result<(), String> {
-    let previous = state().await.and_then(|w| w.connected);
+pub async fn connect(
+    wifi: Arc<dyn WifiRadio>,
+    ssid: String,
+    password: Option<String>,
+) -> Result<(), String> {
+    wifi.fresh(Duration::ZERO).await;
+    let previous = wifi
+        .state()
+        .borrow()
+        .as_ref()
+        .and_then(|w| w.connected.clone());
     let g = GEN.fetch_add(1, Ordering::SeqCst) + 1;
-    let joined = match password.filter(|p| !p.is_empty()) {
-        Some(pw) => run("nmcli", &["dev", "wifi", "connect", ssid, "password", pw]).await,
-        None => match run("nmcli", &["connection", "up", "id", ssid]).await {
-            Ok(o) => Ok(o),
-            Err(_) => run("nmcli", &["dev", "wifi", "connect", ssid]).await,
-        },
-    };
-    if let (Some(prev), true) = (previous.clone(), previous.as_deref() != Some(ssid)) {
-        *DEADLINE.lock().unwrap_or_else(|e| e.into_inner()) = Some(Instant::now() + PROBATION);
+    let joined = wifi.join(ssid.clone(), password).await;
+    if let (Some(prev), true) = (previous.clone(), previous.as_deref() != Some(ssid.as_str())) {
+        deadline(Some(Instant::now() + PROBATION));
         tokio::spawn(async move {
             tokio::time::sleep(PROBATION).await;
             if GEN.load(Ordering::SeqCst) == g {
                 tracing::warn!(network = prev, "Wi-Fi change not confirmed — going back");
-                let _ = run("nmcli", &["connection", "up", "id", &prev]).await;
-                *DEADLINE.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                let _ = wifi.rejoin(prev).await;
+                deadline(None);
             }
         });
     }
-    joined.map(drop)
+    joined
 }
 
 /// A viewer is back and says the change is good.
 pub fn keep() {
     GEN.fetch_add(1, Ordering::SeqCst);
-    *DEADLINE.lock().unwrap_or_else(|e| e.into_inner()) = None;
-}
-
-/// `nmcli -t` separates fields with `:` and escapes a literal one as `\:`.
-fn split(line: &str) -> Vec<String> {
-    let mut out = vec![String::new()];
-    let mut esc = false;
-    for c in line.chars() {
-        match (esc, c) {
-            (false, '\\') => esc = true,
-            (false, ':') => out.push(String::new()),
-            _ => {
-                esc = false;
-                out.last_mut().expect("never empty").push(c);
-            }
-        }
-    }
-    out
-}
-
-fn unescape(s: &str) -> String {
-    split(s).join(":")
+    deadline(None);
 }
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn colons_inside_fields_survive() {
+    use super::*;
+    use wado_platform::fake::Fakes;
+    use wado_protocol::host::{Network, Wifi};
+
+    fn on(ssid: &str) -> Option<Wifi> {
+        Some(Wifi {
+            enabled: true,
+            connected: Some(ssid.into()),
+            networks: vec![Network {
+                ssid: ssid.into(),
+                active: true,
+                ..Default::default()
+            }],
+            ..Default::default()
+        })
+    }
+
+    /// Unconfirmed, a new network is left for the old one; confirmed, it stays. (One test, as
+    /// the probation is the daemon's one Wi-Fi.)
+    #[tokio::test(start_paused = true)]
+    async fn an_unconfirmed_change_goes_back_and_a_kept_one_stays() {
+        let f = Fakes::new();
+        f.wifi.state.will_read(on("Home"));
+        let wifi: Arc<dyn WifiRadio> = f.wifi.clone();
+        connect(wifi.clone(), "Cafe".into(), Some("pw".into()))
+            .await
+            .unwrap();
+        assert!(matches!(revert_in(), Some(59 | 60)), "{:?}", revert_in());
+        tokio::time::sleep(PROBATION + Duration::from_secs(1)).await;
         assert_eq!(
-            super::split(r"*:Cafe\: Guest:72:WPA2"),
-            ["*", "Cafe: Guest", "72", "WPA2"]
+            f.log.calls(),
+            ["wifi.join Cafe (password)", "wifi.rejoin Home"]
         );
-        assert_eq!(super::split(":Open::"), ["", "Open", "", ""]);
+        assert_eq!(revert_in(), None);
+
+        f.log.clear();
+        connect(wifi, "Cafe".into(), None).await.unwrap();
+        keep();
+        tokio::time::sleep(PROBATION + Duration::from_secs(1)).await;
+        assert_eq!(f.log.calls(), ["wifi.join Cafe"], "kept: no going back");
     }
 }

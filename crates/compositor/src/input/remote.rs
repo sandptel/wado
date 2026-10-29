@@ -12,6 +12,7 @@
 //!
 //! This file only dispatches; it holds no synthesis logic of its own.
 
+use wado_platform::input::{GamepadEvent, GamepadInjector};
 use wado_protocol::InputEvent;
 
 use crate::Wado;
@@ -61,7 +62,7 @@ impl Wado {
                 tracing::info!(target: "wado::gamepad", "gamepad button {code:#x} {}",
                     if pressed { "down" } else { "up" });
                 if let Some(pad) = self.virtual_gamepad() {
-                    pad.button(code, pressed);
+                    pad.report(GamepadEvent::Button { code, pressed });
                 }
             }
             InputEvent::GamepadAxis { code, value } => {
@@ -69,7 +70,7 @@ impl Wado {
                 // a log that scrolls is a log nobody reads the button presses out of.
                 tracing::debug!(target: "wado::gamepad", "gamepad axis {code:#x} = {value}");
                 if let Some(pad) = self.virtual_gamepad() {
-                    pad.axis(code, value);
+                    pad.report(GamepadEvent::Axis { code, value });
                 }
             }
             // Never reaches here in practice: the server answers Ping itself and does not
@@ -86,9 +87,9 @@ impl Wado {
     /// on-screen pad in must not leave a phantom controller behind for every other application
     /// on the host to enumerate. The failure is latched so a held stick logs the permission
     /// problem once rather than sixty times a second.
-    fn virtual_gamepad(&mut self) -> Option<&mut crate::input::gamepad::Gamepad> {
+    fn virtual_gamepad(&mut self) -> Option<&mut Box<dyn GamepadInjector>> {
         if self.gamepad.is_none() && !self.gamepad_failed {
-            match crate::input::gamepad::Gamepad::open() {
+            match self.gamepad_open.open() {
                 Ok(pad) => self.gamepad = Some(pad),
                 Err(e) => {
                     self.gamepad_failed = true;

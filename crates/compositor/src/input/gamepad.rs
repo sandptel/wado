@@ -32,7 +32,10 @@ use std::{
     fs::{File, OpenOptions},
     io::Write,
     os::unix::io::AsRawFd,
+    sync::Arc,
 };
+
+use wado_platform::input::{GamepadEvent, GamepadInjector, InputError, Opener};
 
 /// `_IOW('U', nr, int)` — every uinput setup ioctl has this shape.
 const fn uinput_iow(nr: u64) -> u64 {
@@ -233,6 +236,25 @@ impl Gamepad {
             tracing::warn!("virtual gamepad write failed: {e}");
         }
     }
+}
+
+impl GamepadInjector for Gamepad {
+    fn report(&mut self, ev: GamepadEvent) {
+        match ev {
+            GamepadEvent::Button { code, pressed } => self.button(code, pressed),
+            GamepadEvent::Axis { code, value } => self.axis(code, value),
+        }
+    }
+}
+
+/// The platform's gamepad opener on Linux: this device, made on first use. A failure to open
+/// is the machine's (no permission, no module), so it is reported as unavailable.
+pub fn opener() -> Arc<dyn Opener<dyn GamepadInjector>> {
+    Arc::new(|| {
+        Gamepad::open()
+            .map(|g| Box::new(g) as Box<dyn GamepadInjector>)
+            .map_err(InputError::Unavailable)
+    })
 }
 
 impl Drop for Gamepad {

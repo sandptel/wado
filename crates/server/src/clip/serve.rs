@@ -13,7 +13,16 @@ async fn send(out: &mpsc::Sender<String>, msg: &RelayMsg) {
 
 /// The history as the rail shows it, or why there is none.
 pub async fn history() -> RelayMsg {
-    match super::history::list().await {
+    history_from(crate::platform::get()).await
+}
+
+/// The history `p` keeps, as the rail shows it.
+pub async fn history_from(p: &wado_platform::Platform) -> RelayMsg {
+    let listed = match p.clip_history() {
+        Ok(h) => h.list().await,
+        Err(absent) => Err(absent.why),
+    };
+    match listed {
         Ok(entries) => RelayMsg::ClipHistory {
             available: true,
             entries,
@@ -29,9 +38,10 @@ pub async fn history() -> RelayMsg {
 
 /// One of the `Clip*` messages. Others are ignored.
 pub async fn handle(msg: RelayMsg, cmd_tx: CommandSender, out: mpsc::Sender<String>) {
+    let store = crate::platform::get().clip_history().map_err(|a| a.why);
     let done = match msg {
         RelayMsg::ClipList => Ok(true),
-        RelayMsg::ClipGet { id } => match super::history::get(&id).await {
+        RelayMsg::ClipGet { id } => match async { store?.get(id.clone()).await }.await {
             Ok(clip) => {
                 let msg = RelayMsg::ClipData {
                     id,
@@ -48,8 +58,14 @@ pub async fn handle(msg: RelayMsg, cmd_tx: CommandSender, out: mpsc::Sender<Stri
             Ok(clip) => super::sync::push(&cmd_tx, clip).await.map(|()| false),
             Err(e) => Err(e),
         },
-        RelayMsg::ClipPin { id, on } => super::history::pin(&id, on).await.map(|()| true),
-        RelayMsg::ClipDelete { id } => super::history::delete(&id).await.map(|()| true),
+        RelayMsg::ClipPin { id, on } => match store {
+            Ok(h) => h.pin(id, on).await.map(|()| true),
+            Err(e) => Err(e),
+        },
+        RelayMsg::ClipDelete { id } => match store {
+            Ok(h) => h.delete(id).await.map(|()| true),
+            Err(e) => Err(e),
+        },
         _ => Ok(false),
     };
     match done {
@@ -72,4 +88,44 @@ pub fn follow(
             }
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wado_platform::fake::Fakes;
+    use wado_protocol::{ClipEntry, ClipKind};
+
+    #[tokio::test]
+    async fn the_rail_shows_the_history_or_why_there_is_none() {
+        let f = Fakes::new();
+        let entry = ClipEntry {
+            id: "7".into(),
+            kind: ClipKind::Text,
+            pinned: false,
+            preview: "hello".into(),
+        };
+        f.history.entries.lock().unwrap().push(entry.clone());
+        let RelayMsg::ClipHistory {
+            available, entries, ..
+        } = history_from(&f.platform()).await
+        else {
+            panic!("not a history");
+        };
+        assert!(available);
+        assert_eq!(entries, [entry]);
+
+        let none = wado_platform::PlatformBuilder::empty()
+            .with(f.provider())
+            .without(wado_platform::Capability::ClipHistory)
+            .probe();
+        let RelayMsg::ClipHistory {
+            available, error, ..
+        } = history_from(&none).await
+        else {
+            panic!("not a history");
+        };
+        assert!(!available);
+        assert_eq!(error.as_deref(), Some(wado_platform::registry::LEFT_OUT));
+    }
 }

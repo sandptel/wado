@@ -1,5 +1,6 @@
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt as _, prelude::*};
 use wado::website::{self, FRAME_CHANNEL_CAPACITY, logbus::LogBus};
+use wado_platform::video::VideoBackend as _;
 
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -37,9 +38,17 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // Before `build`, which points WAYLAND_DISPLAY at the session for the apps it launches.
     wado::clip::env::capture();
-    wado::actions::hypr::capture();
+    wado::platform::linux::hyprland::capture();
+    // Probe the host's capabilities now, while the desktop's display is still the one captured
+    // above, and off the async paths that answer viewers.
+    let caps = wado::platform::get().caps();
+    tracing::info!(on = ?caps.on, off = caps.off.len(), "host capabilities probed");
+    for off in &caps.off {
+        tracing::debug!(cap = off.cap, why = off.why, "capability missing");
+    }
     let (frame_tx, frame_rx) = tokio::sync::mpsc::channel(FRAME_CHANNEL_CAPACITY);
-    let (mut event_loop, mut state, handles) = wado_compositor::build(frame_tx)?;
+    // The video backend: wado's own Smithay session, driven only through its handles.
+    let (runner, handles) = Box::new(wado_compositor::backend::Smithay).build(frame_tx)?;
 
     // ── Mode selection ───────────────────────────────────────────────────────
     // Relay mode, the default: the public relay (`wado_config::schema::server::DEFAULT_RELAY`)
@@ -89,12 +98,8 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         );
     }
 
-    // Post-dispatch flush: calloop runs this after EVERY dispatch, so remote input
-    // synthesized on the input channel reaches the app immediately instead of waiting
-    // for the next render tick to flush it (which quantised input to the frame period).
-    // One flush per loop iteration, however many sources fired — cheaper than flushing
-    // per event and it covers commands and Wayland traffic too.
-    event_loop.run(None, &mut state, |state| state.after_dispatch())?;
+    // The video backend runs on this, the main thread, as it asks (`VideoBackend::thread`).
+    runner.run()?;
     Ok(())
 }
 

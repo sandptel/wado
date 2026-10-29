@@ -1,10 +1,12 @@
-//! What the computer is, neofetch-style: OS, kernel, uptime, CPU, GPU, memory, shell, desktop.
+//! What the computer is ([`SysInfoSource`] on Linux), neofetch-style: OS, kernel, uptime, CPU,
+//! GPU, memory, shell, desktop.
 //!
 //! All from `/proc`, `/etc/os-release` and `/sys` — nothing to install. What cannot change
 //! while the daemon runs is read once; uptime and memory are read on every ask.
 
 use std::sync::OnceLock;
 
+use wado_platform::sysinfo::SysInfoSource;
 use wado_protocol::host::SysInfo;
 
 struct Fixed {
@@ -104,7 +106,7 @@ fn gpu() -> String {
     driver
 }
 
-pub fn now() -> SysInfo {
+fn now() -> SysInfo {
     let f = fixed();
     let uptime_s = read("/proc/uptime")
         .split_whitespace()
@@ -135,5 +137,22 @@ pub fn now() -> SysInfo {
         mem_total_mb: total / 1024,
         shell: f.shell.clone(),
         desktop: f.desktop.clone(),
+    }
+}
+
+/// `/proc`, `/etc/os-release` and `/sys`. Made at probe time, which also reads what cannot
+/// change (and runs the one `lspci`) there — off the async path that answers viewers.
+pub struct ProcSysInfo;
+
+impl ProcSysInfo {
+    pub fn new() -> ProcSysInfo {
+        fixed();
+        ProcSysInfo
+    }
+}
+
+impl SysInfoSource for ProcSysInfo {
+    fn now(&self) -> SysInfo {
+        now()
     }
 }

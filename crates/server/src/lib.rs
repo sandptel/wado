@@ -27,6 +27,7 @@ pub mod nat;
 pub mod notify;
 pub mod pad;
 pub mod panic_log;
+pub mod platform;
 pub mod pty;
 pub mod pumpstats;
 pub mod relay_client;

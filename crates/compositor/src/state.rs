@@ -286,7 +286,10 @@ pub struct Wado {
     /// the session. `None` until something asks for it — a session that never opens the
     /// on-screen pad must not leave a phantom controller on the machine. See
     /// [`crate::input::gamepad`].
-    pub gamepad: Option<crate::input::gamepad::Gamepad>,
+    pub gamepad: Option<Box<dyn wado_platform::input::GamepadInjector>>,
+    /// What makes the gamepad: the platform's opener (the uinput Xbox 360 pad on Linux).
+    pub gamepad_open:
+        std::sync::Arc<dyn wado_platform::input::Opener<dyn wado_platform::input::GamepadInjector>>,
     /// Set once the device has failed to open, so the failure is logged once rather than on
     /// every stick sample. Cleared with the session.
     pub gamepad_failed: bool,
@@ -513,6 +516,7 @@ impl Wado {
             pre_maximize: std::collections::HashMap::new(),
             pre_fullscreen: std::collections::HashMap::new(),
             gamepad: None,
+            gamepad_open: crate::input::gamepad::opener(),
             gamepad_failed: false,
             arbiter: Default::default(),
             pending_placement: Vec::new(),

@@ -4,22 +4,20 @@
 //! kernel input device, so every app on the host sees an ordinary trackpad.
 //!
 //! Files, one job each:
-//! - `uinput.rs` — the raw `/dev/uinput` device: open, describe, emit events, destroy on drop.
-//! - `touchpad.rs` — the virtual touchpad: device setup, and the pure slot-assignment logic
-//!   that turns a `Contact` frame into evdev events.
-//! - `keys.rs` — the virtual keyboard: US-layout key/char lookup, chord construction, and the
-//!   device that tracks what it holds.
-//! - `text.rs` — committed text, typed into the desktop via `wtype`.
+//! - `keys.rs` — what a key message means as a key: named keys and US-layout characters.
 //! - `state.rs` — one phone's pad: what each message does, stale frames, silence, resizes.
 //! - `pacer.rs` — touch frames written on a steady cadence, interpolated, by either path.
 //! - `ticker.rs` — the pad's tick: on that cadence while anything is in flight, parked while idle.
 //! - `delay.rs` — how far behind the phone the pacer plays: measured, or fixed.
 //! - `arrivals.rs` — how evenly frames arrive, logged so jitter is measured, not assumed.
-//! - `sink.rs` — the kernel devices a pad drives, made on first use.
+//! - `sink.rs` — the devices a pad drives, made on first use.
 //! - `gate.rs` — who may use the trackpad, asked of every message.
 //! - `actions.rs` — listing and running the computer's actions (`crate::actions`), on `host`.
 //! - `live.rs` — the open pad, fed by either transport, its tick and its ordered keyboard queue.
 //! - `channel.rs` — the direct link: a peer connection with a touch and a keys channel.
+//!
+//! The devices themselves — touchpad, keyboard, typist — are the platform's
+//! (`wado_platform::input`, provided on Linux by `crate::platform::linux`).
 //!
 //! Through the relay the same messages arrive as `RelayMsg::PadIn` (`relay_client.rs`), when
 //! the phone has no direct path or before its direct link is up.
@@ -34,9 +32,6 @@ pub mod live;
 pub mod pacer;
 pub mod sink;
 pub mod state;
-pub mod text;
 pub mod ticker;
-pub mod touchpad;
-pub mod uinput;
 
 pub use live::{Live, Peer};

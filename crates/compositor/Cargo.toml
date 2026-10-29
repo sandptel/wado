@@ -8,6 +8,9 @@ description = "wado's headless Smithay compositor: Wayland protocol state, GLES 
 [dependencies]
 wado-protocol = { path = "../protocol" }
 wado-config = { path = "../config" }
+# The platform layer's seams (the clipboard value, the gamepad device). Smithay-free and
+# network-free, so the boundary holds.
+wado-platform = { path = "../platform" }
 tracing = "0.1"
 thiserror = "1"
 bitflags = "2"
