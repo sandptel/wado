@@ -62,6 +62,12 @@ pub struct DeviceGrants {
     pub host: bool,
     pub input: bool,
     pub clipboard: bool,
+    /// Join another device's session, and take one over (`2026-10-30`). Absent from an older
+    /// daemon, which cannot do either.
+    #[serde(default)]
+    pub join: bool,
+    #[serde(default)]
+    pub takeover: bool,
 }
 
 /// One device's trackpad layout, as `wado_config::schema::DeviceTrackpad` types it. The phone

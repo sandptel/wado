@@ -464,6 +464,88 @@ pub enum RelayMsg {
     /// ends it — not reaped by the no-viewer watchdog.
     SessionDetach,
 
+    // ── Several devices in one session (`crate::multi`) ──────────────────────
+    // Post-handshake, forwarded by the relay unread — no mirror in `relay_wire.rs`.
+    /// Client → daemon, the first sealed message on a seatless room (`control=1`): what the room
+    /// is for. `view`: a device joining or taking over the session this daemon runs — it may
+    /// stream and control. Anything else is a widget's room, controls only. The daemon decides
+    /// from this, never from the relay.
+    RoomHello {
+        #[serde(default)]
+        kind: String,
+    },
+    /// Client → daemon: join the running session as one more participant — everyone controls it
+    /// at once. Answered with `session_started` (the client then offers, as for a rejoin), or
+    /// `session_error` saying why not. Needs the `join` grant.
+    SessionJoin,
+    /// Client → daemon: become the session's lead. The output is rebuilt at this device's size
+    /// (`config`) and every other participant is disconnected with `session_left`. Needs the
+    /// `takeover` grant. Answered like a join.
+    SessionTakeover {
+        config: SessionConfig,
+    },
+    /// Daemon → client: this device is out of the session. `reason`: `taken_over`,
+    /// `opened_here_again`, `ended` or `stale`; `by` names who did it. The client does **not**
+    /// reconnect by itself (I17) — it offers Rejoin, which is a join and displaces nobody.
+    SessionLeft {
+        reason: String,
+        #[serde(default)]
+        by: String,
+    },
+    /// Daemon → every participant, on every change: who is in the session. `you` is the
+    /// receiver's own `id`; `event` and `who` say what just happened (`joined`, `left`,
+    /// `taken_over`, `ended`), for a toast.
+    Participants {
+        list: Vec<crate::multi::Participant>,
+        #[serde(default)]
+        you: u16,
+        #[serde(default)]
+        event: String,
+        #[serde(default)]
+        who: String,
+    },
+    /// Client → daemon: "a session of my own". Answered with `session_elsewhere` (the instance
+    /// to start it on — this one when it is idle, else an idle or newly started sibling daemon),
+    /// or `desks_full`.
+    DeskRequest,
+    /// Daemon → client: start the new session on `instance` (`<remote id>:<key>`).
+    SessionElsewhere {
+        instance: String,
+    },
+    /// Daemon → client: every session this computer will run is running.
+    DesksFull {
+        running: u32,
+        max: u32,
+        #[serde(default)]
+        message: String,
+    },
+    /// Client → daemon: send me `bytes` of filler, as fast as you can — the speed test's download
+    /// leg. Answered with `link_test_chunk`s, then `link_test_done`.
+    LinkTest {
+        #[serde(default)]
+        bytes: u32,
+    },
+    LinkTestChunk {
+        seq: u32,
+        pad: String,
+    },
+    LinkTestDone {
+        #[serde(default)]
+        chunks: u32,
+    },
+    /// Client → daemon: what the speed test measured, and what it is for — `intent` `join` (the
+    /// session on this daemon) or `start` (a new one). Answered with `link_verdict`; the daemon
+    /// keeps it and refuses that join or start when the verdict was `refuse`.
+    LinkReport {
+        down_kbps: u32,
+        rtt_ms: u32,
+        #[serde(default)]
+        intent: String,
+    },
+    LinkVerdict {
+        verdict: crate::multi::LinkVerdict,
+    },
+
     // ── The computer itself: sound, Wi-Fi, Bluetooth (see `server::host`) ────
     /// Client → server: send me [`RelayMsg::HostState`]. Needs no session.
     HostGet,
@@ -847,6 +929,64 @@ mod wire_tests {
         })
         .unwrap();
         assert!(none["targets"].is_null() && none.get("targets").is_some());
+    }
+
+    /// What js/multi.js and js/sessions.js send and read for several devices in one session.
+    #[test]
+    fn multi_client_messages_as_the_client_speaks_them() {
+        for json in [
+            r#"{"type":"room_hello","kind":"view"}"#,
+            r#"{"type":"room_hello"}"#,
+            r#"{"type":"session_join"}"#,
+            r#"{"type":"desk_request"}"#,
+            r#"{"type":"link_test","bytes":262144}"#,
+            r#"{"type":"link_report","down_kbps":9000,"rtt_ms":40,"intent":"join"}"#,
+        ] {
+            assert!(serde_json::from_str::<RelayMsg>(json).is_ok(), "{json}");
+        }
+        let left = serde_json::to_value(RelayMsg::SessionLeft {
+            reason: "taken_over".into(),
+            by: "Pixel".into(),
+        })
+        .unwrap();
+        assert_eq!(left["type"], "session_left");
+        assert_eq!(left["by"], "Pixel");
+        let p = serde_json::to_value(RelayMsg::Participants {
+            list: vec![crate::multi::Participant {
+                id: 2,
+                name: "Laptop".into(),
+                lead: true,
+                ..Default::default()
+            }],
+            you: 2,
+            event: "joined".into(),
+            who: "Pixel".into(),
+        })
+        .unwrap();
+        assert_eq!(p["type"], "participants");
+        assert_eq!(p["list"][0]["lead"], true);
+        // Round trip of every daemon → client variant.
+        for m in [
+            RelayMsg::SessionElsewhere {
+                instance: "1:2".into(),
+            },
+            RelayMsg::DesksFull {
+                running: 4,
+                max: 4,
+                message: String::new(),
+            },
+            RelayMsg::LinkTestChunk {
+                seq: 1,
+                pad: "x".into(),
+            },
+            RelayMsg::LinkTestDone { chunks: 1 },
+            RelayMsg::LinkVerdict {
+                verdict: Default::default(),
+            },
+        ] {
+            let s = serde_json::to_string(&m).unwrap();
+            assert!(serde_json::from_str::<RelayMsg>(&s).is_ok(), "{s}");
+        }
     }
 
     #[test]
