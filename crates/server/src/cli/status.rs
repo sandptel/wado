@@ -154,8 +154,9 @@ fn probe_relay() -> Option<String> {
 }
 
 /// One `GET` over TLS, by hand like [`get`]: rustls and the webpki roots are already in the
-/// tree for the relay link itself. The body on a 2xx, else `None`.
-fn https_get(host: &str, path: &str) -> Option<String> {
+/// tree for the relay link itself. The body on a 2xx, else `None`. Public for the desktop app,
+/// which asks other computers' relays whether they are online the same way.
+pub fn https_get(host: &str, path: &str) -> Option<String> {
     use std::{net::ToSocketAddrs, sync::Arc};
     let (name, port) = host.split_once(':').unwrap_or((host, "443"));
     let roots = rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
