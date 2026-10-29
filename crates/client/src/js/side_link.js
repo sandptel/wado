@@ -11,14 +11,21 @@
 //   W.sideDo(key, msg)       send a sealed message on that computer's link
 //   W.sideClipCopy(key, id, kind) / W.sidePaste(key)   the Clipboard widget's two taps
 //
+// **A light link takes no seat** (decided 2026-10-30): it joins with `control=1`, which a relay
+// with the `control` cap turns into a seatless control-only link (crates/relay/src/controls.rs) —
+// it holds, takes and blocks no device's desktop, and the daemon serves it controls only
+// (crates/server/src/control). Before every dial the relay is asked (`/online/:id`) whether it
+// and the computer serve such links; an older relay never says so, and is never sent
+// `control=1` — it would read it as an ordinary join and give the widget a seat. Then there is
+// no link: the widget says what it lacks, and keeps what it last knew.
+//
 // Each link is its own WebSocket and its own secure handshake — the same wire and transcript as
 // e2e_handshake.js (whose `sha256`, `cat`, `lp` and `E2E_LBL` helpers this reuses: the bridge
-// files share one script scope), but with its state per link instead of the one global. It
-// takes a seat like any device; a pool with every seat taken answers "busy", and a link another
-// device takes over is not taken back (the I17 steal-war) — it waits for the next watch.
+// files share one script scope), but with its state per link instead of the one global.
 //
 // To Rust: {type:"side", key, state, host?, config?, clips?, actions?} — fields only when they
-// change. `state`: connecting | up | offline | waiting | busy | refused | unreachable.
+// change. `state`: connecting | up | offline | refused | unreachable | old_relay (the relay
+// serves no control links) | old_daemon (the computer's wado does not).
 
 (() => {
   const links = new Map(); // key -> link
@@ -33,7 +40,35 @@
     let inst = "";
     try { inst = (JSON.parse(localStorage.getItem("wado.instance")) || {})[norm] || ""; } catch (_) {}
     return base + "/join/" + encodeURIComponent(norm) + "?client=" + encodeURIComponent(W.clientKey) +
-      "&name=" + encodeURIComponent(W.deviceName) + (inst ? "&instance=" + encodeURIComponent(inst) : "");
+      "&name=" + encodeURIComponent(W.deviceName) + (inst ? "&instance=" + encodeURIComponent(inst) : "") +
+      "&control=1";
+  }
+
+  // Does this relay, for this computer, serve control-only links? `old_relay` / `old_daemon` /
+  // `offline` / `unreachable`, or "" to go ahead.
+  async function ask(l) {
+    try {
+      const url = String(l.relay).replace(/\/+$/, "") + "/online/" + encodeURIComponent(String(l.id).replace(/[\s-]/g, ""));
+      const j = await (await fetch(url, { cache: "no-store" })).json();
+      if (!(j.daemons > 0)) return "offline";
+      if (typeof j.control !== "number") return "old_relay";
+      if (!(j.control > 0)) return "old_daemon";
+      return "";
+    } catch (_) {
+      return "unreachable";
+    }
+  }
+
+  // Ask first, then dial — or wait and ask again. A relay or a computer that cannot serve a
+  // control link is asked again only now and then: an update is not something to poll for.
+  async function dial(l) {
+    if (l.dead) return;
+    clearTimeout(l.retry);
+    const why = await ask(l);
+    if (l.dead) return;
+    if (!why) return open(l);
+    setState(l, why);
+    l.retry = setTimeout(() => dial(l), why === "old_relay" || why === "old_daemon" ? 120000 : why === "offline" ? 15000 : 20000);
   }
 
   function send(l, obj) {
@@ -53,11 +88,18 @@
       let m;
       try { m = JSON.parse(ev.data); } catch (_) { return; }
       if (m.type === "ping") { try { ws.send(JSON.stringify({ type: "pong" })); } catch (_) {} return; }
-      if (m.type === "waiting") { setState(l, /no computer/i.test(m.reason || "") ? "offline" : "waiting"); return; }
-      if (m.type === "taken_over") { l.taken = true; setState(l, "busy"); return; }
+      if (m.type === "waiting") { setState(l, "offline"); return; }
       if (m.type === "join_denied") {
-        setState(l, /already has an active connection/i.test(m.reason || "") ? "busy" : "offline");
+        setState(l, /older than live widgets/i.test(m.reason || "") ? "old_daemon" : "offline");
         l.backoff = Math.max(l.backoff, 15000);
+        return;
+      }
+      // Belt and braces: a relay that answered with a seat did not make a control link. Leave at
+      // once (4001 frees the seat) rather than hold another device's desktop.
+      if (m.type === "join_accepted" && m.assignment !== "control") {
+        l.refused = true;
+        setState(l, "old_relay");
+        try { ws.close(4001, "leave"); } catch (_) {}
         return;
       }
       if (m.type === "join_accepted") { hello(l, m.room_id || ""); return; }
@@ -73,7 +115,7 @@
       l.ws = null; l.chan = null; l.e2e = "";
       clearInterval(l.poll);
       if (l.dead) return;
-      if (l.refused || l.taken) return;
+      if (l.refused) return;
       later(l, l.state === "up" ? "connecting" : l.state === "connecting" ? "unreachable" : l.state);
     };
   }
@@ -82,7 +124,7 @@
     if (l.dead) return;
     setState(l, state);
     l.backoff = Math.min(Math.max(l.backoff * 2, 2000), 30000);
-    l.retry = setTimeout(() => open(l), l.backoff);
+    l.retry = setTimeout(() => dial(l), l.backoff);
   }
 
   // The handshake, per link (e2e_handshake.js has the reasoning; this is the same transcript).
@@ -135,9 +177,14 @@
       l.e2e = "open";
       l.backoff = 0;
       setState(l, "up");
-      ask(l);
+      askAll(l);
       clearInterval(l.poll);
-      l.poll = setInterval(() => send(l, { type: "host_get" }), POLL_MS);
+      let tick = 0;
+      l.poll = setInterval(() => {
+        send(l, { type: "host_get" });
+        // Nothing is pushed on a control link, so the clipboard is asked for now and then.
+        if (l.wants.includes("clips") && ++tick % 4 === 0) send(l, { type: "clip_list" });
+      }, POLL_MS);
       return;
     }
     switch (m.type) {
@@ -169,7 +216,7 @@
   }
 
   // What a fresh link asks for: the state always, the rest when a widget wants it.
-  function ask(l) {
+  function askAll(l) {
     send(l, { type: "host_get" });
     send(l, { type: "config_get" });
     if (l.wants.includes("clips")) send(l, { type: "clip_list" });
@@ -198,15 +245,15 @@
       if (l) {
         const more = w.wants.filter((x) => !l.wants.includes(x));
         l.wants = w.wants;
-        if (more.length && l.e2e === "open") ask(l);
-        // A link given up on (taken over, refused) is tried again on a fresh watch.
-        if ((l.taken || l.refused) && !l.ws) { l.taken = l.refused = false; open(l); }
+        if (more.length && l.e2e === "open") askAll(l);
+        // A link given up on (refused) is tried again on a fresh watch.
+        if (l.refused && !l.ws) { l.refused = false; dial(l); }
         continue;
       }
       const nl = { key, relay: w.relay, id: w.id, wants: w.wants, state: "", ws: null, chan: null, e2e: "", backoff: 0,
-        pics: {}, clipFull: {}, clipWait: {}, retry: 0, poll: 0, dead: false, refused: false, taken: false };
+        pics: {}, clipFull: {}, clipWait: {}, retry: 0, poll: 0, dead: false, refused: false };
       links.set(key, nl);
-      open(nl);
+      dial(nl);
     }
   };
   W.sideDrop = drop;

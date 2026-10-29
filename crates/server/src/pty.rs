@@ -1,259 +1,92 @@
-//! An interactive shell on a pseudo-terminal.
-//!
-//! [`crate::exec`] runs one command with pipes and no terminal, which is enough to see the
-//! output of `ls` and not much else. Nearly everything that makes a shell feel like a shell
-//! is conditional on being attached to a terminal: job control, line editing and history,
-//! colour, the prompt itself, and every full-screen program. A pipe gets none of it, and
-//! programs detect the difference with `isatty` and deliberately behave differently.
-//!
-//! So this opens a real PTY, puts a login shell on the slave side, and ships the master's
-//! bytes to a terminal emulator in the browser. The compositor's `WAYLAND_DISPLAY` is
-//! inherited, so a GUI application started from this shell appears on the stream.
-//!
-//! **The reads are blocking and that is not negotiable** — a PTY master has no async
-//! interface here — so the reader lives on its own thread and hands text to tokio through a
-//! channel. Writes go the other way and are not worth a thread: a keystroke is a handful of
-//! bytes into a kernel buffer.
+//! Shells on a pseudo-terminal, as the daemon allows them: whether shells are on at all, which
+//! program runs, where it starts. The terminal itself is the platform's
+//! (`wado_platform::pty`, provided on Linux by `crate::platform::linux::pty`).
 
-use std::io::{Read, Write};
-
-use portable_pty::{CommandBuilder, MasterPty, PtySize, native_pty_system};
 use tokio::sync::mpsc;
-use tracing::{debug, info, warn};
+use wado_platform::Platform;
+use wado_platform::pty::{Program, PtyRequest, PtySession};
 
-/// How much to read from the master at a time.
-const READ_CHUNK: usize = 8192;
+/// Shown when `shells { enabled #false }`.
+pub const DISABLED: &str = "shells are disabled on this host (shells.enabled)";
 
-/// The most bytes to hold back waiting for a UTF-8 character to complete.
+/// What runs: `ssh <host>` when a host is given, else the user's own shell — `shells { program }`,
+/// else `$SHELL`, else `/bin/sh`.
+pub fn program(host: Option<&str>) -> Program {
+    match host {
+        Some(alias) => Program::Ssh(alias.to_string()),
+        None => Program::Shell(
+            wado_config::live::current()
+                .shells
+                .program
+                .clone()
+                .or_else(|| std::env::var("SHELL").ok())
+                .unwrap_or_else(|| "/bin/sh".to_string()),
+        ),
+    }
+}
+
+/// Open a terminal running [`program`] in the home folder, its output to `out`.
 ///
-/// A UTF-8 character is at most four bytes, so a tail longer than three is not a truncated
-/// character — it is something that will never become valid, and holding it forever would
-/// silently stop the terminal.
-const MAX_PARTIAL: usize = 3;
-
-/// A running shell: the master side of its terminal, and a handle to kill it.
-pub struct Pty {
-    master: Box<dyn MasterPty + Send>,
-    writer: Box<dyn Write + Send>,
-    child: Box<dyn portable_pty::Child + Send + Sync>,
+/// `host` must already be checked against the host's own ssh config
+/// (see [`crate::shells::hosts`]).
+pub fn open(
+    cols: u16,
+    rows: u16,
+    host: Option<&str>,
+    out: mpsc::Sender<String>,
+) -> Result<Box<dyn PtySession>, String> {
+    open_on(crate::platform::get(), cols, rows, host, out)
 }
 
-impl Pty {
-    /// Open a PTY, start the user's shell on it — or `ssh <host>` when `host` is given — and
-    /// stream its output into `out`.
-    ///
-    /// `host` is an alias the caller has already checked against the host's own ssh config
-    /// (see [`crate::shells::hosts`]); it is passed as one argument, never through a shell.
-    pub fn open(
-        cols: u16,
-        rows: u16,
-        host: Option<&str>,
-        out: mpsc::Sender<String>,
-    ) -> std::io::Result<Self> {
-        // The user's own shell, as a login shell, so their prompt and aliases are there.
-        let shell = wado_config::live::current()
-            .shells
-            .program
-            .clone()
-            .or_else(|| std::env::var("SHELL").ok())
-            .unwrap_or_else(|| "/bin/sh".to_string());
-        let mut cmd = match host {
-            Some(alias) => {
-                let mut c = CommandBuilder::new("ssh");
-                c.arg(alias);
-                c
-            }
-            None => {
-                let mut c = CommandBuilder::new(&shell);
-                c.arg("-l");
-                c
-            }
-        };
-        if let Ok(home) = std::env::var("HOME") {
-            cmd.cwd(home);
-        }
-        Self::run(cmd, cols, rows, out, &shell)
+/// Open a terminal running `argv` — a program and its arguments, never a shell string — in
+/// `cwd` with `env` added: Claude's sessions (`crate::claude::spawn`).
+pub fn open_cmd(
+    cols: u16,
+    rows: u16,
+    argv: &[String],
+    cwd: &std::path::Path,
+    env: &[(String, String)],
+    out: mpsc::Sender<String>,
+) -> Result<Box<dyn PtySession>, String> {
+    if !wado_config::live::current().shells.enabled {
+        return Err(DISABLED.into());
     }
-
-    /// Open a PTY running `argv` — a program and its arguments, never a shell string — in `cwd`,
-    /// with `env` added. For Claude's sessions (`crate::claude::spawn`).
-    pub fn open_cmd(
-        cols: u16,
-        rows: u16,
-        argv: &[String],
-        cwd: &std::path::Path,
-        env: &[(String, String)],
-        out: mpsc::Sender<String>,
-    ) -> std::io::Result<Self> {
-        let (prog, args) = argv
-            .split_first()
-            .ok_or_else(|| std::io::Error::other("nothing to run"))?;
-        let mut cmd = CommandBuilder::new(prog);
-        cmd.args(args);
-        cmd.cwd(cwd);
-        for (k, v) in env {
-            cmd.env(k, v);
-        }
-        Self::run(cmd, cols, rows, out, prog)
+    if argv.is_empty() {
+        return Err("nothing to run".into());
     }
-
-    fn run(
-        mut cmd: CommandBuilder,
-        cols: u16,
-        rows: u16,
-        out: mpsc::Sender<String>,
-        shell: &str,
-    ) -> std::io::Result<Self> {
-        if !wado_config::live::current().shells.enabled {
-            return Err(std::io::Error::other(
-                "shells are disabled on this host (shells.enabled)",
-            ));
-        }
-        let size = PtySize {
-            rows,
-            cols,
-            pixel_width: 0,
-            pixel_height: 0,
-        };
-        let pair = native_pty_system()
-            .openpty(size)
-            .map_err(|e| std::io::Error::other(format!("openpty: {e}")))?;
-        // Without a TERM the shell assumes a dumb terminal and turns off everything the PTY
-        // was opened for. 256-colour because that is what the browser emulator implements.
-        cmd.env("TERM", "xterm-256color");
-        cmd.env("COLORTERM", "truecolor");
-
-        let child = pair
-            .slave
-            .spawn_command(cmd)
-            .map_err(|e| std::io::Error::other(format!("spawn shell: {e}")))?;
-        // Dropped explicitly: while the slave fd is open in this process the master never
-        // reports EOF, so the reader would block forever after the shell exits.
-        drop(pair.slave);
-
-        let mut reader = pair
-            .master
-            .try_clone_reader()
-            .map_err(|e| std::io::Error::other(format!("clone reader: {e}")))?;
-        let writer = pair
-            .master
-            .take_writer()
-            .map_err(|e| std::io::Error::other(format!("take writer: {e}")))?;
-
-        std::thread::Builder::new()
-            .name("wado-pty-reader".into())
-            .spawn(move || {
-                let mut buf = [0u8; READ_CHUNK];
-                let mut partial: Vec<u8> = Vec::new();
-                loop {
-                    match reader.read(&mut buf) {
-                        Ok(0) => break, // shell exited and the master hit EOF
-                        Ok(n) => {
-                            partial.extend_from_slice(&buf[..n]);
-                            let text = take_text(&mut partial);
-                            if !text.is_empty() && out.blocking_send(text).is_err() {
-                                break; // viewer gone
-                            }
-                        }
-                        Err(e) => {
-                            // EIO here is the normal way a PTY master reports that the last
-                            // slave closed — an exit, not a fault.
-                            debug!("pty reader finished: {e}");
-                            break;
-                        }
-                    }
-                }
-                debug!("pty reader thread ended");
-            })?;
-
-        info!(shell, cols, rows, "pty opened");
-        Ok(Self {
-            master: pair.master,
-            writer,
-            child,
-        })
-    }
-
-    /// Send keystrokes to the shell.
-    pub fn write(&mut self, data: &str) -> std::io::Result<()> {
-        self.writer.write_all(data.as_bytes())?;
-        self.writer.flush()
-    }
-
-    /// Tell the shell the terminal changed size. Full-screen programs redraw on this.
-    pub fn resize(&mut self, cols: u16, rows: u16) {
-        let size = PtySize {
-            rows,
-            cols,
-            pixel_width: 0,
-            pixel_height: 0,
-        };
-        if let Err(e) = self.master.resize(size) {
-            warn!("pty resize failed: {e}");
-        }
-    }
-
-    /// Has the shell exited? Returns its code once it has.
-    pub fn exited(&mut self) -> Option<Option<i32>> {
-        match self.child.try_wait() {
-            Ok(Some(status)) => Some(Some(status.exit_code() as i32)),
-            Ok(None) => None,
-            Err(_) => Some(None),
-        }
-    }
+    let req = PtyRequest {
+        cols,
+        rows,
+        program: Program::Command {
+            argv: argv.to_vec(),
+            env: env.to_vec(),
+        },
+        cwd: Some(cwd.to_path_buf()),
+    };
+    crate::platform::get()
+        .pty()
+        .map_err(|a| a.why)?
+        .spawn(req, out)
 }
 
-impl Drop for Pty {
-    fn drop(&mut self) {
-        // Killing the shell closes the last slave handle, and the kernel sends SIGHUP to
-        // everything still on this terminal — which is how a closed terminal is supposed to
-        // take its jobs with it.
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-        debug!("pty closed");
+/// [`open`], on `p`'s terminals.
+pub fn open_on(
+    p: &Platform,
+    cols: u16,
+    rows: u16,
+    host: Option<&str>,
+    out: mpsc::Sender<String>,
+) -> Result<Box<dyn PtySession>, String> {
+    if !wado_config::live::current().shells.enabled {
+        return Err(DISABLED.into());
     }
-}
-
-/// Take everything from `buf` that forms complete UTF-8, leaving a truncated tail behind.
-///
-/// A read can end in the middle of a multi-byte character. Decoding each read independently
-/// would turn that character into replacement characters and corrupt the next one too, which
-/// shows up as mojibake in box-drawing and any non-ASCII prompt. Anything that is invalid
-/// rather than merely incomplete is consumed with a replacement character, because leaving
-/// it would stall every byte behind it forever.
-fn take_text(buf: &mut Vec<u8>) -> String {
-    let mut out = String::new();
-    loop {
-        match std::str::from_utf8(buf) {
-            Ok(s) => {
-                out.push_str(s);
-                buf.clear();
-                return out;
-            }
-            Err(e) => {
-                let valid = e.valid_up_to();
-                // Safe by construction: `valid_up_to` is exactly the length of the valid prefix.
-                out.push_str(std::str::from_utf8(&buf[..valid]).unwrap_or(""));
-                match e.error_len() {
-                    // Genuinely invalid — drop it and keep going.
-                    Some(bad) => {
-                        out.push('\u{FFFD}');
-                        buf.drain(..valid + bad);
-                    }
-                    // Truncated: keep it for the next read, unless it is too long to ever
-                    // become a character.
-                    None => {
-                        buf.drain(..valid);
-                        if buf.len() > MAX_PARTIAL {
-                            out.push('\u{FFFD}');
-                            buf.clear();
-                        }
-                        return out;
-                    }
-                }
-            }
-        }
-    }
+    let req = PtyRequest {
+        cols,
+        rows,
+        program: program(host),
+        cwd: std::env::var_os("HOME").map(Into::into),
+    };
+    p.pty().map_err(|a| a.why)?.spawn(req, out)
 }
 
 #[cfg(test)]
@@ -261,62 +94,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn plain_ascii_passes_straight_through() {
-        let mut buf = b"hello".to_vec();
-        assert_eq!(take_text(&mut buf), "hello");
-        assert!(buf.is_empty());
-    }
-
-    #[test]
-    fn a_character_split_across_reads_is_rejoined_not_corrupted() {
-        // "é" is 0xC3 0xA9. A read ending between them must not emit a replacement char.
-        let mut buf = vec![b'a', 0xC3];
+    fn a_host_runs_ssh_with_the_alias_as_one_argument() {
         assert_eq!(
-            take_text(&mut buf),
-            "a",
-            "emitted the truncated byte instead of holding it"
+            program(Some("box; rm -rf /")),
+            Program::Ssh("box; rm -rf /".into())
         );
-        assert_eq!(buf, vec![0xC3]);
-
-        buf.push(0xA9);
-        assert_eq!(take_text(&mut buf), "é");
-        assert!(buf.is_empty());
+        assert!(matches!(program(None), Program::Shell(s) if !s.is_empty()));
     }
 
-    #[test]
-    fn a_four_byte_character_split_anywhere_survives() {
-        // U+1F600, 0xF0 0x9F 0x98 0x80 — split at each of the three interior points.
-        let full = "😀".as_bytes();
-        for split in 1..4 {
-            let mut buf = full[..split].to_vec();
-            assert_eq!(take_text(&mut buf), "");
-            buf.extend_from_slice(&full[split..]);
-            assert_eq!(take_text(&mut buf), "😀", "split at {split}");
-        }
-    }
-
-    #[test]
-    fn invalid_bytes_are_consumed_rather_than_blocking_everything_behind_them() {
-        // A lone 0xFF can never start a character. If it were held back as "incomplete",
-        // the terminal would stop dead at the first byte of binary output.
-        let mut buf = vec![b'a', 0xFF, b'b'];
-        assert_eq!(take_text(&mut buf), "a\u{FFFD}b");
-        assert!(buf.is_empty());
-    }
-
-    #[test]
-    fn a_tail_too_long_to_be_a_character_is_not_held_forever() {
-        // 4 continuation bytes with no lead byte: never valid, never completable.
-        let mut buf = vec![0x80, 0x80, 0x80, 0x80];
-        let out = take_text(&mut buf);
-        assert!(out.contains('\u{FFFD}'), "{out:?}");
-        assert!(buf.len() <= MAX_PARTIAL, "left {} bytes stuck", buf.len());
-    }
-
-    #[test]
-    fn control_characters_survive_intact() {
-        // Escape sequences are the whole point — they must not be mangled or dropped.
-        let mut buf = b"\x1b[31mred\x1b[0m\x07".to_vec();
-        assert_eq!(take_text(&mut buf), "\x1b[31mred\x1b[0m\x07");
+    #[tokio::test]
+    async fn a_terminal_opens_through_the_platform() {
+        let f = wado_platform::fake::Fakes::new();
+        let (tx, mut rx) = mpsc::channel(4);
+        let mut t = open_on(&f.platform(), 80, 24, Some("box"), tx).unwrap();
+        t.write("ls\n").unwrap();
+        assert_eq!(rx.recv().await.as_deref(), Some("ls\n"));
+        assert_eq!(f.log.calls()[0], "pty.spawn Ssh(\"box\") 80x24");
     }
 }

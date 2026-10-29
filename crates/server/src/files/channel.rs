@@ -275,11 +275,8 @@ async fn dispatch(chan: Arc<Chan>, id: u32, req: FileReq) {
                     })
                     .collect();
                 // The Trash, when the scope reaches it, for "Trash" in the sidebar.
-                let trash = super::trash::home_trash().join("files");
-                let trash = sc
-                    .dir(&trash.to_string_lossy())
-                    .ok()
-                    .map(|_| trash.to_string_lossy().into_owned());
+                let trash = super::trash::place().filter(|t| sc.dir(&t.to_string_lossy()).is_ok());
+                let trash = trash.map(|t| t.to_string_lossy().into_owned());
                 chan.reply(id, json!({ "roots": roots, "home": home, "access": have, "device": chan.who.name, "space": space, "trash": trash }))
                     .await;
             }

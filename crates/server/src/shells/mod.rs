@@ -20,8 +20,8 @@ use std::{
 use tokio::sync::{broadcast, mpsc};
 use wado_protocol::ShellInfo;
 
-use crate::pty::Pty;
 use scrollback::Scrollback;
+use wado_platform::pty::PtySession;
 
 /// More than this many open at once is a runaway client, not a person.
 pub const MAX: usize = 8;
@@ -40,7 +40,7 @@ pub enum Event {
 }
 
 struct Shell {
-    pty: Option<Pty>,
+    pty: Option<Box<dyn PtySession>>,
     title: String,
     host: Option<String>,
     scroll: Scrollback,
@@ -82,7 +82,7 @@ pub fn open(cols: u16, rows: u16, host: Option<String>) -> Result<u32, String> {
         return Err(format!("{MAX} shells are open already — close one first"));
     }
     let (tx, rx) = mpsc::channel::<String>(64);
-    let pty = Pty::open(cols, rows, host.as_deref(), tx).map_err(|e| e.to_string())?;
+    let pty = crate::pty::open(cols, rows, host.as_deref(), tx)?;
     let title = host.clone().unwrap_or_else(shell_name);
     Ok(adopt(pty, rx, title, host))
 }
@@ -101,7 +101,7 @@ pub fn open_cmd(
         return Err(format!("{MAX} shells are open already — close one first"));
     }
     let (tx, rx) = mpsc::channel::<String>(64);
-    let pty = Pty::open_cmd(cols, rows, argv, cwd, env, tx).map_err(|e| e.to_string())?;
+    let pty = crate::pty::open_cmd(cols, rows, argv, cwd, env, tx)?;
     Ok(adopt(pty, rx, title, None))
 }
 
@@ -110,7 +110,12 @@ pub fn alive(id: u32) -> bool {
     reg().shells.get(&id).is_some_and(|s| s.pty.is_some())
 }
 
-fn adopt(pty: Pty, mut rx: mpsc::Receiver<String>, title: String, host: Option<String>) -> u32 {
+fn adopt(
+    pty: Box<dyn PtySession>,
+    mut rx: mpsc::Receiver<String>,
+    title: String,
+    host: Option<String>,
+) -> u32 {
     let id = {
         let mut r = reg();
         r.next += 1;

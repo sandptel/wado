@@ -1,55 +1,17 @@
-//! Noticing the host clipboard change: `wl-paste --watch echo` prints a line each time it does.
-//! Started once per daemon; every viewer and the session sync subscribe to [`changes`].
+//! Noticing the host clipboard change, through the platform's clipboard
+//! (`wado_platform::clip::Clipboard::changes`). Every viewer and the session sync subscribe.
 
-use std::{process::Stdio, sync::OnceLock, time::Duration};
+use tokio::sync::watch;
 
-use tokio::{
-    io::{AsyncBufReadExt, BufReader},
-    sync::watch,
-};
-
-static TX: OnceLock<watch::Sender<u64>> = OnceLock::new();
-
-fn tx() -> &'static watch::Sender<u64> {
-    TX.get_or_init(|| watch::channel(0).0)
-}
-
-/// Ticks once per host clipboard change.
+/// Ticks once per host clipboard change; never ticks without a desktop clipboard.
 pub fn changes() -> watch::Receiver<u64> {
-    tx().subscribe()
+    match crate::platform::get().clipboard() {
+        Ok(c) => c.changes(),
+        Err(_) => watch::channel(0).1,
+    }
 }
 
-/// Watch for the life of the daemon, restarting `wl-paste` if it exits — a desktop restart
-/// takes it down with it. Nothing to watch outside a Wayland desktop.
+/// Start watching for the life of the daemon. Nothing to watch outside a Wayland desktop.
 pub fn start() {
-    if super::env::display().is_none() {
-        return;
-    }
-    tokio::spawn(async {
-        loop {
-            if let Err(e) = run().await {
-                tracing::warn!("host clipboard watch stopped: {e}");
-            }
-            tokio::time::sleep(Duration::from_secs(10)).await;
-        }
-    });
-}
-
-async fn run() -> Result<(), String> {
-    let mut child = super::tool::command("wl-paste")?
-        .args(["--watch", "echo"])
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|e| format!("wl-paste: {e}"))?;
-    let out = child.stdout.take().ok_or("wl-paste: no stdout")?;
-    let mut lines = BufReader::new(out).lines();
-    while let Ok(Some(_)) = lines.next_line().await {
-        // The desktop's own `cliphist store` runs on the same change; give it a moment so the
-        // history read after this tick already has the new entry.
-        tokio::time::sleep(Duration::from_millis(250)).await;
-        tx().send_modify(|n| *n = n.wrapping_add(1));
-    }
-    Err("wl-paste exited".into())
+    let _ = changes();
 }

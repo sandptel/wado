@@ -43,6 +43,8 @@ pub struct NewServer {
     pub hold: Duration,
     /// The daemon decides each join (`peer_accept` / `peer_reject`).
     pub gate: bool,
+    /// The daemon serves control-only links (`ctl_open` / `ctl`), its `ctl` cap.
+    pub control: bool,
 }
 
 /// One registered wado-server.
@@ -125,6 +127,7 @@ impl ServerRegistry {
                 boot_id: s.boot_id,
                 hold: s.hold,
                 gate: s.gate,
+                control: s.control,
                 session: false,
             },
         };
@@ -209,6 +212,8 @@ pub struct Instance {
     pub boot_id: String,
     pub hold: Duration,
     pub gate: bool,
+    /// It serves control-only links — see [`crate::controls`].
+    pub control: bool,
     /// A session is running on it — its own report (`occupancy`). A device with no daemon of
     /// its own is handed an idle one first, so it starts a session of its own rather than
     /// landing on someone's.
@@ -232,6 +237,7 @@ mod tests {
             inbox_tx: tx,
             hold: Duration::ZERO,
             gate: false,
+            control: false,
         })
     }
 

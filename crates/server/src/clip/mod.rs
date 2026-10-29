@@ -6,10 +6,10 @@
 //! with `wl-copy` lands in it too. Reached with the desktop's `WAYLAND_DISPLAY`, captured before
 //! the compositor replaces it ([`env`]).
 //!
+//! The clipboard and its history are the platform's (`wado_platform::clip`, provided on Linux by
+//! `crate::platform::linux::{wl_clipboard, cliphist}`); this is the policy over them.
+//!
 //! - [`env`] — the desktop's Wayland display.
-//! - [`tool`] — running `cliphist` / `wl-copy` / `wl-paste` against it.
-//! - [`history`] — the history: list, read, delete, pin.
-//! - [`write`] — set the host clipboard.
 //! - [`watch`] — notice host clipboard changes.
 //! - [`sync`] — host ⇄ session, without echo.
 //! - [`data`] — bytes ⇄ the wire's text or `data:` URI.
@@ -17,9 +17,6 @@
 
 pub mod data;
 pub mod env;
-pub mod history;
 pub mod serve;
 pub mod sync;
-pub mod tool;
 pub mod watch;
-pub mod write;

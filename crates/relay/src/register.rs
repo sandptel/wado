@@ -99,6 +99,7 @@ async fn register_loop(socket: WebSocket, addr: SocketAddr, state: AppState) {
         inbox_tx,
         hold: Duration::from_millis(hold_ms).min(MAX_HOLD),
         gate: has("gate"),
+        control: has("ctl"),
     }) {
         Ok(reg) => reg,
         Err(why) => {
@@ -239,6 +240,20 @@ async fn from_daemon(state: &AppState, instance_id: &str, text: String) {
             debug!(instance = %instance_id, ?hold, "seat hold set by the daemon");
             return;
         }
+    }
+    // A control-only link's frame (`crate::controls`): to that client, unwrapped — and only from
+    // the daemon the link was opened to.
+    if text.starts_with(r#"{"type":"ctl"#) {
+        match serde_json::from_str::<WireMsg>(&text) {
+            Ok(WireMsg::Ctl { room_id, text }) => {
+                if !state.controls.deliver(instance_id, &room_id, text).await {
+                    debug!(instance = %instance_id, "control frame for a link that is gone — dropped");
+                }
+            }
+            Ok(WireMsg::CtlClose { room_id, .. }) => state.controls.end(instance_id, &room_id),
+            _ => debug!(instance = %instance_id, "an unreadable control frame — dropped"),
+        }
+        return;
     }
     debug!(instance = %instance_id, "server msg: {}", head(&text));
     if !state.rooms.forward_to_client(instance_id, text).await {

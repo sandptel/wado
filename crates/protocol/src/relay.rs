@@ -238,6 +238,33 @@ pub enum RelayMsg {
         #[serde(default)]
         by: String,
     },
+    /// Relay → daemon: a **seatless** client joined (`?control=1`, the `control` cap) — today a
+    /// phone's widget. It holds no seat and displaces nobody. What it may carry is daemon policy,
+    /// not the relay's: today's daemon serves such rooms the control messages only
+    /// (`crate::control` in the daemon), checking the device's grants on each. Sent only to a
+    /// daemon that registered with the `ctl` cap.
+    CtlOpen {
+        room_id: String,
+        client_addr: String,
+        #[serde(default)]
+        client_key: String,
+        #[serde(default)]
+        client_name: String,
+    },
+    /// Either way: one frame of a seatless client's link, carried whole (`text`) — the
+    /// client's own frame (its handshake, or a sealed message) on the way in, the daemon's on the
+    /// way out. The relay reads the room id and nothing inside.
+    Ctl {
+        room_id: String,
+        text: String,
+    },
+    /// Either way: a seatless link is over — the client left (relay → daemon), or the daemon
+    /// refused or ended it (daemon → relay, which then closes the client's socket).
+    CtlClose {
+        room_id: String,
+        #[serde(default)]
+        reason: String,
+    },
 
     // ── Session control: client → server (forwarded by relay) ───────────────
     /// Ask the server to start a compositor session with the given config.

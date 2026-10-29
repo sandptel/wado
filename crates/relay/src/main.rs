@@ -8,7 +8,8 @@
 //! ## Routes
 //! - `WS /register`           — server registration and message inbox.
 //! - `WS /join/:server_id`    — client join + post-handshake message forwarding.
-//!   Query: `instance`, `client`, `name`, `takeover` — all optional; see `join::JoinQuery`.
+//!   Query: `instance`, `client`, `name`, `takeover`, `control` — all optional; see
+//!   `join::JoinQuery`. `control=1` is a seatless control-only link (`controls`).
 //! - `GET /health`            — JSON health check `{ servers, rooms }`.
 
 use std::net::SocketAddr;
@@ -23,8 +24,10 @@ use tracing::info;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 mod config;
+mod controls;
 mod error;
 mod join;
+mod join_control;
 mod panic_log;
 mod ratelimit;
 mod register;
@@ -41,6 +44,8 @@ pub use room::RoomStore;
 pub struct AppState {
     pub registry: ServerRegistry,
     pub rooms: RoomStore,
+    /// Control-only links, which hold no seat — see [`controls`].
+    pub controls: controls::ControlStore,
     pub config: RelayConfig,
     pub limiter: ratelimit::JoinLimiter,
 }
@@ -62,6 +67,7 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState {
         registry: ServerRegistry::new(),
         rooms: RoomStore::new(),
+        controls: controls::ControlStore::new(),
         config: cfg.clone(),
         limiter: ratelimit::JoinLimiter::new(
             cfg.join_burst,
@@ -97,10 +103,14 @@ async fn online(
     axum::extract::Path(remote_id): axum::extract::Path<String>,
 ) -> impl axum::response::IntoResponse {
     let id = wado_protocol::relay::normalize_remote_id(&remote_id);
-    let daemons = state.registry.instances_for(&id).len();
+    let pool = state.registry.instances_for(&id);
+    // `control`: how many serve control-only links. A client opens a widget's link only when
+    // this says one does — an older relay sends no such field, and a `control=1` join to it
+    // would take a seat.
+    let control = pool.iter().filter(|i| i.control).count();
     (
         [(axum::http::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
-        Json(json!({ "daemons": daemons })),
+        Json(json!({ "daemons": pool.len(), "control": control, "caps": signaling::caps() })),
     )
 }
 
@@ -109,5 +119,6 @@ async fn health(State(state): State<AppState>) -> Json<serde_json::Value> {
         "status": "ok",
         "servers": state.registry.count(),
         "rooms": state.rooms.count(),
+        "controls": state.controls.count(),
     }))
 }

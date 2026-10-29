@@ -30,36 +30,37 @@ fn fresh(clip: &Clip) -> bool {
     true
 }
 
-/// Put `clip` on the host and in the session — a viewer's paste. Without a host desktop the
+/// Put `clip` on the host and in the session — a viewer's paste. Without a host clipboard the
 /// session still gets it.
 pub async fn push(cmd_tx: &CommandSender, clip: Clip) -> Result<(), String> {
     fresh(&clip);
     let _ = cmd_tx.send(CompositorCommand::SetClipboard(clip.clone()));
-    if super::env::display().is_some() {
-        super::write::set(&clip).await?;
+    if let Ok(host) = crate::platform::get().clipboard() {
+        host.set(clip).await?;
     }
     Ok(())
 }
 
-/// Run both directions for the life of the daemon.
+/// Run both directions for the life of the daemon. Nothing to do without a host clipboard.
 pub fn start(cmd_tx: CommandSender, mut session: watch::Receiver<Clip>) {
-    if super::env::display().is_none() {
+    let Ok(host) = crate::platform::get().clipboard() else {
         return;
-    }
+    };
+    let to_host = std::sync::Arc::clone(&host);
     tokio::spawn(async move {
         while session.changed().await.is_ok() {
             let clip = session.borrow_and_update().clone();
             if fresh(&clip)
-                && let Err(e) = super::write::set(&clip).await
+                && let Err(e) = to_host.set(clip).await
             {
                 tracing::debug!("session clipboard → host: {e}");
             }
         }
     });
     tokio::spawn(async move {
-        let mut rx = super::watch::changes();
+        let mut rx = host.changes();
         while rx.changed().await.is_ok() {
-            if let Ok(clip) = super::write::current().await
+            if let Ok(clip) = host.get().await
                 && fresh(&clip)
             {
                 let _ = cmd_tx.send(CompositorCommand::SetClipboard(clip));

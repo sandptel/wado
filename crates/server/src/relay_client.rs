@@ -688,7 +688,9 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             // The relay holds a dropped viewer's seat exactly as long as this daemon keeps the
             // desktop behind it, so the two can never disagree.
             hold_ms: VIEWER_GRACE.as_millis() as u64,
-            caps: vec!["pong".into(), "gate".into()],
+            // `ctl`: this daemon serves control-only links (`crate::control`) — a relay with the
+            // `control` cap then sends a widget's link here instead of refusing it.
+            caps: vec!["pong".into(), "gate".into(), "ctl".into()],
         },
     )
     .await?;
@@ -1050,6 +1052,16 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     // connection state held elsewhere, so that losing the connection drops it — and
     // dropping a `Pty` kills the shell and, through SIGHUP, whatever it was running.
 
+    // Control-only links (`crate::control`): a phone's widgets, served beside the seat, never
+    // on it. They live and die with this relay connection.
+    let ctl_rooms = crate::control::Rooms::default();
+    let ctl = crate::control::Shared {
+        gate: ctx.gate.clone(),
+        host_key: Arc::clone(&ctx.host_key),
+        cmd_tx: Some(ctx.cmd_tx.clone()),
+        relay: out_tx.clone(),
+    };
+
     // ── 4. Main message loop ─────────────────────────────────────────────────
     loop {
         let frame = if relay_pings {
@@ -1076,6 +1088,24 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 break;
             }
         };
+
+        // A control-only link's frame: its own room, its own envelope, never the seat's. Taken
+        // before the liveness bump below, so a widget polling never keeps an abandoned session
+        // alive.
+        if text.starts_with(r#"{"type":"ctl"#) {
+            match serde_json::from_str::<RelayMsg>(&text) {
+                Ok(RelayMsg::CtlOpen {
+                    room_id,
+                    client_key,
+                    client_name,
+                    ..
+                }) => ctl_rooms.open(&ctl, room_id, client_key, client_name).await,
+                Ok(RelayMsg::Ctl { room_id, text }) => ctl_rooms.frame(&ctl, &room_id, &text).await,
+                Ok(RelayMsg::CtlClose { room_id, .. }) => ctl_rooms.close(&room_id),
+                _ => warn!("relay client: an unreadable control-link frame — dropped"),
+            }
+            continue;
+        }
 
         // Liveness for `viewer_watchdog`. Bumped on every frame, including ones we do not
         // understand — the point is that the relay link is carrying traffic, not what it says.
@@ -2075,6 +2105,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     ctx.pad.close(); // and the trackpad: no key stays held after the device leaves
     crate::passkey::unlock::lock_all();
     menu_task.abort();
+    ctl_rooms.clear();
     write_task.abort();
     Ok(())
 }

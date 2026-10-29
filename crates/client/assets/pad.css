@@ -359,6 +359,11 @@
 #wado-trackpad[data-layout="landscape"] .tpsheet::before { display: none; }
 #wado-trackpad[data-layout="landscape"] .tpsheet.out { animation-name: tps-outx; }
 @keyframes tps-in { from { translate: 100% 0; } }
+/* The same sheet opened from a computer's page, with the pad closed (W.padSettings.openHere):
+ * a screen-wide host above every page, letting touches through except to the sheet itself. */
+#wado-tps-host { position: fixed; inset: 0; z-index: 61; pointer-events: none; }
+#wado-tps-host > * { pointer-events: auto; }
+#wado-tps-host .tpsheet { max-width: 560px; margin: 0 auto; padding-bottom: env(safe-area-inset-bottom); }
 @keyframes tps-outx { to { translate: 100% 0; } }
 
 .tps-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px;

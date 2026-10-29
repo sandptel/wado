@@ -120,6 +120,17 @@ fn body(cx: Ctx, away: bool, _hue: &str) -> Element {
             div { class: "wnote", Icon { name: "alert" } span { b { "{name} is offline." } "{seen} This fills in when it is back." } }
         };
     }
+    // Online, but no seatless link to it: say what is missing rather than take a seat.
+    if !r.nolive.is_empty() {
+        let why = if r.nolive == "old_relay" {
+            format!("Live values for {name} need a newer relay.")
+        } else {
+            format!("Update wado on {name} to see live values here.")
+        };
+        return rsx! {
+            div { class: "wnote quiet", Icon { name: "info" } span { "{why} Open its page to control it." } }
+        };
+    }
     let need = cx.w.kind.needs();
     if !r.may(need.token()) {
         let what = match (cx.w.kind, need) {

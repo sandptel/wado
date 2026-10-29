@@ -7,6 +7,7 @@
 //! both the host (server) and the `wasm32` (web client) targets.
 
 pub mod apps;
+pub mod caps;
 pub mod claude;
 pub mod clip;
 pub mod config;

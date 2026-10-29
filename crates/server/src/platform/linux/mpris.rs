@@ -1,0 +1,362 @@
+//! Media players ([`MediaPlayers`] on Linux) — Spotify, a browser tab, mpv — through MPRIS on
+//! D-Bus: what is playing, and play/pause, next, previous, seek and shuffle.
+//!
+//! Two buses are searched: the computer's own session bus, and the wado session's private one
+//! (an app launched in an isolated session registers there). Each player is tied to its audio
+//! stream through the process id, which is what lets its card say where it is playing and move
+//! it.
+
+use std::{collections::HashMap, sync::Mutex, time::Duration};
+
+use base64::Engine;
+use tokio::sync::watch;
+use wado_platform::media::MediaPlayers;
+use wado_platform::{Fut, Published, Res};
+use wado_protocol::host::{HostAudio, MediaOp, Player, Stream};
+use zbus::{
+    Connection,
+    zvariant::{ObjectPath, OwnedValue, Value},
+};
+
+const PREFIX: &str = "org.mpris.MediaPlayer2.";
+const PATH: &str = "/org/mpris/MediaPlayer2";
+const PLAYER: &str = "org.mpris.MediaPlayer2.Player";
+/// Local cover art bigger than this is left out rather than sent on every refresh.
+///
+/// ponytail: the art rides in every refresh; 128 KiB keeps that bearable on mobile data. An
+/// art hash the client asks for once is the upgrade if covers this size become common.
+const ART_MAX: u64 = 128 * 1024;
+
+/// The media players on both buses.
+pub struct Mpris {
+    state: Published<Vec<Player>>,
+    /// The mixer's state: each player is tied to its audio stream from it.
+    audio: watch::Receiver<HostAudio>,
+}
+
+impl Mpris {
+    /// Players tied to the streams in `audio` — read when the players are, so fetch the mixer's
+    /// state first for the two to agree.
+    pub fn new(audio: watch::Receiver<HostAudio>) -> Mpris {
+        Mpris {
+            state: Published::new(Vec::new()),
+            audio,
+        }
+    }
+
+    /// Fetches run, for measurement.
+    pub fn fetches(&self) -> u64 {
+        self.state.fetches()
+    }
+}
+
+impl MediaPlayers for Mpris {
+    fn state(&self) -> watch::Receiver<Vec<Player>> {
+        self.state.subscribe()
+    }
+
+    fn fresh(&self, within: Duration) -> Fut<'_, ()> {
+        Box::pin(self.state.fresh(within, || {
+            let streams = self.audio.borrow().streams.clone();
+            async move { players(&streams).await }
+        }))
+    }
+
+    fn act(&self, bus: String, op: MediaOp) -> Fut<'_, Res<()>> {
+        Box::pin(async move { act(&bus, op).await })
+    }
+}
+
+/// One connection per bus address (`""` is the computer's own session bus), kept between polls.
+static CONNS: Mutex<Vec<(String, Connection)>> = Mutex::new(Vec::new());
+
+async fn connect(address: &str) -> Option<Connection> {
+    if let Some(c) = CONNS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .find(|(a, _)| a == address)
+    {
+        return Some(c.1.clone());
+    }
+    let c = if address.is_empty() {
+        Connection::session().await.ok()?
+    } else {
+        zbus::connection::Builder::address(address)
+            .ok()?
+            .build()
+            .await
+            .ok()?
+    };
+    let mut conns = CONNS.lock().unwrap_or_else(|e| e.into_inner());
+    // A session bus that went away leaves a dead connection behind; keep the list short.
+    conns.retain(|(a, _)| {
+        a.is_empty() || Some(a.as_str()) == crate::notify::session_bus().as_deref()
+    });
+    conns.push((address.to_string(), c.clone()));
+    Some(c)
+}
+
+fn buses() -> Vec<String> {
+    let mut b = vec![String::new()];
+    b.extend(crate::notify::session_bus());
+    b
+}
+
+/// Every player on both buses, playing ones first.
+async fn players(streams: &[Stream]) -> Vec<Player> {
+    let mut out = Vec::new();
+    for address in buses() {
+        let Some(conn) = connect(&address).await else {
+            continue;
+        };
+        let Ok(dbus) = zbus::fdo::DBusProxy::new(&conn).await else {
+            continue;
+        };
+        let Ok(names) = dbus.list_names().await else {
+            continue;
+        };
+        for name in names
+            .iter()
+            .map(|n| n.as_str())
+            .filter(|n| n.starts_with(PREFIX))
+        {
+            // playerctld is a proxy for whichever player was used last: a duplicate.
+            if name.contains("playerctld") {
+                continue;
+            }
+            let pid = match zbus::names::BusName::try_from(name) {
+                Ok(b) => dbus.get_connection_unix_process_id(b).await.ok(),
+                Err(_) => None,
+            };
+            if let Some(p) = player(&conn, name, pid, streams).await {
+                out.push(p);
+            }
+        }
+    }
+    out.sort_by_key(|p| !p.playing);
+    out
+}
+
+async fn player(
+    conn: &Connection,
+    name: &str,
+    pid: Option<u32>,
+    streams: &[Stream],
+) -> Option<Player> {
+    let root = zbus::Proxy::new(conn, name, PATH, "org.mpris.MediaPlayer2")
+        .await
+        .ok()?;
+    let p = zbus::Proxy::new(conn, name, PATH, PLAYER).await.ok()?;
+    let status: String = p.get_property("PlaybackStatus").await.ok()?;
+    let meta: HashMap<String, OwnedValue> = p.get_property("Metadata").await.unwrap_or_default();
+    let text = |k: &str| {
+        meta.get(k)
+            .and_then(|v| String::try_from(v.clone()).ok())
+            .unwrap_or_default()
+    };
+    let artist = meta
+        .get("xesam:artist")
+        .and_then(|v| <Vec<String>>::try_from(v.clone()).ok())
+        .map(|a| a.join(", "))
+        .unwrap_or_default();
+    let length_us = meta
+        .get("mpris:length")
+        .and_then(|v| {
+            i64::try_from(v.clone())
+                .ok()
+                .or_else(|| u64::try_from(v.clone()).ok().map(|u| u as i64))
+        })
+        .unwrap_or(0);
+    let position_us: i64 = p.get_property("Position").await.unwrap_or(0);
+    let identity: String = root
+        .get_property("Identity")
+        .await
+        .unwrap_or_else(|_| name.trim_start_matches(PREFIX).to_string());
+    let desktop: String = root.get_property("DesktopEntry").await.unwrap_or_default();
+    let icon = icon(&desktop, &identity);
+    let flag = |b: Result<bool, _>| b.unwrap_or(false);
+    // The stream whose process is this player — or, for browsers, a child of it.
+    let stream = pid.and_then(|pid| {
+        streams
+            .iter()
+            .find(|s| s.pid == Some(pid))
+            .or_else(|| {
+                streams
+                    .iter()
+                    .find(|s| s.pid.is_some_and(|sp| parent_of(sp) == Some(pid)))
+            })
+            .map(|s| s.id)
+    });
+    Some(Player {
+        bus: name.to_string(),
+        app: identity,
+        title: text("xesam:title"),
+        artist,
+        art: art(&text("mpris:artUrl")),
+        art_same: false,
+        playing: status == "Playing",
+        position_ms: (position_us.max(0) / 1000) as u64,
+        length_ms: (length_us.max(0) / 1000) as u64,
+        shuffle: p.get_property("Shuffle").await.ok(),
+        can_next: flag(p.get_property("CanGoNext").await),
+        can_prev: flag(p.get_property("CanGoPrevious").await),
+        can_seek: flag(p.get_property("CanSeek").await) && length_us > 0,
+        stream,
+        icon,
+        icon_same: false,
+        loop_status: p.get_property("LoopStatus").await.ok(),
+    })
+}
+
+/// The app's icon by its desktop entry (`vlc`, `org.mozilla.firefox`), else by its name — looked
+/// up once per app and remembered, since it is sent on every refresh.
+fn icon(desktop: &str, identity: &str) -> Option<String> {
+    static CACHE: Mutex<Vec<(String, Option<String>)>> = Mutex::new(Vec::new());
+    let key = format!("{desktop}|{identity}");
+    if let Some((_, v)) = CACHE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .find(|(k, _)| *k == key)
+    {
+        return v.clone();
+    }
+    let first_word = identity
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .to_lowercase();
+    let last = desktop.rsplit('.').next().unwrap_or("").to_string();
+    let found = [desktop.to_string(), last, first_word]
+        .iter()
+        .filter(|n| !n.is_empty())
+        .find_map(|n| crate::apps::icons::resolve(n));
+    CACHE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .push((key, found.clone()));
+    found
+}
+
+/// The parent pid, from `/proc` — a browser plays audio from a child of the process that owns
+/// its MPRIS name.
+fn parent_of(pid: u32) -> Option<u32> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let after = stat.rsplit_once(')')?.1;
+    after.split_whitespace().nth(1)?.parse().ok()
+}
+
+/// An `https:` URL is passed through; a local file becomes a small `data:` URI; anything else
+/// is dropped.
+fn art(url: &str) -> Option<String> {
+    if url.starts_with("https://") {
+        return Some(url.to_string());
+    }
+    let path = url.strip_prefix("file://")?;
+    let path = percent_decode(path);
+    let meta = std::fs::metadata(&path).ok()?;
+    if meta.len() > ART_MAX {
+        return None;
+    }
+    let bytes = std::fs::read(&path).ok()?;
+    let mime = if bytes.starts_with(&[0x89, b'P', b'N', b'G']) {
+        "image/png"
+    } else {
+        "image/jpeg"
+    };
+    Some(format!(
+        "data:{mime};base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    ))
+}
+
+fn percent_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() {
+            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
+                out.push(v);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+async fn act(bus: &str, op: MediaOp) -> Result<(), String> {
+    if !bus.starts_with(PREFIX) {
+        return Err("not a media player".into());
+    }
+    for address in buses() {
+        let Some(conn) = connect(&address).await else {
+            continue;
+        };
+        let Ok(p) = zbus::Proxy::new(&conn, bus, PATH, PLAYER).await else {
+            continue;
+        };
+        let done = match op.clone() {
+            MediaOp::PlayPause => p.call_method("PlayPause", &()).await.map(drop),
+            MediaOp::Next => p.call_method("Next", &()).await.map(drop),
+            MediaOp::Previous => p.call_method("Previous", &()).await.map(drop),
+            MediaOp::Loop { mode } => {
+                if !matches!(mode.as_str(), "None" | "Track" | "Playlist") {
+                    return Err("loop is None, Track or Playlist".into());
+                }
+                p.set_property("LoopStatus", mode.as_str())
+                    .await
+                    .map_err(zbus::Error::from)
+            }
+            MediaOp::Shuffle { on } => p
+                .set_property("Shuffle", on)
+                .await
+                .map_err(zbus::Error::from),
+            MediaOp::SeekTo { ms } => {
+                let meta: HashMap<String, OwnedValue> =
+                    p.get_property("Metadata").await.unwrap_or_default();
+                let track = meta.get("mpris:trackid").and_then(|v| {
+                    ObjectPath::try_from(Value::from(v.clone()))
+                        .ok()
+                        .map(|o| o.into_owned())
+                });
+                match track {
+                    Some(t) => p
+                        .call_method("SetPosition", &(t, (ms as i64) * 1000))
+                        .await
+                        .map(drop),
+                    None => Err(zbus::Error::Failure("this player cannot seek".into())),
+                }
+            }
+        };
+        match done {
+            Ok(()) => return Ok(()),
+            // Not on this bus: try the next one.
+            Err(zbus::Error::MethodError(n, _, _)) if n.as_str().ends_with("ServiceUnknown") => {
+                continue;
+            }
+            Err(e) => return Err(format!("the player refused: {e}")),
+        }
+    }
+    Err("that player is gone".into())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn decodes_file_urls() {
+        assert_eq!(
+            super::percent_decode("/tmp/My%20Cover.png"),
+            "/tmp/My Cover.png"
+        );
+        assert_eq!(super::art("http://insecure.example/a.png"), None);
+        assert_eq!(
+            super::art("https://i.example/a.png").as_deref(),
+            Some("https://i.example/a.png")
+        );
+    }
+}

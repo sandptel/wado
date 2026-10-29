@@ -40,7 +40,7 @@ pub fn events() -> broadcast::Receiver<Event> {
 
 static NEXT: AtomicU32 = AtomicU32::new(1);
 
-/// The session's private bus while there is one — also where `crate::host::media` looks for the
+/// The session's private bus while there is one — also where `crate::platform::linux::mpris` looks for the
 /// session's own media players.
 static SESSION_BUS: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
