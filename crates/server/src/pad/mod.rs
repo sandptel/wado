@@ -10,8 +10,14 @@
 //! - `keys.rs` — the virtual keyboard: US-layout key/char lookup, chord construction, and the
 //!   device that tracks what it holds.
 //! - `text.rs` — committed text, typed into the desktop via `wtype`.
+//! - `state.rs` — one phone's pad: what each message does, stale frames, silence, resizes.
+//! - `playout.rs` — evening out frames that came through the relay in bursts.
+//! - `sink.rs` — the kernel devices a pad drives, made on first use.
 
 pub mod keys;
+pub mod playout;
+pub mod sink;
+pub mod state;
 pub mod text;
 pub mod touchpad;
 pub mod uinput;
