@@ -15,6 +15,7 @@ use super::arrivals::Arrivals;
 use super::delay::Delay;
 use super::keys::{char_code, key_code};
 use super::pacer::Pacer;
+use super::ticker::Pace;
 
 /// Where a pad's input lands. The real one is [`super::sink::Devices`].
 pub trait Sink: Send {
@@ -170,6 +171,18 @@ impl Pad {
             message,
             fatal: false,
         })
+    }
+
+    /// What the tick must do next: keep its cadence while a finger is down or the pacer has
+    /// anything to play (or a delay still settling); else rest until a message — or until the
+    /// next timed rule falls due: held keys let go at key silence, the arrivals summary. (A
+    /// silent finger needs no deadline here: a finger down keeps the cadence.)
+    pub fn pace(&self) -> Pace {
+        if self.down || !self.pacer.idle() {
+            return Pace::Tick;
+        }
+        let keys = (!self.keys_released).then(|| self.last_msg_ms + self.key_silence_ms + 1);
+        Pace::Park(keys.into_iter().chain(self.arrivals.due()).min())
     }
 
     /// Make the devices now (see [`Sink::ready`]).

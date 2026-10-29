@@ -12,6 +12,7 @@
 //! - `text.rs` — committed text, typed into the desktop via `wtype`.
 //! - `state.rs` — one phone's pad: what each message does, stale frames, silence, resizes.
 //! - `pacer.rs` — touch frames written on a steady cadence, interpolated, by either path.
+//! - `ticker.rs` — the pad's tick: on that cadence while anything is in flight, parked while idle.
 //! - `delay.rs` — how far behind the phone the pacer plays: measured, or fixed.
 //! - `arrivals.rs` — how evenly frames arrive, logged so jitter is measured, not assumed.
 //! - `sink.rs` — the kernel devices a pad drives, made on first use.
@@ -34,6 +35,7 @@ pub mod pacer;
 pub mod sink;
 pub mod state;
 pub mod text;
+pub mod ticker;
 pub mod touchpad;
 pub mod uinput;
 
