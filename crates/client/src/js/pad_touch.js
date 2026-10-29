@@ -12,6 +12,10 @@
 //   • a finger rests → re-sent every 100 ms, so the daemon's silence check (400 ms) only ever
 //     lifts a finger whose phone is really gone
 //
+// Coordinates are the pad's own (js/pad_orient.js): when the pad is drawn turned for landscape,
+// x/y and the size are the landscape pad's, so the daemon's pacer and libinput only ever see a
+// landscape touchpad. Turning it mid-touch lifts every finger first, then sends the new size.
+//
 //   W.padTouch.attach(el) / detach()
 //   W.padTouch.size() → {w, h} in CSS px;  W.padTouch.frame() → the current contacts
 //   W.padTouch.resend()   size + current frame again (the link moved paths)
@@ -28,6 +32,7 @@
   let lastSent = 0;
   let timers = [];
   let size = { w: 0, h: 0 };
+  let offTurn = null;
 
   T.frame = () => [...fingers.values()].sort((a, b) => a.id - b.id).map((f) => [f.id, f.x, f.y]);
   T.size = () => size;
@@ -60,9 +65,9 @@
 
   const clamp = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
   function place(f, e) {
-    const r = el.getBoundingClientRect();
-    f.x = Math.round(clamp((e.clientX - r.left) / r.width) * 65535);
-    f.y = Math.round(clamp((e.clientY - r.top) / r.height) * 65535);
+    const p = W.padOrient.toPad(e.clientX, e.clientY, el.getBoundingClientRect());
+    f.x = Math.round(clamp(p.x / p.w) * 65535);
+    f.y = Math.round(clamp(p.y / p.h) * 65535);
   }
   function freeId() {
     const used = new Set([...fingers.values()].map((f) => f.id));
@@ -104,12 +109,18 @@
     for (const [ev, fn] of on) el.addEventListener(ev, fn);
     document.addEventListener("visibilitychange", hidden);
     const measure = () => {
-      const r = el.getBoundingClientRect();
-      const s = { w: Math.round(r.width), h: Math.round(r.height) };
+      const r = W.padOrient.size(el.getBoundingClientRect());
+      const s = { w: Math.round(r.w), h: Math.round(r.h) };
       if (s.w !== size.w || s.h !== size.h) { size = s; sendSize(); }
     };
     if (typeof ResizeObserver !== "undefined") { ro = new ResizeObserver(measure); ro.observe(el); }
     measure();
+    // Turned: the fingers down are in the old frame, so they lift here before the new size goes
+    // (the daemon also lifts on a resize; a flip keeps the size, so this lift is what covers it).
+    offTurn = W.padOrient.onChange(() => {
+      if (fingers.size) { fingers.clear(); send(); }
+      measure();
+    });
     timers = [
       setInterval(() => { if (dirty && W.pad.state !== "direct") send(); }, 16),
       setInterval(() => { if (fingers.size && performance.now() - lastSent >= 100) send(); }, 50),
@@ -121,6 +132,7 @@
     for (const [ev, fn] of on) el.removeEventListener(ev, fn);
     document.removeEventListener("visibilitychange", hidden);
     if (ro) { ro.disconnect(); ro = null; }
+    if (offTurn) { offTurn(); offTurn = null; }
     for (const t of timers) clearInterval(t);
     timers = [];
     if (fingers.size) { fingers.clear(); send(); }

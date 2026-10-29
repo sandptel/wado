@@ -1,4 +1,5 @@
-// Runnable check for the trackpad's client side: js/pad_link.js, js/pad_touch.js, js/pad_keys.js.
+// Runnable check for the trackpad's client side: js/pad_link.js, js/pad_prefs.js,
+// js/pad_orient.js, js/pad_touch.js, js/pad_keys.js.
 //
 // Loads the real modules into a stub `W` with a fake clock, a fake relay and a fake
 // RTCPeerConnection, drives them, and asserts the wire messages.
@@ -7,7 +8,7 @@
 import { readFileSync } from "node:fs";
 
 const js = (f) => readFileSync(new URL(`../crates/client/src/js/${f}`, import.meta.url), "utf8");
-const src = ["pad_link.js", "pad_touch.js", "pad_keys.js"].map(js).join("\n");
+const src = ["pad_link.js", "pad_prefs.js", "pad_orient.js", "pad_touch.js", "pad_keys.js"].map(js).join("\n");
 
 class FakeDC {
   constructor(label, opts) { this.label = label; this.opts = opts; this.readyState = "connecting"; this.sent = []; }
@@ -38,15 +39,17 @@ function makeEnv() {
   }
   const docListeners = {};
   const document = { visibilityState: "visible", addEventListener: (e, f) => { docListeners[e] = f; }, removeEventListener: () => {} };
-  const W = { _relayHandlers: {} };
+  const W = { _relayHandlers: {}, clientKey: "dev-1" };
   W.relayOn = (type, fn) => { W._relayHandlers[type] = fn; };
   W.relaySendMsg = (o) => { relay.push(o); return true; };
   const globals = { ...clock, RTCPeerConnection, document, queueMicrotask: (f) => f() };
   new Function("W", ...Object.keys(globals), src)(W, ...Object.values(globals));
 
+  W.configSet = (key, value) => relay.push({ type: "config_set", key, value: String(value ?? ""), confirmed: false });
   const listeners = {};
+  const rect = { left: 0, top: 0, width: 1000, height: 1000 };
   const el = {
-    getBoundingClientRect: () => ({ left: 0, top: 0, width: 1000, height: 1000 }),
+    getBoundingClientRect: () => ({ ...rect }),
     addEventListener: (e, f) => { listeners[e] = f; },
     removeEventListener: () => {},
     setPointerCapture: () => {},
@@ -65,7 +68,7 @@ function makeEnv() {
   };
   const tick = () => new Promise((r) => setImmediate(r));
   return {
-    W, relay, pcs, el, advance, tick, docListeners,
+    W, relay, pcs, el, rect, advance, tick, docListeners,
     down: (id, x, y) => listeners.pointerdown(ev(id, x, y)),
     move: (id, x, y) => listeners.pointermove(ev(id, x, y)),
     up: (id) => listeners.pointerup(ev(id, 0, 0)),
@@ -179,6 +182,66 @@ await run("ids: lowest free, reused after a lift; cancel lifts", async (e) => {
   eq(e.W.padTouch.frame().map((c) => c[0]), [0, 1], "id 0 reused");
   e.cancel(2); e.cancel(3);
   eq(padIn(e.relay, "frame").at(-1).c, [], "cancel lifts");
+});
+
+// ── landscape (js/pad_orient.js) ──────────────────────────────────────────────────────
+// Turned 90°, the phone is held with its top to the left: "right as held" is down the screen.
+await run("toPad at 90°: moving right as held is +x, down as held is +y", async (e) => {
+  const O = e.W.padOrient;
+  O.rotate(90);
+  const r = { left: 0, top: 0, width: 400, height: 800 };
+  const a = O.toPad(200, 100, r), b = O.toPad(200, 300, r), c = O.toPad(100, 100, r);
+  assert(b.x > a.x && b.y === a.y, `right as held: ${JSON.stringify([a, b])}`);
+  assert(c.y > a.y && c.x === a.x, `down as held (screen left): ${JSON.stringify([a, c])}`);
+  eq([a.w, a.h], [800, 400], "the pad's own size is landscape");
+});
+
+// Turned −90°, the top is to the right: "right as held" is up the screen.
+await run("toPad at −90°: moving right as held is +x, down as held is +y", async (e) => {
+  const O = e.W.padOrient;
+  O.rotate(-90);
+  const r = { left: 0, top: 0, width: 400, height: 800 };
+  const a = O.toPad(200, 500, r), b = O.toPad(200, 300, r), c = O.toPad(300, 500, r);
+  assert(b.x > a.x && b.y === a.y, `right as held: ${JSON.stringify([a, b])}`);
+  assert(c.y > a.y && c.x === a.x, `down as held (screen right): ${JSON.stringify([a, c])}`);
+});
+
+await run("turned: Size is landscape and a frame is in the pad's frame", async (e) => {
+  Object.assign(e.rect, { width: 400, height: 800 }); // the turned pad's upright bounding box
+  e.W.padOrient.rotate(90);
+  e.W.pad.start();
+  e.W.padTouch.attach(e.el);
+  eq(padIn(e.relay, "size").at(-1), { k: "size", w: 800, h: 400 }, "landscape size");
+  e.down(1, 200, 0); // top of the screen = the left edge of the pad as held
+  eq(padIn(e.relay, "frame").at(-1).c, [[0, 0, 32768]], "left edge, middle");
+  e.move(1, 200, 400); e.advance(16);
+  eq(padIn(e.relay, "frame").at(-1).c, [[0, 32768, 32768]], "moved right as held");
+});
+
+await run("turning mid-touch lifts first, then sends the new size", async (e) => {
+  e.W.padTouch.attach(e.el);
+  e.W.pad.start();
+  e.down(1, 100, 100);
+  const at = e.relay.length;
+  Object.assign(e.rect, { width: 1000, height: 600 });
+  e.W.padOrient.rotate(90);
+  const after = padIn(e.relay.slice(at)).filter((m) => m.k !== "ping");
+  eq(after.map((m) => m.k), ["frame", "size"], "lift, then size");
+  eq([after[0].c, after[1]], [[], { k: "size", w: 600, h: 1000 }], "empty frame, turned size");
+  e.move(1, 200, 200); e.advance(200);
+  assert(padIn(e.relay, "frame").slice(-1)[0].c.length === 0, "the old finger stays lifted");
+});
+
+await run("a flip keeps the size but still lifts the fingers", async (e) => {
+  Object.assign(e.rect, { width: 400, height: 800 });
+  e.W.padOrient.rotate(90);
+  e.W.padTouch.attach(e.el);
+  e.W.pad.start();
+  e.down(1, 100, 100);
+  const sizes = padIn(e.relay, "size").length;
+  e.W.padOrient.rotate(-90);
+  eq(padIn(e.relay, "frame").at(-1).c, [], "lifted");
+  eq(padIn(e.relay, "size").length, sizes, "same size, not re-sent");
 });
 
 // ── keys ──────────────────────────────────────────────────────────────────────────────

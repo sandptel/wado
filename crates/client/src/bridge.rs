@@ -160,6 +160,11 @@ pub const JS: &str = concat!(
     // `wakelock.js`; `pad_link` first, as the others call the `W.pad` it creates.
     include_str!("js/pad_link.js"),
     "\n",
+    // Settings after `config.js` (it chains `config_state`), orientation before touch.
+    include_str!("js/pad_prefs.js"),
+    "\n",
+    include_str!("js/pad_orient.js"),
+    "\n",
     include_str!("js/pad_touch.js"),
     "\n",
     include_str!("js/pad_keys.js"),

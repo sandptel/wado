@@ -14,6 +14,33 @@
 @keyframes tpin { from { opacity: 0; translate: 0 16px; } }
 .trackpad-open .linkbadge { display: none; }
 
+/* Landscape with the phone upright (js/pad_orient.js): the pad is drawn turned a quarter, at
+ * the viewport's height × width, centred so the turn keeps it on screen. Each safe-area inset
+ * moves to the side of the turned pad that faces that screen edge. Touch coordinates are turned
+ * back in JS, so nothing here may change the pad's size from what was measured. */
+#wado-trackpad[data-rot] {
+  inset: auto; width: 100dvh; height: 100vw;
+  left: calc((100vw - 100dvh) / 2); top: calc((100dvh - 100vw) / 2);
+  animation-name: tpin-turned;
+}
+#wado-trackpad[data-rot="90"] {
+  rotate: 90deg;
+  padding: calc(10px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom))
+    calc(12px + env(safe-area-inset-left)) calc(12px + env(safe-area-inset-top));
+}
+#wado-trackpad[data-rot="-90"] {
+  rotate: -90deg;
+  padding: calc(10px + env(safe-area-inset-left)) calc(12px + env(safe-area-inset-top))
+    calc(12px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom));
+}
+@keyframes tpin-turned { from { opacity: 0; scale: .97; } }
+/* Turned, or back upright for typing: the new layout settles in rather than snapping. */
+#wado-trackpad.tpturn { animation: tpturn var(--dur) var(--spring) both; }
+@keyframes tpturn { from { opacity: .4; scale: .985; } }
+
+.tpnote { flex: none; margin: 0 4px; font-size: 12.5px; line-height: 1.45; color: var(--dim); }
+.tpnote[hidden] { display: none; }
+
 .tphead { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; }
 .tppill { --tone: var(--dim); min-height: 44px; }
 .tppill.good { --tone: var(--good); }
