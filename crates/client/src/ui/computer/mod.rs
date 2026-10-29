@@ -83,6 +83,13 @@ pub fn render(ui: Ui) -> Element {
                             }
                         }
                         actions::Actions { ui, r: r.clone() }
+                        // Claude's cards come over the selected computer's own link.
+                        if r.selected && r.may("shells") && !off {
+                            section { class: "sx claude o2", style: "--n:2", id: "claude", "aria-label": "Claude",
+                                div { class: "sect", span { "Claude" } }
+                                {crate::ui::scoped(ui, "claude", crate::ui::claude::section)}
+                            }
+                        }
                         section { class: "sx settings o5", style: "--n:4", "aria-label": "This computer",
                             div { class: "sect", span { "This computer" } }
                             {settings_list::render(ui)}

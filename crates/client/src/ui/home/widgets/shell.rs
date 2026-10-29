@@ -15,7 +15,7 @@ use crate::{
     widget::{self, Need, Widget, WidgetKind},
 };
 
-use super::{brightness, clipboard, media, trackpad, volume};
+use super::{brightness, claude, clipboard, media, trackpad, volume};
 
 /// What every body is handed: the widget, and the computer it follows as this page knows it now.
 #[derive(Clone, PartialEq)]
@@ -136,6 +136,7 @@ fn body(cx: Ctx, away: bool, _hue: &str) -> Element {
         let what = match (cx.w.kind, need) {
             (_, Need::Clipboard) => format!("see {name}'s clipboard"),
             (_, Need::Input) => format!("use {name} as a trackpad"),
+            (_, Need::Shells) => format!("see Claude on {name}"),
             (WidgetKind::Media, _) => format!("control {name}'s media"),
             (WidgetKind::Brightness, _) => format!("set {name}'s brightness"),
             _ => format!("control {name}'s volume"),
@@ -150,6 +151,7 @@ fn body(cx: Ctx, away: bool, _hue: &str) -> Element {
         WidgetKind::Brightness => rsx! { brightness::Brightness { cx } },
         WidgetKind::Clipboard => rsx! { clipboard::Clipboard { cx } },
         WidgetKind::Trackpad => rsx! { trackpad::Trackpad { cx } },
+        WidgetKind::Claude => rsx! { claude::Claude { cx } },
     }
 }
 

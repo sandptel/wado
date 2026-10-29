@@ -279,3 +279,55 @@ self.addEventListener("fetch", (e) => {
   if (rel === null || NOT_PINNED.has(rel)) return;
   e.respondWith(serve(req, rel));
 });
+
+// ── notifications (Web Push from a computer; crates/server/src/push/) ────────────────────
+// The payload is a `PushNote` (crates/protocol/src/push.rs), decrypted by the browser. A wado
+// window in front gets it as a message instead of a notification — except on iOS, which revokes a
+// subscription whose pushes show nothing.
+const IOS = /iPhone|iPad|iPod/.test((self.navigator && self.navigator.userAgent) || "");
+
+self.addEventListener("push", (e) => {
+  let n = {};
+  try { n = e.data ? e.data.json() : {}; } catch (_) { n = { title: "wado", body: e.data ? e.data.text() : "" }; }
+  e.waitUntil((async () => {
+    const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    const front = wins.filter((w) => w.visibilityState === "visible" && w.focused);
+    if (front.length && !IOS) {
+      for (const w of front) w.postMessage({ type: "wado-push", note: n });
+      return;
+    }
+    const ask = n.kind === "claude_permission";
+    await self.registration.showNotification(n.title || "wado", {
+      body: n.body || "",
+      tag: n.tag || undefined,
+      renotify: !!(n.tag && ask),
+      requireInteraction: ask,
+      data: n,
+      icon: url("icons/icon-192.png"),
+      badge: url("icons/icon-192.png"),
+      actions: (n.actions || []).slice(0, 2).map((a) => ({ action: String(a.id), title: String(a.title) })),
+    });
+  })());
+});
+
+// A tap opens wado (only ever this app, at its own scope) on the computer the note came from.
+// Allow / Deny are carried to the page, which answers once it is connected — Allow behind the
+// passkey, like Allow on the card.
+self.addEventListener("notificationclick", (e) => {
+  const n = e.notification.data || {};
+  const act = e.action === "allow" || e.action === "deny" ? e.action : "";
+  e.notification.close();
+  const q = new URLSearchParams({ go: String(n.kind || "").startsWith("claude") ? "claude" : "session" });
+  if (n.computer) q.set("rid", String(n.computer).replace(/\D/g, ""));
+  if (act && n.session && n.ask) { q.set("session", n.session); q.set("ask", n.ask); q.set("act", act); }
+  e.waitUntil((async () => {
+    const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    const mine = wins.find((w) => w.url.startsWith(SCOPE));
+    if (mine) {
+      await mine.focus();
+      mine.postMessage({ type: "wado-notify-click", note: n, act });
+      return;
+    }
+    await self.clients.openWindow(url("./?" + q.toString()));
+  })());
+});

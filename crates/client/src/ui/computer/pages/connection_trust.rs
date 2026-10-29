@@ -62,6 +62,7 @@ pub fn render(ui: Ui) -> Element {
     rsx! {
         {connection::render(ui)}
         {grants(ui)}
+        {crate::ui::scoped(ui, "push", crate::ui::push::render)}
         {crate::ui::passkey::card::render((ui.live.host)().grants.map(|g| crate::ui::passkey::card::typed(&g.name)).unwrap_or_else(|| "<this device>".into()))}
         if host::relay_only(ui) {
             div { class: "sect", span { "Its Wi-Fi" } }
