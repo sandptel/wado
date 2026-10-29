@@ -22,6 +22,23 @@ use crate::{
     },
 };
 
+/// What plays on the computer this session is on — the same card as its Computer page.
+fn playing(ui: Ui) -> Element {
+    let Some(h) = (ui.live.hoststate)() else {
+        return rsx! {};
+    };
+    if h.media.is_empty() {
+        return rsx! {};
+    }
+    let key = crate::profile::current_key(ui);
+    let r = crate::reach::of(ui, &key);
+    rsx! {
+        crate::ui::computer::playing::Playing {
+            ui, pk: key, name: crate::profile::current_name(ui), h, may: r.may("host"),
+        }
+    }
+}
+
 pub fn render(ui: Ui) -> Element {
     let mut live = ui.live;
     let open = (live.cc_open)();
@@ -48,7 +65,7 @@ pub fn render(ui: Ui) -> Element {
                 // its scroll; the pushed page is mounted only while it is up.
                 div { class: if page == Page::Root { "page" } else { "page behind" },
                     {hero::render(ui)}
-                    {crate::ui::scoped(ui, "media", crate::ui::media::render)}
+                    {crate::ui::scoped(ui, "media", playing)}
                     if !notes.is_empty() {
                         div { class: "sect",
                             span { "Notifications" }
@@ -152,8 +169,15 @@ pub fn render(ui: Ui) -> Element {
                 if page != Page::Root {
                     div { key: "{page:?}", class: "page pushed",
                         div { class: "phead",
-                            button { "aria-label": "Back", onclick: move |_| live.cc_page.set(Page::Root), Icon { name: "left" } }
-                            h3 { "{page.title()}" }
+                            button { "aria-label": "Back", onclick: move |_| live.cc_page.set(page.parent()), Icon { name: "left" } }
+                            div { class: "pt",
+                                if page.about_computer() {
+                                    span { class: "eyebrow", style: "--hue:var(--base{crate::profile::hue((ui.set.profile)())})",
+                                        i {} "{crate::profile::current_name(ui)}"
+                                    }
+                                }
+                                h3 { "{page.title()}" }
+                            }
                         }
                         {pages::render(ui, page)}
                     }

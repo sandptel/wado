@@ -42,7 +42,7 @@ pub fn render(ui: Ui) -> Element {
             div { class: "cardhead",
                 "Sound"
                 span { class: "why", if playing == 0 { " · nothing playing" } else if playing == 1 { " · 1 app playing" } else { " · {playing} apps playing" } }
-                button { class: "linkbtn", onclick: move |_| live.cc_page.set(Page::Sound), "Apps & outputs" Icon { name: "right" } }
+                button { class: "linkbtn", onclick: move |_| live.cc_page.set(Page::SoundDevices), "Apps & outputs" Icon { name: "right" } }
             }
             // Every output, one tap each: this device, the computer's speakers, headphones, HDMI…
             div { class: "chips outs", role: "radiogroup", "aria-label": "Plays on",

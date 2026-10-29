@@ -62,7 +62,7 @@ pub static ALL: &[Tile] = &[
         on: Some(|ui| (ui.live.osk_on)()),
         sub: ("Off", "On screen"),
         act: Act::Keyboard,
-        page: Some(Page::Input),
+        page: Some(Page::InputFeel),
         needs_session: true,
     },
     Tile {
@@ -99,7 +99,7 @@ pub static ALL: &[Tile] = &[
                 });
             }
         }),
-        page: Some(Page::Sound),
+        page: Some(Page::SoundDevices),
         needs_session: false,
     },
     Tile {
@@ -117,7 +117,7 @@ pub static ALL: &[Tile] = &[
                 }
             }
         }),
-        page: Some(Page::Sound),
+        page: Some(Page::SoundDevices),
         needs_session: false,
     },
     Tile {
@@ -133,9 +133,9 @@ pub static ALL: &[Tile] = &[
         // Never a one-tap toggle: it can cut this very connection. The page asks first.
         act: Act::Run(|ui| {
             let mut l = ui.live;
-            l.cc_page.set(Page::Network);
+            l.cc_page.set(Page::ConnectionTrust);
         }),
-        page: Some(Page::Network),
+        page: Some(Page::ConnectionTrust),
         needs_session: false,
     },
     Tile {
@@ -153,7 +153,7 @@ pub static ALL: &[Tile] = &[
                 host::act(wado_protocol::HostAction::BtPower { on: !b.powered });
             }
         }),
-        page: Some(Page::Network),
+        page: Some(Page::SoundDevices),
         needs_session: false,
     },
     Tile {
@@ -221,7 +221,7 @@ pub static ALL: &[Tile] = &[
             s.move_mode.set(!(s.move_mode)());
             live::apply(ui);
         }),
-        page: Some(Page::Input),
+        page: Some(Page::InputFeel),
         needs_session: false,
     },
     Tile {
@@ -240,7 +240,7 @@ pub static ALL: &[Tile] = &[
             s.touch_mode.set(next.into());
             live::apply(ui);
         }),
-        page: Some(Page::Input),
+        page: Some(Page::InputFeel),
         needs_session: false,
     },
     Tile {
@@ -255,7 +255,7 @@ pub static ALL: &[Tile] = &[
             s.fps_lock.set(on);
             bridge::call(format!("window.__wado.setFpsLock({on});"));
         }),
-        page: Some(Page::Display),
+        page: Some(Page::DisplaySession),
         needs_session: false,
     },
     Tile {
@@ -269,7 +269,7 @@ pub static ALL: &[Tile] = &[
             s.natural_scroll.set(!(s.natural_scroll)());
             live::apply(ui);
         }),
-        page: Some(Page::Input),
+        page: Some(Page::InputFeel),
         needs_session: false,
     },
     Tile {

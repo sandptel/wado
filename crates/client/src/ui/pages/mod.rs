@@ -1,4 +1,15 @@
-//! The control centre's drill-in pages, one file each, grouped by subject.
+//! Settings pages: which there are, and the sections they are built from.
+//!
+//! Since the Computer page (2026-10-30) there are two kinds, and every page says which:
+//!
+//! | about | pages | built in |
+//! |---|---|---|
+//! | one computer | Display & session, Trackpad, Sound & devices, Connection & trust | `ui/computer/pages/` |
+//! | this phone | Appearance, Input feel, Gamepad, Quick tiles, Diagnostics, Add a computer | `ui/home/pages/` |
+//!
+//! Each page is one component with two hosts: pushed over home or a computer's page, and pushed
+//! inside the control centre during a session (whose list is just *This computer ›* and *On this
+//! phone ›*). The files in this folder are the **sections** those pages are made of.
 //!
 //! When a setting applies is said on the control (see [`crate::ui::widgets::When`]), not by
 //! which page it is on — the page answers "what is this about", the badge answers "when".
@@ -22,57 +33,87 @@ use crate::state::Ui;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Page {
+    /// The control centre's own root.
     #[default]
     Root,
-    Display,
-    Input,
-    Switcher,
-    Gamepad,
+    /// The control centre's two lists.
+    ThisComputer,
+    OnThisPhone,
+    // ── about one computer ──
+    DisplaySession,
+    Trackpad,
+    SoundDevices,
+    ConnectionTrust,
+    // ── about this phone ──
     Appearance,
-    Connection,
-    Diagnostics,
-    Host,
+    InputFeel,
+    Gamepad,
     Tiles,
-    Sound,
-    Network,
-    Computers,
+    Diagnostics,
+    AddComputer,
 }
 
 impl Page {
     pub fn title(self) -> &'static str {
         match self {
             Page::Root => "Control centre",
-            Page::Display => "Display & stream",
-            Page::Input => "Input & touch",
-            Page::Switcher => "Workspaces & windows",
-            Page::Gamepad => "Gamepad",
+            Page::ThisComputer => "This computer",
+            Page::OnThisPhone => "On this phone",
+            Page::DisplaySession => "Display & session",
+            Page::Trackpad => "Trackpad",
+            Page::SoundDevices => "Sound & devices",
+            Page::ConnectionTrust => "Connection & trust",
             Page::Appearance => "Appearance",
-            Page::Connection => "Connection",
+            Page::InputFeel => "Input feel",
+            Page::Gamepad => "Gamepad",
+            Page::Tiles => "Quick tiles",
             Page::Diagnostics => "Diagnostics",
-            Page::Host => "This computer",
-            Page::Tiles => "Edit tiles",
-            Page::Sound => "Sound",
-            Page::Network => "Wi-Fi & Bluetooth",
-            Page::Computers => "Computers & relays",
+            Page::AddComputer => "Add a computer",
+        }
+    }
+
+    /// The page changes one computer — its head names which.
+    pub fn about_computer(self) -> bool {
+        matches!(
+            self,
+            Page::ThisComputer
+                | Page::DisplaySession
+                | Page::Trackpad
+                | Page::SoundDevices
+                | Page::ConnectionTrust
+        )
+    }
+
+    /// Back, inside the control centre.
+    pub fn parent(self) -> Page {
+        match self {
+            Page::Root | Page::ThisComputer | Page::OnThisPhone => Page::Root,
+            p if p.about_computer() => Page::ThisComputer,
+            _ => Page::OnThisPhone,
         }
     }
 }
 
 pub fn render(ui: Ui, page: Page) -> Element {
+    use crate::ui::{computer::pages as c, home::pages as h};
     match page {
         Page::Root => rsx! {},
-        Page::Display => crate::ui::scoped(ui, "display", display::render),
-        Page::Input => input::render(ui),
-        Page::Switcher => switcher::render(ui),
+        Page::ThisComputer => crate::ui::computer::settings_list::render(ui),
+        Page::OnThisPhone => crate::ui::home::settings::render(ui),
+        Page::DisplaySession => {
+            crate::ui::scoped(ui, "display_session", c::display_session::render)
+        }
+        Page::Trackpad => crate::ui::scoped(ui, "trackpad", c::trackpad::render),
+        Page::SoundDevices => crate::ui::scoped(ui, "sound_devices", c::sound_devices::render),
+        Page::ConnectionTrust => {
+            crate::ui::scoped(ui, "connection_trust", c::connection_trust::render)
+        }
+        Page::Appearance => crate::ui::scoped(ui, "appearance", h::appearance::render),
+        Page::InputFeel => input::feel(ui),
         Page::Gamepad => gamepad::render(ui),
-        Page::Appearance => appearance::render(ui),
-        Page::Connection => connection::render(ui),
-        Page::Diagnostics => diagnostics::render(ui),
-        Page::Host => crate::ui::scoped(ui, "host", host::render),
         Page::Tiles => tiles::render(ui),
-        Page::Sound => sound::render(ui),
-        Page::Network => crate::ui::scoped(ui, "network", network::render),
-        Page::Computers => crate::ui::scoped(ui, "computers", computers::render),
+        Page::Diagnostics => diagnostics::render(ui),
+        Page::AddComputer => crate::ui::scoped(ui, "add_computer", h::add_computer::render),
     }
 }
 

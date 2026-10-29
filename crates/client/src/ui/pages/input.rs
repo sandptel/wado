@@ -1,4 +1,6 @@
-//! Input & touch: what a finger, a wheel and a key are to the session.
+//! Input, in sections that live on two pages: how a finger and a wheel feel on *this phone*
+//! ([`feel`], home → Input feel), and what the computer saves for every device — three-finger
+//! swipes and keyboard repeat ([`swipes`], [`keyboard`], Display & session).
 
 use dioxus::prelude::*;
 
@@ -23,12 +25,9 @@ const GESTURE_ACTIONS: &[(&str, &str)] = &[
     ("none", "Nothing"),
 ];
 
-pub fn render(ui: Ui) -> Element {
+/// This phone's finger and wheel.
+pub fn feel(ui: Ui) -> Element {
     let mut s = ui.set;
-    let host = (ui.live.host)();
-    let pinned = host.input.clone();
-    let gestures = host.gestures.clone();
-
     rsx! {
         div { class: "card",
             div { class: "cardhead", "A finger is" }
@@ -66,7 +65,13 @@ pub fn render(ui: Ui) -> Element {
                 ontoggle: move |on| { s.natural_scroll.set(on); apply(ui); },
             }
         }
+    }
+}
 
+/// What three-finger swipes do — saved on the computer, for every device.
+pub fn swipes(ui: Ui) -> Element {
+    let gestures = (ui.live.host)().gestures.clone();
+    rsx! {
         div { class: "card",
             div { class: "cardhead", "Three-finger swipes" WhenBadge { when: When::Host } }
             for dir in ["up", "down", "left", "right"] {
@@ -91,7 +96,14 @@ pub fn render(ui: Ui) -> Element {
             }
             p { class: "why", "Saved on this computer for every device. Gesture mode only — raw touch passes three fingers to the app." }
         }
+    }
+}
 
+/// Keyboard repeat and focus policy: this phone's choice at Start, unless the computer pins it.
+pub fn keyboard(ui: Ui) -> Element {
+    let mut s = ui.set;
+    let pinned = (ui.live.host)().input.clone();
+    rsx! {
         div { class: "card",
             div { class: "cardhead", "Keyboard repeat" WhenBadge { when: if pinned.repeat_rate.is_some() || pinned.repeat_delay.is_some() { When::Host } else { When::Apply } } }
             div { class: "row",

@@ -34,6 +34,10 @@ W.relayOn("config_rejected", (msg) =>
 W.configSet = (key, value, confirmed) =>
   W.relaySendMsg({ type: "config_set", key, value: String(value ?? ""), confirmed: !!confirmed });
 
+// This device's own block (`device "<its key>" { … }`) — its trackpad layout, which it may change
+// without the settings grant. `path` is under the block: `trackpad.rail`.
+W.configSetOwn = (path, value) => W.configSet("device." + W.clientKey + "." + path, value, false);
+
 // A pending mirror is sent at once when the page is hidden or unloads — a reload inside the
 // debounce must not leave the daemon with the old copy.
 const flushPrefs = () => {

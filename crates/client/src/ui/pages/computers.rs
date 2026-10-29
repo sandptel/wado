@@ -1,8 +1,9 @@
-//! Computers & relays — the deeper place for what the landing only picks from: rename a
-//! computer, move it to another relay, forget it; and the relays this device knows.
+//! The computers and relays this device knows, in two sections: forgetting the computer whose
+//! page is open ([`forget`], on its Connection & trust), and the relays a computer can be added
+//! through ([`relays`], in the Add a computer flow).
 //!
-//! Kept off the landing on purpose: forgetting a computer or a relay is rare and hard to undo,
-//! and a cross on every card is a mis-tap away from losing one.
+//! Forgetting is kept off the cards on purpose: it is rare and hard to undo, and a cross on
+//! every card is a mis-tap away from losing one.
 
 use dioxus::prelude::*;
 
@@ -28,80 +29,51 @@ pub fn known_relays(ui: Ui) -> Vec<String> {
     all
 }
 
-pub fn render(ui: Ui) -> Element {
+/// Forget the selected computer — asked first. Its widgets go with it. Has its own scope.
+pub fn forget(ui: Ui) -> Element {
     let mut s = ui.set;
-    let list = s.profiles.read().clone();
-    let relays = known_relays(ui);
-    let mut forget = use_signal(|| None::<usize>);
-    let mut new_relay = use_signal(String::new);
-
+    let mut ask = use_signal(|| false);
+    let i = (s.profile)();
+    let Some(p) = s.profiles.read().get(i).cloned() else {
+        return rsx! {};
+    };
     rsx! {
-        div { class: "sect", span { "Computers" } }
-        if list.is_empty() {
-            div { class: "card", p { class: "why", "No saved computers yet. Connect to one and it is saved here." } }
-        }
-        for (i, p) in list.into_iter().enumerate() {
-            {
-            let hint = if p.host.is_empty() { "Named after the computer once it connects".to_string() } else { p.host.clone() };
-            rsx! {
-            div { key: "{i}", class: "card",
-                div { class: "streamhead",
-                    span { class: "disc", Icon { name: "server" } }
-                    div { class: "navtext", b { "{p.display()}" } small { "{p.address()}" } }
-                }
-                label { class: "field",
-                    span { "Name" }
-                    input {
-                        r#type: "text", value: "{p.name}",
-                        placeholder: "{hint}",
-                        oninput: move |e| if let Some(x) = s.profiles.write().get_mut(i) { x.name = e.value(); },
-                    }
-                }
-                label { class: "field",
-                    span { "Relay" }
-                    select {
-                        value: "{p.relay_url}",
-                        onchange: move |e| {
-                            if let Some(x) = s.profiles.write().get_mut(i) { x.relay_url = e.value(); }
-                            if (s.profile)() == i { profile::select(ui, i); }
-                        },
-                        for r in relays.iter().cloned() { option { key: "{r}", value: "{r}", "{short(&r)}" } }
-                    }
-                }
-                label { class: "field",
-                    span { "Remote ID" }
-                    input {
-                        r#type: "text", inputmode: "numeric", value: "{p.remote_id}",
-                        oninput: move |e| if let Some(x) = s.profiles.write().get_mut(i) { x.remote_id = e.value(); },
-                        onchange: move |_| if (s.profile)() == i { profile::select(ui, i); },
-                    }
-                }
-                if forget() == Some(i) {
-                    div { class: "confirm",
-                        b { "Forget {p.display()}?" }
-                        p { class: "why", "It goes from this device's list. The computer itself is not touched, and you can add it again with its link or QR code." }
-                        div { class: "actions",
-                            button { class: "btn", onclick: move |_| forget.set(None), "Keep" }
-                            button { class: "btn danger", onclick: move |_| {
-                                s.profiles.write().remove(i);
-                                let n = s.profiles.read().len();
-                                let cur = (s.profile)();
-                                if cur >= n { s.profile.set(n.saturating_sub(1)); } else if cur > i { s.profile.set(cur - 1); }
-                                forget.set(None);
-                                if n > 0 { profile::select(ui, (s.profile)()); }
-                            }, "Forget it" }
-                        }
-                    }
-                } else {
-                    button { class: "btn danger", onclick: move |_| forget.set(Some(i)), Icon { name: "x" } "Forget this computer" }
-                }
-            }
-            }
-            }
-        }
-
-        div { class: "sect", span { "Relays" } }
         div { class: "card",
+            if ask() {
+                div { class: "confirm",
+                    b { "Forget {p.display()}?" }
+                    p { class: "why", "It goes from this device's list, with its widgets. The computer itself is not touched, and you can add it again with its link or QR code." }
+                    div { class: "actions",
+                        button { class: "btn", onclick: move |_| ask.set(false), "Keep" }
+                        button { class: "btn danger", onclick: move |_| {
+                            let key = p.key();
+                            s.profiles.write().remove(i);
+                            crate::widget::forget_host(&mut s.widgets.write(), &key);
+                            let n = s.profiles.read().len();
+                            let cur = (s.profile)();
+                            if cur >= n { s.profile.set(n.saturating_sub(1)); } else if cur > i { s.profile.set(cur - 1); }
+                            ask.set(false);
+                            if n > 0 { profile::select(ui, (s.profile)()); }
+                            let mut view = ui.live.view;
+                            view.set(crate::route::View::Home);
+                        }, "Forget it" }
+                    }
+                }
+            } else {
+                button { class: "btn danger", onclick: move |_| ask.set(true), Icon { name: "x" } "Forget this computer" }
+            }
+        }
+    }
+}
+
+/// The relays this device can reach computers through. Has its own scope: the one being typed.
+pub fn relays(ui: Ui) -> Element {
+    let mut s = ui.set;
+    let relays = known_relays(ui);
+    let mut new_relay = use_signal(String::new);
+    rsx! {
+        div { class: "card",
+            div { class: "cardhead", "Relays" }
             p { class: "why", "The rendezvous servers this device can reach computers through. A computer lives on one; several can be saved." }
             for r in relays.iter().cloned() {
                 {
@@ -136,7 +108,7 @@ pub fn render(ui: Ui) -> Element {
     }
 }
 
-fn short(relay: &str) -> &str {
+pub fn short(relay: &str) -> &str {
     relay
         .trim_start_matches("https://")
         .trim_start_matches("wss://")

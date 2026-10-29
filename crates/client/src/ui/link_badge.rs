@@ -11,11 +11,13 @@ pub fn render(ui: Ui) -> Element {
     let live = ui.live;
     let link = (live.link)();
     let mut open = use_signal(|| false);
+    let session = (live.session_on)();
     // Direct mode has no relay path to describe; and before the first tick there is nothing yet.
-    if (ui.set.conn_mode)() != "relay" || link.state.is_empty() {
+    // Outside a session the path is said in words already — on each computer's card and in its
+    // page's Link reading — so the corner stays clear for home's own head.
+    if (ui.set.conn_mode)() != "relay" || link.state.is_empty() || !session {
         return rsx! {};
     }
-    let session = (live.session_on)();
     let quiet = session && link.state == "direct" && !open();
     let tone = link.tone().class();
     let label = link.label();

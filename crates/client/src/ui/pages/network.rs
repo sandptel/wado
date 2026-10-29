@@ -1,4 +1,6 @@
-//! Wi-Fi & Bluetooth on the computer.
+//! The computer's radios, in two sections for two pages: Wi-Fi ([`wifi`], under Connection &
+//! trust — it is how the computer is reached) and Bluetooth ([`bluetooth`], under Sound &
+//! devices — it is what the computer plays to).
 //!
 //! Wi-Fi is the one control here that can cut the connection it is being used over, so nothing
 //! on it happens on a single tap: each change is asked first, says plainly what it risks, and
@@ -22,7 +24,8 @@ enum Ask {
     Join(Network),
 }
 
-pub fn render(ui: Ui) -> Element {
+/// Wi-Fi, asked first and on probation. Has its own scope: it holds the question being asked.
+pub fn wifi(ui: Ui) -> Element {
     let mut ask = use_signal(|| None::<Ask>);
     let mut password = use_signal(String::new);
     let owner = (ui.live.host)().owner;
@@ -56,21 +59,7 @@ pub fn render(ui: Ui) -> Element {
                 if w.uplink { p { class: "why host", "This computer is online through Wi-Fi alone — the connection you are using right now goes through it." } }
 
                 if ask() == Some(Ask::Off) {
-                    div { class: "confirm",
-                        b { "Turn off the computer's Wi-Fi?" }
-                        p { if w.uplink {
-                            "You will be disconnected straight away, and nothing here can turn it back on — choose a time limit and it comes back by itself."
-                        } else {
-                            "The computer has another connection, so you should stay connected."
-                        } }
-                        div { class: "actions",
-                            button { class: "btn", onclick: move |_| ask.set(None), "Cancel" }
-                            button { class: "btn primary", onclick: move |_| { act(HostAction::WifiRadio { on: false, minutes: Some(5) }); ask.set(None); }, "Off for 5 min" }
-                        }
-                        button { class: "btn danger", onclick: move |_| { act(HostAction::WifiRadio { on: false, minutes: None }); ask.set(None); },
-                            if w.uplink { "Turn off until someone turns it on at the computer" } else { "Turn off" }
-                        }
-                    }
+                    WifiOff { uplink: w.uplink, ondone: move |_| ask.set(None) }
                 }
 
                 if w.enabled {
@@ -125,6 +114,38 @@ pub fn render(ui: Ui) -> Element {
             div { class: "card", p { class: "why", "This computer has no NetworkManager, so its Wi-Fi cannot be changed from here." } }
         }
 
+    }
+}
+
+/// "Turn off the computer's Wi-Fi?" — the one question every way of turning it off goes
+/// through (this page, and the Wi-Fi tile on the computer's page). Never a one-tap cut.
+#[component]
+pub fn WifiOff(uplink: bool, ondone: EventHandler<()>) -> Element {
+    rsx! {
+        div { class: "confirm",
+            b { "Turn off the computer's Wi-Fi?" }
+            p { if uplink {
+                "You will be disconnected straight away, and nothing here can turn it back on — choose a time limit and it comes back by itself."
+            } else {
+                "The computer has another connection, so you should stay connected."
+            } }
+            div { class: "actions",
+                button { class: "btn", onclick: move |_| ondone.call(()), "Cancel" }
+                button { class: "btn primary", onclick: move |_| { act(HostAction::WifiRadio { on: false, minutes: Some(5) }); ondone.call(()); }, "Off for 5 min" }
+            }
+            button { class: "btn danger", onclick: move |_| { act(HostAction::WifiRadio { on: false, minutes: None }); ondone.call(()); },
+                if uplink { "Turn off until someone turns it on at the computer" } else { "Turn off" }
+            }
+        }
+    }
+}
+
+/// Bluetooth: on or off, and the paired devices.
+pub fn bluetooth(ui: Ui) -> Element {
+    let Some(h) = (ui.live.hoststate)() else {
+        return rsx! {};
+    };
+    rsx! {
         if let Some(b) = h.bluetooth.clone() {
             div { class: "card",
                 SwitchRow {
