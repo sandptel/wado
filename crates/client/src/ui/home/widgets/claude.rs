@@ -36,6 +36,6 @@ pub fn Claude(cx: Ctx) -> Element {
         return rsx! { div { class: "wnote quiet", Icon { name: "term" } "No Claude sessions on {name}." } };
     }
     rsx! {
-        div { class: "clist", for c in live.into_iter().take(3) { Card { key: "{c.id}", c, compact: true } } }
+        div { class: "cllist", for c in live.into_iter().take(3) { Card { key: "{c.id}", c, compact: true } } }
     }
 }

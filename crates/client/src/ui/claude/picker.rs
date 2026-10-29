@@ -33,7 +33,7 @@ pub fn render(ui: Ui) -> Element {
     rsx! {
         div { class: if open { "pkscrim up" } else { "pkscrim" }, onclick: close }
         section {
-            class: if open { "pksheet cpick up" } else { "pksheet cpick" },
+            class: if open { "pksheet clpick up" } else { "pksheet clpick" },
             role: "dialog",
             "aria-modal": "true",
             "aria-labelledby": "cpicktitle",
@@ -49,7 +49,7 @@ pub fn render(ui: Ui) -> Element {
                 Some(d) if !d.error.is_empty() => rsx! { p { class: "pknote", "{d.error}" } },
                 Some(d) => rsx! {
                     if !d.recent.is_empty() {
-                        div { class: "crecent", "aria-label": "Recent projects",
+                        div { class: "clrecent", "aria-label": "Recent projects",
                             for r in d.recent.clone() {
                                 button { key: "{r}", class: "chip",
                                     onclick: { let r = r.clone(); move |_| go(&r) },
@@ -58,19 +58,19 @@ pub fn render(ui: Ui) -> Element {
                             }
                         }
                     }
-                    div { class: "cpath",
+                    div { class: "clpath",
                         button { class: "iconbtn", disabled: d.parent.is_empty(), "aria-label": "Up one folder",
                             onclick: { let p = d.parent.clone(); move |_| go(&p) },
                             Icon { name: "up" }
                         }
                         span { class: "mono", "{d.path}" }
                     }
-                    div { class: "cdirs", role: "list",
+                    div { class: "cldirs", role: "list",
                         if d.dirs.is_empty() {
                             p { class: "why", "No folders in here." }
                         }
                         for f in d.dirs.clone() {
-                            button { key: "{f}", class: "cdir", role: "listitem",
+                            button { key: "{f}", class: "cldir", role: "listitem",
                                 onclick: {
                                     let p = format!("{}/{}", d.path.trim_end_matches('/'), f);
                                     move |_| go(&p)

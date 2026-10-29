@@ -16,29 +16,29 @@ pub fn Card(c: ClaudeSession, compact: bool) -> Element {
     let reach = c.tmux.is_some() || c.shell.is_some();
     rsx! {
         article {
-            class: if compact { "ccard compact" } else { "ccard" },
+            class: if compact { "clcard compact" } else { "clcard" },
             "data-state": "{c.state}",
             "aria-label": "Claude in {c.project}: {words}",
             button {
-                class: "chead",
+                class: "clhead",
                 disabled: !reach,
                 title: if reach { "Open its shell" } else { "Started outside wado — no shell to open here" },
                 onclick: move |_| bridge::call(format!("window.__wado.claudeOpen({});", bridge::js(&s1))),
-                span { class: "cdot", "aria-hidden": "true" }
-                span { class: "cmain",
+                span { class: "cldot", "aria-hidden": "true" }
+                span { class: "clmain",
                     b { "{c.project}" }
-                    small { span { class: "cstate", "{words}" } " · {when}" }
+                    small { span { class: "clstate", "{words}" } " · {when}" }
                 }
-                if reach { span { class: "cgo", Icon { name: "term" } } }
+                if reach { span { class: "clgo", Icon { name: "term" } } }
             }
             if !c.message.is_empty() && c.ask.is_none() {
-                p { class: "cmsg", "{c.message}" }
+                p { class: "clmsg", "{c.message}" }
             }
             if let Some(ask) = c.ask.clone() {
-                div { key: "{ask.id}", class: "cask", role: "group", "aria-label": "Claude asks to use {ask.tool}",
+                div { key: "{ask.id}", class: "clask", role: "group", "aria-label": "Claude asks to use {ask.tool}",
                     small { "Wants to use " b { "{ask.tool}" } }
                     code { class: "mono", "{ask.detail}" }
-                    div { class: "cbtns",
+                    div { class: "clbtns",
                         button {
                             class: "btn",
                             onclick: {
@@ -60,7 +60,7 @@ pub fn Card(c: ClaudeSession, compact: bool) -> Element {
                 }
             }
             if !reach && !compact && c.state != "ended" {
-                p { class: "chint", "Started outside wado — status only. Start the next one from wado to reach it from here." }
+                p { class: "clhint", "Started outside wado — status only. Start the next one from wado to reach it from here." }
             }
         }
     }

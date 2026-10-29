@@ -136,13 +136,22 @@ class Browser {
       ? { width: 412, height: 915, deviceScaleFactor: 2, mobile: true } : { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
     if (this.mobile) await this.cdp("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
     await this.cdp("Page.addScriptToEvaluateOnNewDocument", { source: `try { localStorage.setItem("wado.client", ${JSON.stringify(this.key)}); } catch (_) {}` });
-    await this.cdp("Page.navigate", { url: `http://127.0.0.1:${HTTP}/?relay=http://127.0.0.1:${PORT}&id=${RID}${this.extra}` });
+    await this.cdp("Page.navigate", { url: `http://localhost:${HTTP}/?relay=http://127.0.0.1:${PORT}&id=${RID}${this.extra}` });
   }
   cdp(method, params = {}) { return new Promise((r) => { const i = ++this.id; this.pend.set(i, r); this.ws.send(JSON.stringify({ id: i, method, params })); }); }
   async ev(expr) {
     const r = await this.cdp("Runtime.evaluate", { expression: expr, returnByValue: true, awaitPromise: true });
     if (r.result?.exceptionDetails) return { thrown: r.result.exceptionDetails.exception?.description || "threw" };
     return r.result?.result?.value;
+  }
+  // File changes need a fresh passkey unlock (F3): add one with Chrome's virtual authenticator,
+  // through the page's own passkey code.
+  async passkey() {
+    await this.cdp("WebAuthn.enable", {});
+    await this.cdp("WebAuthn.addVirtualAuthenticator", { options: { protocol: "ctap2", transport: "internal",
+      hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true } });
+    await this.ev(`window.__wado.passkeyAdd(); true`);
+    return this.until(`window.__wado.passkey.state.unlocked`, 15000);
   }
   async until(expr, ms = 15000) { const t = Date.now(); while (Date.now() - t < ms) { if (await this.ev(expr)) return true; await sleep(250); } return false; }
   // A request on the files channel: `{ok…}` or `{err}`.
@@ -176,6 +185,7 @@ const laptop = new Browser("laptop", 9352, "Laptop-key", false, params(qrLink())
 try {
   await phone.open();
   check("phone joins with the QR's code", await phone.until(`!!window.__wado && window.__wado.e2eReady`, 20000));
+  check("phone adds a passkey and is unlocked", await phone.passkey());
   check("…and is pinned in the trust list", /Phone-key\t[^\n]*\t1(\t|\n|$)/.test(readFileSync(H(".config/wado/trusted_clients"), "utf8")));
 
   // grant

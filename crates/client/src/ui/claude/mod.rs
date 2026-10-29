@@ -27,7 +27,7 @@ pub fn section(ui: Ui) -> Element {
     let open = st.sessions.iter().filter(|s| s.state != "ended").count();
     rsx! {
         if !st.hooks {
-            div { class: "card chooks",
+            div { class: "card clhooks",
                 b { "See Claude here" }
                 p { "Status, questions and Allow / Deny for Claude Code on {name} appear here once its hooks are in. On {name}, run:" }
                 div { class: "cmd",
@@ -51,13 +51,13 @@ pub fn section(ui: Ui) -> Element {
         } else if open == 0 && st.sessions.is_empty() {
             div { class: "npempty", Icon { name: "term" } "No Claude sessions on {name} right now." }
         }
-        div { class: "clist",
+        div { class: "cllist",
             for c in st.sessions.clone() {
                 card::Card { key: "{c.id}", c, compact: false }
             }
         }
         button {
-            class: "btn cnew",
+            class: "btn clnew",
             onclick: move |_| crate::stepup::then("new", "window.__wado.claudePick();"),
             Icon { name: "plus" } "New Claude session"
         }
