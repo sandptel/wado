@@ -46,6 +46,17 @@
 .pairrow { display: flex; gap: 10px; }
 .pairrow input { flex: 1; min-width: 0; min-height: 48px; font: 600 16px var(--mono); letter-spacing: .12em; text-transform: uppercase; }
 .pairrow .btn { width: auto; flex: none; min-width: 96px; }
+/* The check words: four, large, appearing one after another — calm, not a reveal. */
+.saswords { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.saswords li { min-height: 48px; display: grid; place-items: center; border-radius: var(--r1); background: var(--s0);
+  border: 1px solid var(--line); font: 700 19px var(--display); color: var(--bright); letter-spacing: .01em;
+  animation: sasin var(--dur-sheet) var(--spring) both; animation-delay: calc(var(--i) * 90ms); }
+@media (min-width: 440px) { .saswords { grid-template-columns: repeat(4, 1fr); } }
+@keyframes sasin { from { opacity: 0; translate: 0 6px; } }
+.pairwait { margin: 0; display: flex; align-items: center; gap: 10px; color: var(--dim); font-size: 13px; line-height: 1.45; }
+.pairdot { width: 8px; height: 8px; border-radius: 50%; background: var(--base0A); flex: none;
+  animation: pairbreathe 1.6s var(--ease) infinite alternate; }
+@keyframes pairbreathe { to { opacity: .35; } }
 
 .devices { display: grid; gap: 8px; }
 .dev { display: flex; align-items: center; gap: 6px; padding: 6px 6px 6px 12px; border-radius: var(--r3); background: var(--s1);

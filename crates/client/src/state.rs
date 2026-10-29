@@ -403,6 +403,9 @@ pub struct Live {
     /// Why this computer refused this device for not being paired — the pairing form shows
     /// while it is set (`ui::landing::pair`). Empty otherwise.
     pub unpaired: Signal<String>,
+    /// A typed pairing's four check words, while the computer has not answered (empty
+    /// otherwise). The pairing card shows them for the person to compare.
+    pub pair_sas: Signal<Vec<String>>,
     /// Which path this device is on right now — the link badge (`crate::link`).
     pub link: Signal<crate::link::Link>,
 
@@ -514,6 +517,7 @@ impl Live {
             link: use_signal(crate::link::Link::default),
             conn_error: use_signal(String::new),
             unpaired: use_signal(String::new),
+            pair_sas: use_signal(Vec::new),
             session_alive: use_signal(|| None),
             apps: use_signal(Vec::new),
             drawer_open: use_signal(|| false),

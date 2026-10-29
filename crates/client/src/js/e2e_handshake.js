@@ -9,6 +9,10 @@
 // secret (it is short, so a proof over public bytes would let the relay try every code).
 // A typed code is tried exactly once — it is gone from storage the moment it is proven — so a
 // redial can never spend another of the computer's few allowed guesses.
+//
+// A typed code has one more step (envelope.rs): the computer reveals the nonce it committed to
+// in e2e_reply (e2e_sas), both ends show four check words, and a person confirms them on the
+// computer. Until then this device waits, showing its words (`pair_sas` to Rust).
 
 const E2E_REPLY_WAIT_MS = 8000;
 const E2E_LBL = new TextEncoder().encode("wado-e2e-v1");
@@ -35,6 +39,7 @@ function e2eStop(s, why, block) {
   W._e2e = null;
   W.e2eReady = false;
   clearTimeout(s.timer);
+  if (s.sas) emit({ type: "pair_sas", words: [] });
   if (block) W._e2eBlocked = true;
   if (W.rlog) W.rlog("secure link: " + why);
   if (W.relayPhase) W.relayPhase(1, why);
@@ -101,6 +106,8 @@ W.e2eOnReply = async (msg) => {
     const typed = stored("wado.pairTyped");
     if (typed) {
       try { localStorage.removeItem("wado.pairTyped"); } catch (_) {}
+      // What the check words will be made from, once the computer reveals its nonce.
+      s.typed = { commit: msg.sas_commit || "", kSas: await W.e2eSasKey(shared, h1), h2 };
       const kp = await W.e2ePairKey(shared, h1);
       const k = await crypto.subtle.importKey("raw", kp, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
       typedMac = W.b64u.enc(await crypto.subtle.sign("HMAC", k, cat(h2, new TextEncoder().encode(typed))));
@@ -113,6 +120,27 @@ W.e2eOnReply = async (msg) => {
     s.ws.send(JSON.stringify(fin));
   } catch (e) {
     e2eStop(s, "the secure handshake failed — " + e, false);
+  }
+};
+
+// The computer's nonce for the check words, after a typed code checked out. Plaintext, and it
+// needs no more: it must be the one e2e_reply committed to, and a relay that swapped both only
+// makes the two screens disagree — which is what the person comparing them is there to catch.
+W.e2eOnSas = async (msg) => {
+  const s = W._e2e;
+  if (!s || s.state !== "sealed" || !s.typed || s.sas) return;
+  try {
+    const nonce = W.b64u.dec(msg.nonce);
+    if (W.b64u.enc(await sha256(nonce)) !== s.typed.commit)
+      return e2eStop(s, "REFUSED: the computer's check words are not the ones it promised — something " +
+        "between you and it may be impersonating it. Pair again from the computer.", true);
+    if (W._e2e !== s) return;
+    s.sas = await W.e2eSasWords(s.typed.kSas, s.typed.h2, nonce);
+    if (W._e2e !== s) return;
+    if (W.rlog) W.rlog("check words: " + s.sas.join(" ") + " — confirm them on the computer");
+    emit({ type: "pair_sas", words: s.sas });
+  } catch (e) {
+    e2eStop(s, "the check words could not be made — " + e, true);
   }
 };
 
@@ -134,6 +162,7 @@ W.e2eOnSealed = (msg, dispatch) => {
       if (obj.type !== "e2e_ok") return;
       s.state = "open";
       W.e2eReady = true;
+      if (s.sas) emit({ type: "pair_sas", words: [] });
       // Proven (or not needed): either way the code has done its job.
       try { localStorage.removeItem("wado.pair"); } catch (_) {}
       if (W.rlog) W.rlog("secure link up — end-to-end sealed" + (W.e2eUnpinned ? " (computer pinned on first use, not by QR)" : ""));
