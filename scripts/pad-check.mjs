@@ -1,14 +1,18 @@
 // Runnable check for the trackpad's client side: js/pad_link.js, js/pad_prefs.js,
-// js/pad_orient.js, js/pad_touch.js, js/pad_keys.js.
+// js/pad_orient.js, js/pad_touch.js, js/pad_keys.js, js/pad_icons.js, js/pad_actions.js,
+// js/pad_rail.js (views on the DOM shim in scripts/lib/pad-dom.mjs).
 //
 // Loads the real modules into a stub `W` with a fake clock, a fake relay and a fake
 // RTCPeerConnection, drives them, and asserts the wire messages.
 //
 // Run:  node scripts/pad-check.mjs
 import { readFileSync } from "node:fs";
+import { makeDocument } from "./lib/pad-dom.mjs";
 
 const js = (f) => readFileSync(new URL(`../crates/client/src/js/${f}`, import.meta.url), "utf8");
-const src = ["pad_link.js", "pad_prefs.js", "pad_orient.js", "pad_touch.js", "pad_keys.js"].map(js).join("\n");
+const MODULES = ["pad_link.js", "pad_prefs.js", "pad_orient.js", "pad_touch.js", "pad_keys.js",
+  "pad_icons.js", "pad_actions.js", "pad_rail.js"];
+const src = MODULES.map(js).join("\n");
 
 class FakeDC {
   constructor(label, opts) { this.label = label; this.opts = opts; this.readyState = "connecting"; this.sent = []; }
@@ -38,7 +42,8 @@ function makeEnv() {
     close() { this.connectionState = "closed"; }
   }
   const docListeners = {};
-  const document = { visibilityState: "visible", addEventListener: (e, f) => { docListeners[e] = f; }, removeEventListener: () => {} };
+  const document = makeDocument();
+  document.addEventListener = (e, f) => { docListeners[e] = f; };
   const W = { _relayHandlers: {}, clientKey: "dev-1" };
   W.relayOn = (type, fn) => { W._relayHandlers[type] = fn; };
   W.relaySendMsg = (o) => { relay.push(o); return true; };
@@ -68,7 +73,8 @@ function makeEnv() {
   };
   const tick = () => new Promise((r) => setImmediate(r));
   return {
-    W, relay, pcs, el, rect, advance, tick, docListeners,
+    W, relay, pcs, el, rect, advance, tick, docListeners, document,
+    out: (msg) => W._relayHandlers.pad_out({ msg }),
     down: (id, x, y) => listeners.pointerdown(ev(id, x, y)),
     move: (id, x, y) => listeners.pointermove(ev(id, x, y)),
     up: (id) => listeners.pointerup(ev(id, 0, 0)),
@@ -242,6 +248,109 @@ await run("a flip keeps the size but still lifts the fingers", async (e) => {
   e.W.padOrient.rotate(-90);
   eq(padIn(e.relay, "frame").at(-1).c, [], "lifted");
   eq(padIn(e.relay, "size").length, sizes, "same size, not re-sent");
+});
+
+// ── rail and quick actions (js/pad_actions.js, js/pad_rail.js) ───────────────────────────
+const ACTIONS = [
+  { id: "workspace-next", name: "Next workspace", group: "Workspace", icon: "right" },
+  { id: "fullscreen", name: "Fullscreen", group: "Window", icon: "max" },
+  { id: "play-pause", name: "Play / pause", group: "Media", icon: "play" },
+];
+function railEnv(e, { rail = "actions", quick, landscape = true } = {}) {
+  const box = { rail: e.document.createElement("div"), bar: e.document.createElement("div") };
+  e.W.padRail.mount(box);
+  e.W.pad.start();
+  e.W.padPrefs.set("rail", rail);
+  if (quick) e.W.padPrefs.set("quick", quick);
+  e.W.padOrient.rotate(landscape ? 90 : 0);
+  if (!landscape) e.W.padOrient.layout = "portrait";
+  return box;
+}
+const actionIds = (n) => n.querySelectorAll("[data-action]").map((b) => b.dataset.action);
+
+await run("the rail shows `quick` in order and skips ids the computer did not list", async (e) => {
+  const box = railEnv(e, { quick: ["fullscreen", "no-such-thing", "workspace-next"] });
+  e.W.padActions.refresh();
+  eq(padIn(e.relay, "actions"), [{ k: "actions" }], "asked for the list");
+  e.out({ k: "action_list", actions: ACTIONS });
+  e.W.padRail.paint();
+  eq(actionIds(box.rail), ["fullscreen", "workspace-next"], "rail order");
+  assert(box.bar.hidden, "no portrait bar in landscape");
+  eq(e.W.padRail.items(["play-pause", "play-pause", "x"], ACTIONS).map((a) => a.id), ["play-pause"], "deduped");
+});
+
+await run("a tap on a quick action sends {k:run, id}", async (e) => {
+  const box = railEnv(e, { quick: ["play-pause"] });
+  e.out({ k: "action_list", actions: ACTIONS });
+  e.W.padRail.paint();
+  box.rail.querySelector('[data-action="play-pause"]').click();
+  eq(padIn(e.relay, "run"), [{ k: "run", id: "play-pause" }], "run sent");
+  assert(box.rail.querySelector('[data-action="play-pause"]').dataset.state === "run", "spinner while it runs");
+});
+
+await run("a Ran { ok: false } shows its message and marks the button", async (e) => {
+  const box = railEnv(e, { quick: ["fullscreen"] });
+  const errs = [];
+  e.W.padRail.onError((m) => errs.push(m));
+  e.out({ k: "action_list", actions: ACTIONS });
+  e.W.padRail.paint();
+  const b = box.rail.querySelector('[data-action="fullscreen"]');
+  b.click();
+  e.out({ k: "ran", id: "fullscreen", ok: false, message: "no window to make fullscreen" });
+  await e.tick(); e.advance(200); await e.tick();
+  eq(errs, ["no window to make fullscreen"], "the words reach the alert card");
+  eq(b.dataset.state, "bad", "shake state");
+  e.advance(400);
+  eq(b.dataset.state, undefined, "and back to rest");
+});
+
+await run("a Ran { ok: true } ticks inside 400 ms", async (e) => {
+  const box = railEnv(e, { quick: ["fullscreen"] });
+  e.out({ k: "action_list", actions: ACTIONS });
+  e.W.padRail.paint();
+  const b = box.rail.querySelector('[data-action="fullscreen"]');
+  b.click();
+  e.out({ k: "ran", id: "fullscreen", ok: true, message: "" });
+  await e.tick(); e.advance(110); await e.tick();
+  eq(b.dataset.state, "ok", "check");
+  e.advance(280);
+  eq(b.dataset.state, undefined, "done by 390 ms");
+});
+
+await run("no host: the refusal is shown in the rail, not as an alert, and the pad keeps working", async (e) => {
+  const box = railEnv(e, {});
+  const seen = [];
+  e.W.pad.onMsg((m) => { if (m.k === "err") seen.push(e.W.padActions.owns(m)); });
+  e.out({ k: "action_list", actions: [] });
+  e.out({ k: "err", message: "this device may not run actions — on the computer: wado allow 'Pixel' host" });
+  e.W.padRail.paint();
+  eq(seen, [true], "the err is the list's");
+  assert(box.rail.textContent.includes("wado allow 'Pixel' host"), "copy in the rail");
+  eq(e.W.pad.state, "relayed", "pad still up");
+});
+
+await run("portrait with rail = actions: a quick bar above the pad", async (e) => {
+  const box = railEnv(e, { quick: ["play-pause", "fullscreen"], landscape: false });
+  e.out({ k: "action_list", actions: ACTIONS });
+  e.W.padRail.paint();
+  eq(actionIds(box.bar), ["play-pause", "fullscreen"], "bar order");
+  assert(box.rail.hidden, "no rail in portrait");
+});
+
+await run("rail = keys: modifiers, Esc, Tab, arrows and Type", async (e) => {
+  const box = railEnv(e, { rail: "keys" });
+  e.W.padRail.paint();
+  eq(box.rail.querySelectorAll("[data-mod]").map((b) => b.dataset.mod), ["super", "ctrl", "alt", "shift"], "mods");
+  eq(box.rail.querySelectorAll("[data-key]").map((b) => b.dataset.key), ["esc", "tab", "left", "right", "up", "down"], "keys");
+  box.rail.querySelector('[data-key="esc"]').click();
+  eq(padIn(e.relay, "key"), [{ k: "key", key: "esc", mods: [] }], "Esc sent");
+  assert(box.rail.querySelector(".tptype"), "Type button");
+});
+
+await run("the icon set matches ui/widgets/icon.rs", async (e) => {
+  const rs = readFileSync(new URL("../crates/client/src/ui/widgets/icon.rs", import.meta.url), "utf8");
+  const names = [...rs.matchAll(/^\s+"([a-z0-9]+)" => "/gm)].map((m) => m[1]);
+  eq(e.W.padIconNames, names, "same names, same order");
 });
 
 // ── keys ──────────────────────────────────────────────────────────────────────────────

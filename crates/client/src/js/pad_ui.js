@@ -5,13 +5,13 @@
 // Layout A (docs/superpowers/specs/2026-10-29-trackpad-mode-design.md): the whole screen is the
 // pad; on top, the link's true state in plain words; below, a Keyboard button that opens the
 // modifier row and a text line over the phone's own keyboard, with the pad still live above.
-// The wire is js/pad_link.js, touches js/pad_touch.js, keys js/pad_keys.js, which way round
-// js/pad_orient.js, and this device's settings js/pad_prefs.js.
+// Landscape (js/pad_orient.js) puts a rail down the left (js/pad_rail.js): keys, quick actions
+// (js/pad_actions.js) or nothing, per this device's settings (js/pad_prefs.js).
+// The wire is js/pad_link.js, touches js/pad_touch.js, keys js/pad_keys.js.
 
 (() => {
-  const SVG = (d) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`;
-  const CLOSE = SVG("M6 6l12 12M18 6L6 18");
-  const KEYBOARD = SVG("M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM7 9h.01M11 9h.01M15 9h.01M7 13h.01M17 13h.01M8 16h8");
+  const CLOSE = W.padIcon("x");
+  const KEYBOARD = W.padIcon("kbd");
   const MODS = [["super", "Super"], ["ctrl", "Ctrl"], ["alt", "Alt"], ["shift", "Shift"]];
   const KEYS = [["esc", "Esc"], ["tab", "Tab"], ["left", "←"], ["up", "↑"], ["down", "↓"], ["right", "→"]];
   const WHY = {
@@ -32,20 +32,22 @@
     root.setAttribute("aria-label", "Trackpad");
     root.innerHTML = `
       <header class="tphead">
-        <button class="linkpill tppill dim" aria-expanded="false"><span class="linkdot"></span><span class="tppilltext">Connecting…</span></button>
+        <button class="linkpill tppill dim" aria-expanded="false"><span class="linkdot"></span><span class="tppilltext">Connecting…</span><span class="tprtt"></span></button>
         <button class="iconbtn tpclose" aria-label="Close trackpad">${CLOSE}</button>
       </header>
       <p class="tpwhy" hidden></p>
       <p class="tpnote" role="status" hidden></p>
+      <div class="tprail" role="toolbar" aria-label="Keys and quick actions" aria-orientation="vertical" hidden></div>
+      <div class="tpbar" role="toolbar" aria-label="Quick actions" hidden></div>
       <div class="tparea">
         <p class="tphint">Two fingers to scroll · your computer's gestures work here</p>
         <div class="card alertcard tperr" role="alert" hidden></div>
       </div>
       <div class="tpkeys" hidden>
         <div class="tprow" role="toolbar" aria-label="Modifiers and keys">
-          ${MODS.map(([k, l]) => `<button data-mod="${k}" aria-pressed="false">${l}</button>`).join("")}
+          ${MODS.map(([k, l]) => `<button class="tpkey" data-mod="${k}" aria-pressed="false">${l}</button>`).join("")}
           <span class="tpsep" aria-hidden="true"></span>
-          ${KEYS.map(([k, l]) => `<button data-key="${k}" aria-label="${k === "esc" ? "Escape" : k === "tab" ? "Tab" : k + " arrow"}">${l}</button>`).join("")}
+          ${KEYS.map(([k, l]) => `<button class="tpkey" data-key="${k}" aria-label="${k === "esc" ? "Escape" : k === "tab" ? "Tab" : k + " arrow"}">${l}</button>`).join("")}
         </div>
         <textarea class="tptext" rows="1" autocapitalize="sentences" autocomplete="off" autocorrect="on"
           spellcheck="false" enterkeyhint="enter" aria-label="Type on the computer"
@@ -53,7 +55,7 @@
       </div>
       <button class="btn tpkb" aria-expanded="false">${KEYBOARD}<span>Keyboard</span></button>`;
     document.body.appendChild(root);
-    for (const k of ["pill", "pilltext", "close", "why", "note", "area", "hint", "err", "keys", "row", "text", "kb"]) {
+    for (const k of ["pill", "pilltext", "rtt", "close", "why", "note", "rail", "bar", "area", "hint", "err", "keys", "row", "text", "kb"]) {
       el[k] = root.querySelector(".tp" + k);
     }
 
@@ -75,8 +77,13 @@
     // Keep the field focused (and the phone keyboard up) when a row button is pressed.
     el.row.onpointerdown = (e) => e.preventDefault();
 
+    W.padRail.mount({ rail: el.rail, bar: el.bar });
+    W.padRail.onType(() => keyboard(true));
+    W.padRail.onError(alert);
+    W.padActions.onChange(() => { if (!root.hidden) W.padRail.paint(); });
+
     W.padKeys.onMods((m) => {
-      for (const b of el.row.querySelectorAll("[data-mod]")) {
+      for (const b of root.querySelectorAll("[data-mod]")) {
         const st = m[b.dataset.mod];
         b.classList.toggle("latched", st === "latched");
         b.classList.toggle("locked", st === "locked");
@@ -86,14 +93,15 @@
     W.pad.onState(paintPill);
     W.pad.onMsg((m) => {
       if (m.k === "pong") paintPill();
-      if (m.k === "err") { el.err.textContent = m.message; el.err.hidden = false; paintPill(); }
+      // The action list's refusal is shown where the actions would be (js/pad_actions.js).
+      if (m.k === "err" && !W.padActions.owns(m)) { alert(m.message); paintPill(); }
     });
 
     // First-touch hint fade. The rings, connector, chip and ambient highlight are js/pad_feel.js.
     el.area.addEventListener("pointerdown", () => el.area.classList.add("touched"));
 
     // Which way round: the layout follows this device's settings and the keyboard.
-    W.padPrefs.onChange((p) => { if (!root.hidden) orient(p); });
+    W.padPrefs.onChange((p) => { if (!root.hidden) { orient(p); W.padRail.paint(); } });
     W.padOrient.onChange(turned);
     W.padOrient.onNote((text) => {
       el.note.textContent = text;
@@ -117,11 +125,16 @@
     }
   }
 
+  function alert(text) {
+    el.err.textContent = text;
+    el.err.hidden = false;
+  }
+
   function paintPill() {
     const s = W.pad.state;
-    const ms = W.pad.rtt == null ? "" : ` · ${W.pad.rtt} ms`;
     const off = el.err.hidden ? "Connecting…" : "Not connected";
-    el.pilltext.textContent = s === "direct" ? "Direct" + ms : s === "relayed" ? "Relayed" + ms : off;
+    el.pilltext.textContent = s === "direct" ? "Direct" : s === "relayed" ? "Relayed" : off;
+    el.rtt.textContent = s !== "off" && W.pad.rtt != null ? `${W.pad.rtt} ms` : "";
     el.pill.classList.toggle("good", s === "direct");
     el.pill.classList.toggle("warn", s === "relayed");
     el.pill.classList.toggle("dim", s === "off");
@@ -133,7 +146,9 @@
   // The pad turned or changed layout: the rings in the old frame go, and it settles in.
   let opening = false;
   function turned() {
-    if (root.hidden || opening) return;
+    if (root.hidden) return;
+    W.padRail.paint();
+    if (opening) return;
     W.padFeel.attach(el.area);
     root.classList.remove("tpturn");
     void root.offsetWidth;
@@ -166,6 +181,7 @@
     W.padOrient.update({ typing: p.keyboard });
     W.padOrient.attach(root);
     W.pad.start();
+    W.padActions.refresh();
     W.padTouch.attach(el.area);
     W.padFeel.attach(el.area);
     W.padKeys.attach(el.text, el.row);
