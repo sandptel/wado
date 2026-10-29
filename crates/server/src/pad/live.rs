@@ -20,6 +20,7 @@ use webrtc::data_channel::RTCDataChannel;
 use webrtc::data_channel::data_channel_state::RTCDataChannelState;
 use webrtc::peer_connection::RTCPeerConnection;
 
+use wado_platform::Capability;
 use wado_protocol::pad::PadMsg;
 use wado_protocol::relay::RelayMsg;
 
@@ -167,7 +168,10 @@ impl Live {
     /// A reply from the pad; a device that cannot be made is not retried 60 times a second.
     fn answer(&self, reply: PadMsg) {
         match reply {
-            PadMsg::Err { message, .. } if message == super::sink::NO_UINPUT => self.fail(message),
+            PadMsg::Err {
+                message,
+                fatal: true,
+            } => self.fail(message),
             reply => self.reply(reply),
         }
     }
@@ -200,8 +204,9 @@ impl Live {
         if inner.pad.is_some() {
             return true;
         }
-        let mut pad = Pad::new(Box::new(Devices::default()));
-        if let Err(message) = pad.prepare() {
+        let mut pad = Pad::new(devices());
+        if let Err(e) = pad.prepare() {
+            let message = e.to_string();
             drop(inner);
             warn!(device, "pad: {message}");
             self.fail(message);
@@ -245,7 +250,7 @@ impl Live {
                         live.answer(reply);
                     }
                     if let Some(text) = text
-                        && let Err(message) = super::text::type_text(&text).await
+                        && let Err(message) = type_text(text).await
                     {
                         warn!("pad: typing failed — {message}");
                         live.reply(PadMsg::Err {
@@ -293,6 +298,31 @@ impl Live {
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
         self.inner.lock().unwrap_or_else(|e| e.into_inner())
+    }
+}
+
+/// The platform's touchpad and keyboard. Missing ones are looked for again first: a pad opening
+/// is rare, and `/dev/uinput` may have been fixed since the daemon started.
+fn devices() -> Devices {
+    let p = crate::platform::get();
+    for cap in [Capability::Touch, Capability::Keys] {
+        if !p.has(cap) {
+            p.reprobe(cap);
+        }
+    }
+    Devices::from_platform(p)
+}
+
+/// Type committed text on the desktop through the platform — looked for again when missing,
+/// so a typist installed since the daemon started is used.
+async fn type_text(text: String) -> Result<(), String> {
+    let p = crate::platform::get();
+    if !p.has(Capability::Text) {
+        p.reprobe(Capability::Text);
+    }
+    match p.text() {
+        Ok(t) => t.type_text(text).await,
+        Err(absent) => Err(absent.why),
     }
 }
 

@@ -65,9 +65,12 @@ mod tests {
     use wado_config::schema::trackpad::TrackpadDelay;
     use wado_protocol::pad::{Contact, Mod, PadMsg};
 
+    use wado_platform::input::{InputRes, KeyInjector, TouchInjector};
+
     use super::*;
     use crate::pad::pacer::period;
-    use crate::pad::state::{Pad, Sink};
+    use crate::pad::sink::Devices;
+    use crate::pad::state::Pad;
 
     #[derive(Debug, Clone, PartialEq)]
     enum Call {
@@ -95,23 +98,36 @@ mod tests {
             self.0.lock().unwrap().push((now, call));
         }
     }
-    impl Sink for Rec {
-        fn ready(&mut self, _: Option<(u16, u16)>) -> Result<(), String> {
+    impl TouchInjector for Rec {
+        fn resize(&mut self, _: u16, _: u16) -> InputRes {
             Ok(())
         }
-        fn touch(&mut self, _: (u16, u16), c: &[Contact]) -> Result<(), String> {
+        fn frame(&mut self, c: &[Contact]) -> InputRes {
             self.push(Call::Touch(c.to_vec()));
             Ok(())
         }
-        fn tap(&mut self, _: &[Mod], _: u16) -> Result<(), String> {
+    }
+    impl KeyInjector for Rec {
+        fn tap(&mut self, _: &[Mod], _: u16) -> InputRes {
             Ok(())
         }
-        fn hold(&mut self, mods: &[Mod]) -> Result<(), String> {
+        fn hold(&mut self, mods: &[Mod]) -> InputRes {
             self.push(Call::Hold(mods.to_vec()));
             Ok(())
         }
-        fn release_all(&mut self) {
+        fn release_all(&mut self) -> InputRes {
             self.push(Call::Release);
+            Ok(())
+        }
+    }
+    impl Rec {
+        /// Devices that record into this.
+        fn devices(&self) -> Devices {
+            let (t, k) = (self.clone(), self.clone());
+            Devices::new(
+                Arc::new(move || Ok(Box::new(t.clone()) as Box<dyn TouchInjector>)),
+                Arc::new(move || Ok(Box::new(k.clone()) as Box<dyn KeyInjector>)),
+            )
         }
     }
 
@@ -129,7 +145,7 @@ mod tests {
         fn new(cfg: &Trackpad, park: bool) -> Rig {
             let epoch = Instant::now();
             let rec = Rec(Arc::default(), Some(epoch));
-            let mut pad = Pad::with_config(Box::new(rec.clone()), cfg);
+            let mut pad = Pad::with_config(rec.devices(), cfg);
             pad.handle(0, PadMsg::Size { w: 390, h: 800 }, false);
             let pad = Arc::new(Mutex::new(pad));
             let wake = Arc::new(Notify::new());

@@ -10,6 +10,8 @@ wado-config = { path = "../config" }
 # The compositor library. The server drives it only through the typed command/frame
 # boundary it exposes (build / CompositorCommand / FrameMsg) — no Smithay here.
 wado-compositor = { path = "../compositor" }
+# Host capabilities behind traits (`platform/`): the providers here, the seams there.
+wado-platform = { path = "../platform" }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 thiserror = "1"
@@ -54,3 +56,5 @@ zbus = { version = "5", default-features = false, features = ["tokio"] }
 [dev-dependencies]
 # Paused time for the pad tick's tests (`pad/ticker.rs`): the same tokio, one more feature.
 tokio = { version = "1", features = ["test-util"] }
+# Every capability faked, for the policy above the traits.
+wado-platform = { path = "../platform", features = ["fake"] }

@@ -1,14 +1,16 @@
 //! A thin, raw wrapper over `/dev/uinput`'s modern setup path.
 //!
+//! Every batch of events goes to the kernel in **one** `write(2)`: uinput takes any number of
+//! `input_event`s per write and injects them in order, so a touch frame of nine events and its
+//! `SYN_REPORT` is one syscall, not ten.
+//!
 //! ponytail: this duplicates `crates/compositor/src/input/gamepad.rs` almost line for line —
-//! same raw `libc::ioctl` approach, same hand-rolled `input_event` struct — but cannot reuse it:
-//! the server crate must not depend on the compositor crate (`CLAUDE.md`'s crate boundary), and
-//! `gamepad.rs` uses the *legacy* `UI_DEV_SETUP`-free path (one `write()` of `uinput_user_dev`),
-//! which has no way to carry an axis `resolution`. The touchpad needs that resolution for
-//! `libinput` to compute pointer speed correctly, hence the newer `UI_DEV_SETUP`/`UI_ABS_SETUP`
-//! ioctls here instead. If a third virtual device ever needs uinput, the move is one shared
-//! micro-crate (`wado-uinput`) that both `gamepad.rs` and this module depend on — not justified
-//! for two call sites.
+//! same raw `libc::ioctl` approach, same hand-rolled `input_event` layout — but `gamepad.rs`
+//! uses the *legacy* `UI_DEV_SETUP`-free path (one `write()` of `uinput_user_dev`), which has no
+//! way to carry an axis `resolution`. The touchpad needs that resolution for `libinput` to
+//! compute pointer speed correctly, hence the newer `UI_DEV_SETUP`/`UI_ABS_SETUP` ioctls here
+//! instead. If a third virtual device ever needs uinput, the move is one shared module both
+//! depend on — not justified for two call sites.
 
 use std::{
     fs::{File, OpenOptions},
@@ -80,20 +82,23 @@ struct UinputAbsSetup {
     absinfo: InputAbsInfo,
 }
 
-/// `struct input_event` on a 64-bit kernel, with a zero timestamp — the kernel timestamps on
-/// read, so what this writes is never read back for timing.
-#[repr(C)]
-struct InputEventRaw {
-    sec: i64,
-    usec: i64,
-    kind: u16,
-    code: u16,
-    value: i32,
+/// The size of `struct input_event` on a 64-bit kernel: two `i64` (a zero timestamp — the
+/// kernel stamps events itself), `u16` type, `u16` code, `i32` value.
+const EVENT_SIZE: usize = 24;
+
+/// Append one `struct input_event` to `buf`, in the kernel's (native) layout.
+fn encode(buf: &mut Vec<u8>, kind: u16, code: u16, value: i32) {
+    buf.extend_from_slice(&[0; 16]);
+    buf.extend_from_slice(&kind.to_ne_bytes());
+    buf.extend_from_slice(&code.to_ne_bytes());
+    buf.extend_from_slice(&value.to_ne_bytes());
 }
 
 /// An open uinput device. Dropping it destroys the kernel device.
 pub struct Device {
     file: File,
+    /// The bytes of one batch, reused for every batch.
+    buf: Vec<u8>,
 }
 
 impl Device {
@@ -107,7 +112,10 @@ impl Device {
             .write(true)
             .custom_flags(libc::O_NONBLOCK)
             .open("/dev/uinput")?;
-        let dev = Device { file };
+        let dev = Device {
+            file,
+            buf: Vec::with_capacity(32 * EVENT_SIZE),
+        };
         setup(&dev)?;
         dev.create(name)?;
         Ok(dev)
@@ -190,30 +198,25 @@ impl Device {
         }
     }
 
-    /// Write one frame of events, followed by `SYN_REPORT`.
-    pub fn emit(&self, events: &[(u16, u16, i32)]) -> io::Result<()> {
+    /// Write one frame of events, followed by `SYN_REPORT` — one `write(2)`.
+    pub fn emit(&mut self, events: &[(u16, u16, i32)]) -> io::Result<()> {
+        self.buf.clear();
         for &(kind, code, value) in events {
-            self.write_event(kind, code, value)?;
+            encode(&mut self.buf, kind, code, value);
         }
-        self.write_event(EV_SYN, SYN_REPORT, 0)
+        encode(&mut self.buf, EV_SYN, SYN_REPORT, 0);
+        (&self.file).write_all(&self.buf)
     }
 
-    fn write_event(&self, kind: u16, code: u16, value: i32) -> io::Result<()> {
-        let ev = InputEventRaw {
-            sec: 0,
-            usec: 0,
-            kind,
-            code,
-            value,
-        };
-        // Safety: `ev` is a live `#[repr(C)]` value borrowed for the duration of the write.
-        let bytes = unsafe {
-            std::slice::from_raw_parts(
-                (&ev as *const InputEventRaw).cast::<u8>(),
-                std::mem::size_of::<InputEventRaw>(),
-            )
-        };
-        (&self.file).write_all(bytes)
+    /// Write each event as a frame of its own (each followed by `SYN_REPORT`) — a key chord,
+    /// whose presses must arrive as separate reports in order — still in one `write(2)`.
+    pub fn emit_each(&mut self, events: &[(u16, u16, i32)]) -> io::Result<()> {
+        self.buf.clear();
+        for &(kind, code, value) in events {
+            encode(&mut self.buf, kind, code, value);
+            encode(&mut self.buf, EV_SYN, SYN_REPORT, 0);
+        }
+        (&self.file).write_all(&self.buf)
     }
 
     fn fd(&self) -> i32 {
@@ -276,6 +279,19 @@ mod tests {
     fn setup_structs_are_the_sizes_the_kernel_expects() {
         assert_eq!(std::mem::size_of::<UinputSetup>(), 92);
         assert_eq!(std::mem::size_of::<UinputAbsSetup>(), 28);
-        assert_eq!(std::mem::size_of::<InputEventRaw>(), 24);
+        assert_eq!(std::mem::size_of::<libc::input_event>(), EVENT_SIZE);
+    }
+
+    /// The bytes written are exactly the kernel's `struct input_event`.
+    #[test]
+    fn an_event_is_encoded_as_the_kernel_lays_it_out() {
+        let mut buf = Vec::new();
+        encode(&mut buf, EV_ABS, 0x35, -7);
+        // SAFETY: plain data, and `buf` is exactly one event long.
+        let ev: libc::input_event =
+            unsafe { std::ptr::read_unaligned(buf.as_ptr().cast::<libc::input_event>()) };
+        assert_eq!(buf.len(), EVENT_SIZE);
+        assert_eq!((ev.type_, ev.code, ev.value), (EV_ABS, 0x35, -7));
+        assert_eq!((ev.time.tv_sec, ev.time.tv_usec), (0, 0));
     }
 }

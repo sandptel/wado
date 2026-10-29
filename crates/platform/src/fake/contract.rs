@@ -60,26 +60,31 @@ pub async fn stateful<C: Fresh + ?Sized>(c: &C) {
     );
 }
 
-/// A touchpad: sized, driven, lifted, resized, dropped — without an error.
+/// A touchpad: sized, driven, lifted, resized, dropped — without an error. On a real device this
+/// moves the pointer: every touch travels far before it lifts, so the desktop never reads a tap
+/// (a click) out of it.
 pub fn touch(open: &dyn Opener<dyn TouchInjector>) {
     let mut t = open.open().expect("open");
     t.resize(390, 800).expect("resize");
-    t.frame(&[(0, 100, 100), (1, 30000, 30000)]).expect("frame");
-    t.frame(&[(1, 30010, 30010)]).expect("one lifts");
+    t.frame(&[(0, 30000, 30000)]).expect("down");
+    t.frame(&[(0, 34000, 34000)]).expect("move");
     t.lift_all().expect("lift");
     t.resize(390, 800).expect("the same size again");
     t.resize(800, 390).expect("a new size");
-    t.frame(&[(0, 65535, 65535)]).expect("the far corner");
+    t.frame(&[(0, 34000, 34000)]).expect("down");
+    t.frame(&[(0, 30000, 30000)]).expect("move back");
     t.lift_all().expect("lift");
 }
 
-/// A keyboard: taps, holds, releases — and releasing twice is harmless.
+/// A keyboard: taps, holds, releases — and releasing twice is harmless. On a real device the
+/// keys reach whatever has focus, so only `KEY_F24` is pressed, which nothing binds.
 pub fn keys(open: &dyn Opener<dyn KeyInjector>) {
+    const F24: u16 = 194;
     let mut k = open.open().expect("open");
-    k.tap(&[], 30).expect("tap");
-    k.tap(&[Mod::Shift], 30).expect("chord");
-    k.hold(&[Mod::Ctrl]).expect("hold");
-    k.tap(&[Mod::Ctrl], 46).expect("a tap under a held mod");
+    k.tap(&[], F24).expect("tap");
+    k.tap(&[Mod::Shift], F24).expect("chord");
+    k.hold(&[Mod::Shift]).expect("hold");
+    k.tap(&[Mod::Shift], F24).expect("a tap under a held mod");
     k.release_all().expect("release");
     k.release_all().expect("release again");
 }

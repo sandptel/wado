@@ -1,35 +1,27 @@
 //! One phone's pad: what it holds down, and what each message from it does.
 //!
 //! Shared by both transports, so a phone that starts on the relay and moves to the direct link
-//! mid-drag keeps one continuous touch. Pure apart from the [`Sink`] it drives, which is what
-//! lets the safety rules — stale frames dropped, a silent finger lifted, a resize lifting every
-//! finger first — be tested without a kernel device. Touch frames are written by the
+//! mid-drag keeps one continuous touch. Pure apart from the [`Devices`] it drives — the
+//! platform's injectors, faked in tests — which is what lets the safety rules — stale frames
+//! dropped, a silent finger lifted, a resize lifting every finger first — be tested without a
+//! kernel device. Touch frames are written by the
 //! [`Pacer`] on the pad's tick, except direct ones with `trackpad { smoothing #false }`, which
 //! are written as they arrive.
 
 use tracing::info;
 use wado_config::schema::Trackpad;
+use wado_platform::input::{InputError, InputRes};
 use wado_protocol::pad::{Contact, Mod, PadMsg, newer};
 
 use super::arrivals::Arrivals;
 use super::delay::Delay;
 use super::keys::{char_code, key_code};
 use super::pacer::Pacer;
+use super::sink::Devices;
 use super::ticker::Pace;
 
-/// Where a pad's input lands. The real one is [`super::sink::Devices`].
-pub trait Sink: Send {
-    /// Make the devices before they are needed — the keyboard always, the touchpad when the
-    /// size is known — so the desktop has picked them up before the first touch or key.
-    fn ready(&mut self, size: Option<(u16, u16)>) -> Result<(), String>;
-    fn touch(&mut self, size: (u16, u16), c: &[Contact]) -> Result<(), String>;
-    fn tap(&mut self, mods: &[Mod], code: u16) -> Result<(), String>;
-    fn hold(&mut self, mods: &[Mod]) -> Result<(), String>;
-    fn release_all(&mut self);
-}
-
 pub struct Pad {
-    sink: Box<dyn Sink>,
+    sink: Devices,
     size: Option<(u16, u16)>,
     last_seq: Option<u32>,
     /// Any finger down, as last sent to the sink.
@@ -53,11 +45,11 @@ pub struct Pad {
 
 impl Pad {
     /// A pad with the `trackpad { }` config as it is now.
-    pub fn new(sink: Box<dyn Sink>) -> Pad {
+    pub fn new(sink: Devices) -> Pad {
         Pad::with_config(sink, &wado_config::live::current().trackpad)
     }
 
-    pub fn with_config(sink: Box<dyn Sink>, cfg: &Trackpad) -> Pad {
+    pub fn with_config(sink: Devices, cfg: &Trackpad) -> Pad {
         Pad {
             finger_silence_ms: cfg.finger_silence_ms,
             key_silence_ms: cfg.key_silence_ms,
@@ -106,7 +98,7 @@ impl Pad {
             }
             PadMsg::Key { key, mods } => match key_code(&key) {
                 Some(code) => self.sink.tap(&mods, code),
-                None => Err(format!("unknown key “{key}”")),
+                None => Err(InputError::Failed(format!("unknown key “{key}”"))),
             },
             PadMsg::Char { ch, mut mods } => match char_code(ch) {
                 Some((code, shift)) => {
@@ -115,9 +107,9 @@ impl Pad {
                     }
                     self.sink.tap(&mods, code)
                 }
-                None => Err(format!(
+                None => Err(InputError::Failed(format!(
                     "“{ch}” has no key on this keyboard layout — type it as text instead"
-                )),
+                ))),
             },
             PadMsg::Hold { mods } => self.sink.hold(&mods),
             PadMsg::Text { text } => {
@@ -133,10 +125,7 @@ impl Pad {
             | PadMsg::Run { .. }
             | PadMsg::Ran { .. } => Ok(()),
         };
-        result.err().map(|message| PadMsg::Err {
-            message,
-            fatal: false,
-        })
+        result.err().map(reply)
     }
 
     /// Text waiting to be typed (typing is async; the caller does it).
@@ -167,10 +156,7 @@ impl Pad {
             self.keys_released = true;
             self.sink.release_all();
         }
-        err.map(|message| PadMsg::Err {
-            message,
-            fatal: false,
-        })
+        err.map(reply)
     }
 
     /// What the tick must do next: keep its cadence while a finger is down or the pacer has
@@ -185,8 +171,8 @@ impl Pad {
         Pace::Park(keys.into_iter().chain(self.arrivals.due()).min())
     }
 
-    /// Make the devices now (see [`Sink::ready`]).
-    pub fn prepare(&mut self) -> Result<(), String> {
+    /// Make the devices now (see [`Devices::ready`]).
+    pub fn prepare(&mut self) -> InputRes {
         self.sink.ready(self.size)
     }
 
@@ -205,7 +191,7 @@ impl Pad {
         self.sink.release_all();
     }
 
-    fn touch(&mut self, c: &[Contact]) -> Result<(), String> {
+    fn touch(&mut self, c: &[Contact]) -> InputRes {
         let Some(size) = self.size else {
             return Ok(()); // the phone always sends its size first; nothing to touch yet
         };
@@ -213,7 +199,7 @@ impl Pad {
         self.sink.touch(size, c)
     }
 
-    fn resize(&mut self, size: (u16, u16)) -> Result<(), String> {
+    fn resize(&mut self, size: (u16, u16)) -> InputRes {
         let moved = |a: u16, b: u16| a.abs_diff(b) > 2;
         if let Some(old) = self.size {
             if !moved(old.0, size.0) && !moved(old.1, size.1) {
@@ -229,6 +215,15 @@ impl Pad {
     }
 }
 
+/// A device error, as the phone is told it: one the computer cannot fix by retrying (no
+/// `/dev/uinput`) is fatal, so the phone stops instead of sending sixty more a second.
+fn reply(e: InputError) -> PadMsg {
+    PadMsg::Err {
+        fatal: matches!(e, InputError::Unavailable(_)),
+        message: e.to_string(),
+    }
+}
+
 /// A frame naming one finger twice keeps the first: a malformed frame must not drive one slot
 /// from two places.
 fn first_of_each_id(mut c: Vec<Contact>) -> Vec<Contact> {
@@ -239,8 +234,6 @@ fn first_of_each_id(mut c: Vec<Contact>) -> Vec<Contact> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex};
-
     use super::*;
 
     /// The built-in timings, which a test's pad gets.
@@ -254,39 +247,17 @@ mod tests {
         );
     }
 
-    #[derive(Debug, Clone, PartialEq)]
-    enum Call {
-        Touch((u16, u16), Vec<Contact>),
-        Tap(Vec<Mod>, u16),
-        Hold(Vec<Mod>),
-        Release,
-    }
+    use wado_platform::fake::input::{InputCall as Call, InputLog};
 
+    /// What reached the fake devices, without their openings.
     #[derive(Clone, Default)]
-    struct Rec(Arc<Mutex<Vec<Call>>>);
+    struct Rec(InputLog);
     impl Rec {
         fn calls(&self) -> Vec<Call> {
-            self.0.lock().unwrap().clone()
+            self.0.io()
         }
-    }
-    impl Sink for Rec {
-        fn ready(&mut self, _: Option<(u16, u16)>) -> Result<(), String> {
-            Ok(())
-        }
-        fn touch(&mut self, size: (u16, u16), c: &[Contact]) -> Result<(), String> {
-            self.0.lock().unwrap().push(Call::Touch(size, c.to_vec()));
-            Ok(())
-        }
-        fn tap(&mut self, mods: &[Mod], code: u16) -> Result<(), String> {
-            self.0.lock().unwrap().push(Call::Tap(mods.to_vec(), code));
-            Ok(())
-        }
-        fn hold(&mut self, mods: &[Mod]) -> Result<(), String> {
-            self.0.lock().unwrap().push(Call::Hold(mods.to_vec()));
-            Ok(())
-        }
-        fn release_all(&mut self) {
-            self.0.lock().unwrap().push(Call::Release);
+        fn devices(&self) -> Devices {
+            Devices::new(self.0.touch(), self.0.keys())
         }
     }
 
@@ -304,7 +275,7 @@ mod tests {
             smoothing,
             ..Default::default()
         };
-        let mut p = Pad::with_config(Box::new(rec.clone()), &cfg);
+        let mut p = Pad::with_config(rec.devices(), &cfg);
         p.handle(0, PadMsg::Size { w: 390, h: 800 }, false);
         (p, rec)
     }
@@ -607,12 +578,28 @@ mod tests {
             direct_delay_ms: 8,
             ..Default::default()
         };
-        let mut p = Pad::with_config(Box::new(rec.clone()), &cfg);
+        let mut p = Pad::with_config(rec.devices(), &cfg);
         p.handle(0, PadMsg::Size { w: 390, h: 800 }, false);
         p.handle(1000, frame(1, vec![(0, 1, 1)]), false);
         p.tick(1007);
         assert_eq!(rec.calls().len(), 0);
         p.tick(1008);
         assert_eq!(rec.calls().len(), 1);
+    }
+
+    #[test]
+    fn a_computer_without_the_devices_says_so_and_it_is_fatal() {
+        let rec = Rec::default();
+        rec.0
+            .refuse(InputError::Unavailable("no uinput here".into()));
+        let mut p = Pad::with_config(rec.devices(), &Default::default());
+        assert_eq!(
+            p.handle(0, PadMsg::Size { w: 390, h: 800 }, false),
+            Some(PadMsg::Err {
+                message: "no uinput here".into(),
+                fatal: true
+            })
+        );
+        assert!(rec.calls().is_empty());
     }
 }
