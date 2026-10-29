@@ -2,6 +2,20 @@
 
 ### Added
 
+- **Install wado as an app.** Add it to your home screen (Android and desktop browsers offer it;
+  on an iPhone, Safari shows a one-time hint: Share → Add to Home Screen). It opens to your
+  computers like any app, and it opens **offline** too — your computers just show as offline.
+  - **Updates only when signed.** The installed app keeps the version it has and takes a new one
+    only when it is signed with the project's offline release key and every file matches. An
+    update is downloaded in the background and used the next time you open wado ("Update ready —
+    reopen to use it"), never in the middle of what you are doing. Anything unsigned or altered
+    is refused, and Diagnostics says so. Diagnostics also shows which version you run:
+    `wado 0.0.3 · signed ✓ · updated 30 Oct`. How releases are signed: `docs/release-signing.md`.
+  - **Shortcuts.** Long-press the app icon for **Trackpad**, **Files**, **Shell** and **Start /
+    join session** (which takes you to its desktop door rather than picking a session for you).
+    Each opens on the computer you used last; if it is offline or not
+    paired, you land on your computers with a note saying why.
+
 - **A file manager for the computer's files: browse, download, upload, organise.** Open it from
   the folder button on the home page (no session needed) or from **Files** in the control centre
   during a session.

@@ -14,6 +14,7 @@
 //! When a setting applies is said on the control (see [`crate::ui::widgets::When`]), not by
 //! which page it is on — the page answers "what is this about", the badge answers "when".
 
+pub mod about;
 pub mod appearance;
 pub mod computers;
 pub mod connection;

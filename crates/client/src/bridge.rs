@@ -23,6 +23,10 @@ use crate::{
 pub const JS: &str = concat!(
     include_str!("js/core.js"),
     "\n",
+    // Before `storage.js`, whose connect link rewrites the address: the shortcut's `?go=` is
+    // taken out first.
+    include_str!("js/deeplink.js"),
+    "\n",
     include_str!("js/storage.js"),
     "\n",
     "W.SCHEME_LIST = ",
@@ -232,6 +236,11 @@ pub const JS: &str = concat!(
     include_str!("js/autorate.js"),
     "\n",
     include_str!("js/caps.js"),
+    "\n",
+    // The installed app: the service worker that pins this client, and iOS's install hint.
+    include_str!("js/app_sw.js"),
+    "\n",
+    include_str!("js/install_hint.js"),
     "\n",
     include_str!("js/lifecycle.js"),
 );
@@ -594,6 +603,8 @@ pub fn run(ui: Ui) {
                         e.actions = serde_json::from_value(v.clone()).unwrap_or_default();
                     }
                 }
+                // The service worker: the version in use, an update waiting or refused (`js/app_sw.js`).
+                "app" => live.app.set(crate::app_info::AppInfo::from_msg(&msg)),
                 "online" => {
                     let key = string("key");
                     let n = num("daemons").unwrap_or(-1.0) as i32;

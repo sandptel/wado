@@ -346,6 +346,11 @@ pub struct Live {
     /// Where the person is outside a session — home, a computer, a settings page. See
     /// [`crate::route`]. Not persisted: a reload starts at home.
     pub view: Signal<crate::route::View>,
+    /// A shortcut from the app icon waiting to be followed (`?go=`; see [`crate::deeplink`]).
+    pub go: Signal<Option<crate::deeplink::Go>>,
+    /// The installed app: the version in use, signed or not, an update waiting or refused —
+    /// what the service worker says (`js/app_sw.js`).
+    pub app: Signal<crate::app_info::AppInfo>,
     /// What the light, control-only links say about computers other than the selected one —
     /// the ones home has a widget for. Keyed by profile key. See `js/side_link.js`.
     pub side: Signal<std::collections::HashMap<String, Side>>,
@@ -515,6 +520,8 @@ impl Live {
             sessions: use_signal(Default::default),
             note: use_signal(String::new),
             view: use_signal(Default::default),
+            go: use_signal(|| None),
+            app: use_signal(Default::default),
             side: use_signal(Default::default),
             actions: use_signal(Vec::new),
             widget_edit: use_signal(|| false),

@@ -13,6 +13,35 @@ use crate::{
     ui::{home::sessions, widgets::Icon},
 };
 
+/// Which doors this phone may use there. Shared with the app icon's shortcuts
+/// ([`crate::deeplink`]), so a shortcut never opens a door this page shows shut.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Doors {
+    pub pad: bool,
+    pub files: bool,
+    pub shell: bool,
+}
+
+pub fn doors(r: &Reach) -> Doors {
+    Doors {
+        pad: r.may("input"),
+        files: r.grants().as_ref().is_none_or(|g| g.files != "none"),
+        shell: r.may("shells") && r.config.as_ref().is_none_or(|c| c.shells),
+    }
+}
+
+/// The Desktop door: take over a computer in use elsewhere, rejoin what runs, or start anew.
+pub fn desktop(ui: Ui, r: &Reach) {
+    let running = !(ui.live.sessions)().1.is_empty();
+    if r.busy {
+        bridge::call("window.__wado.relayTakeover();".to_string());
+    } else if running {
+        sessions::join(ui);
+    } else {
+        crate::actions::start(ui);
+    }
+}
+
 #[component]
 pub fn Actions(ui: Ui, r: Reach) -> Element {
     let live = ui.live;
@@ -21,10 +50,11 @@ pub fn Actions(ui: Ui, r: Reach) -> Element {
     let running = !list.is_empty();
     let shells_open = (live.shells)().iter().filter(|s| s.alive).count();
     let off = !r.online;
-    let grants = r.grants();
-    let files_ok = grants.as_ref().is_none_or(|g| g.files != "none");
-    let pad_ok = r.may("input");
-    let shell_ok = r.may("shells") && r.config.as_ref().is_none_or(|c| c.shells);
+    let Doors {
+        pad: pad_ok,
+        files: files_ok,
+        shell: shell_ok,
+    } = doors(&r);
 
     let desk_sub = if r.busy {
         "In use on another device".to_string()
@@ -48,14 +78,9 @@ pub fn Actions(ui: Ui, r: Reach) -> Element {
             button {
                 class: "act primary",
                 disabled: off && !r.busy,
-                onclick: move |_| {
-                    if r.busy {
-                        bridge::call("window.__wado.relayTakeover();".to_string());
-                    } else if running {
-                        sessions::join(ui);
-                    } else {
-                        crate::actions::start(ui);
-                    }
+                onclick: {
+                    let r = r.clone();
+                    move |_| desktop(ui, &r)
                 },
                 if running && !r.busy { span { class: "badge", "running" } }
                 if r.busy { span { class: "badge", "take over" } }
