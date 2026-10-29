@@ -24,6 +24,7 @@ const CLEAR_OUT: &[&str] = &[
     "seat_hold",
     "occupancy",
     "e2e_reply",
+    "e2e_sas",
     "e2e_fail",
 ];
 /// Frames the relay itself originates; everything else from the relay must be sealed.
@@ -51,7 +52,16 @@ pub fn kind(text: &str) -> Option<&str> {
 enum State {
     Waiting,
     Replied(Replied),
-    Open { sealer: Sealer, opener: Opener },
+    /// A typed code checked out; the keys are agreed but nothing flows until the check words
+    /// are confirmed on the computer (`crate::gate::confirm`).
+    Confirming {
+        sealer: Sealer,
+        opener: Opener,
+    },
+    Open {
+        sealer: Sealer,
+        opener: Opener,
+    },
     Failed,
 }
 
@@ -136,7 +146,7 @@ impl Link {
                 }
                 out
             }
-            State::Waiting | State::Replied(_) if text != WAKE => {
+            State::Waiting | State::Replied(_) | State::Confirming { .. } if text != WAKE => {
                 if self.held.len() == HOLD_MAX {
                     self.held.pop_front();
                 }
@@ -201,7 +211,7 @@ impl Link {
 
     /// Answer a hello. `None` when there is nobody to answer (no room, or already open).
     pub fn hello(&mut self, host: &HostKey, v: u32, eph: &str) -> Option<E2eMsg> {
-        if self.room.is_empty() || self.is_open() {
+        if self.room.is_empty() || self.is_open() || self.is_confirming() {
             return None;
         }
         match handshake::reply(host, &self.room, &self.client_key, v, eph) {
@@ -240,6 +250,31 @@ impl Link {
             .push_front(serde_json::to_string(&E2eMsg::E2eOk).expect("serialises"));
     }
 
+    /// Hold the device at the check words: keys agreed, nothing in or out until [`Link::confirm`].
+    pub fn confirming(&mut self, sealer: Sealer, opener: Opener) {
+        self.state = State::Confirming { sealer, opener };
+    }
+
+    /// The check words were confirmed: let the device in, as [`Link::open`] would. False if this
+    /// link is no longer waiting on them (the device left, or another took the seat).
+    pub fn confirm(&mut self) -> bool {
+        match std::mem::replace(&mut self.state, State::Failed) {
+            State::Confirming { sealer, opener } => {
+                self.open(sealer, opener);
+                true
+            }
+            other => {
+                self.state = other;
+                false
+            }
+        }
+    }
+
+    /// Waiting on the check words.
+    pub fn is_confirming(&self) -> bool {
+        matches!(self.state, State::Confirming { .. })
+    }
+
     /// Refuse the device; the returned `e2e_fail` is the last thing it is sent.
     pub fn fail(&mut self, reason: &str) -> E2eMsg {
         self.state = State::Failed;
@@ -260,6 +295,50 @@ mod tests {
     fn kind_reads_the_tag() {
         assert_eq!(kind(r#"{"type":"pong"}"#), Some("pong"));
         assert_eq!(kind(r#"{"n":1}"#), None);
+    }
+
+    /// A typed pairing waiting on its check words: nothing flows either way until confirmed.
+    #[test]
+    fn a_link_waiting_on_the_check_words_lets_nothing_through() {
+        let host = HostKey::from_seed(&[5u8; 32]);
+        let mut l = Link::default();
+        l.reset("room", "ck");
+        let mut c = Client::new();
+        let reply = l.hello(&host, VERSION, &B64.encode(&c.eph_pub)).unwrap();
+        let ((pk, sig, mac, tmac), c2d, d2c) =
+            c.answer("room", "ck", &reply, None, Some("K7QF2MXP"));
+        let codes = handshake::Codes {
+            qr: vec![],
+            typed: vec!["K7QF2MXP".into()],
+        };
+        let done = l.finish(&pk, &sig, &mac, &tmac, &codes).unwrap();
+        l.confirming(done.sealer, done.opener);
+        // The daemon's output waits; the clear check-words frame does not.
+        assert!(l.outbound(r#"{"type":"log","line":"x"}"#.into()).is_empty());
+        assert_eq!(
+            l.outbound(r#"{"type":"e2e_sas","nonce":"n"}"#.into()).len(),
+            1
+        );
+        // Nothing sealed from the device is acted on, and a second hello cannot restart it.
+        let (n, ct) = Sealer::new(&c2d).seal(br#"{"type":"session_start"}"#);
+        let f = serde_json::to_string(&E2eMsg::Sealed {
+            n,
+            c: B64.encode(ct),
+        })
+        .unwrap();
+        assert!(matches!(l.inbound(&f), Inbound::Drop(_)));
+        assert!(l.hello(&host, VERSION, &B64.encode(&c.eph_pub)).is_none());
+        // Confirmed: e2e_ok first, then what was held.
+        assert!(l.confirm());
+        assert!(!l.confirm(), "once");
+        let out = l.outbound(WAKE.into());
+        assert_eq!(out.len(), 2);
+        let mut o = Opener::new(&d2c);
+        let Ok(E2eMsg::Sealed { n, c }) = serde_json::from_str(&out[0]) else {
+            panic!()
+        };
+        let first = String::from_utf8(o.open(n, B64.decode(c).unwrap()).unwrap()).unwrap();
+        assert!(first.contains("e2e_ok"), "{first}");
     }
 
     /// The hostile-relay cases, against the link as the relay loop drives it.

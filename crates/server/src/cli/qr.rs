@@ -117,16 +117,19 @@ fn saved_id() -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
-/// `wado pair [--relay URL] [--id ID] [<grant>…]` — no grants named: `security { new-device }`.
+/// `wado pair [--relay URL] [--id ID] [--wait] [<grant>…]` — no grants named: `security {
+/// new-device }`. `--wait`: keep going when piped, answering the check words from stdin.
 pub fn run(args: &[String]) -> i32 {
     let mut relay = None;
     let mut id = None;
+    let mut wait = false;
     let mut tokens = Vec::new();
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
             "--relay" => relay = it.next().cloned(),
             "--id" => id = it.next().cloned(),
+            "--wait" => wait = true,
             t => tokens.push(t),
         }
     }
@@ -143,7 +146,7 @@ pub fn run(args: &[String]) -> i32 {
     };
     match print_with(relay.as_deref(), id.as_deref(), &grants) {
         Some(code) => {
-            super::countdown::run(&code);
+            super::countdown::run(&code, wait);
             0
         }
         None => 1,

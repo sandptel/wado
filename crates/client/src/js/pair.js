@@ -10,6 +10,7 @@
 //   W.pairWith(text)       the form's submit: keep the code for the next handshake and redial
 //
 // The typed code is proven inside the envelope (e2e_handshake.js), never sent, and tried once.
+// Then four check words show here and on the computer, and the person confirms them there.
 
 const PAIR_TYPED = "wado.pairTyped";
 
@@ -20,10 +21,10 @@ W.pairNormalize = (text) => {
   return /^[0-9A-HJKMNP-TV-Z]{8}$/.test(c) ? c : "";
 };
 
-// The computer's refusals that mean "pair this device": `UNPAIRED`, `WRONG_CODE` and `STALE_CODE`
-// in crates/server/src/gate/mod.rs. Matched as text because a join refusal reaches here through
+// The computer's refusals that mean "pair this device": `UNPAIRED`, `WRONG_CODE`, `STALE_CODE`,
+// `DECLINED` and `NO_ANSWER` in crates/server/src/gate/mod.rs. Matched as text because a join refusal reaches here through
 // the relay, whose wire is frozen; scripts/pair-check.mjs reads that file and fails if they drift.
-W.PAIR_REFUSAL = /doesn't know this device yet|code didn't work|pairing code was already used or has expired/;
+W.PAIR_REFUSAL = /doesn't know this device yet|code didn't work|pairing code was already used or has expired|wasn't paired/;
 
 W._relayUnpaired = false;
 

@@ -48,6 +48,9 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
     let block = card("Pair a device", focused);
     let inner = block.inner(area);
     f.render_widget(block, area);
+    if let Some(a) = app.snap.asking.first() {
+        return check(f, app, a, inner);
+    }
 
     let code = qr(app);
     // Large only when asked for and there is room; compact otherwise.
@@ -194,5 +197,51 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
         .wrap(ratatui::widgets::Wrap { trim: true });
         let r = Rect::new(inner.x + 1, y, inner.width - 2, bottom.saturating_sub(y));
         f.render_widget(p, r);
+    }
+}
+
+/// A device typed a code: its check words, to compare with its screen, and the answer keys.
+fn check(f: &mut Frame, app: &App, a: &crate::gate::confirm::Ask, inner: Rect) {
+    let words = a.words.split(' ').collect::<Vec<_>>().join("   ");
+    let lines = [
+        Line::styled(format!("{} typed a code", a.device), theme::bold()).centered(),
+        Line::raw(""),
+        Line::styled("Does it show these four words?", theme::dim()).centered(),
+        Line::raw(""),
+        Line::styled(words, theme::key()).centered(),
+        Line::raw(""),
+    ];
+    let mut y = inner.y + inner.height.saturating_sub(lines.len() as u16 + 4) / 2;
+    for l in lines {
+        f.render_widget(l, Rect::new(inner.x, y, inner.width, 1));
+        y += 1;
+    }
+    let btn = |k: &str, what: &str, t: Target| {
+        vec![
+            (Span::styled(format!(" {k} "), theme::cursor()), Some(t)),
+            (Span::styled(format!(" {what}   "), theme::bold()), Some(t)),
+        ]
+    };
+    let mut spans = btn("y", "they match", Target::Check(true));
+    spans.extend(btn("n", "they don't", Target::Check(false)));
+    let w: u16 = spans.iter().map(|(s, _)| s.width() as u16).sum();
+    row(
+        f,
+        app,
+        inner.x + inner.width.saturating_sub(w) / 2,
+        y,
+        inner.right(),
+        spans,
+    );
+    y += 2;
+    if y < inner.bottom() {
+        f.render_widget(
+            Line::styled(
+                format!("{} s left · no answer counts as no", a.left()),
+                theme::dim(),
+            )
+            .centered(),
+            Rect::new(inner.x, y, inner.width, 1),
+        );
     }
 }

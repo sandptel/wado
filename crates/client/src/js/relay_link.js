@@ -332,6 +332,7 @@ function openLink() {
       return;
     }
     if (msg.type === "e2e_reply") { W.e2eOnReply(msg); return; }
+    if (msg.type === "e2e_sas") { W.e2eOnSas(msg); return; }
     if (msg.type === "e2e_fail") { W.e2eOnFail(msg); return; }
     if (msg.type === "sealed") { W.e2eOnSealed(msg, (m) => fire(m.type, m)); return; }
     if (msg.type === "join_denied") {

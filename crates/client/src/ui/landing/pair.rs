@@ -4,6 +4,10 @@
 //! link and needs no form; this is the other way: the same code, typed — eight characters,
 //! `XXXX-XXXX`, case and dashes optional, pasting welcome. Submitting hands it to `js/pair.js`,
 //! which proves it inside the envelope and redials.
+//!
+//! A typed code then shows four check words here and on the computer. The person compares them
+//! and answers **on the computer** — this screen only waits, since it is the one that could be
+//! fooled.
 
 use dioxus::prelude::*;
 
@@ -40,7 +44,11 @@ fn complete(formatted: &str) -> bool {
 
 pub fn render(ui: Ui) -> Element {
     let reason = (ui.live.unpaired)();
+    let words = (ui.live.pair_sas)();
     let mut code = use_signal(String::new);
+    if !words.is_empty() {
+        return check(&words);
+    }
     if reason.is_empty() {
         return rsx! {};
     }
@@ -76,6 +84,27 @@ pub fn render(ui: Ui) -> Element {
                     oninput: move |e| code.set(format(&e.value())),
                 }
                 button { class: "btn primary", r#type: "submit", disabled: !ready, "Pair" }
+            }
+        }
+    }
+}
+
+/// The check words, and a calm wait for the answer on the computer.
+fn check(words: &[String]) -> Element {
+    rsx! {
+        section { class: "pairform paircheck", "aria-labelledby": "checktitle", "aria-live": "polite",
+            div { class: "pairhead",
+                span { class: "disc", style: "--hue:var(--base0A)", Icon { name: "link" } }
+                b { id: "checktitle", "Check the computer shows the same 4 words" }
+            }
+            ol { class: "saswords",
+                for (i, w) in words.iter().enumerate() {
+                    li { key: "{i}", style: "--i:{i}", "{w}" }
+                }
+            }
+            p { class: "pairwait",
+                span { class: "pairdot", "aria-hidden": "true" }
+                "Waiting for you to confirm on the computer. If the words differ, say no there."
             }
         }
     }

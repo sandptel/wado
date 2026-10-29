@@ -20,7 +20,7 @@ use std::time::Duration;
 
 use tracing::warn;
 
-use super::{Gate, Grants, now_s, typed_code};
+use super::{Check, Gate, Grants, now_s, typed_code};
 
 /// How long a pairing code works.
 pub const PAIR_TTL: Duration = Duration::from_secs(10 * 60);
@@ -130,6 +130,7 @@ impl Gate {
             let _ = fs::remove_file(self.strikes_path());
         }
         let _ = fs::remove_file(self.lockout_path());
+        self.sweep_asks();
         let minted = Minted {
             code,
             typed: typed_code::new(),
@@ -226,8 +227,25 @@ impl Gate {
     pub fn state(&self, m: &Minted) -> CodeState {
         let now = now_s();
         if self.pair_live(&m.code) {
-            CodeState::Live(m.until.saturating_sub(now))
-        } else if self.locked_out() {
+            return CodeState::Live(m.until.saturating_sub(now));
+        }
+        // Typed in, and its check words put to the computer.
+        if let Some(a) = self.ask_of(&m.typed) {
+            return match a.check {
+                Check::Asking | Check::Yes | Check::No => CodeState::Confirm {
+                    left: a.left(),
+                    words: a.words,
+                    device: a.device,
+                },
+                Check::Paired => CodeState::Used,
+                Check::Declined => CodeState::Refused("the words were declined — not paired"),
+                Check::NoAnswer => CodeState::Refused("nobody confirmed the words — not paired"),
+                Check::Left => {
+                    CodeState::Refused("the device left before the words were confirmed")
+                }
+            };
+        }
+        if self.locked_out() {
             CodeState::LockedOut
         } else if now >= m.until {
             CodeState::Expired
@@ -238,12 +256,20 @@ impl Gate {
 }
 
 /// What became of a code shown on screen.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum CodeState {
     /// Still works, for this many seconds.
     Live(u64),
+    /// A device typed it in: do its check words match? `left` seconds to answer.
+    Confirm {
+        words: String,
+        device: String,
+        left: u64,
+    },
     /// A device paired with it (or it was withdrawn).
     Used,
+    /// Typed in, but not paired: why.
+    Refused(&'static str),
     Expired,
     /// Too many wrong typed codes revoked it.
     LockedOut,
@@ -251,9 +277,13 @@ pub enum CodeState {
 
 impl CodeState {
     /// One line for under the code.
-    pub fn say(self) -> String {
+    pub fn say(&self) -> String {
         match self {
             Self::Live(s) => format!("expires in {}:{:02}", s / 60, s % 60),
+            Self::Confirm { device, words, .. } => {
+                format!("{device} wants to pair — does it show: {words}?")
+            }
+            Self::Refused(why) => format!("{why} — make a new one"),
             Self::Used => "used — the device is paired".into(),
             Self::Expired => "expired — make a new one".into(),
             Self::LockedOut => "too many wrong codes — make a new one".into(),
@@ -383,6 +413,35 @@ mod tests {
         }
         assert_eq!(g.state(&m), CodeState::LockedOut);
         assert_eq!(g.state(&m).say(), "too many wrong codes — make a new one");
+    }
+
+    #[test]
+    fn a_typed_code_waits_on_its_check_words_then_says_how_it_ended() {
+        let g = temp();
+        let m = g.mint_pair();
+        g.redeem(&m.typed);
+        g.ask(&m.typed, "desert badger torch shell", "Laptop");
+        let CodeState::Confirm {
+            words,
+            device,
+            left,
+        } = g.state(&m)
+        else {
+            panic!("{:?}", g.state(&m))
+        };
+        assert_eq!(
+            (words.as_str(), device.as_str()),
+            ("desert badger torch shell", "Laptop")
+        );
+        assert!(left > 110);
+        g.settle(&m.typed, Check::Paired);
+        assert_eq!(g.state(&m), CodeState::Used);
+        let m = g.mint_pair();
+        g.redeem(&m.typed);
+        g.ask(&m.typed, "a b c d", "Tab");
+        g.settle(&m.typed, Check::Declined);
+        assert!(matches!(g.state(&m), CodeState::Refused(_)));
+        assert!(!g.pair_live(&m.typed), "declined: the code is gone too");
     }
 
     #[test]

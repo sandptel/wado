@@ -4,12 +4,12 @@ use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
 use ring::agreement::{self, EphemeralPrivateKey, X25519};
 use ring::digest::{SHA256, digest};
-use ring::rand::SystemRandom;
+use ring::rand::{SecureRandom, SystemRandom};
 use ring::{hmac, signature};
 use wado_protocol::envelope::{E2eMsg, VERSION, transcript};
 
 use super::host_key::HostKey;
-use super::seal::{Opener, Sealer, keys, pair_key};
+use super::seal::{Opener, Sealer, keys, pair_key, sas, sas_key};
 use crate::gate::Proof;
 
 /// Replied, waiting for the client's `e2e_finish`.
@@ -19,6 +19,9 @@ pub struct Replied {
     d2c: [u8; 32],
     /// `k_pair`, for checking a typed code's proof.
     k_pair: [u8; 32],
+    /// `k_sas` and the nonce `sas_commit` promised: the check words of a typed pairing.
+    k_sas: [u8; 32],
+    sas_nonce: [u8; 32],
 }
 
 /// A finished handshake: who the device is, and the link's keys.
@@ -26,6 +29,10 @@ pub struct Done {
     pub dev_pk: Vec<u8>,
     /// What the device proved about a pairing code. Nothing is spent or counted here.
     pub proof: Proof,
+    /// The check words' bytes, and the nonce to reveal for the device to make the same ones.
+    /// Used only for a typed code ([`Proof::Typed`]).
+    pub sas: [u8; 4],
+    pub sas_nonce: String,
     pub sealer: Sealer,
     pub opener: Opener,
 }
@@ -64,16 +71,25 @@ pub fn reply(
         .to_vec();
     let t1 = transcript(room_id, client_key, &eph_c, &eph_d, host.public());
     let h1 = digest(&SHA256, &t1);
-    let ((c2d, d2c), k_pair) = agreement::agree_ephemeral(
+    let ((c2d, d2c), k_pair, k_sas) = agreement::agree_ephemeral(
         mine,
         &agreement::UnparsedPublicKey::new(&X25519, &eph_c),
-        |shared| (keys(shared, h1.as_ref()), pair_key(shared, h1.as_ref())),
+        |shared| {
+            (
+                keys(shared, h1.as_ref()),
+                pair_key(shared, h1.as_ref()),
+                sas_key(shared, h1.as_ref()),
+            )
+        },
     )
     .map_err(|_| "bad ephemeral key")?;
+    let mut sas_nonce = [0u8; 32];
+    rng.fill(&mut sas_nonce).map_err(|_| "rng")?;
     let msg = E2eMsg::E2eReply {
         eph: B64.encode(&eph_d),
         host_pk: B64.encode(host.public()),
         sig: B64.encode(host.sign(h1.as_ref())),
+        sas_commit: B64.encode(digest(&SHA256, &sas_nonce)),
     };
     Ok((
         msg,
@@ -82,13 +98,15 @@ pub fn reply(
             c2d,
             d2c,
             k_pair,
+            k_sas,
+            sas_nonce,
         },
     ))
 }
 
 /// Check an `e2e_finish` against the live `codes`. A code a proof matches comes back in
-/// [`Proof::Code`] for the caller to redeem; a proof that matches none is [`Proof::Stale`] (QR)
-/// or [`Proof::Wrong`] (typed). A QR proof is only checked against QR codes and a typed one only
+/// [`Proof::Qr`] or [`Proof::Typed`] for the caller to redeem; a proof that matches none is
+/// [`Proof::Stale`] (QR) or [`Proof::Wrong`] (typed). A QR proof is only checked against QR codes and a typed one only
 /// against typed codes, so a guess at a short code is always counted as one.
 pub fn finish(
     r: Replied,
@@ -141,7 +159,8 @@ pub fn finish(
         )
     };
     let proof = match (qr, typed) {
-        (Some(Some(c)), _) | (_, Some(Some(c))) => Proof::Code(c),
+        (Some(Some(c)), _) => Proof::Qr(c),
+        (_, Some(Some(c))) => Proof::Typed(c),
         (_, Some(None)) => Proof::Wrong,
         (Some(None), None) => Proof::Stale,
         (None, None) => Proof::None,
@@ -149,6 +168,8 @@ pub fn finish(
     Ok(Done {
         dev_pk,
         proof,
+        sas: sas(&r.k_sas, h2.as_ref(), &r.sas_nonce),
+        sas_nonce: B64.encode(r.sas_nonce),
         sealer: Sealer::new(&r.d2c),
         opener: Opener::new(&r.c2d),
     })
@@ -165,6 +186,8 @@ pub(crate) mod tests {
         pub dev: Ed25519KeyPair,
         eph: Option<EphemeralPrivateKey>,
         pub eph_pub: Vec<u8>,
+        /// After `answer`: `(k_sas, H(T2), sas_commit)`, for the check words.
+        sas: Option<([u8; 32], Vec<u8>, String)>,
     }
 
     /// `(dev_pk, sig, pair_mac, typed_mac)`, as the browser sends them in `e2e_finish`.
@@ -180,7 +203,15 @@ pub(crate) mod tests {
                 dev: Ed25519KeyPair::from_pkcs8(doc.as_ref()).unwrap(),
                 eph: Some(eph),
                 eph_pub,
+                sas: None,
             }
+        }
+        /// The check words for the daemon's revealed nonce, as the browser makes them — `None`
+        /// if the nonce is not the one the reply committed to.
+        pub fn words(&self, nonce: &str) -> Option<[u8; 4]> {
+            let (k, h2, commit) = self.sas.as_ref()?;
+            let n = b64(nonce).ok()?;
+            (B64.encode(digest(&SHA256, &n)) == *commit).then(|| sas(k, h2, &n))
         }
         /// `(e2e_finish fields, k_c2d, k_d2c)` for a reply, as the browser computes them — with
         /// a QR code `pair` and/or a typed code `typed` if it holds one.
@@ -192,21 +223,34 @@ pub(crate) mod tests {
             pair: Option<&str>,
             typed: Option<&str>,
         ) -> (Finish, [u8; 32], [u8; 32]) {
-            let E2eMsg::E2eReply { eph, host_pk, .. } = reply else {
+            let E2eMsg::E2eReply {
+                eph,
+                host_pk,
+                sas_commit,
+                ..
+            } = reply
+            else {
                 panic!()
             };
             let (eph_d, hpk) = (b64(eph).unwrap(), b64(host_pk).unwrap());
             let t1 = transcript(room, key, &self.eph_pub, &eph_d, &hpk);
             let h1 = digest(&SHA256, &t1);
-            let ((c2d, d2c), k_pair) = agreement::agree_ephemeral(
+            let ((c2d, d2c), k_pair, k_sas) = agreement::agree_ephemeral(
                 self.eph.take().unwrap(),
                 &agreement::UnparsedPublicKey::new(&X25519, &eph_d),
-                |s| (keys(s, h1.as_ref()), pair_key(s, h1.as_ref())),
+                |s| {
+                    (
+                        keys(s, h1.as_ref()),
+                        pair_key(s, h1.as_ref()),
+                        sas_key(s, h1.as_ref()),
+                    )
+                },
             )
             .unwrap();
             let mut t2 = t1;
             t2.extend_from_slice(self.dev.public_key().as_ref());
             let h2 = digest(&SHA256, &t2);
+            self.sas = Some((k_sas, h2.as_ref().to_vec(), sas_commit.clone()));
             let mac = pair
                 .map(|p| {
                     B64.encode(hmac::sign(
@@ -267,7 +311,7 @@ pub(crate) mod tests {
             c.answer("room", "ck", &reply_msg, Some("CODE"), None);
         let live = codes(&["OTHER", "CODE"], &[]);
         let mut done = finish(r, &pk, &sig, &mac, &tmac, &live).unwrap();
-        assert_eq!(done.proof, Proof::Code("CODE".into()));
+        assert_eq!(done.proof, Proof::Qr("CODE".into()));
         // Both directions open.
         let (n, ct) = Sealer::new(&c2d).seal(b"hi");
         assert_eq!(done.opener.open(n, ct).as_deref(), Some(&b"hi"[..]));
@@ -280,7 +324,7 @@ pub(crate) mod tests {
         let live = codes(&["LONGQRCODE"], &["AAAA1111", "K7QF2MXP"]);
         assert_eq!(
             proof(None, Some("K7QF2MXP"), &live),
-            Proof::Code("K7QF2MXP".into())
+            Proof::Typed("K7QF2MXP".into())
         );
         assert_eq!(proof(None, Some("K7QF2MXQ"), &live), Proof::Wrong);
         assert_eq!(proof(None, None, &live), Proof::None);
@@ -290,6 +334,39 @@ pub(crate) mod tests {
         assert_eq!(proof(Some("K7QF2MXP"), None, &live), Proof::Stale);
         // …and a QR code sent as a typed proof is just a wrong guess.
         assert_eq!(proof(None, Some("LONGQRCODE"), &live), Proof::Wrong);
+    }
+
+    /// One typed-code handshake: the daemon's check words and the client's, from the nonce the
+    /// daemon reveals.
+    fn both_ends_words() -> ([u8; 4], Option<[u8; 4]>, Done) {
+        let mut c = Client::new();
+        let (m, r) = reply(&host(), "room", "ck", VERSION, &B64.encode(&c.eph_pub)).unwrap();
+        let ((pk, sig, mac, tmac), ..) = c.answer("room", "ck", &m, None, Some("K7QF2MXP"));
+        let done = finish(r, &pk, &sig, &mac, &tmac, &codes(&[], &["K7QF2MXP"])).unwrap();
+        (done.sas, c.words(&done.sas_nonce), done)
+    }
+
+    #[test]
+    fn the_check_words_match_on_both_ends_and_differ_across_sessions() {
+        let (daemon, client, done) = both_ends_words();
+        assert_eq!(done.proof, Proof::Typed("K7QF2MXP".into()));
+        assert_eq!(Some(daemon), client, "same session, same words");
+        let (other, ..) = both_ends_words();
+        assert_ne!(daemon, other, "another session, other words");
+        // The same 32-bit SAS twice in a row would be a 1-in-4-billion fluke; four in a row is a bug.
+        let more: Vec<[u8; 4]> = (0..4).map(|_| both_ends_words().0).collect();
+        assert!(more.iter().all(|w| *w != daemon));
+    }
+
+    #[test]
+    fn the_client_refuses_a_nonce_that_was_not_promised() {
+        let (_, _, done) = both_ends_words();
+        let mut c = Client::new();
+        let (m, _) = reply(&host(), "room", "ck", VERSION, &B64.encode(&c.eph_pub)).unwrap();
+        c.answer("room", "ck", &m, None, Some("K7QF2MXP"));
+        // A nonce from another handshake — a relay trying to steer this one's words — is not the
+        // one this reply committed to.
+        assert_eq!(c.words(&done.sas_nonce), None);
     }
 
     #[test]

@@ -3,7 +3,7 @@
 
 use ring::aead::{AES_256_GCM, Aad, LessSafeKey, Nonce, UnboundKey};
 use ring::hkdf;
-use wado_protocol::envelope::{LABEL, PAIR_LABEL, nonce};
+use wado_protocol::envelope::{LABEL, PAIR_LABEL, SAS_LABEL, nonce};
 
 pub struct Sealer {
     key: LessSafeKey,
@@ -100,6 +100,29 @@ pub fn typed_mac(k_pair: &[u8; 32], h2: &[u8], code: &str) -> ring::hmac::Tag {
     ctx.sign()
 }
 
+/// `k_sas` — what a typed pairing's check words come from — from the same secret and salt.
+pub fn sas_key(shared: &[u8], salt: &[u8]) -> [u8; 32] {
+    let mut out = [0u8; 32];
+    hkdf::Salt::new(hkdf::HKDF_SHA256, salt)
+        .extract(shared)
+        .expand(&[SAS_LABEL], Len(32))
+        .and_then(|okm| okm.fill(&mut out))
+        .expect("32 bytes is within HKDF-SHA256's limit");
+    out
+}
+
+/// The check words' four bytes: `HMAC(k_sas, H(T2) ‖ nonce)[..4]`.
+pub fn sas(k_sas: &[u8; 32], h2: &[u8], nonce: &[u8]) -> [u8; 4] {
+    let mut ctx =
+        ring::hmac::Context::with_key(&ring::hmac::Key::new(ring::hmac::HMAC_SHA256, k_sas));
+    ctx.update(h2);
+    ctx.update(nonce);
+    let tag = ctx.sign();
+    let mut out = [0u8; 4];
+    out.copy_from_slice(&tag.as_ref()[..4]);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -139,6 +162,20 @@ mod tests {
         assert_eq!(
             hex(typed_mac(&k, &[5u8; 32], "K7QF2MXP").as_ref()),
             "b1ae135713327fcf863f9cb8d7f8cfdc26c6fd99fb7c72cda383e7fcfe207447"
+        );
+    }
+
+    /// The check words: `scripts/e2e-vector.mjs` pins the same key and words.
+    #[test]
+    fn sas_vector() {
+        let k = sas_key(&[7u8; 32], &[9u8; 32]);
+        assert_eq!(
+            hex(&k),
+            "fcd6888ab08b88c8073ffd51b268af29878f82fef676f19bd1c0a7b1e3f0b51e"
+        );
+        assert_eq!(
+            wado_protocol::envelope::sas_words(sas(&k, &[5u8; 32], &[6u8; 32])),
+            ["desert", "badger", "torch", "shell"]
         );
     }
 

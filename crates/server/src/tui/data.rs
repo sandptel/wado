@@ -10,7 +10,7 @@ use wado_config::Config;
 use wado_protocol::SessionSummary;
 
 use crate::cli::status::{self, Status};
-use crate::gate::{Device, Gate, Grants};
+use crate::gate::{Device, Gate, Grants, confirm::Ask};
 
 pub struct Row {
     pub device: Device,
@@ -26,6 +26,8 @@ pub struct Row {
 pub struct Snapshot {
     pub status: Status,
     pub devices: Vec<Row>,
+    /// Typed pairings waiting for their check words to be confirmed here, oldest first.
+    pub asking: Vec<Ask>,
     pub cfg: Arc<Config>,
     /// Gate, files, shells and config lines from every daemon's log, oldest first.
     pub activity: Vec<String>,
@@ -61,6 +63,7 @@ impl Snapshot {
             })
             .collect();
         Self {
+            asking: gate.asking(),
             devices,
             cfg: wado_config::live::current(),
             activity: activity(),
