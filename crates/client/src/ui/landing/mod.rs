@@ -5,6 +5,7 @@
 //! the stream once the session is up.
 
 mod clips;
+mod pair;
 mod profiles;
 mod progress;
 mod sessions;
@@ -30,6 +31,7 @@ pub fn render(ui: Ui) -> Element {
             div { class: "wordmark", "wado" span { "." } }
             p { class: "tag", "Your desktop, at this screen's own resolution." }
             {progress::render(ui)}
+            {crate::ui::scoped(ui, "pair", pair::render)}
             {crate::ui::scoped(ui, "sessions", sessions::render)}
             {crate::ui::scoped(ui, "profiles", profiles::render)}
             {crate::ui::scoped(ui, "media", crate::ui::media::render)}

@@ -1,11 +1,14 @@
 // wado bridge — the envelope's handshake, client half (wire: crates/protocol/src/envelope.rs).
 //
 //   join_accepted → e2e_hello{eph} → e2e_reply{eph, host_pk, sig} → check the pin and the
-//   signature → e2e_finish{dev_pk, sig, pair_mac} → sealed e2e_ok → the link is up.
+//   signature → e2e_finish{dev_pk, sig, pair_mac, typed_mac} → sealed e2e_ok → the link is up.
 //
 // Until e2e_ok nothing is sent to the computer, and nothing it did not seal is acted on: the relay
-// can neither read nor forge a message. The QR pairing code never leaves this device — it is
-// proven with an HMAC over the transcript.
+// can neither read nor forge a message. A pairing code never leaves this device: the QR's is
+// proven with an HMAC over the transcript, a typed one with an HMAC keyed by the session's own
+// secret (it is short, so a proof over public bytes would let the relay try every code).
+// A typed code is tried exactly once — it is gone from storage the moment it is proven — so a
+// redial can never spend another of the computer's few allowed guesses.
 
 const E2E_REPLY_WAIT_MS = 8000;
 const E2E_LBL = new TextEncoder().encode("wado-e2e-v1");
@@ -87,24 +90,38 @@ W.e2eOnReply = async (msg) => {
     const dev = await W.e2eDevice();
     const h2 = await sha256(cat(t1, dev.pub));
     const sig = await crypto.subtle.sign({ name: "Ed25519" }, dev.privateKey, h2);
+    const stored = (k) => { try { return localStorage.getItem(k) || ""; } catch (_) { return ""; } };
     let pairMac = "";
-    const code = (() => { try { return localStorage.getItem("wado.pair") || ""; } catch (_) { return ""; } })();
+    const code = stored("wado.pair");
     if (code) {
       const k = await crypto.subtle.importKey("raw", new TextEncoder().encode(code), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
       pairMac = W.b64u.enc(await crypto.subtle.sign("HMAC", k, h2));
     }
+    let typedMac = "";
+    const typed = stored("wado.pairTyped");
+    if (typed) {
+      try { localStorage.removeItem("wado.pairTyped"); } catch (_) {}
+      const kp = await W.e2ePairKey(shared, h1);
+      const k = await crypto.subtle.importKey("raw", kp, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+      typedMac = W.b64u.enc(await crypto.subtle.sign("HMAC", k, cat(h2, new TextEncoder().encode(typed))));
+    }
     if (W._e2e !== s) return;
     s.chan = W.e2eChannel(keys);
     s.state = "sealed";
-    s.ws.send(JSON.stringify({ type: "e2e_finish", dev_pk: W.b64u.enc(dev.pub), sig: W.b64u.enc(sig), pair_mac: pairMac }));
+    const fin = { type: "e2e_finish", dev_pk: W.b64u.enc(dev.pub), sig: W.b64u.enc(sig), pair_mac: pairMac };
+    if (typedMac) fin.typed_mac = typedMac;
+    s.ws.send(JSON.stringify(fin));
   } catch (e) {
     e2eStop(s, "the secure handshake failed — " + e, false);
   }
 };
 
-// Plaintext, so unauthenticated: shown, and the link stops redialling, but nothing else.
+// Plaintext, so unauthenticated: shown, and the link stops redialling, but nothing else. A refusal
+// for not being paired (`pair.js`) also opens the pairing form — which a forged one could do too,
+// and all it gets is a form asking for a code.
 W.e2eOnFail = (msg) => {
   if (W._e2e) e2eStop(W._e2e, "this computer refused the device — " + (msg.reason || "no reason given"), true);
+  if (W.pairRefused) W.pairRefused(msg.reason);
 };
 
 // A sealed frame from the computer. `dispatch(obj)` gets each opened message, in order.

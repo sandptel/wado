@@ -3,8 +3,8 @@
 //
 // Built on the menu sheet's look (`.wado-menusheet`, `.menurow` in stage.css) rather than a new
 // one, so every bottom sheet in wado reads the same. Each sheet has a `tag`; showing a tag that
-// is already up replaces it, and `W.sheet.close(tag)` removes it from outside (an approval that
-// was answered on another device, say).
+// is already up replaces it, and `W.sheet.close(tag)` removes it from outside (a seat prompt made
+// stale by the seat coming back, say).
 //
 //   W.sheet.ask(tag, title, [{ label, primary?, run }])
 //   W.sheet.close(tag)

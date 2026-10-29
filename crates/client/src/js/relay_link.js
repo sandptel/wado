@@ -36,8 +36,9 @@
 //   W.relayTakeover()         redial with takeover=1 — only ever on a human tap ("use it here").
 //
 // More synthetic events, for `seat.js`: "__waiting" (the relay parked the join — no daemon yet,
-// or this device's daemon is reconnecting, or it awaits approval), "__occupied" (refused: every
-// daemon is in use, and a takeover is possible), "__taken_over" (another device took the seat).
+// or this device's daemon is reconnecting), "__occupied" (refused: every daemon is in use, and a
+// takeover is possible), "__taken_over" (another device took the seat). A refusal for not being
+// paired goes to `pair.js` instead, and stops the redialling until a code is typed.
 
 W.relayUp = false;
 W.relayWs = null;
@@ -109,7 +110,7 @@ W.clientKey = (() => {
       localStorage.setItem(CLIENT_KEY, k);
     }
     return k;
-  } catch (_) { return ""; } // private mode: no seat hold, approval every time
+  } catch (_) { return ""; } // private mode: no seat hold, and no way to stay paired
 })();
 
 // "Android · Chrome" — what other devices are shown when this one asks to join or takes over.
@@ -130,7 +131,11 @@ const toWsUrl = (relayUrl, id) => {
     "?client=" + encodeURIComponent(W.clientKey) + "&name=" + encodeURIComponent(W.deviceName) +
     (want ? "&instance=" + encodeURIComponent(want) : "");
 };
-const pairCode = () => { try { return localStorage.getItem("wado.pair") || ""; } catch (_) { return ""; } };
+// A pairing code to prove — the QR's, or one typed into the pairing form (`pair.js`).
+const pairCode = () => {
+  try { return localStorage.getItem("wado.pair") || localStorage.getItem("wado.pairTyped") || ""; }
+  catch (_) { return ""; }
+};
 // Has this browser ever been let in on this Remote ID? Decides how a "no computer online" wait
 // is worded: for an ID that has never worked, a typo is likelier than a computer still booting.
 W.knownRemoteId = (id) => !!instanceFor(String(id).replace(/[\s-]/g, ""));
@@ -178,6 +183,7 @@ W.relayDial = (url, id) => {
   W.relayDrop(true);
   // A dial someone asked for clears a refusal: they have seen it and are trying again.
   W._e2eBlocked = false;
+  W._relayUnpaired = false;
   W._relayTarget = { url, id, wsUrl };
   W._relayTries = 0;
   W.relayMode = true;
@@ -203,6 +209,8 @@ function scheduleRelink() {
   // The secure handshake refused the computer (or it refused us): redialling would just repeat
   // it — or, for a changed identity, keep talking to an impostor. A human decides.
   if (W._e2eBlocked) return;
+  // Not paired: the same refusal every time until someone types a code (`pair.js`).
+  if (W._relayUnpaired) return;
   // Taken over by another device with a deliberate tap: redialling would be this device
   // reaching to take the seat straight back — the I17 steal-war. A human tap here ends it.
   if (W._relayTakenOver) return;
@@ -329,6 +337,12 @@ function openLink() {
     if (msg.type === "join_denied") {
       W._relayTakeover = false;
       if (msg.retry_ms) W._relayRetryAfter = msg.retry_ms;
+      // This computer does not know this device: no retry will change that, a code will.
+      if (W.pairRefused && W.pairRefused(msg.reason)) {
+        if (W.relayPhase) W.relayPhase(1, msg.reason);
+        if (W.rlog) W.rlog("join refused — " + msg.reason);
+        return;
+      }
       if (msg.takeover) fire("__occupied", msg);
       // Retryable, not fatal — but *how* retryable depends on which denial this is, and
       // conflating them produced a live regression on 2026-09-13.

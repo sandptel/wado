@@ -400,6 +400,9 @@ pub struct Live {
     pub conn_stage: Signal<u8>,
     /// Why the connection stopped where it did. Empty while nothing has failed.
     pub conn_error: Signal<String>,
+    /// Why this computer refused this device for not being paired — the pairing form shows
+    /// while it is set (`ui::landing::pair`). Empty otherwise.
+    pub unpaired: Signal<String>,
     /// Which path this device is on right now — the link badge (`crate::link`).
     pub link: Signal<crate::link::Link>,
 
@@ -510,6 +513,7 @@ impl Live {
             conn_stage: use_signal(|| 0),
             link: use_signal(crate::link::Link::default),
             conn_error: use_signal(String::new),
+            unpaired: use_signal(String::new),
             session_alive: use_signal(|| None),
             apps: use_signal(Vec::new),
             drawer_open: use_signal(|| false),
