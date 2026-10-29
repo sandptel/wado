@@ -28,10 +28,12 @@
       (typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches);
   }
 
+  // In the pad's own frame (js/pad_orient.js): the rings are children of the pad, so when it is
+  // drawn turned they must be placed in its turned coordinates, not the screen's.
   function place(f, e) {
-    const r = el.getBoundingClientRect();
-    f.x = e.clientX - r.left;
-    f.y = e.clientY - r.top;
+    const p = W.padOrient.toPad(e.clientX, e.clientY, el.getBoundingClientRect());
+    f.x = p.x;
+    f.y = p.y;
   }
 
   function schedule() {
