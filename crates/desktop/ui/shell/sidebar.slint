@@ -1,0 +1,204 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// The left rail: the wordmark, the mode switch (this computer · other computers), the pages of
+// the mode, and appearance. One accent highlight slides between rows on the spring — the same
+// control moving, never two controls swapping.
+
+import { Theme } from "../theme.slint";
+import { App, Host, Client } from "../state.slint";
+import { Icon, Icons } from "../widgets/icon.slint";
+import { Segmented } from "../widgets/toggle.slint";
+import { StatusPill, LinkDot } from "../widgets/status.slint";
+import { SectionLabel, Small, Mono, Disc } from "../widgets/surface.slint";
+
+export struct NavEntry {
+    icon: string,
+    label: string,
+    count: int,
+    alert: bool,
+}
+
+component NavRow inherits Rectangle {
+    in property <NavEntry> e;
+    in property <bool> on;
+    callback clicked();
+    height: 44px;
+    accessible-role: tab;
+    accessible-label: e.label;
+    accessible-item-selected: on;
+    accessible-action-default => { clicked(); }
+    Rectangle {
+        border-radius: Theme.r2;
+        background: !root.on && t.has-hover ? Theme.surface-1 : transparent;
+        animate background { duration: Theme.dur; }
+    }
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 12px;
+        spacing: 12px;
+        VerticalLayout {
+            alignment: center;
+            Icon {
+                path: root.e.icon;
+                color: root.on ? Theme.on-accent : Theme.dim;
+                size: 19px;
+                animate color { duration: Theme.dur; }
+            }
+        }
+        Text {
+            text: root.e.label;
+            color: root.on ? Theme.on-accent : Theme.text;
+            font-family: Theme.body-font;
+            font-size: 14px;
+            font-weight: root.on ? 600 : 500;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            animate color { duration: Theme.dur; }
+        }
+        if root.e.count > 0 || root.e.alert: VerticalLayout {
+            alignment: center;
+            Rectangle {
+                height: 20px;
+                width: max(20px, n.preferred-width + 12px);
+                border-radius: 10px;
+                background: root.e.alert ? Theme.warn : (root.on ? Theme.on-accent.with-alpha(0.18) : Theme.surface-2);
+                n := Text {
+                    text: root.e.alert && root.e.count == 0 ? "!" : root.e.count;
+                    color: root.e.alert ? Theme.on-accent : (root.on ? Theme.on-accent : Theme.dim);
+                    font-family: Theme.body-font;
+                    font-size: 11px;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+    t := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+export component Sidebar inherits Rectangle {
+    width: 264px;
+    background: Theme.ground;
+    callback appearance();
+
+    property <[NavEntry]> host-nav: [
+        { icon: Icons.home, label: "Overview" },
+        { icon: Icons.phone, label: "Devices", count: Host.devices.length },
+        { icon: Icons.qr, label: "Pair a device", alert: Host.asks.length > 0 },
+        { icon: Icons.monitor, label: "Sessions", count: Host.sessions.length },
+        { icon: Icons.text, label: "Logs" },
+        { icon: Icons.sliders, label: "Settings", count: Host.dirty },
+    ];
+    property <[NavEntry]> client-nav: [
+        { icon: Icons.grid, label: "Computers", count: Client.computers.length },
+    ];
+    property <[NavEntry]> nav: App.mode == 0 ? host-nav : client-nav;
+    property <int> active: App.mode == 0 ? App.host-page : (App.client-page == 0 ? 0 : -1);
+
+    VerticalLayout {
+        padding: 18px;
+        padding-top: 22px;
+        spacing: 18px;
+        HorizontalLayout {
+            padding-left: 6px;
+            spacing: 8px;
+            Text {
+                text: "wado";
+                color: Theme.bright;
+                font-family: Theme.display-font;
+                font-size: 40px;
+                font-weight: 700;
+                letter-spacing: -1.8px;
+                vertical-alignment: bottom;
+            }
+            VerticalLayout {
+                alignment: end;
+                padding-bottom: 8px;
+                Small { text: "desktop"; font-size: 12px; }
+            }
+        }
+        Segmented {
+            h: 40px;
+            options: ["This computer", "Other computers"];
+            index <=> App.mode;
+        }
+        nav-list := Rectangle {
+            height: root.nav.length * 46px;
+            // The highlight is one rectangle that travels; rows sit on top of it.
+            highlight := Rectangle {
+                x: 0;
+                width: parent.width;
+                height: 44px;
+                y: max(0, root.active) * 46px;
+                opacity: root.active >= 0 ? 1 : 0;
+                border-radius: Theme.r2;
+                background: Theme.accent;
+                animate y { duration: Theme.dur-sheet; easing: cubic-bezier(0.32, 0.72, 0, 1); }
+                animate opacity { duration: Theme.dur; }
+            }
+            for e[i] in root.nav: NavRow {
+                y: i * 46px;
+                width: parent.width;
+                e: e;
+                on: i == root.active;
+                clicked => {
+                    if App.mode == 0 { App.host-page = i; } else { App.client-page = 0; }
+                }
+            }
+        }
+        if App.mode == 1: VerticalLayout {
+            spacing: 6px;
+            SectionLabel { text: "QUICK"; x: 6px; }
+            for c[i] in Client.computers: Rectangle {
+                height: 36px;
+                border-radius: Theme.r1;
+                background: ct.has-hover || (App.client-page == 1 && Client.current == i) ? Theme.surface-1 : transparent;
+                animate background { duration: Theme.dur; }
+                ct := TouchArea { mouse-cursor: pointer; clicked => { Client.open(i); } }
+                HorizontalLayout {
+                    padding-left: 10px;
+                    spacing: 10px;
+                    VerticalLayout { alignment: center; Disc { size: 22px; letters: ""; hue: c.hue; } }
+                    Text { text: c.name; color: Theme.text; font-family: Theme.body-font; font-size: 13px; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                    VerticalLayout { alignment: center; padding-right: 10px; LinkDot { tone: c.status-tone; motion: c.status-motion; size: 7px; } }
+                }
+            }
+        }
+        Rectangle { vertical-stretch: 1; }
+        if App.mode == 0: VerticalLayout {
+            spacing: 8px;
+            padding-left: 6px;
+            SectionLabel { text: "THIS COMPUTER"; }
+            StatusPill { text: Host.relay-words; tone: Host.relay-tone; motion: Host.relay-motion; }
+        }
+        Rectangle {
+            height: 44px;
+            border-radius: Theme.r2;
+            background: at.has-hover ? Theme.surface-1 : transparent;
+            animate background { duration: Theme.dur; }
+            at := TouchArea { mouse-cursor: pointer; clicked => { root.appearance(); } }
+            HorizontalLayout {
+                padding-left: 14px;
+                padding-right: 12px;
+                spacing: 12px;
+                VerticalLayout { alignment: center; Icon { path: Icons.palette; color: Theme.dim; size: 19px; } }
+                VerticalLayout {
+                    alignment: center;
+                    Text { text: "Appearance"; color: Theme.text; font-family: Theme.body-font; font-size: 14px; font-weight: 500; }
+                    Mono { text: App.scheme; color: Theme.dim; font-size: 10.5px; }
+                }
+                Rectangle { horizontal-stretch: 1; }
+                VerticalLayout {
+                    alignment: center;
+                    HorizontalLayout {
+                        spacing: -4px;
+                        Rectangle { width: 14px; height: 14px; border-radius: 7px; background: Theme.accent; border-width: 1.5px; border-color: Theme.ground; }
+                        Rectangle { width: 14px; height: 14px; border-radius: 7px; background: Theme.mauve; border-width: 1.5px; border-color: Theme.ground; }
+                        Rectangle { width: 14px; height: 14px; border-radius: 7px; background: Theme.good; border-width: 1.5px; border-color: Theme.ground; }
+                    }
+                }
+            }
+        }
+        Mono { text: "v" + App.version + " · AGPL-3.0"; color: Theme.dim; font-size: 10.5px; horizontal-alignment: center; }
+    }
+}

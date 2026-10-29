@@ -1,0 +1,44 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// A countdown ring: what is left, as an arc that empties clockwise. A clock, so it runs linear.
+
+import { Theme } from "../theme.slint";
+
+export component Ring inherits Rectangle {
+    in property <float> progress; // 1 full · 0 empty
+    in property <color> tone: Theme.accent;
+    in property <length> size: 120px;
+    in property <length> thickness: 8px;
+    width: size;
+    height: size;
+
+    property <float> p: max(0.0001, min(0.9999, progress));
+    animate p { duration: 1000ms; easing: linear; }
+    // In viewbox units (100 × 100), centre 50,50.
+    property <float> r: 50 - (thickness / size) * 50;
+    property <angle> a: 360deg * p;
+    property <float> ex: 50 + r * sin(a);
+    property <float> ey: 50 - r * cos(a);
+
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 100;
+        viewbox-height: 100;
+        stroke: Theme.surface-3;
+        stroke-width: root.thickness;
+        fill: transparent;
+        commands: "M 50 " + (50 - root.r) + " A " + root.r + " " + root.r + " 0 1 1 " + (50 - 0.01) + " " + (50 - root.r) + " Z";
+    }
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 100;
+        viewbox-height: 100;
+        stroke: root.tone;
+        stroke-width: root.thickness;
+        stroke-line-cap: round;
+        fill: transparent;
+        commands: "M 50 " + (50 - root.r) + " A " + root.r + " " + root.r + " 0 " + (root.p > 0.5 ? 1 : 0) + " 1 " + root.ex + " " + root.ey;
+    }
+    @children
+}

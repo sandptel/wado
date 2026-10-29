@@ -1,0 +1,136 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Buttons: soft, filled and pressable. Every one presses to .96 on the spring and lets go on
+// the pop (M1); focus is a 2px accent ring offset 2px.
+
+import { Theme } from "../theme.slint";
+import { Icon } from "icon.slint";
+
+// kind: "default" · "primary" · "danger" · "ghost" · "tint"
+export component Button inherits Rectangle {
+    in property <string> text;
+    in property <string> icon;
+    in property <string> kind: "default";
+    in property <bool> enabled: true;
+    in property <length> h: 44px;
+    // The icon after the words — for "go there" chevrons.
+    in property <bool> icon-after;
+    callback clicked();
+
+    property <bool> down: touch.pressed && root.enabled;
+    property <color> fg: kind == "primary" ? Theme.on-accent
+        : kind == "danger" ? Theme.bad
+        : kind == "tint" ? Theme.accent
+        : Theme.bright;
+
+    height: h;
+    min-width: lay.preferred-width;
+    horizontal-stretch: 0;
+    accessible-role: button;
+    accessible-label: text;
+    accessible-action-default => { if enabled { clicked(); } }
+    opacity: enabled ? 1 : 0.4;
+
+    focus := FocusScope {
+        enabled: root.enabled;
+        key-pressed(e) => {
+            if e.text == " " || e.text == "\n" { root.clicked(); return accept; }
+            reject
+        }
+    }
+
+    ring := Rectangle {
+        x: -3px; y: -3px;
+        width: parent.width + 6px; height: parent.height + 6px;
+        border-radius: Theme.r2 + 3px;
+        border-width: focus.has-focus ? 2px : 0px;
+        border-color: Theme.accent;
+    }
+
+    face := Rectangle {
+        border-radius: Theme.r2;
+        background: kind == "primary" ? (touch.has-hover ? Theme.accent.brighter(8%) : Theme.accent)
+            : kind == "danger" ? Theme.bad-tint
+            : kind == "tint" ? Theme.accent-tint
+            : kind == "ghost" ? (touch.has-hover ? Theme.surface-2 : transparent)
+            : (touch.has-hover ? Theme.surface-3 : Theme.surface-2);
+        drop-shadow-blur: kind == "primary" && enabled ? 22px : 0px;
+        drop-shadow-offset-y: 8px;
+        drop-shadow-color: kind == "primary" ? Theme.accent.with-alpha(0.28) : transparent;
+        transform-scale: root.down ? 0.96 : 1.0;
+        animate transform-scale {
+            duration: root.down ? Theme.dur-press : Theme.dur;
+            easing: root.down ? cubic-bezier(0.32, 0.72, 0, 1) : cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        animate background { duration: Theme.dur; easing: cubic-bezier(0.32, 0.72, 0, 1); }
+
+        lay := HorizontalLayout {
+            padding-left: root.text == "" ? 12px : 16px;
+            padding-right: root.text == "" ? 12px : 16px;
+            spacing: 8px;
+            alignment: center;
+            if root.icon != "" && !root.icon-after: VerticalLayout {
+                alignment: center;
+                Icon {
+                    path: root.icon;
+                    color: root.fg;
+                    size: 18px;
+                }
+            }
+            if root.text != "": Text {
+                text: root.text;
+                color: root.fg;
+                font-family: Theme.body-font;
+                font-size: 14px;
+                font-weight: 600;
+                vertical-alignment: center;
+            }
+            if root.icon != "" && root.icon-after: VerticalLayout {
+                alignment: center;
+                Icon {
+                    path: root.icon;
+                    color: root.fg;
+                    size: 16px;
+                }
+            }
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// A 40px round icon button: dim icon, surface-2 on hover.
+export component IconButton inherits Rectangle {
+    in property <string> icon;
+    in property <string> label;
+    in property <bool> enabled: true;
+    in property <color> tone: Theme.dim;
+    in property <length> size: 40px;
+    callback clicked();
+    width: size;
+    height: size;
+    accessible-role: button;
+    accessible-label: label;
+    accessible-action-default => { clicked(); }
+    opacity: enabled ? 1 : 0.4;
+    Rectangle {
+        border-radius: self.width / 2;
+        background: t.has-hover ? Theme.surface-2 : transparent;
+        transform-scale: t.pressed ? 0.9 : 1.0;
+        animate transform-scale { duration: Theme.dur; easing: cubic-bezier(0.34, 1.56, 0.64, 1); }
+        animate background { duration: Theme.dur; }
+        Icon {
+            path: root.icon;
+            color: t.has-hover ? Theme.bright : root.tone;
+            size: root.size * 0.48;
+        }
+    }
+    t := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}

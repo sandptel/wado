@@ -1,0 +1,255 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// One computer's page (the Computer page spec, desktop cut): the hero with its meta strip, the
+// four big doors, and Connection & trust. What this build cannot do natively yet says so on the
+// tile, and still does the job — through the web client in the browser.
+
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+import { Client, App, ComputerRow } from "../state.slint";
+import { Button, IconButton } from "../widgets/button.slint";
+import { Icon, Icons } from "../widgets/icon.slint";
+import { Rise, Card, Disc, SectionLabel, Title, Small, Mono, MetaCell, Divider } from "../widgets/surface.slint";
+import { LinkWords, Badge, StatusPill } from "../widgets/status.slint";
+import { Field } from "../widgets/field.slint";
+
+component Action inherits Rectangle {
+    in property <string> title;
+    in property <string> sub;
+    in property <string> icon;
+    in property <bool> primary;
+    in property <bool> enabled: true;
+    in property <string> badge;
+    callback clicked();
+    height: 112px;
+    border-radius: Theme.r3;
+    background: primary ? (t.has-hover ? Theme.accent.brighter(6%) : Theme.accent) : (t.has-hover ? Theme.surface-3 : Theme.surface-2);
+    opacity: enabled ? 1 : 0.45;
+    transform-scale: t.pressed ? 0.96 : 1.0;
+    animate transform-scale { duration: t.pressed ? Theme.dur-press : Theme.dur; easing: t.pressed ? cubic-bezier(0.32, 0.72, 0, 1) : cubic-bezier(0.34, 1.56, 0.64, 1); }
+    animate background { duration: Theme.dur; }
+    accessible-role: button;
+    accessible-label: title + ". " + sub;
+    t := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { root.clicked(); } }
+    VerticalLayout {
+        padding: 16px;
+        spacing: 4px;
+        HorizontalLayout {
+            well := Rectangle {
+                width: 40px;
+                height: 40px;
+                border-radius: Theme.r2;
+                background: root.primary ? Theme.on-accent.with-alpha(0.14) : Theme.ground.with-alpha(0.6);
+                y: t.pressed ? 2px : 0px;
+                Icon { path: root.icon; color: root.primary ? Theme.on-accent : Theme.accent; size: 22px; }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            if root.badge != "": VerticalLayout {
+                alignment: start;
+                Badge { text: root.badge; tone: root.primary ? "dim" : "caution"; }
+            }
+        }
+        Rectangle { vertical-stretch: 1; }
+        Text {
+            text: root.title;
+            color: root.primary ? Theme.on-accent : Theme.bright;
+            font-family: Theme.display-font;
+            font-size: 17px;
+            font-weight: 700;
+        }
+        Text {
+            text: root.sub;
+            color: root.primary ? Theme.on-accent.with-alpha(0.75) : Theme.dim;
+            font-family: Theme.body-font;
+            font-size: 12px;
+            overflow: elide;
+        }
+    }
+}
+
+component Hero inherits Rectangle {
+    in property <ComputerRow> c;
+    border-radius: Theme.r4;
+    background: Theme.surface-1;
+    Rectangle {
+        border-radius: Theme.r4;
+        background: @linear-gradient(120deg, root.c.hue.with-alpha(0.26) 0%, Theme.mauve.with-alpha(0.12) 55%, transparent 100%);
+    }
+    VerticalLayout {
+        padding: 24px;
+        spacing: 18px;
+        HorizontalLayout {
+            spacing: 18px;
+            Disc { size: 64px; letters: root.c.letters; hue: root.c.hue; }
+            VerticalLayout {
+                alignment: center;
+                spacing: 4px;
+                Text {
+                    text: root.c.name;
+                    color: Theme.bright;
+                    font-family: Theme.display-font;
+                    font-size: 38px;
+                    font-weight: 700;
+                    letter-spacing: -0.9px;
+                }
+                Mono { text: "Remote ID " + root.c.pretty-id + " · " + root.c.relay-host; color: Theme.dim; font-size: 12.5px; }
+            }
+        }
+        HorizontalLayout {
+            spacing: 10px;
+            MetaCell {
+                height: 78px;
+                key: "LINK";
+                value: root.c.online ? "Through its relay" : root.c.status-words;
+                sub: root.c.relay-host;
+            }
+            MetaCell {
+                height: 78px;
+                key: "COMPUTER";
+                value: root.c.online ? "Online" : "Offline";
+                sub: root.c.online ? (root.c.daemons == 1 ? "1 desktop can open" : root.c.daemons + " desktops can open") : "or its wado is not running";
+            }
+            MetaCell {
+                height: 78px;
+                key: "SESSIONS";
+                value: "—";
+                sub: "known once connected";
+            }
+        }
+    }
+}
+
+component Offline inherits Card {
+    in property <string> name;
+    tone: "bad";
+    VerticalLayout {
+        padding: 18px;
+        spacing: 6px;
+        Title { text: root.name + " is offline."; font-size: 15px; }
+        Small { text: "It is turned off, asleep, or its wado is not running. This page fills in by itself when it is back — nothing to retry."; font-size: 13px; }
+    }
+}
+
+component Trust inherits Card {
+    in property <ComputerRow> c;
+    in property <int> index;
+    property <string> new-name;
+    property <bool> forgetting;
+    VerticalLayout {
+        padding: 18px;
+        spacing: 12px;
+        SectionLabel { text: "CONNECTION & TRUST"; }
+        GridLayout {
+            spacing-horizontal: 18px;
+            spacing-vertical: 8px;
+            Row {
+                Small { text: "Remote ID"; vertical-alignment: center; }
+                HorizontalLayout {
+                    spacing: 4px;
+                    Mono { text: root.c.pretty-id; vertical-alignment: center; horizontal-stretch: 1; }
+                    IconButton { size: 30px; icon: Icons.copy; label: "Copy the Remote ID"; clicked => { App.copy(root.c.pretty-id); } }
+                }
+            }
+            Row {
+                Small { text: "Reached by"; vertical-alignment: center; }
+                Mono { text: root.c.relay; vertical-alignment: center; }
+            }
+        }
+        Divider { }
+        HorizontalLayout {
+            spacing: 10px;
+            Field { horizontal-stretch: 1; label: "Name"; placeholder: "Rename " + root.c.name; text <=> root.new-name; }
+            Button { text: "Rename"; enabled: root.new-name != ""; clicked => { Client.rename(root.index, root.new-name); root.new-name = ""; } }
+            Button {
+                kind: "danger";
+                text: root.forgetting ? "Forget it?" : "Forget";
+                icon: Icons.trash;
+                clicked => {
+                    if root.forgetting { Client.forget(root.index); root.forgetting = false; }
+                    else { root.forgetting = true; }
+                }
+            }
+        }
+        Small { text: "Forgetting removes it from this app only. The computer's own trust list is changed on that computer."; font-size: 11.5px; }
+    }
+}
+
+export component ComputerPage inherits Rectangle {
+    property <ComputerRow> c: Client.current >= 0 && Client.current < Client.computers.length ? Client.computers[Client.current] : { name: "" };
+    ScrollView {
+        VerticalLayout {
+            alignment: start;
+            padding: 28px;
+            padding-top: 18px;
+            spacing: 14px;
+            Rise {
+                order: 0;
+                HorizontalLayout {
+                    alignment: start;
+                    Button { kind: "ghost"; h: 36px; icon: Icons.left; text: "Computers"; clicked => { App.client-page = 0; } }
+                }
+            }
+            Rise { order: 0; Hero { c: root.c; } }
+            if !root.c.online: Rise { order: 1; Offline { name: root.c.name; } }
+            Rise {
+                order: 1;
+                GridLayout {
+                    spacing: 12px;
+                    Row {
+                        Action {
+                            primary: true;
+                            title: "Desktop";
+                            sub: "Opens in your browser — native is coming";
+                            icon: Icons.monitor;
+                            enabled: root.c.online;
+                            clicked => { Client.launch(Client.current, "desktop"); }
+                        }
+                        Action {
+                            title: "Trackpad";
+                            sub: "Its touchpad and keys, in the browser";
+                            icon: Icons.trackpad;
+                            badge: "BROWSER";
+                            enabled: root.c.online;
+                            clicked => { Client.launch(Client.current, "trackpad"); }
+                        }
+                    }
+                    Row {
+                        Action {
+                            title: "Files";
+                            sub: "Browse, preview and download";
+                            icon: Icons.folder;
+                            badge: "BROWSER";
+                            enabled: root.c.online;
+                            clicked => { Client.launch(Client.current, "files"); }
+                        }
+                        Action {
+                            title: "Shell";
+                            sub: "Terminals and Claude sessions";
+                            icon: Icons.term;
+                            badge: "BROWSER";
+                            enabled: root.c.online;
+                            clicked => { Client.launch(Client.current, "shell"); }
+                        }
+                    }
+                }
+            }
+            Rise {
+                order: 2;
+                Card {
+                    hairline: true;
+                    VerticalLayout {
+                        padding: 18px;
+                        spacing: 6px;
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+                            SectionLabel { text: "NATIVE DESKTOP"; vertical-alignment: center; }
+                            Badge { text: "NOT IN THIS BUILD"; tone: "caution"; }
+                        }
+                        Small { text: Client.native-video-why; font-size: 13px; }
+                    }
+                }
+            }
+            Rise { order: 3; Trust { c: root.c; index: Client.current; } }
+        }
+    }
+}

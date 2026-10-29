@@ -1,0 +1,136 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// The check words of a typed pairing (`gate/confirm.rs`). A device that typed a valid code is
+// not trusted until a person compares four words here, on the screen that cannot be
+// impersonated. It interrupts whatever page is open: this is the one question the console must
+// never let go unseen. Silence for two minutes is a no.
+
+import { Theme } from "../theme.slint";
+import { Host, AskRow } from "../state.slint";
+import { Button } from "../widgets/button.slint";
+import { SectionLabel, Small } from "../widgets/surface.slint";
+import { LinkDot } from "../widgets/status.slint";
+
+component Word inherits Rectangle {
+    in property <string> word;
+    in property <int> order;
+    property <float> shown: 0;
+    init => { shown = 1; }
+    animate shown {
+        duration: Theme.dur * 1.6;
+        delay: 160ms + Theme.stagger * 2 * order;
+        easing: cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    height: 64px;
+    border-radius: Theme.r2;
+    background: Theme.ground;
+    border-width: 1px;
+    border-color: Theme.accent.with-alpha(0.5);
+    opacity: shown;
+    transform-scale: 0.85 + 0.15 * shown;
+    Text {
+        text: root.word;
+        color: Theme.bright;
+        font-family: Theme.display-font;
+        font-size: 24px;
+        font-weight: 700;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+export component AskSheet inherits Rectangle {
+    in property <AskRow> ask;
+    in property <bool> open;
+    property <float> k: open ? 1 : 0;
+    animate k { duration: open ? Theme.dur-sheet : Theme.dur-sheet * 0.8; easing: cubic-bezier(0.32, 0.72, 0, 1); }
+    visible: k > 0.001;
+
+    scrim := Rectangle {
+        background: #000000;
+        opacity: 0.55 * root.k;
+        TouchArea { }
+    }
+    card := Rectangle {
+        width: min(560px, root.width - 48px);
+        height: lay.preferred-height;
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2 + 40px * (1 - root.k);
+        opacity: root.k;
+        border-radius: Theme.r4;
+        background: Theme.surface-1;
+        border-width: 1px;
+        border-color: Theme.line;
+        drop-shadow-blur: 60px;
+        drop-shadow-offset-y: 30px;
+        drop-shadow-color: #00000080;
+        accessible-role: groupbox;
+        accessible-label: "A device wants to pair";
+
+        lay := VerticalLayout {
+            padding: 28px;
+            spacing: 14px;
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                VerticalLayout { alignment: center; LinkDot { tone: "accent"; motion: "breathe"; size: 8px; } }
+                SectionLabel { text: "PAIRING · CHECK WORDS"; color: Theme.accent; }
+            }
+            Text {
+                text: root.ask.device + " typed your code.";
+                color: Theme.bright;
+                font-family: Theme.display-font;
+                font-size: 24px;
+                font-weight: 700;
+                wrap: word-wrap;
+            }
+            Small {
+                text: "Does that device show these four words, in this order? Compare them on its screen — only say yes if every word matches.";
+                font-size: 13.5px;
+            }
+            HorizontalLayout {
+                spacing: 10px;
+                padding-top: 6px;
+                padding-bottom: 6px;
+                for w[i] in root.ask.words: Word { word: w; order: i; horizontal-stretch: 1; preferred-width: 100px; }
+            }
+            HorizontalLayout {
+                spacing: 10px;
+                Button {
+                    kind: "danger";
+                    text: "They don't match";
+                    icon: "M18 6 6 18M6 6l12 12";
+                    clicked => { Host.answer(root.ask.typed, false); }
+                }
+                Button {
+                    kind: "primary";
+                    text: "They match — pair it";
+                    icon: "M20 6 9 17l-5-5";
+                    clicked => { Host.answer(root.ask.typed, true); }
+                }
+            }
+            HorizontalLayout {
+                alignment: space-between;
+                Small { text: "No answer counts as no."; }
+                Text {
+                    text: root.ask.left-text + " left";
+                    color: root.ask.left < 30 ? Theme.warn : Theme.dim;
+                    font-family: Theme.mono-font;
+                    font-size: 12px;
+                }
+            }
+            // A clock: linear.
+            Rectangle {
+                height: 4px;
+                border-radius: 2px;
+                background: Theme.surface-3;
+                Rectangle {
+                    x: 0;
+                    width: parent.width * max(0, min(1, root.ask.left / 120));
+                    border-radius: 2px;
+                    background: root.ask.left < 30 ? Theme.warn : Theme.accent;
+                    animate width { duration: 1000ms; easing: linear; }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,119 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// The daemon's log, tailed: filterable by level and words, following the newest line unless
+// scrolled away. Virtualised — only the rows on screen exist.
+
+import { ListView } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+import { Host } from "../state.slint";
+import { Icons } from "../widgets/icon.slint";
+import { Rise, SectionLabel, Small, Mono, PageHead } from "../widgets/surface.slint";
+import { Tone } from "../widgets/status.slint";
+import { Segmented, Switch } from "../widgets/toggle.slint";
+import { Field } from "../widgets/field.slint";
+
+export component LogsPage inherits Rectangle {
+    VerticalLayout {
+        padding: 28px;
+        padding-top: 24px;
+        spacing: 14px;
+        Rise {
+            order: 0;
+            HorizontalLayout {
+                spacing: 16px;
+                PageHead {
+                    eyebrow: Host.computer-name;
+                    title: "Logs";
+                    subtitle: Host.log-source;
+                }
+            }
+        }
+        Rise {
+            order: 1;
+            HorizontalLayout {
+                spacing: 12px;
+                Segmented {
+                    width: 380px;
+                    options: ["All", "Info", "Warnings", "Activity"];
+                    index <=> Host.log-level;
+                    picked => { Host.log-filter(); }
+                }
+                Field {
+                    horizontal-stretch: 1;
+                    height: 40px;
+                    icon: Icons.search;
+                    halo: true;
+                    placeholder: "Filter by words";
+                    text <=> Host.log-query;
+                    edited => { Host.log-filter(); }
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    horizontal-stretch: 0;
+                    VerticalLayout { alignment: center; Small { text: "Follow"; } }
+                    VerticalLayout { alignment: center; Switch { label: "Follow the newest line"; checked <=> Host.log-follow; } }
+                }
+            }
+        }
+        Rise {
+            order: 2;
+            vertical-stretch: 1;
+            Rectangle {
+                border-radius: Theme.r3;
+                background: Theme.surface-1;
+                clip: true;
+                list := ListView {
+                    for l in Host.logs: Rectangle {
+                        height: 26px;
+                        background: lt.has-hover ? Theme.surface-2 : transparent;
+                        lt := TouchArea { }
+                        HorizontalLayout {
+                            padding-left: 14px;
+                            padding-right: 14px;
+                            spacing: 12px;
+                            Mono { text: l.time; color: Theme.dim; width: 92px; vertical-alignment: center; }
+                            Rectangle {
+                                width: 54px;
+                                Rectangle {
+                                    height: 18px;
+                                    border-radius: 9px;
+                                    background: Tone.tint(l.tone);
+                                    Text {
+                                        text: l.level;
+                                        color: Tone.of(l.tone);
+                                        font-family: Theme.mono-font;
+                                        font-size: 10px;
+                                        font-weight: 600;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                            Mono { text: l.target; color: Theme.dim; width: 150px; vertical-alignment: center; }
+                            Mono { text: l.msg; color: Theme.text; horizontal-stretch: 1; vertical-alignment: center; }
+                        }
+                    }
+                }
+                if Host.logs.length == 0: Small {
+                    text: "No lines match.";
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+    // Following: whenever the content grows (or the view resizes), go to its end.
+    property <length> content: list.content-height;
+    changed content => {
+        if Host.log-follow {
+            list.content-y = min(0px, list.visible-height - list.content-height);
+        }
+    }
+    changed width => {
+        if Host.log-follow {
+            list.content-y = min(0px, list.visible-height - list.content-height);
+        }
+    }
+    init => {
+        list.content-y = min(0px, list.visible-height - list.content-height);
+    }
+}

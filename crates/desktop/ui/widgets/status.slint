@@ -1,0 +1,136 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Honest status: a tone dot and plain words. The dot's motion says how alive the thing is —
+// a ripple per sample while healthy, a breathe while uncertain, stillness when nothing is alive
+// (M5–M7). Tones: "good" · "caution" · "warn" · "bad" · "accent" · "mauve" · "dim".
+
+import { Theme } from "../theme.slint";
+
+export global Tone {
+    public pure function of(t: string) -> color {
+        if t == "good" { return Theme.good; }
+        if t == "caution" { return Theme.caution; }
+        if t == "warn" { return Theme.warn; }
+        if t == "bad" { return Theme.bad; }
+        if t == "accent" { return Theme.accent; }
+        if t == "mauve" { return Theme.mauve; }
+        return Theme.dim;
+    }
+    public pure function tint(t: string) -> color {
+        if t == "good" { return Theme.good-tint; }
+        if t == "caution" { return Theme.caution-tint; }
+        if t == "warn" { return Theme.warn-tint; }
+        if t == "bad" { return Theme.bad-tint; }
+        if t == "accent" { return Theme.accent-tint; }
+        if t == "mauve" { return Theme.mauve-tint; }
+        return Theme.surface-2;
+    }
+}
+
+// motion: "ripple" · "breathe" · "still"
+export component LinkDot inherits Rectangle {
+    in property <string> tone: "dim";
+    in property <string> motion: "still";
+    in property <length> size: 8px;
+    width: size;
+    height: size;
+
+    property <bool> phase;
+    // A clock, not motion: the breathe is ease-in-out and the ripple decelerates.
+    Timer {
+        interval: root.motion == "breathe" ? 1200ms : 2000ms;
+        running: Theme.ambient && root.motion != "still";
+        triggered => { root.phase = !root.phase; }
+    }
+
+    if root.motion == "ripple": ripple := Rectangle {
+        property <float> k: root.phase ? 1 : 0;
+        width: root.size * (1 + 1.8 * k);
+        height: self.width;
+        border-radius: self.width / 2;
+        background: Tone.of(root.tone);
+        opacity: Theme.ambient ? 0.55 * (1 - k) : 0;
+        animate k { duration: root.phase ? 1900ms : 0ms; easing: ease-out; }
+    }
+    dot := Rectangle {
+        border-radius: self.width / 2;
+        background: Tone.of(root.tone);
+        opacity: root.motion == "breathe" && Theme.ambient ? (root.phase ? 0.35 : 1) : 1;
+        animate opacity { duration: 1200ms; easing: ease-in-out; }
+    }
+}
+
+// Full pill, tone at ~85% transparency behind tone-coloured text, with a leading dot.
+export component StatusPill inherits Rectangle {
+    in property <string> text;
+    in property <string> tone: "dim";
+    in property <string> motion: "still";
+    in property <bool> dot: true;
+    height: 26px;
+    min-width: lay.preferred-width;
+    max-width: lay.preferred-width;
+    border-radius: 13px;
+    background: Tone.tint(tone);
+    accessible-role: AccessibleRole.text;
+    accessible-label: text;
+    animate background { duration: Theme.dur; }
+    lay := HorizontalLayout {
+        padding-left: dot ? 9px : 11px;
+        padding-right: 11px;
+        spacing: 7px;
+        alignment: start;
+        if root.dot: VerticalLayout {
+            alignment: center;
+            LinkDot { tone: root.tone; motion: root.motion; size: 7px; }
+        }
+        Text {
+            text: root.text;
+            color: Tone.of(root.tone);
+            font-family: Theme.body-font;
+            font-size: 12px;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+    }
+}
+
+// The 9.5px uppercase "when" badge: applies live (accent) · on restart (caution) · host (mauve).
+export component Badge inherits Rectangle {
+    in property <string> text;
+    in property <string> tone: "accent";
+    height: 18px;
+    min-width: t.preferred-width + 14px;
+    border-radius: 9px;
+    background: Tone.tint(tone);
+    t := Text {
+        text: root.text;
+        color: Tone.of(root.tone);
+        font-family: Theme.body-font;
+        font-size: 9.5px;
+        font-weight: 700;
+        letter-spacing: 0.6px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+// Plain words with a dot, inline (the `.lstate` form).
+export component LinkWords inherits HorizontalLayout {
+    in property <string> text;
+    in property <string> tone: "dim";
+    in property <string> motion: "still";
+    in property <length> font-size: 13px;
+    spacing: 8px;
+    alignment: start;
+    VerticalLayout {
+        alignment: center;
+        LinkDot { tone: root.tone; motion: root.motion; }
+    }
+    Text {
+        text: root.text;
+        color: Theme.text;
+        font-family: Theme.body-font;
+        font-size: root.font-size;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+}

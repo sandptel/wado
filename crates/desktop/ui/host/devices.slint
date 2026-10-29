@@ -1,0 +1,145 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// The trust list: every paired device and what it may do. A grant flipped here is the same
+// write as `wado allow <device> <grant>` — the same tokens, the same file.
+
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+import { Host, App, DeviceRow } from "../state.slint";
+import { Button } from "../widgets/button.slint";
+import { Icons } from "../widgets/icon.slint";
+import { Rise, Card, Disc, SectionLabel, Title, Small, Mono, PageHead } from "../widgets/surface.slint";
+import { StatusPill, LinkWords, Badge } from "../widgets/status.slint";
+import { GrantChip, Segmented } from "../widgets/toggle.slint";
+
+component DeviceCard inherits Card {
+    in property <DeviceRow> d;
+    property <bool> confirming: Host.confirm-unpair == d.key;
+    VerticalLayout {
+        padding: 18px;
+        spacing: 14px;
+        alignment: start;
+        HorizontalLayout {
+            spacing: 14px;
+            Disc { size: 46px; letters: root.d.letters; hue: root.d.hue; }
+            VerticalLayout {
+                alignment: center;
+                spacing: 3px;
+                horizontal-stretch: 1;
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+                    Text {
+                        text: root.d.name;
+                        color: Theme.bright;
+                        font-family: Theme.display-font;
+                        font-size: 17px;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                    }
+                    if root.d.owner: VerticalLayout { alignment: center; Badge { text: "OWNER"; tone: "mauve"; } }
+                    if root.d.pinned: VerticalLayout { alignment: center; Badge { text: "KEY PINNED"; tone: "good"; } }
+                }
+                Mono { text: root.d.short-key; color: Theme.dim; font-size: 11.5px; }
+            }
+            VerticalLayout {
+                alignment: center;
+                width: 200px;
+                LinkWords { text: root.d.link-words; tone: root.d.link-tone; motion: root.d.link-motion; }
+            }
+            VerticalLayout {
+                alignment: center;
+                Button {
+                    kind: root.confirming ? "danger" : "ghost";
+                    h: 36px;
+                    icon: Icons.trash;
+                    text: root.confirming ? "Unpair " + root.d.name + "?" : "";
+                    clicked => {
+                        if root.confirming { Host.unpair(root.d.key); Host.confirm-unpair = ""; }
+                        else { Host.confirm-unpair = root.d.key; }
+                    }
+                }
+            }
+            if root.confirming: VerticalLayout {
+                alignment: center;
+                Button { kind: "ghost"; h: 36px; text: "Keep"; clicked => { Host.confirm-unpair = ""; } }
+            }
+        }
+        HorizontalLayout {
+            spacing: 14px;
+            alignment: start;
+            VerticalLayout {
+                spacing: 6px;
+                alignment: start;
+                SectionLabel { text: "FILES"; font-size: 10px; }
+                Segmented {
+                    width: 290px;
+                    h: 36px;
+                    options: ["None", "Read", "Read & write"];
+                    index: root.d.grants.files;
+                    picked(i) => { Host.set-files(root.d.key, i); }
+                }
+            }
+            VerticalLayout {
+                spacing: 6px;
+                alignment: start;
+                SectionLabel { text: "MAY ALSO"; font-size: 10px; }
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+                    GrantChip { label: "Shells"; on: root.d.grants.shells; hint: "Terminals and Claude sessions"; toggled(v) => { Host.set-grant(root.d.key, "shells", v); } }
+                    GrantChip { label: "Settings"; on: root.d.grants.settings; hint: "Privileged settings and Wi-Fi"; toggled(v) => { Host.set-grant(root.d.key, "settings", v); } }
+                    GrantChip { label: "Host"; on: root.d.grants.host; hint: "Sound, Bluetooth and sleep"; toggled(v) => { Host.set-grant(root.d.key, "host", v); } }
+                    GrantChip { label: "Trackpad"; on: root.d.grants.input; hint: "Typing and touching into this desktop"; toggled(v) => { Host.set-grant(root.d.key, "input", v); } }
+                    GrantChip { label: "Clipboard"; on: root.d.grants.clipboard; hint: "This computer's clipboard history"; toggled(v) => { Host.set-grant(root.d.key, "clipboard", v); } }
+                }
+            }
+        }
+        if root.d.owner: Small { text: "The owner may use everything but files without being granted it."; font-size: 11.5px; }
+        if !root.d.pinned && root.d.grants.files > 0: Small {
+            text: "Files count only once this device has paired by QR — its key is not pinned yet.";
+            color: Theme.caution;
+            font-size: 11.5px;
+        }
+    }
+}
+
+export component DevicesPage inherits Rectangle {
+    ScrollView {
+        VerticalLayout {
+            alignment: start;
+            padding: 28px;
+            padding-top: 24px;
+            spacing: 14px;
+            Rise {
+                order: 0;
+                HorizontalLayout {
+                    PageHead {
+                        eyebrow: Host.computer-name;
+                        title: "Devices";
+                        subtitle: "Who may reach this computer, and what each may do beyond the desktop. Changes apply at once — the same as wado allow and wado deny.";
+                    }
+                    VerticalLayout {
+                        alignment: end;
+                        Button { kind: "primary"; text: "Pair a device"; icon: Icons.plus; clicked => { App.host-page = 2; } }
+                    }
+                }
+            }
+            if Host.devices.length == 0: Rise {
+                order: 1;
+                Card {
+                    hairline: true;
+                    VerticalLayout {
+                        padding: 22px;
+                        spacing: 8px;
+                        Title { text: "No device is paired yet."; font-size: 16px; }
+                        Small { text: "A device gets in only with a code shown on this computer. Open Pair a device, then scan the QR or type the code on the phone, tablet or browser you want to use."; font-size: 13.5px; }
+                    }
+                }
+            }
+            for d[i] in Host.devices: Rise {
+                order: i + 1;
+                DeviceCard { d: d; }
+            }
+        }
+    }
+}

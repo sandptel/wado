@@ -1,0 +1,178 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Things a finger flips. Each obeys the Morphing Toggle Rule: turning on changes shape as well
+// as colour.
+
+import { Theme } from "../theme.slint";
+import { Icon } from "icon.slint";
+
+// 52×32 pill. The thumb grows from a 16px dim dot to a 24px on-accent disc, on the pop.
+export component Switch inherits Rectangle {
+    in-out property <bool> checked;
+    in property <bool> enabled: true;
+    in property <string> label;
+    callback toggled(bool);
+    width: 52px;
+    height: 32px;
+    border-radius: 16px;
+    background: checked ? Theme.accent : Theme.surface-3;
+    opacity: enabled ? 1 : 0.4;
+    accessible-role: switch;
+    accessible-checked: checked;
+    accessible-label: label;
+    accessible-action-default => { t.flip(); }
+    animate background { duration: Theme.dur; easing: cubic-bezier(0.32, 0.72, 0, 1); }
+
+    property <length> d: checked ? 24px : 16px;
+    thumb := Rectangle {
+        width: root.d;
+        height: root.d;
+        y: (root.height - self.height) / 2;
+        x: root.checked ? root.width - self.width - 4px : 8px;
+        border-radius: self.width / 2;
+        background: root.checked ? Theme.on-accent : Theme.dim;
+        animate x, width, height { duration: Theme.dur * 1.6; easing: cubic-bezier(0.34, 1.56, 0.64, 1); }
+        animate background { duration: Theme.dur; }
+    }
+    ring := Rectangle {
+        x: -3px; y: -3px; width: parent.width + 6px; height: parent.height + 6px;
+        border-radius: self.height / 2;
+        border-width: fs.has-focus ? 2px : 0px;
+        border-color: Theme.accent;
+    }
+    fs := FocusScope {
+        enabled: root.enabled;
+        key-pressed(e) => {
+            if e.text == " " || e.text == "\n" { t.flip(); return accept; }
+            reject
+        }
+    }
+    t := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        function flip() {
+            root.checked = !root.checked;
+            root.toggled(root.checked);
+        }
+        clicked => { self.flip(); }
+    }
+}
+
+// A ground well with an accent knob that slides on the spring. Segments are equal width, so the
+// knob's place is index / count.
+export component Segmented inherits Rectangle {
+    in property <[string]> options;
+    in-out property <int> index;
+    in property <bool> enabled: true;
+    in property <length> h: 40px;
+    callback picked(int);
+    height: h;
+    min-width: options.length * 64px;
+    border-radius: Theme.r2;
+    background: Theme.ground;
+    border-width: 1px;
+    border-color: Theme.line;
+    opacity: enabled ? 1 : 0.4;
+    accessible-role: tab-list;
+
+    property <length> seg: (self.width - 8px) / max(1, options.length);
+    knob := Rectangle {
+        x: 4px + root.seg * root.index;
+        y: 4px;
+        width: root.seg;
+        height: root.height - 8px;
+        border-radius: Theme.r2 - 4px;
+        background: Theme.accent;
+        drop-shadow-blur: 10px;
+        drop-shadow-offset-y: 2px;
+        drop-shadow-color: #00000033;
+        animate x { duration: Theme.dur-sheet; easing: cubic-bezier(0.32, 0.72, 0, 1); }
+    }
+    for opt[i] in root.options: Rectangle {
+        x: 4px + root.seg * i;
+        y: 4px;
+        width: root.seg;
+        height: root.height - 8px;
+        accessible-role: tab;
+        accessible-label: opt;
+        accessible-item-selectable: true;
+        accessible-item-selected: i == root.index;
+        Text {
+            text: opt;
+            color: i == root.index ? Theme.on-accent : (ta.has-hover ? Theme.bright : Theme.dim);
+            font-family: Theme.body-font;
+            font-size: 13px;
+            font-weight: 600;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            overflow: elide;
+            animate color { duration: Theme.dur; }
+        }
+        ta := TouchArea {
+            enabled: root.enabled;
+            mouse-cursor: pointer;
+            clicked => {
+                if root.index != i {
+                    root.index = i;
+                    root.picked(i);
+                }
+            }
+        }
+    }
+}
+
+// A grant chip: off is a quiet outline, on fills with accent and its check pops in. The radius
+// grows as it turns on (Morphing Toggle Rule).
+export component GrantChip inherits Rectangle {
+    in property <string> label;
+    in property <bool> on;
+    in property <bool> enabled: true;
+    in property <string> hint;
+    callback toggled(bool);
+    height: 34px;
+    min-width: lay.preferred-width;
+    border-radius: on ? 17px : 9px;
+    background: on ? Theme.accent : (t.has-hover ? Theme.surface-3 : Theme.surface-2);
+    opacity: enabled ? 1 : 0.4;
+    accessible-role: checkbox;
+    accessible-checked: on;
+    accessible-label: label;
+    accessible-description: hint;
+    accessible-action-default => { toggled(!on); }
+    animate border-radius { duration: Theme.dur * 1.6; easing: cubic-bezier(0.32, 0.72, 0, 1); }
+    animate background { duration: Theme.dur; easing: cubic-bezier(0.32, 0.72, 0, 1); }
+    transform-scale: t.pressed ? 0.94 : 1.0;
+    animate transform-scale { duration: Theme.dur; easing: cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+    lay := HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 12px;
+        spacing: 6px;
+        Rectangle {
+            width: root.on ? 16px : 0px;
+            animate width { duration: Theme.dur * 1.4; easing: cubic-bezier(0.34, 1.56, 0.64, 1); }
+            clip: true;
+            Icon {
+                path: "M20 6 9 17l-5-5";
+                color: Theme.on-accent;
+                size: 15px;
+                stroke: 2.4px;
+                opacity: root.on ? 1 : 0;
+                animate opacity { duration: Theme.dur; }
+            }
+        }
+        Text {
+            text: root.label;
+            color: root.on ? Theme.on-accent : Theme.text;
+            font-family: Theme.body-font;
+            font-size: 13px;
+            font-weight: 600;
+            vertical-alignment: center;
+            animate color { duration: Theme.dur; }
+        }
+    }
+    t := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.toggled(!root.on); }
+    }
+}

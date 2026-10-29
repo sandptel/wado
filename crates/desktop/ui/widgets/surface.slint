@@ -1,0 +1,182 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Surfaces and the text that heads them. Depth comes from the tonal ladder; shadows are only for
+// what floats (the Float-Only Shadow Rule), so nothing here casts one.
+
+import { Theme } from "../theme.slint";
+import { Icon } from "icon.slint";
+
+// Rises 18px and fades in on the spring, `order × stagger` after it is created (M3). Wrap a
+// page's sections in these so they arrive hero-first.
+export component Rise inherits Rectangle {
+    in property <int> order;
+    property <float> shown: 0;
+    init => { shown = 1; }
+    animate shown {
+        duration: Theme.dur-hero;
+        delay: Theme.stagger * order + (Theme.motion == 0 ? 60ms : 0ms);
+        easing: cubic-bezier(0.32, 0.72, 0, 1);
+    }
+    opacity: shown;
+    vertical-stretch: 0;
+    // The slot stays where the page's layout put it; the content travels inside it.
+    min-height: l.min-height;
+    preferred-height: l.preferred-height;
+    min-width: l.min-width;
+    preferred-width: l.preferred-width;
+    l := VerticalLayout {
+        y: Theme.rise * (1 - root.shown);
+        height: root.height;
+        @children
+    }
+}
+
+export component Card inherits Rectangle {
+    in property <length> pad: 16px;
+    in property <bool> hairline: false;
+    in property <string> tone: "";
+    border-radius: Theme.r3;
+    background: tone == "bad" ? Theme.bad-tint
+        : tone == "accent" ? Theme.accent-tint
+        : tone == "caution" ? Theme.caution-tint
+        : Theme.surface-1;
+    border-width: hairline || tone != "" ? 1px : 0px;
+    border-color: tone == "bad" ? Theme.bad.with-alpha(0.45)
+        : tone == "accent" ? Theme.accent.with-alpha(0.45)
+        : tone == "caution" ? Theme.caution.with-alpha(0.45)
+        : Theme.line;
+    animate background { duration: Theme.dur; }
+}
+
+// The hue disc a computer or a device is known by.
+export component Disc inherits Rectangle {
+    in property <color> hue: Theme.accent;
+    in property <string> letters;
+    in property <string> icon;
+    in property <length> size: 46px;
+    width: size;
+    height: size;
+    border-radius: size / 2;
+    background: hue;
+    if root.icon != "": Icon {
+        path: root.icon;
+        color: Theme.on-accent;
+        size: root.size * 0.46;
+        stroke: 2px;
+    }
+    if root.icon == "": Text {
+        text: root.letters;
+        color: Theme.on-accent;
+        font-family: Theme.display-font;
+        font-weight: 700;
+        font-size: root.size * 0.38;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+// 11px uppercase section head, 0.1em tracking.
+export component SectionLabel inherits Text {
+    color: Theme.dim;
+    font-family: Theme.body-font;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.1px;
+}
+
+export component Title inherits Text {
+    color: Theme.bright;
+    font-family: Theme.body-font;
+    font-size: 14px;
+    font-weight: 600;
+    overflow: elide;
+}
+
+export component Body inherits Text {
+    color: Theme.text;
+    font-family: Theme.body-font;
+    font-size: 13.5px;
+    wrap: word-wrap;
+}
+
+export component Small inherits Text {
+    color: Theme.dim;
+    font-family: Theme.body-font;
+    font-size: 12px;
+    wrap: word-wrap;
+}
+
+// The Machine Speaks Mono.
+export component Mono inherits Text {
+    color: Theme.text;
+    font-family: Theme.mono-font;
+    font-size: 12px;
+    overflow: elide;
+}
+
+// A page's head: an eyebrow (whose page this is), the headline, and a line of plain words.
+export component PageHead inherits VerticalLayout {
+    in property <string> eyebrow;
+    in property <color> eyebrow-hue: Theme.accent;
+    in property <string> title;
+    in property <string> subtitle;
+    spacing: 6px;
+    if root.eyebrow != "": HorizontalLayout {
+        spacing: 7px;
+        alignment: start;
+        VerticalLayout {
+            alignment: center;
+            Rectangle { width: 8px; height: 8px; border-radius: 4px; background: root.eyebrow-hue; }
+        }
+        SectionLabel { text: root.eyebrow; }
+    }
+    Text {
+        text: root.title;
+        color: Theme.bright;
+        font-family: Theme.display-font;
+        font-size: 30px;
+        font-weight: 700;
+        letter-spacing: -0.75px;
+    }
+    if root.subtitle != "": Small {
+        text: root.subtitle;
+        font-size: 13.5px;
+    }
+}
+
+// One cell of a hero's meta strip: a key, a numeral, a line under it.
+export component MetaCell inherits Rectangle {
+    in property <string> key;
+    in property <string> value;
+    in property <string> sub;
+    in property <string> tone: "dim";
+    in property <string> motion: "still";
+    border-radius: Theme.r2;
+    background: Theme.ground.with-alpha(0.55);
+    VerticalLayout {
+        padding: 12px;
+        padding-left: 14px;
+        spacing: 3px;
+        SectionLabel { text: root.key; font-size: 10px; letter-spacing: 0.8px; }
+        Text {
+            text: root.value;
+            color: Theme.bright;
+            font-family: Theme.display-font;
+            font-size: 17px;
+            font-weight: 600;
+            overflow: elide;
+        }
+        Text {
+            text: root.sub;
+            color: Theme.dim;
+            font-family: Theme.body-font;
+            font-size: 12px;
+            overflow: elide;
+        }
+    }
+}
+
+// A thin divider in `line` at 40%.
+export component Divider inherits Rectangle {
+    height: 1px;
+    background: Theme.line.with-alpha(0.7);
+}

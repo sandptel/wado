@@ -1,0 +1,49 @@
+[package]
+name = "wado-desktop"
+version = "0.0.3"
+edition = "2024"
+license = "AGPL-3.0-only"
+description = "The wado desktop app: a host console for the computer running the daemon, and a client for reaching other wado computers. Slint, native."
+# Experimental (`experimental/desktop-app`). Not a default member: plain `cargo build` stays the
+# daemon's build, and this crate's toolkit is only paid for when it is asked for by name.
+
+[[bin]]
+name = "wado-desktop"
+path = "src/main.rs"
+
+[dependencies]
+# The daemon's own library: the trust list, pairing codes, check words, sessions, links and the
+# daemons' sockets. Reused, never re-implemented — see `src/caps/`, the only module that calls it.
+wado = { path = "../server" }
+wado-config = { path = "../config" }
+wado-protocol = { path = "../protocol" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Pushed state: each producer publishes on a `watch` channel, the platform layer's shape. Only
+# the channel and a current-thread runtime to await it — both already in the tree.
+tokio = { version = "1", default-features = false, features = ["sync", "rt"] }
+# PNGs for `--screenshot`. Already in the tree through Slint's image loading.
+png = "0.18"
+# Already in the tree through `wado`: the QR is drawn as an image rather than half-blocks.
+qrcode = { version = "0.14", default-features = false }
+# Licence: Slint is `GPL-3.0-only OR LicenseRef-Slint-Royalty-free-2.0 OR
+# LicenseRef-Slint-Software-3.0`. wado takes it under **GPL-3.0-only**, which AGPL-3.0 §13 and
+# GPL-3.0 §13 explicitly allow to be combined with this AGPL-3.0-only crate (see README.md
+# beside this file). Pinned exactly: a toolkit minor can change rendering, and this app is
+# judged by how it looks.
+#
+# Features, deliberately: the winit backend (Wayland and X11), the femtovg OpenGL renderer for
+# the window, and the software renderer for `--screenshot` (headless, no GPU, no display).
+# No Qt backend, no system tray, no linuxkms.
+slint = { version = "=1.18.1", default-features = false, features = [
+    "std",
+    "compat-1-18",
+    "accessibility",
+    "backend-winit-wayland",
+    "backend-winit-x11",
+    "renderer-femtovg",
+    "renderer-software",
+] }
+
+[build-dependencies]
+slint-build = "=1.18.1"

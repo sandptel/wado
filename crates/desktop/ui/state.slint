@@ -1,0 +1,227 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// What Rust tells the UI, and what the UI asks Rust to do. Three globals, one per job:
+// `App` (mode, page, appearance, toasts), `Host` (the console for this computer), `Client`
+// (other computers). Rust fills them from `src/host/` and `src/client/`; nothing here reads a
+// file or a socket.
+
+export struct Grants {
+    files: int, // 0 none · 1 read-only · 2 read-write
+    shells: bool,
+    settings: bool,
+    host: bool,
+    input: bool,
+    clipboard: bool,
+}
+
+export struct DeviceRow {
+    key: string,
+    short-key: string,
+    name: string,
+    letters: string,
+    hue: color,
+    owner: bool,
+    pinned: bool,
+    online: bool,
+    link-words: string,
+    link-tone: string,
+    link-motion: string,
+    grants: Grants,
+    summary: string,
+}
+
+export struct SessionRow {
+    instance: string,
+    daemon: string,
+    shape: string,
+    fps: int,
+    age: string,
+    apps: [string],
+    viewer: string,
+    link-words: string,
+    link-tone: string,
+    link-motion: string,
+    detached: bool,
+}
+
+export struct LogLine {
+    time: string,
+    level: string,
+    tone: string,
+    target: string,
+    msg: string,
+}
+
+export struct AskRow {
+    typed: string,
+    words: [string],
+    device: string,
+    left: int,
+    left-text: string,
+}
+
+export struct ConfigSection {
+    id: string,
+    name: string,
+    icon: string,
+    blurb: string,
+    changed: int,
+}
+
+export struct ConfigField {
+    key: string,
+    name: string,
+    hint: string,
+    kind: string, // bool · enum · int · text · list · map
+    value: string,
+    placeholder: string,
+    options: [string],
+    option-index: int,
+    on: bool,
+    items: [string],
+    when: string, // live · restart
+    owner-only: bool,
+    overridden: bool,
+    dirty: bool,
+    error: string,
+}
+
+export struct ComputerRow {
+    id: string,
+    pretty-id: string,
+    name: string,
+    letters: string,
+    hue: color,
+    relay: string,
+    relay-host: string,
+    status-words: string,
+    status-detail: string,
+    status-tone: string,
+    status-motion: string,
+    online: bool,
+    daemons: int,
+    here: bool,
+}
+
+export struct SchemeRow {
+    name: string,
+    ground: color,
+    text: color,
+    accent: color,
+    mauve: color,
+    good: color,
+}
+
+export struct Stat {
+    key: string,
+    value: string,
+    sub: string,
+    tone: string,
+    motion: string,
+}
+
+export global App {
+    in-out property <int> mode; // 0 this computer (host) · 1 other computers (client)
+    in-out property <int> host-page; // 0 overview · 1 devices · 2 pair · 3 sessions · 4 logs · 5 settings
+    in-out property <int> client-page; // 0 computers · 1 a computer
+    in property <[SchemeRow]> schemes;
+    in-out property <string> scheme: "default-dark";
+    in property <string> version;
+    in-out property <string> toast;
+    in-out property <string> toast-tone: "good";
+    in-out property <int> toast-serial;
+    callback pick-scheme(string);
+    callback pick-radius(int);
+    callback pick-motion(int);
+    callback copy(string);
+    callback open-url(string);
+}
+
+export global Host {
+    // The daemon pool and the relay.
+    in property <bool> daemon-up;
+    in property <string> computer-name: "This computer";
+    in property <string> remote-id;
+    in property <[Stat]> meta;
+    in property <[Stat]> live;
+    in property <string> relay-words;
+    in property <string> relay-tone: "dim";
+    in property <string> relay-motion: "still";
+    in property <string> encoder-words;
+    in property <string> encoder-tone: "dim";
+    in property <string> encoder-detail;
+    in property <[LogLine]> activity;
+    callback start-daemon();
+
+    // Devices.
+    in property <[DeviceRow]> devices;
+    in-out property <string> confirm-unpair;
+    callback set-grant(string, string, bool);
+    callback set-files(string, int);
+    callback unpair(string);
+
+    // Pairing.
+    in property <bool> pair-ready;
+    in property <string> pair-code;
+    in property <string> pair-link;
+    in property <image> pair-qr;
+    in property <string> pair-words;
+    in property <string> pair-tone: "dim";
+    in property <int> pair-left;
+    in property <int> pair-total: 600;
+    in property <bool> pair-live;
+    in property <string> pair-error;
+    in property <Grants> pair-grants;
+    in property <string> pair-grants-words;
+    callback mint();
+    // The page was opened: make a code if none was asked for yet.
+    callback pair-opened();
+    callback withdraw();
+    callback pair-grant(string, bool);
+    callback pair-files(int);
+
+    // Typed pairings waiting for their check words, oldest first.
+    in property <[AskRow]> asks;
+    callback answer(string, bool);
+
+    // Sessions.
+    in property <[SessionRow]> sessions;
+
+    // Logs.
+    in property <[LogLine]> logs;
+    in property <string> log-source;
+    in-out property <int> log-level; // 0 all · 1 info+ · 2 warnings · 3 activity
+    in-out property <string> log-query;
+    in-out property <bool> log-follow: true;
+    callback log-filter();
+
+    // Configuration.
+    in property <[ConfigSection]> sections;
+    in-out property <int> section;
+    in property <[ConfigField]> fields;
+    in property <int> dirty;
+    in property <string> config-error;
+    in property <string> config-path;
+    in property <string> ui-path;
+    callback pick-section(int);
+    callback edit(string, string);
+    callback toggle(string, bool);
+    callback pick(string, int);
+    callback list-add(string, string);
+    callback list-remove(string, int);
+    callback clear(string);
+    callback apply();
+    callback discard();
+}
+
+export global Client {
+    in property <[ComputerRow]> computers;
+    in-out property <int> current: -1;
+    in property <string> add-error;
+    in property <string> native-video-why;
+    callback open(int);
+    callback add(string, string, string); // name, remote id or link, relay
+    callback forget(int);
+    callback rename(int, string);
+    callback refresh();
+    callback launch(int, string); // computer, "desktop" · "trackpad" · "files" · "shell"
+}

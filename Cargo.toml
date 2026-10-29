@@ -1,8 +1,9 @@
 [workspace]
 resolver = "2"
-members = ["crates/server", "crates/compositor", "crates/protocol", "crates/client", "crates/relay", "crates/config"]
+members = ["crates/server", "crates/compositor", "crates/protocol", "crates/client", "crates/relay", "crates/config", "crates/desktop"]
 # Plain `cargo build` builds the host crates only. The client is WASM-only and is
-# built/served with the `dx` (dioxus-cli) tool, not host cargo.
+# built/served with the `dx` (dioxus-cli) tool, not host cargo. The desktop app (experimental) is
+# built by name: `cargo build -p wado-desktop`.
 default-members = ["crates/server", "crates/compositor", "crates/protocol", "crates/relay", "crates/config"]
 
 # The daemon is a soft-real-time video pipeline with an 8 ms frame budget at 120 fps, and it

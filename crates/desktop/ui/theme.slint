@@ -1,0 +1,92 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// The design tokens (DESIGN.md), as one global. Rust writes the sixteen base16 slots and the
+// derived OKLab mixes (`src/theme.rs`) — nothing in the UI names a colour of its own. The only
+// literal colours are Stage Black and the black of shadows and scrims, as in the web client.
+
+import "../fonts/Figtree-Regular.ttf";
+import "../fonts/Figtree-Medium.ttf";
+import "../fonts/Figtree-SemiBold.ttf";
+import "../fonts/Figtree-Bold.ttf";
+import "../fonts/BricolageGrotesque-SemiBold.ttf";
+import "../fonts/BricolageGrotesque-Bold.ttf";
+import "../fonts/JetBrainsMono-Regular.ttf";
+import "../fonts/JetBrainsMono-SemiBold.ttf";
+
+export global Theme {
+    // The base16 slots. Defaults are `default-dark`, overwritten at start.
+    in-out property <color> base00: #181818;
+    in-out property <color> base01: #282828;
+    in-out property <color> base02: #383838;
+    in-out property <color> base03: #585858;
+    in-out property <color> base04: #b8b8b8;
+    in-out property <color> base05: #d8d8d8;
+    in-out property <color> base06: #e8e8e8;
+    in-out property <color> base07: #f8f8f8;
+    in-out property <color> base08: #ab4642;
+    in-out property <color> base09: #dc9656;
+    in-out property <color> base0A: #f7ca88;
+    in-out property <color> base0B: #a1b56c;
+    in-out property <color> base0C: #86c1b9;
+    in-out property <color> base0D: #7cafc2;
+    in-out property <color> base0E: #ba8baf;
+    in-out property <color> base0F: #a16946;
+
+    // Roles, mixed in OKLab by Rust (the Mixed Ladder Rule).
+    in-out property <color> ground: base00;
+    in-out property <color> surface-1: #1f1f1f;
+    in-out property <color> surface-2: #272727;
+    in-out property <color> surface-3: #343434;
+    in-out property <color> line: #2b2b2b;
+    in-out property <color> bright: base05;
+    in-out property <color> text: #c4c4c4;
+    in-out property <color> dim: #8a8a8a;
+    in-out property <color> accent: base0D;
+    in-out property <color> on-accent: base00;
+    in-out property <color> good: base0B;
+    in-out property <color> warn: base09;
+    in-out property <color> caution: base0A;
+    in-out property <color> bad: base08;
+    in-out property <color> mauve: base0E;
+    // Tints: a tone at ~85% transparency over the surface it sits on (status pills, danger).
+    in-out property <color> accent-tint: #7cafc22e;
+    in-out property <color> good-tint: #a1b56c26;
+    in-out property <color> warn-tint: #dc965626;
+    in-out property <color> caution-tint: #f7ca8826;
+    in-out property <color> bad-tint: #ab46422e;
+    in-out property <color> mauve-tint: #ba8baf26;
+    // The two ends of the QR: whichever of ground and bright is darker draws the modules.
+    in-out property <color> qr-dark: base00;
+    in-out property <color> qr-light: base05;
+    in-out property <bool> light-ground: false;
+
+    // Stage Black — the one unthemed colour, behind video only.
+    out property <color> stage: #000000;
+
+    // Radius scale: round by default; sharp and pill are the Appearance switch.
+    in-out property <int> radius-mode: 1; // 0 sharp · 1 round · 2 pill
+    out property <length> r1: radius-mode == 0 ? 3px : radius-mode == 2 ? 14px : 10px;
+    out property <length> r2: radius-mode == 0 ? 4px : radius-mode == 2 ? 22px : 16px;
+    out property <length> r3: radius-mode == 0 ? 6px : radius-mode == 2 ? 28px : 22px;
+    out property <length> r4: radius-mode == 0 ? 8px : radius-mode == 2 ? 34px : 28px;
+
+    // Motion: full · reduced · off. Durations come from here so one switch slows everything.
+    in-out property <int> motion: 0; // 0 full · 1 reduced · 2 off
+    out property <duration> dur: motion == 0 ? 220ms : motion == 1 ? 120ms : 0ms;
+    out property <duration> dur-sheet: motion == 0 ? 480ms : motion == 1 ? 200ms : 0ms;
+    out property <duration> dur-hero: motion == 0 ? 520ms : motion == 1 ? 160ms : 0ms;
+    out property <duration> dur-press: motion == 2 ? 0ms : 120ms;
+    out property <duration> stagger: motion == 0 ? 40ms : 0ms;
+    out property <bool> ambient: motion == 0;
+    // How far things travel when they rise in; nothing travels with reduced motion.
+    out property <length> rise: motion == 0 ? 18px : 0px;
+
+    // Type.
+    out property <string> display-font: "Bricolage Grotesque";
+    out property <string> body-font: "Figtree";
+    out property <string> mono-font: "JetBrains Mono";
+}
+
+// The two curves. Nothing else eases (clocks run linear; the breathe loop is ease-in-out).
+// Slint takes the curve inline, so these are the only two spellings in the codebase:
+//   spring: cubic-bezier(0.32, 0.72, 0, 1)
+//   pop:    cubic-bezier(0.34, 1.56, 0.64, 1)

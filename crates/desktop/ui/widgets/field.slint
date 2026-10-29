@@ -1,0 +1,75 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// A text field: a ground-coloured well with a hairline, 44px, 16px text (the Sixteen-Pixel
+// Input Rule holds here too, so the desktop and the phone read the same). Focus moves the
+// border to accent; a search field adds a 3px accent halo.
+
+import { Theme } from "../theme.slint";
+import { Icon } from "icon.slint";
+
+export component Field inherits Rectangle {
+    in-out property <string> text;
+    in property <string> placeholder;
+    in property <string> icon;
+    in property <bool> mono: false;
+    in property <bool> invalid: false;
+    in property <bool> enabled: true;
+    in property <bool> halo: false;
+    in property <string> label;
+    callback edited(string);
+    callback accepted(string);
+    height: 44px;
+    border-radius: Theme.r1;
+    background: Theme.ground;
+    border-width: 1px;
+    border-color: invalid ? Theme.bad : input.has-focus ? Theme.accent : Theme.line;
+    opacity: enabled ? 1 : 0.5;
+    animate border-color { duration: Theme.dur; }
+    accessible-role: text-input;
+    accessible-label: label != "" ? label : placeholder;
+    accessible-value: text;
+
+    halo-ring := Rectangle {
+        x: -3px; y: -3px; width: parent.width + 6px; height: parent.height + 6px;
+        border-radius: Theme.r1 + 3px;
+        border-width: 3px;
+        border-color: Theme.accent.with-alpha(root.halo && input.has-focus ? 0.3 : 0);
+        animate border-color { duration: Theme.dur; }
+    }
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 8px;
+        if root.icon != "": VerticalLayout {
+            alignment: center;
+            Icon { path: root.icon; color: Theme.dim; size: 18px; }
+        }
+        Rectangle {
+            input := TextInput {
+                width: 100%;
+                height: 100%;
+                text <=> root.text;
+                enabled: root.enabled;
+                color: Theme.bright;
+                selection-background-color: Theme.accent.with-alpha(0.35);
+                selection-foreground-color: Theme.bright;
+                font-family: root.mono ? Theme.mono-font : Theme.body-font;
+                font-size: root.mono ? 14px : 15px;
+                vertical-alignment: center;
+                single-line: true;
+                edited => { root.edited(self.text); }
+                accepted => { root.accepted(self.text); }
+            }
+            if root.text == "": Text {
+                x: 0;
+                width: 100%;
+                text: root.placeholder;
+                color: Theme.dim.with-alpha(0.8);
+                font-family: root.mono ? Theme.mono-font : Theme.body-font;
+                font-size: root.mono ? 14px : 15px;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+    }
+}

@@ -1,0 +1,115 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// The window: the rail on the left, the page of the current mode on the right, and what floats
+// above both — the check-words sheet, the appearance popover and the toast.
+
+import { Theme } from "theme.slint";
+import { App, Host, Client } from "state.slint";
+import { Sidebar } from "shell/sidebar.slint";
+import { AppearancePanel } from "shell/appearance.slint";
+import { OverviewPage } from "host/overview.slint";
+import { DevicesPage } from "host/devices.slint";
+import { PairPage } from "host/pair.slint";
+import { SessionsPage } from "host/sessions.slint";
+import { LogsPage } from "host/logs.slint";
+import { SettingsPage } from "host/settings.slint";
+import { AskSheet } from "host/ask.slint";
+import { ComputersPage } from "client/computers.slint";
+import { ComputerPage } from "client/computer.slint";
+import { Tone } from "widgets/status.slint";
+
+export { Theme, App, Host, Client }
+
+component Toast inherits Rectangle {
+    property <int> seen;
+    property <bool> up;
+    property <float> k: up ? 1 : 0;
+    animate k { duration: up ? Theme.dur-sheet : Theme.dur * 1.4; easing: up ? cubic-bezier(0.34, 1.56, 0.64, 1) : cubic-bezier(0.32, 0.72, 0, 1); }
+    visible: k > 0.001;
+    height: 44px;
+    width: t.preferred-width + 48px;
+    border-radius: 22px;
+    background: Theme.surface-2;
+    border-width: 1px;
+    border-color: Tone.of(App.toast-tone).with-alpha(0.5);
+    drop-shadow-blur: 30px;
+    drop-shadow-offset-y: 10px;
+    drop-shadow-color: #00000080;
+    opacity: k;
+    transform-scale: 0.9 + 0.1 * k;
+    accessible-role: AccessibleRole.text;
+    accessible-label: App.toast;
+    HorizontalLayout {
+        padding-left: 18px;
+        spacing: 10px;
+        VerticalLayout { alignment: center; Rectangle { width: 8px; height: 8px; border-radius: 4px; background: Tone.of(App.toast-tone); } }
+        t := Text {
+            text: App.toast;
+            color: Theme.bright;
+            font-family: Theme.body-font;
+            font-size: 13.5px;
+            font-weight: 500;
+            vertical-alignment: center;
+        }
+    }
+    hide := Timer {
+        interval: 3200ms;
+        running: root.up;
+        triggered => { root.up = false; }
+    }
+    changed seen => { }
+    property <int> serial: App.toast-serial;
+    changed serial => {
+        root.up = false;
+        root.up = App.toast != "";
+        hide.restart();
+    }
+}
+
+export component AppWindow inherits Window {
+    title: "wado";
+    preferred-width: 1240px;
+    preferred-height: 820px;
+    min-width: 980px;
+    min-height: 640px;
+    background: Theme.ground;
+    default-font-family: Theme.body-font;
+    default-font-size: 14px;
+
+    property <bool> appearance-open;
+    public function toggle-appearance() { root.appearance-open = !root.appearance-open; }
+
+    // The clipboard is the toolkit's: a hidden field copies, on Wayland and X11 alike.
+    clipper := TextInput { visible: false; width: 0; height: 0; }
+    public function copy-text(t: string) {
+        clipper.text = t;
+        clipper.select-all();
+        clipper.copy();
+    }
+
+    HorizontalLayout {
+        Sidebar { appearance => { root.appearance-open = !root.appearance-open; } }
+        main := Rectangle {
+            horizontal-stretch: 1;
+            background: Theme.ground;
+            // A hairline where the rail meets the page.
+            Rectangle { x: 0; width: 1px; background: Theme.line.with-alpha(0.6); }
+            if App.mode == 0 && App.host-page == 0: OverviewPage { }
+            if App.mode == 0 && App.host-page == 1: DevicesPage { }
+            if App.mode == 0 && App.host-page == 2: PairPage { }
+            if App.mode == 0 && App.host-page == 3: SessionsPage { }
+            if App.mode == 0 && App.host-page == 4: LogsPage { }
+            if App.mode == 0 && App.host-page == 5: SettingsPage { }
+            if App.mode == 1 && App.client-page == 0: ComputersPage { }
+            if App.mode == 1 && App.client-page == 1: ComputerPage { }
+        }
+    }
+    AppearancePanel { open <=> root.appearance-open; }
+    AskSheet {
+        open: Host.asks.length > 0;
+        ask: Host.asks.length > 0 ? Host.asks[0] : { device: "" };
+    }
+    Toast {
+        x: (root.width - self.width) / 2 + 132px;
+        y: root.height - self.height - 28px;
+    }
+}

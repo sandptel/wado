@@ -1,0 +1,257 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// config.kdl, every section, as controls. Edits are staged; Apply writes each through
+// `wado_config::ui_file` — which loads the whole config after every write and undoes one that
+// would break it — then every daemon reloads. A refused value says why under its field.
+
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+import { Host, ConfigField, ConfigSection } from "../state.slint";
+import { Button, IconButton } from "../widgets/button.slint";
+import { Icon, Icons } from "../widgets/icon.slint";
+import { Rise, Card, SectionLabel, Title, Small, Mono, PageHead, Divider } from "../widgets/surface.slint";
+import { Badge } from "../widgets/status.slint";
+import { Switch, Segmented } from "../widgets/toggle.slint";
+import { Field } from "../widgets/field.slint";
+
+component SectionTab inherits Rectangle {
+    in property <ConfigSection> s;
+    in property <bool> on;
+    callback clicked();
+    height: 44px;
+    border-radius: Theme.r2;
+    background: on ? Theme.surface-2 : t.has-hover ? Theme.surface-1 : transparent;
+    animate background { duration: Theme.dur; easing: cubic-bezier(0.32, 0.72, 0, 1); }
+    accessible-role: tab;
+    accessible-label: s.name;
+    accessible-item-selected: on;
+    bar := Rectangle {
+        x: 0;
+        width: 3px;
+        height: root.on ? 20px : 0px;
+        border-radius: 2px;
+        background: Theme.accent;
+        animate height { duration: Theme.dur * 1.6; easing: cubic-bezier(0.34, 1.56, 0.64, 1); }
+    }
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 10px;
+        spacing: 10px;
+        VerticalLayout { alignment: center; Icon { path: root.s.icon; color: root.on ? Theme.accent : Theme.dim; size: 18px; } }
+        Text {
+            text: root.s.name;
+            color: root.on ? Theme.bright : Theme.text;
+            font-family: Theme.body-font;
+            font-size: 13.5px;
+            font-weight: root.on ? 600 : 500;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+        if root.s.changed > 0: VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 20px; height: 20px; border-radius: 10px;
+                background: Theme.caution;
+                Text { text: root.s.changed; color: Theme.on-accent; font-size: 11px; font-weight: 700; font-family: Theme.body-font; horizontal-alignment: center; vertical-alignment: center; }
+            }
+        }
+    }
+    t := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+component ListEditor inherits VerticalLayout {
+    in property <ConfigField> f;
+    spacing: 6px;
+    for item[i] in root.f.items: Rectangle {
+        height: 34px;
+        border-radius: Theme.r1;
+        background: Theme.surface-2;
+        HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 4px;
+            Mono { text: item; vertical-alignment: center; horizontal-stretch: 1; }
+            IconButton { size: 30px; icon: Icons.x; label: "Remove " + item; clicked => { Host.list-remove(root.f.key, i); } }
+        }
+    }
+    add := Field {
+        height: 38px;
+        mono: true;
+        placeholder: root.f.placeholder != "" ? root.f.placeholder : "Add, then press Enter";
+        accepted(t) => {
+            if t != "" { Host.list-add(root.f.key, t); self.text = ""; }
+        }
+    }
+}
+
+component FieldRow inherits Rectangle {
+    in property <ConfigField> f;
+    min-height: lay.preferred-height;
+    background: f.dirty ? Theme.caution.with-alpha(0.06) : transparent;
+    animate background { duration: Theme.dur; }
+    lay := HorizontalLayout {
+        padding: 16px;
+        padding-left: 18px;
+        spacing: 24px;
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 4px;
+            alignment: start;
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                Title { text: root.f.name; vertical-alignment: center; }
+                if root.f.when == "live": VerticalLayout { alignment: center; Badge { text: "APPLIES LIVE"; tone: "accent"; } }
+                if root.f.when == "restart": VerticalLayout { alignment: center; Badge { text: "ON RESTART"; tone: "caution"; } }
+                if root.f.owner-only: VerticalLayout { alignment: center; Badge { text: "OWNER ONLY"; tone: "mauve"; } }
+                if root.f.dirty: VerticalLayout { alignment: center; Badge { text: "NOT APPLIED"; tone: "warn"; } }
+            }
+            Mono { text: root.f.key; color: Theme.dim; font-size: 11px; }
+            if root.f.hint != "": Small { text: root.f.hint; }
+            if root.f.error != "": HorizontalLayout {
+                spacing: 6px;
+                alignment: start;
+                VerticalLayout { alignment: start; padding-top: 1px; Icon { path: Icons.alert; color: Theme.bad; size: 15px; } }
+                Small { text: root.f.error; color: Theme.bad; horizontal-stretch: 1; }
+            }
+        }
+        VerticalLayout {
+            width: 320px;
+            alignment: start;
+            spacing: 6px;
+            if root.f.kind == "bool": HorizontalLayout {
+                alignment: end;
+                Switch { label: root.f.name; checked: root.f.on; toggled(v) => { Host.toggle(root.f.key, v); } }
+            }
+            if root.f.kind == "enum": Segmented {
+                h: 38px;
+                options: root.f.options;
+                index: root.f.option-index;
+                picked(i) => { Host.pick(root.f.key, i); }
+            }
+            if root.f.kind == "int" || root.f.kind == "text": Field {
+                height: 40px;
+                mono: true;
+                text: root.f.value;
+                placeholder: root.f.placeholder;
+                invalid: root.f.error != "";
+                label: root.f.name;
+                edited(t) => { Host.edit(root.f.key, t); }
+            }
+            if root.f.kind == "list": ListEditor { f: root.f; }
+            if root.f.kind == "map": VerticalLayout {
+                spacing: 4px;
+                for item in root.f.items: Mono { text: item; }
+                if root.f.items.length == 0: Small { text: "None set."; }
+                Small { text: "Edit this one in config.kdl."; font-size: 11px; }
+            }
+            if root.f.overridden: HorizontalLayout {
+                alignment: end;
+                Button { kind: "ghost"; h: 28px; text: "Clear override"; clicked => { Host.clear(root.f.key); } }
+            }
+        }
+    }
+}
+
+component ApplyBar inherits Rectangle {
+    in property <bool> open;
+    out property <float> k: open ? 1 : 0;
+    animate k { duration: open ? Theme.dur-sheet : Theme.dur-sheet * 0.8; easing: cubic-bezier(0.32, 0.72, 0, 1); }
+    visible: k > 0.001;
+    height: 64px;
+    border-radius: 32px;
+    background: Theme.surface-2;
+    border-width: 1px;
+    border-color: Theme.line;
+    drop-shadow-blur: 40px;
+    drop-shadow-offset-y: 14px;
+    drop-shadow-color: #00000066;
+    opacity: k;
+    HorizontalLayout {
+        padding-left: 24px;
+        padding-right: 10px;
+        spacing: 10px;
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            Title { text: Host.dirty == 1 ? "1 change not applied" : Host.dirty + " changes not applied"; }
+            Small { text: Host.config-error != "" ? Host.config-error : "Written to ui.kdl and checked against the whole config first."; color: Host.config-error != "" ? Theme.bad : Theme.dim; overflow: elide; wrap: no-wrap; }
+        }
+        VerticalLayout { alignment: center; Button { kind: "ghost"; text: "Discard"; clicked => { Host.discard(); } } }
+        VerticalLayout { alignment: center; Button { kind: "primary"; text: "Apply"; icon: Icons.check; clicked => { Host.apply(); } } }
+    }
+}
+
+export component SettingsPage inherits Rectangle {
+    HorizontalLayout {
+        padding: 28px;
+        padding-top: 24px;
+        spacing: 22px;
+        VerticalLayout {
+            width: 220px;
+            spacing: 4px;
+            alignment: start;
+            Rise {
+                order: 0;
+                VerticalLayout {
+                    spacing: 14px;
+                    PageHead { eyebrow: Host.computer-name; title: "Settings"; }
+                    VerticalLayout {
+                        spacing: 4px;
+                        for s[i] in Host.sections: SectionTab {
+                            s: s;
+                            on: i == Host.section;
+                            clicked => { Host.pick-section(i); }
+                        }
+                    }
+                }
+            }
+            Rectangle { height: 24px; }
+            Mono { text: Host.config-path; color: Theme.dim; font-size: 10.5px; }
+            Mono { text: Host.ui-path; color: Theme.dim; font-size: 10.5px; }
+        }
+        Rise {
+            order: 1;
+            horizontal-stretch: 1;
+            Rectangle {
+                border-radius: Theme.r3;
+                background: Theme.surface-1;
+                clip: true;
+                ScrollView {
+                    VerticalLayout {
+                        alignment: start;
+                        padding-bottom: 96px;
+                        Rectangle {
+                            height: 74px;
+                            HorizontalLayout {
+                                padding-left: 18px;
+                                padding-right: 18px;
+                                spacing: 12px;
+                                VerticalLayout {
+                                    alignment: center;
+                                    spacing: 2px;
+                                    Text {
+                                        text: Host.sections.length > 0 ? Host.sections[Host.section].name : "";
+                                        color: Theme.bright;
+                                        font-family: Theme.display-font;
+                                        font-size: 20px;
+                                        font-weight: 700;
+                                    }
+                                    Small { text: Host.sections.length > 0 ? Host.sections[Host.section].blurb : ""; }
+                                }
+                            }
+                        }
+                        for f[i] in Host.fields: VerticalLayout {
+                            Divider { }
+                            FieldRow { f: f; }
+                        }
+                    }
+                }
+                bar := ApplyBar {
+                    open: Host.dirty > 0;
+                    width: min(560px, parent.width - 32px);
+                    x: (parent.width - self.width) / 2;
+                    y: parent.height - self.height - 16px + 24px * (1 - self.k);
+                }
+            }
+        }
+    }
+}

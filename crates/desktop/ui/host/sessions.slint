@@ -1,0 +1,108 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// The pool's running sessions: each one's shape, its apps, who is watching and how they reach
+// it. Sessions are started by devices, never here — the daemon idles until asked.
+
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+import { Host, SessionRow } from "../state.slint";
+import { Icons } from "../widgets/icon.slint";
+import { Rise, Card, Disc, SectionLabel, Title, Small, Mono, PageHead, MetaCell } from "../widgets/surface.slint";
+import { StatusPill, LinkWords, Badge } from "../widgets/status.slint";
+
+component AppChip inherits Rectangle {
+    in property <string> text;
+    height: 26px;
+    min-width: t.preferred-width + 20px;
+    border-radius: 13px;
+    background: Theme.surface-2;
+    t := Text {
+        text: root.text;
+        color: Theme.text;
+        font-family: Theme.body-font;
+        font-size: 12px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+component SessionCard inherits Card {
+    in property <SessionRow> s;
+    border-width: 1.5px;
+    border-color: s.viewer != "" ? Theme.good.with-alpha(0.55) : Theme.line;
+    VerticalLayout {
+        padding: 18px;
+        spacing: 14px;
+        HorizontalLayout {
+            spacing: 14px;
+            Disc { size: 46px; icon: Icons.monitor; hue: Theme.good; }
+            VerticalLayout {
+                alignment: center;
+                spacing: 3px;
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+                    Text {
+                        text: "Desktop on daemon " + root.s.daemon;
+                        color: Theme.bright;
+                        font-family: Theme.display-font;
+                        font-size: 17px;
+                        font-weight: 700;
+                    }
+                    if root.s.detached: VerticalLayout { alignment: center; Badge { text: "LEFT RUNNING"; tone: "caution"; } }
+                }
+                Mono { text: root.s.instance; color: Theme.dim; font-size: 11.5px; }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            VerticalLayout {
+                alignment: center;
+                if root.s.viewer != "": StatusPill { text: "Watched by " + root.s.viewer; tone: "good"; motion: "ripple"; }
+                if root.s.viewer == "": StatusPill { text: "Nobody watching"; tone: "dim"; }
+            }
+        }
+        HorizontalLayout {
+            spacing: 10px;
+            MetaCell { height: 70px; key: "SHAPE"; value: root.s.shape; sub: "this device's screen"; }
+            MetaCell { height: 70px; key: "FRAME RATE"; value: root.s.fps + " fps"; sub: "what it was started at"; }
+            MetaCell { height: 70px; key: "RUNNING"; value: root.s.age; sub: "since it started"; }
+            MetaCell { height: 70px; key: "LINK"; value: root.s.link-words; sub: root.s.viewer != "" ? "as the device reports it" : "no device on it"; }
+        }
+        if root.s.apps.length > 0: HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+            for a in root.s.apps: AppChip { text: a; }
+        }
+        if root.s.apps.length == 0: Small { text: "No windows open."; }
+    }
+}
+
+export component SessionsPage inherits Rectangle {
+    ScrollView {
+        VerticalLayout {
+            alignment: start;
+            padding: 28px;
+            padding-top: 24px;
+            spacing: 14px;
+            Rise {
+                order: 0;
+                PageHead {
+                    eyebrow: Host.computer-name;
+                    title: "Sessions";
+                    subtitle: "Desktops running on this computer's daemons. A device starts one when it connects; it ends when the device ends it.";
+                }
+            }
+            if Host.sessions.length == 0: Rise {
+                order: 1;
+                Card {
+                    hairline: true;
+                    VerticalLayout {
+                        padding: 22px;
+                        spacing: 8px;
+                        Title { text: "Nothing is running."; font-size: 16px; }
+                        Small { text: "The daemon is idle — no compositor, no encoder, no render loop — until a device asks for a desktop."; font-size: 13.5px; }
+                    }
+                }
+            }
+            for s[i] in Host.sessions: Rise { order: i + 1; SessionCard { s: s; } }
+        }
+    }
+}

@@ -1,0 +1,201 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Pairing a new device: the QR to scan, the same code to type, how long it has, and what the
+// device will be allowed (`gate/pairing.rs`, `cli/qr.rs`). A code is made when asked, works
+// once, for ten minutes; a used one is replaced, an expired one is not — a console left open
+// holds no live way in.
+
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+import { Host, App } from "../state.slint";
+import { Button } from "../widgets/button.slint";
+import { Icon, Icons } from "../widgets/icon.slint";
+import { Rise, Card, SectionLabel, Title, Small, Mono, PageHead } from "../widgets/surface.slint";
+import { StatusPill } from "../widgets/status.slint";
+import { GrantChip, Segmented } from "../widgets/toggle.slint";
+import { Ring } from "../widgets/ring.slint";
+
+component QrCard inherits Rectangle {
+    width: 340px;
+    height: 340px;
+    border-radius: Theme.r4;
+    background: Theme.qr-light;
+    // The code arrives with a pop; a fresh one replaces it the same way.
+    property <float> shown: Host.pair-ready ? 1 : 0;
+    animate shown { duration: Theme.dur-sheet; easing: cubic-bezier(0.34, 1.56, 0.64, 1); }
+    accessible-role: image;
+    accessible-label: "QR code to pair a device";
+    Image {
+        width: parent.width - 36px;
+        height: parent.height - 36px;
+        source: Host.pair-qr;
+        image-rendering: pixelated;
+        opacity: Host.pair-live ? root.shown : 0.12;
+        transform-scale: 0.9 + 0.1 * root.shown;
+        animate opacity { duration: Theme.dur; }
+    }
+    if !Host.pair-live: VerticalLayout {
+        alignment: center;
+        padding: 30px;
+        spacing: 12px;
+        Text {
+            text: Host.pair-ready ? "This code is spent." : "No code yet.";
+            color: Theme.qr-dark;
+            font-family: Theme.display-font;
+            font-size: 20px;
+            font-weight: 700;
+            horizontal-alignment: center;
+        }
+        HorizontalLayout {
+            alignment: center;
+            Button { kind: "primary"; text: "Make a new code"; icon: Icons.refresh; clicked => { Host.mint(); } }
+        }
+    }
+}
+
+component CodePanel inherits VerticalLayout {
+    spacing: 16px;
+    HorizontalLayout {
+        spacing: 20px;
+        Ring {
+            size: 112px;
+            progress: Host.pair-live ? Host.pair-left / Host.pair-total : 0;
+            tone: Host.pair-left < 60 ? Theme.warn : Theme.accent;
+            VerticalLayout {
+                alignment: center;
+                Text {
+                    text: Host.pair-live ? floor(Host.pair-left / 60) + ":" + (mod(Host.pair-left, 60) < 10 ? "0" : "") + mod(Host.pair-left, 60) : "—";
+                    color: Theme.bright;
+                    font-family: Theme.display-font;
+                    font-size: 22px;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: "left";
+                    color: Theme.dim;
+                    font-family: Theme.body-font;
+                    font-size: 11px;
+                    horizontal-alignment: center;
+                }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            spacing: 6px;
+            SectionLabel { text: "OR TYPE THIS CODE"; }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                Text {
+                    text: Host.pair-code != "" ? Host.pair-code : "————-————";
+                    color: Host.pair-live ? Theme.bright : Theme.dim;
+                    font-family: Theme.mono-font;
+                    font-size: 34px;
+                    font-weight: 600;
+                    letter-spacing: 2px;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Button {
+                        kind: "ghost";
+                        h: 36px;
+                        icon: Icons.copy;
+                        enabled: Host.pair-live;
+                        clicked => { App.copy(Host.pair-code); }
+                    }
+                }
+            }
+            Small { text: "On the device: Pair this device → type the code."; }
+        }
+    }
+    StatusPill {
+        text: Host.pair-words;
+        tone: Host.pair-tone;
+        motion: Host.pair-live ? "breathe" : "still";
+    }
+    if Host.pair-error != "": Card {
+        tone: "bad";
+        VerticalLayout {
+            padding: 14px;
+            Small { text: Host.pair-error; color: Theme.bright; }
+        }
+    }
+}
+
+component Checklist inherits Card {
+    VerticalLayout {
+        padding: 18px;
+        spacing: 12px;
+        SectionLabel { text: "THE NEW DEVICE MAY"; }
+        Small { text: "Seeing and driving the desktop is always included. Changing this makes a new code; the device can be changed later in Devices."; }
+        HorizontalLayout {
+            spacing: 10px;
+            alignment: start;
+            VerticalLayout {
+                alignment: center;
+                Text { text: "Files"; color: Theme.text; font-family: Theme.body-font; font-size: 13px; font-weight: 600; }
+            }
+            Segmented {
+                width: 260px;
+                h: 36px;
+                options: ["None", "Read", "Read & write"];
+                index: Host.pair-grants.files;
+                picked(i) => { Host.pair-files(i); }
+            }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            GrantChip { label: "Shells"; on: Host.pair-grants.shells; toggled(v) => { Host.pair-grant("shells", v); } }
+            GrantChip { label: "Settings"; on: Host.pair-grants.settings; toggled(v) => { Host.pair-grant("settings", v); } }
+            GrantChip { label: "Host"; on: Host.pair-grants.host; toggled(v) => { Host.pair-grant("host", v); } }
+            GrantChip { label: "Trackpad"; on: Host.pair-grants.input; toggled(v) => { Host.pair-grant("input", v); } }
+            GrantChip { label: "Clipboard"; on: Host.pair-grants.clipboard; toggled(v) => { Host.pair-grant("clipboard", v); } }
+        }
+        Mono { text: "wado pair " + Host.pair-grants-words; color: Theme.dim; }
+    }
+}
+
+export component PairPage inherits Rectangle {
+    init => { Host.pair-opened(); }
+    ScrollView {
+        VerticalLayout {
+            alignment: start;
+            padding: 28px;
+            padding-top: 24px;
+            spacing: 18px;
+            Rise {
+                order: 0;
+                PageHead {
+                    eyebrow: Host.computer-name;
+                    title: "Pair a device";
+                    subtitle: "Scan the QR with the device's camera, or type the code into its Pair this device form. Typed codes ask you to compare four check words here before the device is trusted.";
+                }
+            }
+            Rise {
+                order: 1;
+                HorizontalLayout {
+                    spacing: 28px;
+                    alignment: start;
+                    VerticalLayout {
+                        alignment: start;
+                        QrCard { }
+                    }
+                    VerticalLayout {
+                        spacing: 16px;
+                        alignment: start;
+                        CodePanel { }
+                        HorizontalLayout {
+                            spacing: 10px;
+                            alignment: start;
+                            Button { kind: "default"; text: "New code"; icon: Icons.refresh; clicked => { Host.mint(); } }
+                            Button { kind: "danger"; text: "Withdraw"; icon: Icons.x; enabled: Host.pair-live; clicked => { Host.withdraw(); } }
+                            Button { kind: "ghost"; text: "Copy link"; icon: Icons.link; enabled: Host.pair-live; clicked => { App.copy(Host.pair-link); } }
+                        }
+                    }
+                }
+            }
+            Rise { order: 2; Checklist { } }
+        }
+    }
+}
