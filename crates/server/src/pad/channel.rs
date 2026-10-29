@@ -42,10 +42,12 @@ pub async fn open(
                 return;
             }
             if label == KEYS_CHANNEL {
-                live.keys_channel(Some(Arc::clone(&dc)));
-                let closing = live.clone();
+                live.keys_opened(Arc::clone(&dc));
+                let (closing, me) = (live.clone(), Arc::downgrade(&dc));
                 dc.on_close(Box::new(move || {
-                    closing.keys_channel(None);
+                    if let Some(me) = me.upgrade() {
+                        closing.keys_closed(&me);
+                    }
                     Box::pin(async {})
                 }));
             }

@@ -1156,6 +1156,8 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     .reset(&room_id, &client_key);
                 *ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()) =
                     (client_key.clone(), client_name.clone());
+                // A new viewer never inherits the last one's trackpad or what it held down.
+                ctx.pad.close();
                 // The audio sink appears for this device, named after it.
                 tokio::spawn(crate::host::viewer(Some(client_name.clone())));
                 ctx.media_sent.clear();
@@ -1588,21 +1590,30 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             }
 
             RelayMsg::PadOffer { sdp } => {
-                let peer = pad_peer(&ctx);
-                let reply = match ctx.pad.open(&ctx.api, &sdp, peer, out_tx.clone()).await {
-                    Ok(sdp) => RelayMsg::PadAnswer {
-                        sdp,
-                        err: String::new(),
-                    },
-                    Err(err) => {
-                        info!("pad: direct link refused — {err}");
-                        RelayMsg::PadAnswer {
-                            sdp: String::new(),
-                            err,
+                // Spawned: gathering takes up to `GATHER_WAIT`, and relayed touches arriving
+                // meanwhile must not wait behind it.
+                let (pad, api, peer, out_tx) = (
+                    ctx.pad.clone(),
+                    Arc::clone(&ctx.api),
+                    pad_peer(&ctx),
+                    out_tx.clone(),
+                );
+                tokio::spawn(async move {
+                    let reply = match pad.open(&api, &sdp, peer, out_tx.clone()).await {
+                        Ok(sdp) => RelayMsg::PadAnswer {
+                            sdp,
+                            err: String::new(),
+                        },
+                        Err(err) => {
+                            info!("pad: direct link refused — {err}");
+                            RelayMsg::PadAnswer {
+                                sdp: String::new(),
+                                err,
+                            }
                         }
-                    }
-                };
-                send_relay(&out_tx, &reply).await.ok();
+                    };
+                    send_relay(&out_tx, &reply).await.ok();
+                });
             }
 
             RelayMsg::PadIn { msg } => {
@@ -2420,8 +2431,6 @@ async fn handle_sdp_offer(
     Ok(())
 }
 
-/// Close the files peer connection, if there is one. Closed, not dropped: webrtc-rs frees its ICE
-/// sockets only on `close()` (see the session's peer connection).
 /// The device on the relay link, for the trackpad's per-message check.
 fn pad_peer(ctx: &RelayCtx) -> crate::pad::Peer {
     let (key, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
@@ -2432,6 +2441,8 @@ fn pad_peer(ctx: &RelayCtx) -> crate::pad::Peer {
     }
 }
 
+/// Close the files peer connection, if there is one. Closed, not dropped: webrtc-rs frees its ICE
+/// sockets only on `close()` (see the session's peer connection).
 fn close_files(slot: &Mutex<Option<Arc<RTCPeerConnection>>>) {
     if let Some(pc) = slot.lock().unwrap_or_else(|e| e.into_inner()).take() {
         tokio::spawn(async move {

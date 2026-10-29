@@ -85,7 +85,7 @@
     W.pad.onState(paintPill);
     W.pad.onMsg((m) => {
       if (m.k === "pong") paintPill();
-      if (m.k === "err") { el.err.textContent = m.message; el.err.hidden = false; }
+      if (m.k === "err") { el.err.textContent = m.message; el.err.hidden = false; paintPill(); }
     });
 
     // Finger rings: drawn with transform only, never laid out.
@@ -121,7 +121,8 @@
   function paintPill() {
     const s = W.pad.state;
     const ms = W.pad.rtt == null ? "" : ` · ${W.pad.rtt} ms`;
-    el.pilltext.textContent = s === "direct" ? "Direct" + ms : s === "relayed" ? "Relayed" + ms : "Connecting…";
+    const off = el.err.hidden ? "Connecting…" : "Not connected";
+    el.pilltext.textContent = s === "direct" ? "Direct" + ms : s === "relayed" ? "Relayed" + ms : off;
     el.pill.classList.toggle("good", s === "direct");
     el.pill.classList.toggle("warn", s === "relayed");
     el.pill.classList.toggle("dim", s === "off");

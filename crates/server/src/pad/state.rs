@@ -14,8 +14,15 @@ use super::playout::Playout;
 /// The phone re-sends its frame every 100 ms while a finger rests, so this never cuts a hold.
 pub const SILENCE_MS: u64 = 400;
 
+/// No message at all for this long (the phone pings every 2 s) and held keys are let go too: a
+/// phone locked or out of signal with Super locked must not leave it down for good.
+pub const KEYS_SILENCE_MS: u64 = 5000;
+
 /// Where a pad's input lands. The real one is [`super::sink::Devices`].
 pub trait Sink: Send {
+    /// Make the devices before they are needed — the keyboard always, the touchpad when the
+    /// size is known — so the desktop has picked them up before the first touch or key.
+    fn ready(&mut self, size: Option<(u16, u16)>) -> Result<(), String>;
     fn touch(&mut self, size: (u16, u16), c: &[Contact]) -> Result<(), String>;
     fn tap(&mut self, mods: &[Mod], code: u16) -> Result<(), String>;
     fn hold(&mut self, mods: &[Mod]) -> Result<(), String>;
@@ -29,6 +36,9 @@ pub struct Pad {
     /// Any finger down, as last sent to the sink.
     down: bool,
     last_frame_ms: u64,
+    /// When anything at all last arrived, and whether held keys were let go since.
+    last_msg_ms: u64,
+    keys_released: bool,
     playout: Playout,
     text: Vec<String>,
 }
@@ -41,6 +51,8 @@ impl Pad {
             last_seq: None,
             down: false,
             last_frame_ms: 0,
+            last_msg_ms: 0,
+            keys_released: false,
             playout: Playout::new(),
             text: Vec::new(),
         }
@@ -49,13 +61,16 @@ impl Pad {
     /// Apply one message that arrived at `now_ms`; `relayed` when it came through the relay.
     /// Returns the reply, if any.
     pub fn handle(&mut self, now_ms: u64, msg: PadMsg, relayed: bool) -> Option<PadMsg> {
+        self.last_msg_ms = now_ms;
+        self.keys_released = false;
         let result = match msg {
-            PadMsg::Size { w, h } => {
-                self.resize((w, h));
-                Ok(())
-            }
+            PadMsg::Size { w, h } => self.resize((w, h)),
             PadMsg::Frame { seq, t, c } => {
-                if self.last_seq.is_some_and(|last| !newer(seq, last)) {
+                // A reloaded page starts its count again: after a quiet spell with nothing down,
+                // any number is taken as the new start rather than dropped as stale.
+                let restarted =
+                    !self.down && now_ms.saturating_sub(self.last_frame_ms) > SILENCE_MS;
+                if self.last_seq.is_some_and(|last| !newer(seq, last)) && !restarted {
                     return None;
                 }
                 self.last_seq = Some(seq);
@@ -65,6 +80,8 @@ impl Pad {
                     self.playout.push(now_ms, t, c);
                     return self.tick(now_ms);
                 }
+                // The direct link has caught up: relayed frames still queued are older than this.
+                self.playout.clear();
                 self.touch(&c)
             }
             PadMsg::Key { key, mods } => match key_code(&key) {
@@ -89,9 +106,12 @@ impl Pad {
             }
             PadMsg::Ping { t } => return Some(PadMsg::Pong { t }),
             // Daemon → phone only; a phone sending them is ignored.
-            PadMsg::Pong { .. } | PadMsg::Err { .. } => Ok(()),
+            PadMsg::Pong { .. } | PadMsg::Err { .. } | PadMsg::Bye => Ok(()),
         };
-        result.err().map(|message| PadMsg::Err { message })
+        result.err().map(|message| PadMsg::Err {
+            message,
+            fatal: false,
+        })
     }
 
     /// Text waiting to be typed (typing is async; the caller does it).
@@ -113,16 +133,25 @@ impl Pad {
                 err.get_or_insert(e);
             }
         }
-        err.map(|message| PadMsg::Err { message })
+        if !self.keys_released && now_ms.saturating_sub(self.last_msg_ms) > KEYS_SILENCE_MS {
+            self.keys_released = true;
+            self.sink.release_all();
+        }
+        err.map(|message| PadMsg::Err {
+            message,
+            fatal: false,
+        })
     }
 
-    /// When `tick` next has work: the next relayed frame, or the silence deadline.
-    pub fn next_wake(&self) -> Option<u64> {
-        let silence = self.down.then_some(self.last_frame_ms + SILENCE_MS + 1);
-        match (self.playout.next_wake(), silence) {
-            (Some(a), Some(b)) => Some(a.min(b)),
-            (a, b) => a.or(b),
-        }
+    /// Make the devices now (see [`Sink::ready`]).
+    pub fn prepare(&mut self) -> Result<(), String> {
+        self.sink.ready(self.size)
+    }
+
+    /// Let go of held keys (the direct link that held them dropped); fingers are left to the
+    /// silence check, since the phone may carry on over the relay.
+    pub fn release_keys(&mut self) {
+        self.sink.release_all();
     }
 
     /// Let go of everything: fingers, held keys.
@@ -142,11 +171,11 @@ impl Pad {
         self.sink.touch(size, c)
     }
 
-    fn resize(&mut self, size: (u16, u16)) {
+    fn resize(&mut self, size: (u16, u16)) -> Result<(), String> {
         let moved = |a: u16, b: u16| a.abs_diff(b) > 2;
         if let Some(old) = self.size {
             if !moved(old.0, size.0) && !moved(old.1, size.1) {
-                return;
+                return Ok(());
             }
             self.playout.clear();
             if self.down {
@@ -154,6 +183,7 @@ impl Pad {
             }
         }
         self.size = Some(size);
+        self.sink.ready(Some(size))
     }
 }
 
@@ -187,6 +217,9 @@ mod tests {
         }
     }
     impl Sink for Rec {
+        fn ready(&mut self, _: Option<(u16, u16)>) -> Result<(), String> {
+            Ok(())
+        }
         fn touch(&mut self, size: (u16, u16), c: &[Contact]) -> Result<(), String> {
             self.0.lock().unwrap().push(Call::Touch(size, c.to_vec()));
             Ok(())
@@ -282,7 +315,9 @@ mod tests {
             },
             false,
         );
-        assert!(matches!(reply, Some(PadMsg::Err { message }) if message.contains('é')));
+        assert!(
+            matches!(reply, Some(PadMsg::Err { message, fatal: false }) if message.contains('é'))
+        );
     }
 
     #[test]
@@ -324,7 +359,9 @@ mod tests {
             },
             false,
         );
-        assert!(matches!(reply, Some(PadMsg::Err { message }) if message.contains("hyper")));
+        assert!(
+            matches!(reply, Some(PadMsg::Err { message, fatal: false }) if message.contains("hyper"))
+        );
     }
 
     #[test]
@@ -340,7 +377,8 @@ mod tests {
             true,
         );
         assert_eq!(rec.calls().len(), 0);
-        assert_eq!(p.next_wake(), Some(1024));
+        p.tick(1023);
+        assert_eq!(rec.calls().len(), 0);
         p.tick(1024);
         assert_eq!(rec.calls(), vec![Call::Touch((390, 800), vec![(0, 1, 1)])]);
     }
@@ -382,5 +420,55 @@ mod tests {
         );
         assert_eq!(p.take_text().as_deref(), Some("Hello, café."));
         assert_eq!(p.take_text(), None);
+    }
+
+    #[test]
+    fn a_direct_frame_drops_relayed_ones_still_queued() {
+        let (mut p, rec) = pad();
+        p.handle(
+            1000,
+            PadMsg::Frame {
+                seq: 1,
+                t: 0,
+                c: vec![(0, 1, 1)],
+            },
+            true,
+        );
+        p.handle(1005, frame(2, vec![]), false); // the lift, on the direct link
+        p.tick(2000);
+        assert_eq!(rec.calls(), vec![Call::Touch((390, 800), vec![])]);
+    }
+
+    #[test]
+    fn a_restarted_count_is_taken_after_a_quiet_spell() {
+        let (mut p, rec) = pad();
+        p.handle(0, frame(50, vec![]), false);
+        p.handle(10, frame(1, vec![(0, 1, 1)]), false); // too soon: stale
+        p.handle(1000, frame(1, vec![(0, 2, 2)]), false); // a reloaded page
+        assert_eq!(
+            rec.calls().last(),
+            Some(&Call::Touch((390, 800), vec![(0, 2, 2)]))
+        );
+        assert_eq!(rec.calls().len(), 2);
+    }
+
+    #[test]
+    fn held_keys_go_after_total_silence() {
+        let (mut p, rec) = pad();
+        p.handle(
+            0,
+            PadMsg::Hold {
+                mods: vec![Mod::Super],
+            },
+            false,
+        );
+        p.tick(KEYS_SILENCE_MS);
+        assert!(!rec.calls().contains(&Call::Release));
+        p.tick(KEYS_SILENCE_MS + 1);
+        p.tick(KEYS_SILENCE_MS + 500);
+        assert_eq!(
+            rec.calls().iter().filter(|c| **c == Call::Release).count(),
+            1
+        );
     }
 }

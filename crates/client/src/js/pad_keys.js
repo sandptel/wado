@@ -71,8 +71,10 @@
     if (!input || composing) return;
     const value = input.value;
     const d = K.diffText(sent, value);
+    // A latched or locked modifier makes the next single character a shortcut (Ctrl locked,
+    // then "c", is Ctrl+C — the locked key is already held on the computer).
     const latched = inState("latched");
-    if (latched.length && d.back === 0 && cps(d.ins).length === 1) {
+    if ((latched.length || inState("locked").length) && d.back === 0 && cps(d.ins).length === 1) {
       send({ k: "char", ch: d.ins, mods: latched });
       clearLatches();
       input.value = sent; // it was a shortcut, not text
@@ -86,6 +88,17 @@
     });
     sent = value;
     if (cps(sent).length > WINDOW) { input.value = ""; sent = ""; }
+  }
+
+  // The path changed and the daemon let go of held keys: hold the locked ones again.
+  K.resend = () => { if (inState("locked").length) send({ k: "hold", mods: inState("locked") }); };
+
+  // Leaving the app with a modifier locked unlocks it, here and on the computer.
+  function hidden() {
+    if (document.visibilityState !== "hidden" || !inState("locked").length) return;
+    for (const n of NAMES) if (K.mods[n] === "locked") K.mods[n] = "off";
+    send({ k: "hold", mods: [] });
+    paint();
   }
 
   function onInput(e) { if (!e.isComposing) flush(); }
@@ -107,10 +120,12 @@
     sent = "";
     composing = false;
     for (const [ev, fn] of on) input.addEventListener(ev, fn);
+    document.addEventListener("visibilitychange", hidden);
   };
 
   K.detach = () => {
     if (input) for (const [ev, fn] of on) input.removeEventListener(ev, fn);
+    document.removeEventListener("visibilitychange", hidden);
     input = null;
     if (inState("locked").length) send({ k: "hold", mods: [] });
     for (const n of NAMES) K.mods[n] = "off";

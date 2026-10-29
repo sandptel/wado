@@ -68,11 +68,6 @@ impl Playout {
         out
     }
 
-    /// When the next queued frame falls due.
-    pub fn next_wake(&self) -> Option<u64> {
-        self.queue.front().map(|&(due, _)| due)
-    }
-
     /// Forget queued frames (the pad was resized or lifted).
     pub fn clear(&mut self) {
         self.queue.clear();

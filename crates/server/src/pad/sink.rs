@@ -30,11 +30,20 @@ impl Devices {
 }
 
 impl Sink for Devices {
-    fn touch(&mut self, size: (u16, u16), c: &[Contact]) -> Result<(), String> {
-        if self.touchpad.as_ref().is_none_or(|t| t.size() != size) {
-            self.touchpad = None; // the old device goes before the new one appears
-            self.touchpad = Some(Touchpad::new(size.0, size.1).map_err(why)?);
+    fn ready(&mut self, size: Option<(u16, u16)>) -> Result<(), String> {
+        self.keyboard()?;
+        match size {
+            Some(size) if self.touchpad.as_ref().is_none_or(|t| t.size() != size) => {
+                self.touchpad = None; // the old device goes before the new one appears
+                self.touchpad = Some(Touchpad::new(size.0, size.1).map_err(why)?);
+                Ok(())
+            }
+            _ => Ok(()),
         }
+    }
+
+    fn touch(&mut self, size: (u16, u16), c: &[Contact]) -> Result<(), String> {
+        self.ready(Some(size))?;
         self.touchpad.as_mut().unwrap().frame(c).map_err(why)
     }
 

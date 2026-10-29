@@ -238,5 +238,58 @@ await run("Enter: flushes the text, then presses enter", async (e) => {
   eq(padIn(e.relay).filter((m) => m.k !== "ping"), [{ k: "text", text: "ls" }, { k: "key", key: "enter", mods: [] }], "order");
 });
 
+// ── lifecycle (from the branch review) ─────────────────────────────────────────────────
+await run("stop says bye and settles a pending offer, so a reopen can go direct", async (e) => {
+  e.W.pad.start();
+  await e.tick();
+  e.W.pad.stop();
+  eq(padIn(e.relay, "bye"), [{ k: "bye" }], "bye through the relay");
+  await e.tick();
+  const offers = () => e.relay.filter((m) => m.type === "pad_offer").length;
+  const before = offers();
+  e.W.pad.start();
+  await e.tick();
+  eq(offers(), before + 1, "a fresh offer after reopening");
+});
+
+await run("a fatal err from the daemon stops the pad", async (e) => {
+  e.W.pad.start();
+  e.W._relayHandlers.pad_out({ msg: { k: "err", message: "The trackpad needs /dev/uinput", fatal: true } });
+  eq(e.W.pad.state, "off", "stopped");
+});
+
+await run("direct: a lift is repeated at +20 and +60 ms", async (e) => {
+  e.W.padTouch.attach(e.el);
+  e.W.pad.start();
+  await goDirect(e);
+  const touch = e.pcs[0].dcs[0];
+  e.down(1, 500, 500);
+  e.advance(100);
+  touch.sent.length = 0;
+  e.up(1);
+  e.advance(70);
+  eq(touch.sent.map((m) => m.c), [[], [], []], "lift sent three times");
+});
+
+await run("locked Ctrl then the keyboard's c → a shortcut", async (e) => {
+  e.W.pad.start();
+  const f = field();
+  e.W.padKeys.attach(f);
+  e.W.padKeys.tapMod("ctrl"); e.advance(50); e.W.padKeys.tapMod("ctrl");
+  f.value = "c"; f.l.input({ isComposing: false });
+  eq(padIn(e.relay, "char"), [{ k: "char", ch: "c", mods: [] }], "char with Ctrl already held");
+});
+
+await run("switching to direct re-holds locked modifiers", async (e) => {
+  e.W.padTouch.attach(e.el);
+  const f = field();
+  e.W.padKeys.attach(f);
+  e.W.pad.start();
+  e.W.padKeys.tapMod("super"); e.advance(50); e.W.padKeys.tapMod("super");
+  await goDirect(e);
+  const keys = e.pcs[0].dcs[1];
+  assert(keys.sent.some((m) => m.k === "hold" && m.mods[0] === "super"), "hold re-sent on the keys channel");
+});
+
 if (failures) { console.log(`\n${failures} failed`); process.exit(1); }
 console.log("\nall pad checks passed");

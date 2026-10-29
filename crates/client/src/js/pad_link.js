@@ -39,6 +39,14 @@
     if (!m || typeof m !== "object") return;
     if (m.k === "pong") { P.rtt = ((now32() - m.t) >>> 0); }
     for (const fn of msgs) { try { fn(m); } catch (_) {} }
+    // The daemon closed the pad (no grant, no /dev/uinput): stop sending into it.
+    if (m.k === "err" && m.fatal) stop(false);
+  }
+
+  // The path changed: the daemon's picture of this pad (size, fingers, held keys) is re-sent whole.
+  function resend() {
+    if (W.padTouch && W.padTouch.resend) W.padTouch.resend();
+    if (W.padKeys && W.padKeys.resend) W.padKeys.resend();
   }
 
   const open = (dc) => dc && dc.readyState === "open";
@@ -64,7 +72,7 @@
     rlog("direct link down — " + why);
     try { pc.close(); } catch (_) {}
     pc = touch = keys = null;
-    if (want) setState("relayed");
+    if (want) { setState("relayed"); resend(); }
   }
 
   async function tryDirect() {
@@ -90,6 +98,7 @@
         const t = setTimeout(ok, 3000);
         me.onicegatheringstatechange = () => { if (me.iceGatheringState === "complete") { clearTimeout(t); ok(); } };
       });
+      if (pc !== me || !want) return; // closed while gathering: offer nothing
       const answer = await new Promise((ok) => {
         answerWait = ok;
         if (!W.relaySendMsg({ type: "pad_offer", sdp: JSON.stringify(me.localDescription) })) {
@@ -101,8 +110,7 @@
       if (pc !== me) return;
       if (answer.err) {
         // The daemon refused the pad itself (no `input` grant, not approved): say so and stop.
-        deliver({ k: "err", message: answer.err });
-        P.stop();
+        deliver({ k: "err", message: answer.err, fatal: true });
         return;
       }
       if (!answer.sdp) { dropDirect("no answer"); return; }
@@ -117,7 +125,7 @@
       if (pc !== me) return;
       setState("direct");
       rlog("direct link up");
-      if (W.padTouch && W.padTouch.resend) W.padTouch.resend();
+      resend();
     } catch (e) {
       if (pc === me) dropDirect(String(e.message || e));
     } finally {
@@ -135,13 +143,19 @@
     tryDirect();
   };
 
-  P.stop = () => {
+  // `bye`: tell the daemon to let go of everything and remove its devices. Through the relay,
+  // because closing the peer connection below can drop what is still queued on its channels.
+  function stop(bye) {
+    if (bye && want && W.relaySendMsg) W.relaySendMsg({ type: "pad_in", msg: { k: "bye" } });
     want = false;
     clearInterval(pingTimer);
     pingTimer = null;
     if (pc) { try { pc.close(); } catch (_) {} }
     pc = touch = keys = null;
+    const w = answerWait; // settle an offer still waiting, or `offering` would stay stuck
     answerWait = null;
+    if (w) w({ err: "" });
     setState("off");
-  };
+  }
+  P.stop = () => stop(true);
 })();

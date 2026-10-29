@@ -4,7 +4,10 @@
 // reads the virtual touchpad these frames drive, which is the defence against misreads.
 //
 // When frames go out:
-//   • a finger lands or lifts → at once (a tap must never be coalesced away)
+//   • a finger lands or lifts → at once (a tap must never be coalesced away); on the direct link,
+//     whose touch channel never retransmits, the same frame goes again at +20 and +60 ms so one
+//     lost packet cannot lose a click or hold a finger down (frames are whole state: repeats
+//     are harmless)
 //   • a finger moves → direct link: once per event-loop turn; relay: on a 16 ms tick
 //   • a finger rests → re-sent every 100 ms, so the daemon's silence check (400 ms) only ever
 //     lifts a finger whose phone is really gone
@@ -40,6 +43,11 @@
     dirty = true;
     if (!queued) { queued = true; queueMicrotask(now); }
   }
+  // A finger landed or lifted.
+  function changed() {
+    soon();
+    if (W.pad.state === "direct") for (const ms of [20, 60]) setTimeout(() => { if (el) send(); }, ms);
+  }
   function moved() {
     dirty = true;
     if (W.pad.state === "direct") soon(); // relayed: the 16 ms tick sends it
@@ -70,7 +78,7 @@
     const f = { id, x: 0, y: 0 };
     place(f, e);
     fingers.set(e.pointerId, f);
-    soon();
+    changed();
   }
   function move(e) {
     const f = fingers.get(e.pointerId);
@@ -81,7 +89,7 @@
   }
   function up(e) {
     if (!fingers.delete(e.pointerId)) return;
-    soon();
+    changed();
   }
   function hidden() {
     if (document.visibilityState === "hidden" && fingers.size) { fingers.clear(); send(); }

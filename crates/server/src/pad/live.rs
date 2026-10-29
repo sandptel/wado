@@ -51,6 +51,9 @@ struct Inner {
     pc: Option<Arc<RTCPeerConnection>>,
     keys_dc: Option<Arc<RTCDataChannel>>,
     relay: Option<mpsc::Sender<String>>,
+    /// Bumped by every `close`, so an `open` that was still gathering when the pad closed
+    /// throws its peer connection away instead of keeping it.
+    generation: u64,
 }
 
 impl Live {
@@ -62,14 +65,26 @@ impl Live {
         peer: Peer,
         relay: mpsc::Sender<String>,
     ) -> Result<String, String> {
-        self.lock().relay = Some(relay);
+        let generation = {
+            let mut inner = self.lock();
+            inner.relay = Some(relay);
+            inner.generation
+        };
         if let Some(why) = super::gate::refused(&peer.gate, &peer.who, approved(&peer)) {
             return Err(why);
         }
         let (pc, answer) = super::channel::open(api, offer, self.clone(), peer)
             .await
             .map_err(|e| e.to_string())?;
-        if let Some(old) = self.lock().pc.replace(pc) {
+        let old = {
+            let mut inner = self.lock();
+            if inner.generation != generation {
+                Some(pc) // closed while gathering: this link is already unwanted
+            } else {
+                inner.pc.replace(pc)
+            }
+        };
+        if let Some(old) = old {
             tokio::spawn(async move {
                 let _ = old.close().await;
             });
@@ -84,23 +99,40 @@ impl Live {
     }
 
     /// The direct link's keys channel opened (replies go there while it is open).
-    pub(super) fn keys_channel(&self, dc: Option<Arc<RTCDataChannel>>) {
-        self.lock().keys_dc = dc;
+    pub(super) fn keys_opened(&self, dc: Arc<RTCDataChannel>) {
+        self.lock().keys_dc = Some(dc);
+    }
+
+    /// That keys channel closed. Keys it held are let go — the phone, if it carries on over the
+    /// relay, says again what it holds. A channel already replaced by a newer one changes nothing.
+    pub(super) fn keys_closed(&self, dc: &Arc<RTCDataChannel>) {
+        let mut inner = self.lock();
+        if inner.keys_dc.as_ref().is_some_and(|k| Arc::ptr_eq(k, dc)) {
+            inner.keys_dc = None;
+            if let Some(pad) = inner.pad.as_mut() {
+                pad.release_keys();
+            }
+        }
     }
 
     /// One message from the phone, by either path.
     pub(super) fn accept(&self, msg: PadMsg, relayed: bool, peer: &Peer) {
+        if msg == PadMsg::Bye {
+            self.close();
+            return;
+        }
         if let Some(why) = super::gate::refused(&peer.gate, &peer.who, approved(peer)) {
             info!(device = %peer.who.name, "pad: refused — {why}");
-            self.reply(PadMsg::Err { message: why });
-            self.close();
+            self.fail(why);
             return;
         }
         let keyboard = matches!(
             msg,
             PadMsg::Key { .. } | PadMsg::Char { .. } | PadMsg::Hold { .. } | PadMsg::Text { .. }
         );
-        self.start(&peer.who.name, relayed);
+        if !self.start(&peer.who.name, relayed) {
+            return;
+        }
         if keyboard {
             if let Some(keys) = self.lock().keys.as_ref() {
                 let _ = keys.send(msg);
@@ -111,7 +143,24 @@ impl Live {
             .with_pad(|pad, now| pad.handle(now, msg, relayed))
             .flatten()
         {
-            self.reply(reply);
+            self.answer(reply);
+        }
+    }
+
+    /// Tell the phone why, and close: it stops sending when `fatal` arrives.
+    fn fail(&self, message: String) {
+        self.reply(PadMsg::Err {
+            message,
+            fatal: true,
+        });
+        self.close();
+    }
+
+    /// A reply from the pad; a device that cannot be made is not retried 60 times a second.
+    fn answer(&self, reply: PadMsg) {
+        match reply {
+            PadMsg::Err { message, .. } if message == super::sink::NO_UINPUT => self.fail(message),
+            reply => self.reply(reply),
         }
     }
 
@@ -128,6 +177,7 @@ impl Live {
         inner.keys = None;
         inner.keys_dc = None;
         inner.epoch = None;
+        inner.generation += 1;
         if let Some(pc) = inner.pc.take() {
             tokio::spawn(async move {
                 let _ = pc.close().await;
@@ -135,18 +185,26 @@ impl Live {
         }
     }
 
-    /// Make the pad and its two workers on the first message that passed the gate.
-    fn start(&self, device: &str, relayed: bool) {
+    /// Make the pad, its devices and its two workers on the first message that passed the gate.
+    /// False when the devices cannot be made (the phone has been told why).
+    fn start(&self, device: &str, relayed: bool) -> bool {
         let mut inner = self.lock();
         if inner.pad.is_some() {
-            return;
+            return true;
+        }
+        let mut pad = Pad::new(Box::new(Devices::default()));
+        if let Err(message) = pad.prepare() {
+            drop(inner);
+            warn!(device, "pad: {message}");
+            self.fail(message);
+            return false;
         }
         info!(
             device,
             transport = if relayed { "relay" } else { "direct" },
             "pad: open"
         );
-        inner.pad = Some(Pad::new(Box::new(Devices::default())));
+        inner.pad = Some(pad);
         inner.epoch = Some(Instant::now());
 
         let ticker = {
@@ -157,7 +215,7 @@ impl Live {
                 loop {
                     every.tick().await;
                     if let Some(err) = live.with_pad(|pad, now| pad.tick(now)).flatten() {
-                        live.reply(err);
+                        live.answer(err);
                     }
                 }
             })
@@ -172,19 +230,23 @@ impl Live {
                         .with_pad(|pad, now| (pad.handle(now, msg, false), pad.take_text()))
                         .unwrap_or((None, None));
                     if let Some(reply) = reply {
-                        live.reply(reply);
+                        live.answer(reply);
                     }
                     if let Some(text) = text
                         && let Err(message) = super::text::type_text(&text).await
                     {
                         warn!("pad: typing failed — {message}");
-                        live.reply(PadMsg::Err { message });
+                        live.reply(PadMsg::Err {
+                            message,
+                            fatal: false,
+                        });
                     }
                 }
             })
         };
         inner.keys = Some(tx);
         inner.tasks = vec![ticker, typist];
+        true
     }
 
     /// Run `f` on the open pad with the current pad-clock time; `None` when there is no pad.

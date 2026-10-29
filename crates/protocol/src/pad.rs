@@ -68,10 +68,15 @@ pub enum PadMsg {
     Pong {
         t: u32,
     },
-    /// Daemon → phone only: a message was refused, or a device could not be made.
+    /// Daemon → phone only: a message was refused, or a device could not be made. `fatal`: the
+    /// daemon closed the pad, so the phone should stop sending.
     Err {
         message: String,
+        #[serde(default)]
+        fatal: bool,
     },
+    /// Phone → daemon: the trackpad was closed. Let go of everything and remove the devices.
+    Bye,
 }
 
 /// Is `seq` newer than `last`, across `u32` wrap.

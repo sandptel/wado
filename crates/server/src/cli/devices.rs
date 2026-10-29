@@ -45,7 +45,7 @@ pub fn list() -> i32 {
     println!(
         "  {}",
         dim(
-            "wado allow|deny <device> files-ro files-rw shells settings host · wado unpair <device>"
+            "wado allow|deny <device> files-ro files-rw shells settings host input clipboard · wado unpair <device>"
         )
     );
     println!();
