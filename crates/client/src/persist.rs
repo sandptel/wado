@@ -74,6 +74,7 @@ pub struct Saved {
     pub profiles: Option<Vec<crate::profile::Profile>>,
     pub relays: Option<Vec<String>>,
     pub profile: Option<usize>,
+    pub widgets: Option<Vec<crate::widget::Widget>>,
     pub keep_awake: Option<bool>,
     pub dnd: Option<bool>,
     pub volume: Option<f64>,
@@ -96,6 +97,7 @@ pub fn snapshot(ui: Ui) -> Saved {
     let tiles = s.tiles.read().clone();
     let profiles = s.profiles.read().clone();
     let relays = s.relays.read().clone();
+    let widgets = s.widgets.read().clone();
     Saved {
         conn_mode: Some((s.conn_mode)()),
         server_addr: Some((s.server_addr)()),
@@ -152,6 +154,7 @@ pub fn snapshot(ui: Ui) -> Saved {
         profiles: Some(profiles),
         relays: Some(relays),
         profile: Some((s.profile)()),
+        widgets: Some(widgets),
         keep_awake: Some((s.keep_awake)()),
         dnd: Some((s.dnd)()),
         volume: Some((s.volume)()),
@@ -241,6 +244,7 @@ pub fn restore(ui: Ui, saved: Saved) {
     put!(profiles);
     put!(relays);
     put!(profile);
+    put!(widgets);
     put!(keep_awake);
     put!(dnd);
     put!(volume);
@@ -272,6 +276,17 @@ mod tests {
         assert_eq!(saved.fps, Some(120));
         assert_eq!(saved.server_addr, None);
         assert_eq!(saved.debug.get("latency"), Some(&true));
+    }
+
+    #[test]
+    fn widgets_persist_and_a_blob_without_them_keeps_none() {
+        let blob = r#"{"widgets":[{"id":"w1","kind":"media","host":"r|1"}]}"#;
+        let saved: Saved = serde_json::from_str(blob).unwrap();
+        let w = saved.widgets.unwrap();
+        assert_eq!(w[0].kind, crate::widget::WidgetKind::Media);
+        assert_eq!(w[0].host, "r|1");
+        let old: Saved = serde_json::from_str("{}").unwrap();
+        assert!(old.widgets.is_none());
     }
 
     #[test]
