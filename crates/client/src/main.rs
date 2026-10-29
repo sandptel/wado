@@ -8,9 +8,11 @@
 //! theming — lives in `js/` and is driven through [`bridge`]. This file only assembles.
 
 mod actions;
+mod app_info;
 mod bridge;
 mod cfg;
 mod debug;
+mod deeplink;
 mod link;
 mod persist;
 mod profile;
@@ -50,6 +52,8 @@ fn App() -> Element {
     };
 
     bridge::run(ui);
+    // A shortcut from the app icon (`?go=`), followed on the last used computer.
+    deeplink::follow(ui);
 
     // Persist on any change. Reading every field is what subscribes this effect to all of
     // them, so `snapshot` doubles as the dependency list and cannot drift out of date.
@@ -137,6 +141,7 @@ fn App() -> Element {
         document::Stylesheet { href: asset!("/assets/files.css") }
         document::Stylesheet { href: asset!("/assets/link.css") }
         document::Stylesheet { href: asset!("/assets/pad.css") }
+        document::Stylesheet { href: asset!("/assets/app.css") }
 
         // The stage is the whole screen, always. Everything else floats over it and never
         // takes space from the picture — the control centre included (Decision Log 2026-10-02).

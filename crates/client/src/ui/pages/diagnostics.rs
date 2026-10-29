@@ -1,4 +1,4 @@
-//! Diagnostics: the readouts drawn over the picture, and the log.
+//! Diagnostics: this app's version, the readouts drawn over the picture, and the log.
 
 use dioxus::prelude::*;
 
@@ -10,6 +10,7 @@ pub fn render(ui: Ui) -> Element {
     let master = (s.debug_master)();
 
     rsx! {
+        {super::about::render(ui)}
         div { class: "card",
             SwitchRow {
                 title: "Readouts over the picture",

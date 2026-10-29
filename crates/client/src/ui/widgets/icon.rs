@@ -76,6 +76,9 @@ fn path(name: &str) -> &'static str {
         "prev-f" => "M5 5h2.5v14H5zM20 5v14L9 12z",
         "next-f" => "M16.5 5H19v14h-2.5zM4 5l11 7-11 7z",
         "paste" => "M9 4h6v3H9zM8 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M12 18v-7M9 14l3-3 3 3",
+        // iOS's Share glyph — so the install hint shows the very button it means.
+        "share" => "M12 3v12M8 7l4-4 4 4M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1",
+        "update" => "M12 4v11M7 10l5 5 5-5M5 20h14",
         _ => "",
     }
 }

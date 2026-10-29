@@ -1,0 +1,44 @@
+{
+  "name": "wado",
+  "short_name": "wado",
+  "description": "Your computers, at this screen's own resolution.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#181818",
+  "theme_color": "#181818",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Trackpad",
+      "description": "Your last computer's touchpad",
+      "url": "./?go=trackpad",
+      "icons": [{ "src": "icons/sc-trackpad.png", "sizes": "96x96", "type": "image/png" }]
+    },
+    {
+      "name": "Files",
+      "description": "Your last computer's files",
+      "url": "./?go=files",
+      "icons": [{ "src": "icons/sc-files.png", "sizes": "96x96", "type": "image/png" }]
+    },
+    {
+      "name": "Shell",
+      "description": "A terminal on your last computer",
+      "url": "./?go=shell",
+      "icons": [{ "src": "icons/sc-shell.png", "sizes": "96x96", "type": "image/png" }]
+    },
+    {
+      "name": "Start / join session",
+      "short_name": "Desktop",
+      "description": "Start or join a session on your last computer",
+      "url": "./?go=session",
+      "icons": [{ "src": "icons/sc-session.png", "sizes": "96x96", "type": "image/png" }]
+    }
+  ]
+}

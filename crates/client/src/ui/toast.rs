@@ -1,6 +1,6 @@
 //! Toasts: brief notes over the picture that never move it.
 //!
-//! Two today. *Software encoding* is shown at the start of every session that has it — the
+//! *Software encoding* is shown at the start of every session that has it — the
 //! one-time telling invariant #5 asks for; the dock LED and the hero chip keep it visible after
 //! the toast fades. *Config* surfaces a broken config.kdl, since that is the one thing a person
 //! at the phone cannot otherwise see is wrong on the other machine.
@@ -14,6 +14,7 @@ pub fn render(ui: Ui) -> Element {
     let sw = (live.session_on)() && (live.encoder_mode)() == "software";
     let cfg_err = (live.host)().error;
     let note = (live.note)();
+    let update = (live.app)().pending;
 
     rsx! {
         div { class: "toasts", "aria-live": "polite",
@@ -46,6 +47,14 @@ pub fn render(ui: Ui) -> Element {
                 div { key: "cfg-{e.len()}", class: "toast bad fade",
                     Icon { name: "alert" }
                     span { "config.kdl not applied: {e}" }
+                }
+            }
+            // A signed update is downloaded and waits for the next launch — never swapped in under
+            // the person. Said once per update, calmly; Diagnostics keeps saying it.
+            if !update.is_empty() {
+                div { key: "upd-{update}", class: "toast fade",
+                    Icon { name: "update" }
+                    span { "Update ready — reopen to use it" }
                 }
             }
         }

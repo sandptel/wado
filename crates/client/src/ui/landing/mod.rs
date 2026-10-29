@@ -7,6 +7,7 @@
 //! pushed over it.
 
 pub mod clips;
+mod install_hint;
 mod pair;
 
 use dioxus::prelude::*;
@@ -46,6 +47,8 @@ pub fn render(ui: Ui) -> Element {
         section { id: "landing", class: "{class}", "aria-hidden": "{on || covered}",
             div { class: "wordmark", "wado" span { "." } }
             p { class: "tag", "Your computers, at this screen's own resolution." }
+            // iOS Safari only, once: how to install, since it never offers to.
+            {crate::ui::scoped(ui, "install_hint", install_hint::render)}
             // The computer does not know this device yet: pair it before anything else.
             {crate::ui::scoped(ui, "pair", pair::render)}
             div { class: "sect", span { "Computers" } }

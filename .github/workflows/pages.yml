@@ -1,16 +1,34 @@
 # Builds the Dioxus WASM client and publishes it to GitHub Pages on every push to main.
 # Repo Settings -> Pages -> Source must be set to "GitHub Actions" for the deploy to land.
+#
+# Signed updates (docs/release-signing.md): every build also writes release.json — the SHA-256 of
+# every file. An installed app takes a new build only with a release.sig that verifies against a
+# key in crates/client/public/sw-keys.js. Signing happens offline, on the very artifact a run
+# built: `scripts/release-sign-run.sh <run-id> <key>` downloads it, signs it, and prints the
+# `gh workflow run pages.yml -f run_id=… -f signature=…` that re-deploys that same artifact with
+# its signature (the `sign` job). No key ever reaches CI.
 name: pages
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      run_id:
+        description: "To deploy a signature: the pages run whose artifact was signed (empty: just build)"
+        required: false
+        default: ""
+      signature:
+        description: "…and its release.sig (base64), from scripts/release-sign-run.sh"
+        required: false
+        default: ""
 
 permissions:
   contents: read
   pages: write
   id-token: write
+  # `sign` downloads an earlier run's artifact.
+  actions: read
 
 # One deploy at a time; a newer push supersedes an in-flight one.
 concurrency:
@@ -19,6 +37,7 @@ concurrency:
 
 jobs:
   build:
+    if: ${{ !inputs.signature }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -37,12 +56,49 @@ jobs:
       # --base-path, not Dioxus.toml: Pages serves under /wado/, local `dx serve` at root.
       - run: dx build -p wado-client --release --platform web --base-path wado
 
+      # The hashes a release key signs. No key here: deployed unsigned. While sw-keys.js lists no
+      # key, installed apps take it as it is; once it does, they refuse it until its signature is
+      # deployed by the `sign` job. A first visit gets it either way.
+      - run: node scripts/release-sign.mjs manifest target/dx/wado-client/release/web/public --commit "$GITHUB_SHA"
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: target/dx/wado-client/release/web/public
+          # Kept long enough to be downloaded, signed offline and re-deployed.
+          retention-days: 14
+
+  # Re-deploys an earlier run's artifact, byte for byte, with the signature made for it offline.
+  sign:
+    if: ${{ inputs.signature && inputs.run_id }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: github-pages
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+          path: artifact
+
+      - run: mkdir site && tar -xf artifact/artifact.tar -C site
+
+      # Refuses to deploy a signature that does not verify against the tree's own sw-keys.js, or a
+      # tree whose files no longer match release.json.
+      - env:
+          SIG: ${{ inputs.signature }}
+        run: |
+          printf '%s\n' "$SIG" > site/release.sig
+          node scripts/release-sign.mjs verify site
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+          retention-days: 14
 
   deploy:
-    needs: build
+    needs: [build, sign]
+    if: ${{ always() && (needs.build.result == 'success' || needs.sign.result == 'success') }}
     runs-on: ubuntu-latest
     environment:
       name: github-pages
