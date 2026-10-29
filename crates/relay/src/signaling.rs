@@ -66,6 +66,12 @@ pub const SILENCE: Duration = Duration::from_secs(45);
 /// - `gate`: joins wait for the daemon's `peer_accept` / `peer_reject`.
 /// - `ping`: the relay pings daemons that list `pong`, and closes ones that fall silent.
 /// - `leave`: a client closing with `LEAVE_CLOSE_CODE` frees its seat rather than holding it.
+/// - `control`: `control=1` on a join makes a control-only link — no seat, frames carried to a
+///   daemon with the `ctl` cap wrapped by room (`crate::controls`). `/online/:id` says how many
+///   daemons serve one (`control`), so a client never sends `control=1` to a relay without it.
+///   What such a room may carry is the daemon's policy; the relay reads only the room id.
+/// - `room_strict`: `strict=1` (with `control=1` and `instance=`) reaches exactly that daemon, or
+///   parks until it is back — never another daemon of the pool.
 pub const CAPS: &[&str] = &[
     "park",
     "hold",
@@ -75,6 +81,8 @@ pub const CAPS: &[&str] = &[
     "leave",
     "seat_hold",
     "occupancy",
+    "control",
+    "room_strict",
 ];
 
 pub fn caps() -> Vec<String> {

@@ -26,6 +26,9 @@ const CLEAR_OUT: &[&str] = &[
     "e2e_reply",
     "e2e_sas",
     "e2e_fail",
+    // A control-only client's link (`crate::control`): each carries its own sealed envelope.
+    "ctl",
+    "ctl_close",
 ];
 /// Frames the relay itself originates; everything else from the relay must be sealed.
 const CLEAR_IN: &[&str] = &[
@@ -35,6 +38,10 @@ const CLEAR_IN: &[&str] = &[
     "peer_check",
     "peer_disconnected",
     "error",
+    // A control-only client's link, carried whole; what is inside is sealed for its own room.
+    "ctl_open",
+    "ctl",
+    "ctl_close",
 ];
 /// ponytail: a bounded hold for what the daemon says before the handshake finishes (log lines,
 /// say). Past this the oldest go; nothing held is load-bearing.

@@ -48,6 +48,10 @@ pub struct JoinQuery {
     takeover: Option<String>,
     /// A pairing code from the host's QR, handed to the daemon's gate.
     pair: Option<String>,
+    /// `1`: a control-only link — a widget, with no seat (`crate::controls`).
+    control: Option<String>,
+    /// `1`, with `control=1` and `instance`: exactly that daemon, or wait for it (`room_strict`).
+    strict: Option<String>,
 }
 
 struct Joiner {
@@ -97,6 +101,18 @@ pub async fn handle_join(
             .collect(),
     };
     let peer = peer_ip(&headers, addr, state.config.trust_proxy);
+    if q.control.as_deref() == Some("1") {
+        // Never a seat, so none of the seat's choices apply: no takeover, no pairing code.
+        let asker = crate::join_control::Asker {
+            wanted: joiner.wanted,
+            client_key: joiner.client_key,
+            name: joiner.name,
+            strict: q.strict.as_deref() == Some("1"),
+        };
+        return ws.on_upgrade(move |socket| {
+            crate::join_control::control_loop(socket, remote_id, asker, peer, state)
+        });
+    }
     ws.on_upgrade(move |socket| join_loop(socket, remote_id, joiner, peer, state))
 }
 

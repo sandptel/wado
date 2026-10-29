@@ -72,6 +72,8 @@
     minus: "M5 12h14",
     copy: "M9 9h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H11a2 2 0 0 1-2-2zM5 15H4a1 1 0 0 1-1-1V5a2 2 0 0 1 2-2h9a1 1 0 0 1 1 1v1",
     paste: "M9 4h6v3H9zM8 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M12 18v-7M9 14l3-3 3 3",
+    share: "M12 3v12M8 7l4-4 4 4M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1",
+    update: "M12 4v11M7 10l5 5 5-5M5 20h14",
   };
   W.padIconNames = Object.keys(PATHS);
   W.padIcon = (name) =>

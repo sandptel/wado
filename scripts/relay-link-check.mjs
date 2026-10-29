@@ -36,12 +36,13 @@ const check = (name, got, want) => {
 // Since 2026-10-04 the computer drops every unsealed frame, so a direct `ws.send` is a feature
 // that silently does nothing (six of them did, until this check). Only relay_link.js (its own
 // `pong`) and the e2e_* files may write to the socket; everything else goes through
-// W.relaySendMsg.
+// W.relaySendMsg. side_link.js is a link of its own (a widget's seatless control link) with its
+// own envelope, so it writes its own handshake and pongs the same way.
 {
   const { readdirSync } = await import("node:fs");
   const dir = new URL("../crates/client/src/js/", import.meta.url);
   const bad = readdirSync(dir)
-    .filter((f) => f.endsWith(".js") && f !== "relay_link.js" && !f.startsWith("e2e_"))
+    .filter((f) => f.endsWith(".js") && f !== "relay_link.js" && f !== "side_link.js" && !f.startsWith("e2e_"))
     .flatMap((f) => read(f).split("\n").map((l, i) => [f, i + 1, l]))
     .filter(([, , l]) => /\b(ws|relayWs)\.send\(/.test(l))
     .map(([f, n]) => `${f}:${n}`);

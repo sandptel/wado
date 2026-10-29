@@ -4,16 +4,21 @@
 //!
 //! | about | pages | built in |
 //! |---|---|---|
-//! | one computer | Display & session, Trackpad, Sound & devices, Connection & trust | `ui/computer/pages/` |
+//! | one computer | Display & session, Sound & devices, Connection & trust | `ui/computer/pages/` |
 //! | this phone | Appearance, Input feel, Gamepad, Quick tiles, Diagnostics, Add a computer | `ui/home/pages/` |
 //!
 //! Each page is one component with two hosts: pushed over home or a computer's page, and pushed
 //! inside the control centre during a session (whose list is just *This computer ›* and *On this
 //! phone ›*). The files in this folder are the **sections** those pages are made of.
 //!
+//! A computer's **Trackpad** settings are not a page here: its row opens the trackpad's own
+//! settings sheet (`js/pad_settings.js`, `W.padSettings.openHere`) — one implementation, reached
+//! from the pad and from the computer's page.
+//!
 //! When a setting applies is said on the control (see [`crate::ui::widgets::When`]), not by
 //! which page it is on — the page answers "what is this about", the badge answers "when".
 
+pub mod about;
 pub mod appearance;
 pub mod computers;
 pub mod connection;
@@ -41,7 +46,6 @@ pub enum Page {
     OnThisPhone,
     // ── about one computer ──
     DisplaySession,
-    Trackpad,
     SoundDevices,
     ConnectionTrust,
     // ── about this phone ──
@@ -60,7 +64,6 @@ impl Page {
             Page::ThisComputer => "This computer",
             Page::OnThisPhone => "On this phone",
             Page::DisplaySession => "Display & session",
-            Page::Trackpad => "Trackpad",
             Page::SoundDevices => "Sound & devices",
             Page::ConnectionTrust => "Connection & trust",
             Page::Appearance => "Appearance",
@@ -76,11 +79,7 @@ impl Page {
     pub fn about_computer(self) -> bool {
         matches!(
             self,
-            Page::ThisComputer
-                | Page::DisplaySession
-                | Page::Trackpad
-                | Page::SoundDevices
-                | Page::ConnectionTrust
+            Page::ThisComputer | Page::DisplaySession | Page::SoundDevices | Page::ConnectionTrust
         )
     }
 
@@ -103,7 +102,6 @@ pub fn render(ui: Ui, page: Page) -> Element {
         Page::DisplaySession => {
             crate::ui::scoped(ui, "display_session", c::display_session::render)
         }
-        Page::Trackpad => crate::ui::scoped(ui, "trackpad", c::trackpad::render),
         Page::SoundDevices => crate::ui::scoped(ui, "sound_devices", c::sound_devices::render),
         Page::ConnectionTrust => {
             crate::ui::scoped(ui, "connection_trust", c::connection_trust::render)

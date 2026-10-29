@@ -47,8 +47,9 @@ switching apps, and quick actions, both in a session and outside it.
 
 ## Operating Context
 
-- The client is a web app (Dioxus 0.7, WASM) opened in the device's browser; a PWA with a
-  service worker and Web Push is planned (P1).
+- The client is a web app (Dioxus 0.7, WASM) opened in the device's browser, installable as a
+  PWA whose service worker serves a pinned client and, once a release key is set up, takes only
+  signed updates (`docs/release-signing.md`); Web Push is planned (P1).
 - The daemon (`wado daemon`) runs on the user's Linux computer and idles until a client starts
   a session. `wado tui` manages devices and grants on the host.
 - Connection goes through a public rendezvous relay by default; the media path is direct when
@@ -60,8 +61,9 @@ switching apps, and quick actions, both in a session and outside it.
 ## Capabilities and Constraints
 
 - Shipped: streamed session with pointer, touch gestures and keyboard; on-screen keyboard and
-  gamepad; files; clipboard; shells; link-state badge; encoder fallback ladder with user notice.
-- Planned, in order: pairing-code-only trust and fallback lane (P0); service worker, passkeys,
+  gamepad; files; clipboard; shells; link-state badge; encoder fallback ladder with user notice;
+  install as an app with signed updates and home-screen shortcuts.
+- Planned, in order: pairing-code-only trust and fallback lane (P0); passkeys,
   Claude status and push (P1); clipboard and files polish (P2); physical gamepads and per-device
   output (P3); packaging (P4); device-as-controller for the host desktop (unscheduled).
 - Input must never wait behind video; the client UI must not add work to the input path.

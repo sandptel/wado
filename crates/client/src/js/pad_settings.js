@@ -7,8 +7,12 @@
 // follows this device to another browser. Nothing here is applied by this file: the pad's layout
 // listens to the settings like it would to a change from the daemon.
 //
-//   W.padSettings.mount(root)   the pad's root; the sheet is built inside it
+//   W.padSettings.mount(root)   the pad's root; the sheet is built inside it (again: moved there)
 //   W.padSettings.open(from?)   from: the element to give focus back to on close
+//   W.padSettings.openHere(from?)  the same sheet with the pad closed — the second door, from a
+//                               computer's page (its Trackpad row). One implementation, two
+//                               doors: it lives in a screen-wide host of its own until the pad
+//                               opens, and goes back inside the pad when it does.
 //   W.padSettings.close()       through history when open() pushed an entry, so Back closes it too
 //   W.padSettings.hide()        close now (js/pad_ui.js calls it on popstate)
 //   W.padSettings.isOpen()
@@ -29,6 +33,22 @@
   let err = null;
   let back = null;
   let shown = false;
+  // The pad's root (the first door), and the screen-wide host the second door opens in.
+  let padRoot = null;
+  let hostEl = null;
+  const host = () => {
+    if (!hostEl) {
+      hostEl = node("div", "tps-host", { id: "wado-tps-host", "data-layout": "portrait" });
+      document.body.appendChild(hostEl);
+    }
+    return hostEl;
+  };
+  // Where the sheet belongs right now: in the pad while it is up, else in the host.
+  const home = () => (padRoot && !padRoot.hidden ? padRoot : host());
+  const rehome = () => {
+    const h = home();
+    if (sheet && sheet.parentNode !== h) h.append(scrim, sheet);
+  };
 
   function node(tag, cls, attrs, text) {
     const n = document.createElement(tag);
@@ -228,6 +248,9 @@
   function onKey(e) { if (e.key === "Escape" && shown) { e.preventDefault(); S.close(); } }
 
   S.mount = (r) => {
+    if (r !== hostEl) padRoot = r;
+    // Built once; a second mount only moves it.
+    if (sheet) { root = r; r.append(scrim, sheet); return; }
     root = r;
     scrim = node("div", "tpscrim", { hidden: "" });
     scrim.addEventListener("click", () => S.close());
@@ -255,6 +278,7 @@
 
   S.open = (from) => {
     if (!sheet || shown) return;
+    rehome();
     shown = true;
     back = from || null;
     err.hidden = true;
@@ -272,6 +296,18 @@
     const x = sheet.querySelector(".tps-close");
     if (x && x.focus) x.focus({ preventScroll: true });
   };
+
+  S.openHere = (from) => {
+    if (!sheet) S.mount(host());
+    // With the pad closed nothing has asked for the actions over its link: ask on the relay.
+    if (!W.padActions.list.length && !W.padActions.denied) {
+      if (W.pad && W.pad.state !== "off") W.padActions.refresh();
+      else if (W.actionsGet) W.actionsGet();
+    }
+    S.open(from);
+  };
+  // Back closes the sheet opened from a computer's page (the pad's own popstate handles its own).
+  addEventListener("popstate", () => { if (shown && hostEl && sheet && sheet.parentNode === hostEl) S.hide(); });
 
   S.close = () => {
     if (!sheet || !shown) return;

@@ -162,6 +162,23 @@ pub enum WireMsg {
         #[serde(default)]
         by: String,
     },
+    CtlOpen {
+        room_id: String,
+        client_addr: String,
+        #[serde(default)]
+        client_key: String,
+        #[serde(default)]
+        client_name: String,
+    },
+    Ctl {
+        room_id: String,
+        text: String,
+    },
+    CtlClose {
+        room_id: String,
+        #[serde(default)]
+        reason: String,
+    },
     Ping,
     Pong,
     Error {
@@ -216,6 +233,20 @@ mod tests {
                 ms_left: 5,
             },
             WireMsg::TakenOver { by: "Pixel".into() },
+            WireMsg::CtlOpen {
+                room_id: "r".into(),
+                client_addr: "1.2.3.4".into(),
+                client_key: "k".into(),
+                client_name: "Pixel".into(),
+            },
+            WireMsg::Ctl {
+                room_id: "r".into(),
+                text: r#"{"type":"sealed","n":0,"c":"AA"}"#.into(),
+            },
+            WireMsg::CtlClose {
+                room_id: "r".into(),
+                reason: "not paired".into(),
+            },
             WireMsg::PeerDisconnected {
                 room_id: "r".into(),
             },

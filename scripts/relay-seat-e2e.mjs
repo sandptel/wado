@@ -22,6 +22,9 @@
 //   envelope   (Decision Log 2026-10-04) the relay can neither read nor inject: plaintext and
 //              tampered frames are dropped, a device claiming another's id is refused, a
 //              changed computer identity is refused by the client, a QR code pairs and pins
+//   control    (2026-10-30) a widget's control-only link takes no seat: it gets in beside a full
+//              pool, displaces nobody, reads the computer's state, is refused anything that is
+//              not a control, and is not given to a device the computer does not know
 //
 // Clients run the real browser envelope code (scripts/lib/e2e-device.mjs). Messages for the
 // computer are sealed; `__up` is pushed when the secure link is up.
@@ -114,7 +117,7 @@ async function pairAt() {
 const trustList = () => { try { return readFileSync(join(CFG, "wado/trusted_clients"), "utf8"); } catch { return ""; } };
 // A client: records every frame (sealed ones opened), answers pings.
 class Client {
-  constructor(name, { key = name + "-key", instance = "", takeover = false, dev = null, pair = false } = {}) {
+  constructor(name, { key = name + "-key", instance = "", takeover = false, dev = null, pair = false, control = false } = {}) {
     this.name = name;
     this.msgs = [];
     this.closed = false;
@@ -123,6 +126,7 @@ class Client {
     if (instance) q.set("instance", instance);
     if (takeover) q.set("takeover", "1");
     if (pair) q.set("pair", "1");
+    if (control) q.set("control", "1");
     this.ws = new WebSocket(`${RELAY}/join/${RID}?${q}`);
     this.ws.onmessage = (e) => {
       const m = JSON.parse(e.data);
@@ -363,6 +367,64 @@ try {
   await sleep(300);
   after = new Client("Phone");
   check("the real phone still gets in after all that", !!(await after.up()));
+
+  // ── control ─────────────────────────────────────────────────────────────────
+  console.log("control");
+  // Joins come from one address here: spaced past the relay's refill (3 s) so the rate limit
+  // under test elsewhere does not refuse them.
+  const spaced = () => sleep(3200);
+  // The phone holds the pool's only seat (daemon 1). A widget's link from the laptop must get in
+  // anyway, beside it, and leave it alone.
+  const online = await (await fetch(`http://127.0.0.1:${PORT}/online/${RID}`)).json();
+  check("the relay says the computer serves seatless rooms", online.control === 1 && online.daemons === 1, JSON.stringify(online));
+  check("…and announces it, with strict targeting", ["control", "room_strict"].every((c) => (online.caps || []).includes(c)), JSON.stringify(online));
+  await spaced();
+  const widget = new Client("Laptop", { control: true });
+  const wacc = await widget.wait("join_accepted", 5000);
+  check("a control link is let in beside a full pool", wacc && wacc.assignment === "control", JSON.stringify(widget.msgs));
+  check("…and its envelope comes up", !!(await widget.up()), JSON.stringify(widget.msgs) + devices["Laptop-key"].W.log.join("\n"));
+  check("…without touching the seat's viewer", !after.closed && !after.has("taken_over"));
+  // A second room on the same daemon, from another trusted device: each gets its own frames.
+  await spaced();
+  const widget2 = new Client("Tab", { dev: tab, control: true });
+  check("a second control room opens on the same daemon", !!(await widget2.up()), JSON.stringify(widget2.msgs));
+  widget.send({ type: "host_get" });
+  const hs = await widget.wait("host_state", 8000);
+  check("it reads the computer's state", !!hs && !!hs.state, JSON.stringify(widget.msgs.slice(-3)));
+  check("…in its own room only", !widget2.has("host_state"));
+  widget2.send({ type: "config_get" });
+  const cs = await widget2.wait("config_state", 8000);
+  check("the other room gets its own answer", !!cs && !widget.has("config_state"), JSON.stringify(widget2.msgs.slice(-3)));
+  widget.send({ type: "sessions_request" });
+  widget.send({ type: "session_launch", command: "touch /tmp/wado-ctl-pwned" });
+  const nope = await widget.waitWhere((m) => m.type === "session_error" && /controls only/.test(m.message), 5000);
+  check("…and is refused anything that is not a control", !!nope && !widget.has("sessions"), JSON.stringify(widget.msgs.slice(-3)));
+  await spaced();
+  const busy = new Client("Desk2");
+  const bden = await busy.wait("join_denied", 5000);
+  check("the pool is still counted as the phone's alone", bden && /in use by Phone/.test(bden.reason) && !/Laptop|Tab/.test(bden.reason),
+    bden && bden.reason);
+  await busy.waitClosed(3000);
+  await spaced();
+  const stranger = new Client("Stranger", { control: true });
+  const sfail = await stranger.wait("e2e_fail", 5000);
+  check("a device the computer does not know gets no control link", !!sfail && !stranger.has("__up"), JSON.stringify(stranger.msgs));
+  await stranger.waitClosed(3000);
+  widget.close();
+  widget2.close();
+  check("a control link going leaves nothing behind", await waitFor(d1, /control link: closed/, 3000));
+  // Strict targeting: a daemon that is not there is waited for, never swapped for another.
+  await spaced();
+  const strictQ = new URLSearchParams({ client: "Laptop-key", name: "Laptop", control: "1", strict: "1", instance: `${RID}:9` });
+  const sws = new WebSocket(`${RELAY}/join/${RID}?${strictQ}`);
+  const smsgs = [];
+  sws.onmessage = (e) => smsgs.push(JSON.parse(e.data));
+  const t1 = Date.now();
+  while (Date.now() - t1 < 4000 && !smsgs.length) await sleep(50);
+  check("a strict join to an absent daemon parks, not falls back",
+    smsgs.length === 1 && smsgs[0].type === "waiting" && /reconnecting/.test(smsgs[0].reason), JSON.stringify(smsgs));
+  sws.close();
+  await sleep(300);
 
   // ── silence ─────────────────────────────────────────────────────────────────
   console.log("silence (≈50 s)");

@@ -10,6 +10,7 @@ pub mod audio;
 pub mod cli;
 pub mod clip;
 pub mod config;
+pub mod control;
 pub mod e2e;
 pub mod error;
 pub mod files;

@@ -1,5 +1,6 @@
-//! "This computer": the four pages about the selected computer, each subtitled with what is set
-//! there now. On its page, and inside the control centre during a session.
+//! "This computer": the four places to change the selected computer, each subtitled with what is
+//! set there now — three pages, and the trackpad's own settings sheet. On its page, and inside
+//! the control centre during a session.
 
 use dioxus::prelude::*;
 
@@ -86,7 +87,9 @@ pub fn render(ui: Ui) -> Element {
     rsx! {
         div { class: "list",
             NavRow { icon: "monitor", hue: "0D", title: "Display & session", sub: display, onopen: move |_| go(Page::DisplaySession) }
-            NavRow { icon: "trackpad", hue: "0C", title: "Trackpad", sub: pad, onopen: move |_| go(Page::Trackpad) }
+            // The trackpad's own settings sheet, the same one its ⚙ opens.
+            NavRow { icon: "trackpad", hue: "0C", title: "Trackpad", sub: pad,
+                onopen: move |_| crate::bridge::call("window.__wado.padSettings.openHere();".to_string()) }
             NavRow { icon: "sound", hue: "0E", title: "Sound & devices", sub: sound, onopen: move |_| go(Page::SoundDevices) }
             NavRow { icon: "net", hue: "09", title: "Connection & trust", sub: conn, onopen: move |_| go(Page::ConnectionTrust) }
         }

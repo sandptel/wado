@@ -27,6 +27,9 @@ pub struct Reach {
     pub config: Option<ConfigState>,
     /// When it was last seen online, as words ("2 h ago"); empty if never.
     pub seen: String,
+    /// Why there are no live values for it here, though it is online: `old_relay` or
+    /// `old_daemon` (see [`crate::state::Side`]). Empty when there is no such reason.
+    pub nolive: &'static str,
 }
 
 impl Reach {
@@ -110,6 +113,7 @@ pub fn of(ui: Ui, key: &str) -> Reach {
         // A stale state from before the daemon went is not "online".
         let online = online && tone != "bad" && !confirming && !unpaired;
         return Reach {
+            nolive: "",
             selected: true,
             tone,
             busy: words.starts_with("In use"),
@@ -125,16 +129,21 @@ pub fn of(ui: Ui, key: &str) -> Reach {
         let (tone, words, online) = match side.state.as_str() {
             "up" => ("ok", "Online".to_string(), true),
             "offline" => ("bad", offline_words(&seen), false),
-            "busy" => ("warn", "In use on another device".into(), true),
-            "waiting" => ("warn", "Waiting".into(), false),
+            "old_relay" | "old_daemon" => ("ok", "Online".into(), true),
             "refused" => ("bad", "Refused this phone".into(), false),
             "unreachable" => ("bad", "Relay unreachable".into(), false),
             _ => ("wait", "Connecting…".into(), false),
         };
+        let nolive = match side.state.as_str() {
+            "old_relay" => "old_relay",
+            "old_daemon" => "old_daemon",
+            _ => "",
+        };
         return Reach {
+            nolive,
             selected: false,
             tone,
-            busy: side.state == "busy",
+            busy: false,
             words,
             online,
             host: side.host,
@@ -150,6 +159,7 @@ pub fn of(ui: Ui, key: &str) -> Reach {
         None => ("wait", "Checking…".into(), false),
     };
     Reach {
+        nolive: "",
         selected: false,
         tone,
         busy: false,
