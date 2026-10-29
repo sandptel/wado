@@ -2,7 +2,6 @@
 //!
 //! ```text
 //!   ╻ ╻┏━┓╺┳┓┏━┓  big Remote ID                       relay · tunnel · pool · version
-//!   [ a device knocking: y let in · o once · n no ]
 //!   ┌ Pair ──────┐┌ Screens ─────────────────┐┌ Load ────────┐
 //!   │  QR code   ││ each daemon, its session ││ braille CPU  │
 //!   │            │└──────────────────────────┘└──────────────┘
@@ -48,18 +47,13 @@ pub fn draw(f: &mut Frame, app: &App) {
         f.render_widget(Paragraph::new(Line::styled(msg, theme::dim())), a);
         return;
     }
-    let knock = app.asking().is_some();
-    let [head, banner, body, foot] = Layout::vertical([
+    let [head, body, foot] = Layout::vertical([
         Constraint::Length(3),
-        Constraint::Length(if knock { 3 } else { 0 }),
         Constraint::Min(10),
         Constraint::Length(1),
     ])
     .areas(a);
     header::draw(f, app, head);
-    if knock {
-        knock_banner(f, app, banner);
-    }
 
     let [left, right] = Layout::horizontal([
         Constraint::Length(pair::width(app, body.height)),
@@ -145,54 +139,6 @@ pub fn toggle(label: String, on: bool, cursor: bool, width: usize) -> Span<'stat
     Span::styled(format!("{label:^width$}"), style)
 }
 
-fn knock_banner(f: &mut Frame, app: &App, area: Rect) {
-    let Some(r) = app.asking() else { return };
-    let block = Block::bordered()
-        .border_type(BorderType::Thick)
-        .border_style(Style::new().fg(theme::WARN));
-    let inner = block.inner(area);
-    f.render_widget(block, area);
-    let more = app.snap.pending.len().saturating_sub(1);
-    let btn = |k: &str, what: &str, t: Target| {
-        vec![
-            (Span::styled(format!(" {k} "), theme::cursor()), Some(t)),
-            (Span::styled(format!(" {what}   "), theme::bold()), Some(t)),
-        ]
-    };
-    let mut spans = vec![
-        (
-            Span::styled(format!(" {} ", theme::WAIT), Style::new().fg(theme::WARN)),
-            None,
-        ),
-        (Span::styled(r.name.clone(), theme::bold()), None),
-        (Span::raw(" wants to use this computer "), None),
-        (
-            Span::styled(format!("from {}    ", r.addr), theme::dim()),
-            None,
-        ),
-    ];
-    spans.extend(btn(
-        "y",
-        "let in",
-        Target::Answer(crate::gate::Verdict::Always),
-    ));
-    spans.extend(btn(
-        "o",
-        "just once",
-        Target::Answer(crate::gate::Verdict::Once),
-    ));
-    spans.extend(btn(
-        "n",
-        "turn away",
-        Target::Answer(crate::gate::Verdict::Deny),
-    ));
-    spans.extend(btn("esc", "later", Target::Snooze));
-    if more > 0 {
-        spans.push((Span::styled(format!("+{more} waiting"), theme::dim()), None));
-    }
-    row(f, app, inner.x, inner.y, inner.right(), spans);
-}
-
 fn footer(app: &App) -> Paragraph<'static> {
     if let Some((_, name)) = &app.confirm {
         return Paragraph::new(Line::from(vec![
@@ -205,6 +151,7 @@ fn footer(app: &App) -> Paragraph<'static> {
     let hints: &[(&str, &str)] = match app.focus {
         Card::Pair => &[
             ("space", "allow/deny"),
+            ("n", "new code"),
             ("c", "copy link"),
             ("z", "QR size"),
         ],

@@ -1,51 +1,53 @@
-//! Who may join this computer — the trust list, and approvals between the devices on it.
+//! Who may join this computer — the trust list, and pairing a new device onto it.
 //!
 //! The relay holds every join until this daemon answers `peer_accept` or `peer_reject`
-//! (`WADO_PLAN.md`, Decision Log `2026-10-02`). The rule, decided by the user:
+//! (`WADO_PLAN.md`, Decision Log `2026-10-02`). The rule, decided by the user (`2026-10-27`):
 //!
 //! - a device whose `client_key` is on the trust list gets straight in;
-//! - while the trust list is **empty**, the first device to connect is trusted (there is no one
-//!   yet to ask);
-//! - any other device **waits** until a device already connected to this computer approves it
-//!   — "once", "always" (it joins the trust list) or "deny".
+//! - any other device gets in **only with a pairing code shown on this computer** — the QR's, or
+//!   the same code typed ([`pairing`]). Nothing else: no first-device-wins, no approval from
+//!   another device. Without a code it is refused with [`UNPAIRED`], which tells it how to pair.
 //!
-//! **Why files.** A pool hands a new device a *free* daemon, which by definition has no viewer
-//! to ask. The approver is connected to a *different* daemon of the same pool, and the relay is
-//! deliberately not the place to route policy. Every daemon of a pool runs on one machine and
-//! shares [`crate::remote_id::config_dir`], so a pending request is a file there that every
-//! daemon can see and show to its own viewer, and the answer is a file next to it.
+//! Every daemon of a pool runs on one machine and shares [`crate::remote_id::config_dir`], so
+//! the trust list and the codes are files there that every daemon reads.
 //!
 //! ```text
 //!   <config>/wado/trusted_clients        <client_key>\t<name>[\t<device pk>\t<pinned>[\t<files>]]
-//!   <config>/wado/pending/<id>.json      a device waiting for approval
-//!   <config>/wado/pending/<id>.verdict   once | always | deny
+//!   <config>/wado/pair_codes             see `pairing`
 //! ```
 //!
 //! **Since the envelope (`crate::e2e`, `2026-10-04`)** the relay's `client_key` is only a claim:
-//! [`Gate::decide`] uses it to park or let in a join, and [`Gate::admit`] makes the decision that
-//! counts, once the device has proven its key. A line without a key (older than the envelope,
-//! or trusted a moment ago) takes the first key proven for it; `pinned` is 1 when that key was
-//! proven with a QR pairing code, which file access requires. `files` is that device's grant —
-//! `none` (the default, also when absent), `ro` or `rw` — set by `wado files grant`.
-//!
-//! ponytail: polled every 500 ms rather than watched with inotify — a prompt that appears half a
-//! second late costs nothing, and polling a tiny directory costs less than the dependency.
+//! [`Gate::knows`] uses it to let a join through to the envelope, and [`Gate::admit`] makes the
+//! decision that counts, once the device has proven its key. A line without a key (older than
+//! the envelope) takes the first key proven for it; `pinned` is 1 when that key was proven with
+//! a pairing code, which file access requires. `files` is that device's grant — `none` (the
+//! default, also when absent), `ro` or `rw` — set by `wado files grant`.
 
 use std::fs;
 use std::path::PathBuf;
-use std::time::{Duration, SystemTime};
-
-use serde::{Deserialize, Serialize};
+use std::time::SystemTime;
 
 pub mod grants;
+pub mod pairing;
+pub mod typed_code;
 pub use grants::Grants;
+pub use pairing::{CodeState, Minted, PAIR_TTL};
 use tracing::{info, warn};
 
-/// How long a request may wait for an answer. Matches the relay's own `APPROVAL_WAIT`.
-pub const APPROVAL_WAIT: Duration = Duration::from_secs(600);
-const POLL: Duration = Duration::from_millis(500);
-/// How long a QR pairing code works.
-const PAIR_TTL: Duration = Duration::from_secs(24 * 3600);
+/// Refusal for a device this computer does not know and that brought no code. Shown on the
+/// device as is, which also shows it the pairing form — `js/pair.js` matches this wording, and
+/// `scripts/pair-check.mjs` fails if the two drift apart.
+pub const UNPAIRED: &str = "This computer doesn't know this device yet — on the computer run \
+    `wado pair` (or open `wado tui` → Pair) and scan the code or type it here.";
+/// Refusal for a typed code that matched no live one.
+pub const WRONG_CODE: &str = "That code didn't work — check it, or make a new one on the \
+    computer with `wado pair` (or `wado tui` → Pair).";
+/// Refusal for a QR code that was already used or has run out.
+pub const STALE_CODE: &str = "That pairing code was already used or has expired — make a new \
+    one on the computer with `wado pair` (or `wado tui` → Pair).";
+/// Refusal for an unknown device asking to take a desktop someone is using.
+pub const BUSY_UNPAIRED: &str = "Every desktop on this computer is in use, and this device isn't \
+    paired yet — pair it when one is free.";
 
 fn now_s() -> u64 {
     SystemTime::now()
@@ -53,12 +55,17 @@ fn now_s() -> u64 {
         .map_or(0, |d| d.as_secs())
 }
 
-/// A device waiting for approval, as other devices are shown it.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct Request {
-    pub id: String,
-    pub name: String,
-    pub addr: String,
+/// What a device proved about a pairing code in the envelope.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Proof {
+    /// It sent no code.
+    None,
+    /// A live code, in either form — not yet spent.
+    Code(String),
+    /// A QR code that is not live: used, expired or revoked.
+    Stale,
+    /// A typed code that matched nothing live — a guess, as far as the limit is concerned.
+    Wrong,
 }
 
 /// One line of `trusted_clients`, read.
@@ -66,47 +73,12 @@ pub struct Request {
 pub struct Device {
     pub key: String,
     pub name: String,
-    /// Its key was proven with a QR pairing code.
+    /// Its key was proven with a pairing code.
     pub pinned: bool,
     pub grants: Grants,
 }
 
-#[derive(Debug, PartialEq)]
-pub enum Decision {
-    /// On the trust list.
-    Trusted,
-    /// The trust list was empty; this device is now its first entry.
-    FirstDevice,
-    /// Must be approved by a connected device.
-    Unknown,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Verdict {
-    Once,
-    Always,
-    Deny,
-}
-
-impl Verdict {
-    pub fn parse(s: &str) -> Option<Self> {
-        match s.trim() {
-            "once" => Some(Self::Once),
-            "always" => Some(Self::Always),
-            "deny" => Some(Self::Deny),
-            _ => None,
-        }
-    }
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Once => "once",
-            Self::Always => "always",
-            Self::Deny => "deny",
-        }
-    }
-}
-
-/// The trust list and the pending requests of one machine.
+/// The trust list and the pairing codes of one machine.
 #[derive(Clone)]
 pub struct Gate {
     dir: PathBuf,
@@ -125,16 +97,6 @@ impl Gate {
 
     fn trusted_path(&self) -> PathBuf {
         self.dir.join("trusted_clients")
-    }
-    fn pending_dir(&self) -> PathBuf {
-        self.dir.join("pending")
-    }
-    /// Only ids we minted (the relay's uuid room ids) become file names.
-    fn request_path(&self, id: &str, ext: &str) -> Option<PathBuf> {
-        let safe = !id.is_empty()
-            && id.len() <= 64
-            && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
-        safe.then(|| self.pending_dir().join(format!("{id}.{ext}")))
     }
 
     /// `(key, name)` for every trusted device, oldest first.
@@ -167,125 +129,21 @@ impl Gate {
             .collect()
     }
 
-    /// May this device in without asking anyone?
-    ///
-    /// A client with no key (one older than keys) is never trusted and never becomes the first
-    /// device: there is nothing to remember it by, and an empty key accepted as trusted would be
+    /// Is this device on the trust list? Only a claim until [`Gate::admit`] — the relay names
+    /// the key. A client with no key is never known: an empty key accepted as trusted would be
     /// a way around the gate for anyone who simply leaves it off.
-    pub fn decide(&self, key: &str, name: &str) -> Decision {
-        let keys = self.trusted_keys();
-        if !key.is_empty() && keys.iter().any(|k| k == key) {
-            return Decision::Trusted;
-        }
-        if !key.is_empty()
-            && keys.is_empty()
-            && wado_config::live::current().security.trust_first_device
-        {
-            self.trust(key, name);
-            return Decision::FirstDevice;
-        }
-        Decision::Unknown
+    pub fn knows(&self, key: &str) -> bool {
+        !key.is_empty() && self.trusted_keys().iter().any(|k| k == key)
     }
 
-    /// A new pairing code for a connect link: single use, good for a day. The QR it goes into is
-    /// shown only on this computer, so a device presenting it was shown the host's screen.
-    pub fn mint_pair(&self) -> String {
-        self.mint_pair_with(&Grants::new_device())
-    }
-
-    /// A pairing code that, redeemed, gives its device `grants` (on top of any it has).
-    pub fn mint_pair_with(&self, grants: &Grants) -> String {
-        use rand::Rng;
-        let code: String = rand::thread_rng()
-            .sample_iter(&rand::distributions::Alphanumeric)
-            .take(24)
-            .map(char::from)
-            .collect();
-        let until = now_s() + PAIR_TTL.as_secs();
-        let mut lines: Vec<String> = self
-            .pairs()
-            .into_iter()
-            .filter(|(_, t, _)| *t > now_s())
-            .map(|(c, t, g)| format!("{c}\t{t}\t{g}"))
-            .collect();
-        lines.push(format!("{code}\t{until}\t{}", grants.tokens()));
-        if let Err(e) = fs::create_dir_all(&self.dir)
-            .and_then(|_| fs::write(self.pairs_path(), lines.join("\n") + "\n"))
-        {
-            warn!("gate: could not save a pairing code: {e}");
-        }
-        code
-    }
-
-    /// Use up a pairing code: true once for a live code, false for anything else.
-    /// Spend a pairing code: the grants it carries, or `None` if it is not live.
-    pub fn redeem(&self, code: &str) -> Option<Grants> {
-        if code.is_empty() {
-            return None;
-        }
-        let all = self.pairs();
-        let hit = all
-            .iter()
-            .find(|(c, t, _)| c == code && *t > now_s())
-            .map(|(_, _, g)| Grants::parse(g).unwrap_or(Grants::NONE))?;
-        let rest: Vec<String> = all
-            .into_iter()
-            .filter(|(c, t, _)| c != code && *t > now_s())
-            .map(|(c, t, g)| format!("{c}\t{t}\t{g}"))
-            .collect();
-        let _ = fs::write(self.pairs_path(), rest.join("\n") + "\n");
-        Some(hit)
-    }
-
-    /// Whether pairing code `code` can still be redeemed — false once used or expired.
-    pub fn pair_live(&self, code: &str) -> bool {
-        self.pairs()
-            .iter()
-            .any(|(c, t, _)| c == code && *t > now_s())
-    }
-
-    /// Withdraw pairing code `code` unused.
-    pub fn revoke_pair(&self, code: &str) {
-        let _ = self.redeem(code);
-    }
-
-    fn pairs_path(&self) -> PathBuf {
-        self.dir.join("pair_codes")
-    }
-
-    /// `(code, expiry, grant tokens)`. A code from before checklists carries `new-device`.
-    fn pairs(&self) -> Vec<(String, u64, String)> {
-        fs::read_to_string(self.pairs_path())
-            .unwrap_or_default()
-            .lines()
-            .filter_map(|l| {
-                let mut f = l.split('\t');
-                let c = f.next()?.to_string();
-                let t = f.next()?.parse().ok()?;
-                let g = f
-                    .next()
-                    .map_or_else(|| Grants::new_device().tokens(), String::from);
-                Some((c, t, g))
-            })
-            .collect()
-    }
-
-    /// Add a device to the trust list.
+    /// Add a device to the trust list, unpinned. Pairing is the only way in, so outside a test
+    /// a line is written by [`Gate::admit`].
+    #[cfg(test)]
     pub fn trust(&self, key: &str, name: &str) {
-        if key.is_empty() || self.trusted_keys().iter().any(|k| k == key) {
+        if key.is_empty() || self.knows(key) {
             return;
         }
         self.write_line(key, name, "", false, &Grants::new_device());
-        info!("gate: trusted a new device — {name}");
-    }
-
-    /// The pairing codes still live, for checking a device's proof against.
-    pub fn live_pairs(&self) -> Vec<String> {
-        self.pairs()
-            .into_iter()
-            .filter(|(_, t, _)| *t > now_s())
-            .map(|(c, ..)| c)
-            .collect()
     }
 
     /// `(device pk, pinned)` on file for `key`; the pk is empty for a line from before keys.
@@ -374,8 +232,7 @@ impl Gate {
     }
 
     /// What `key` may do with files: `none`, `ro` or `rw`. A grant counts only on a line whose
-    /// key was proven with a QR code — a device trusted on first use, or a legacy line, gets
-    /// nothing until it is re-paired.
+    /// key was proven with a pairing code — a legacy line gets nothing until it is re-paired.
     pub fn files_access(&self, key: &str) -> &'static str {
         match self.device(key) {
             Some(d) if d.pinned => self.grants(key).files,
@@ -445,7 +302,7 @@ impl Gate {
         }
     }
 
-    /// Forget a device: it must be approved or paired again to get back in. Returns its name.
+    /// Forget a device: it must be paired again to get back in. Returns its name.
     pub fn unpair(&self, who: &str) -> Result<String, String> {
         let Device { key, name, .. } = self.find(who)?;
         let kept: String = fs::read_to_string(self.trusted_path())
@@ -459,27 +316,37 @@ impl Gate {
         Ok(name)
     }
 
-    /// The decision that counts: may the device that proved `pk` in, as `key`?
-    ///
-    /// `once` — it was let in for this visit only. `pair` — the code it proved it holds.
+    /// The decision that counts: may the device that proved `pk` in, as `key`? `proof` is what
+    /// it proved about a pairing code. The error is the reason shown to the device.
     pub fn admit(
         &self,
         key: &str,
         name: &str,
         pk: &str,
-        once: bool,
-        pair: Option<&str>,
+        proof: &Proof,
     ) -> Result<(), &'static str> {
-        // A QR code is the owner's say-so, and it pins whatever key proved it — a re-pair is
-        // how a device that lost its key comes back.
-        if let Some(g) = pair.and_then(|c| self.redeem(c)) {
-            info!(
-                "gate: {name} paired with a QR code — trusted and pinned, may: {}",
-                g.tokens()
-            );
-            self.set(key, name, pk, true, Some(&g));
-            return Ok(());
-        }
+        // A code is the owner's say-so, and it pins whatever key proved it — a re-pair is how
+        // a device that lost its key comes back.
+        let unknown = match proof {
+            Proof::Code(c) => match self.redeem(c) {
+                Some(g) => {
+                    info!(
+                        "gate: {name} paired with a code — trusted and pinned, may: {}",
+                        g.tokens()
+                    );
+                    self.set(key, name, pk, true, Some(&g));
+                    return Ok(());
+                }
+                // Spent between the proof and here — by another daemon of the pool, say.
+                None => STALE_CODE,
+            },
+            Proof::Stale => STALE_CODE,
+            Proof::Wrong => {
+                self.strike();
+                WRONG_CODE
+            }
+            Proof::None => UNPAIRED,
+        };
         match self.entry(key) {
             Some((on_file, _)) if on_file == pk => Ok(()),
             Some((on_file, _)) if !on_file.is_empty() => {
@@ -490,105 +357,14 @@ impl Gate {
                 self.set(key, name, pk, false, None);
                 Ok(())
             }
-            None if once => Ok(()),
-            None => Err("this device is not trusted here — scan the computer's QR code again"),
+            None => Err(unknown),
         }
-    }
-
-    /// Post a request for the pool's connected devices to answer.
-    pub fn post(&self, req: &Request) -> bool {
-        let Some(path) = self.request_path(&req.id, "json") else {
-            return false;
-        };
-        let res = fs::create_dir_all(self.pending_dir())
-            .and_then(|_| fs::write(&path, serde_json::to_vec(req).unwrap_or_default()));
-        if let Err(e) = &res {
-            warn!("gate: could not post an approval request: {e}");
-        }
-        res.is_ok()
-    }
-
-    /// Withdraw a request and any answer to it.
-    pub fn withdraw(&self, id: &str) {
-        for ext in ["json", "verdict"] {
-            if let Some(p) = self.request_path(id, ext) {
-                let _ = fs::remove_file(p);
-            }
-        }
-    }
-
-    /// Answer a request. Ignored if it is no longer pending — answered elsewhere, or withdrawn.
-    pub fn answer(&self, id: &str, verdict: Verdict) -> bool {
-        let (Some(req), Some(out)) = (
-            self.request_path(id, "json"),
-            self.request_path(id, "verdict"),
-        ) else {
-            return false;
-        };
-        req.exists() && fs::write(out, verdict.as_str()).is_ok()
-    }
-
-    /// The answer to a request, once there is one.
-    pub fn verdict(&self, id: &str) -> Option<Verdict> {
-        let p = self.request_path(id, "verdict")?;
-        Verdict::parse(&fs::read_to_string(p).ok()?)
-    }
-
-    /// Wait for a request's answer. `None` when it is withdrawn under us or times out.
-    pub async fn wait(&self, id: &str, still_wanted: impl Fn() -> bool) -> Option<Verdict> {
-        let deadline = tokio::time::Instant::now() + APPROVAL_WAIT;
-        while tokio::time::Instant::now() < deadline && still_wanted() {
-            if let Some(v) = self.verdict(id) {
-                return Some(v);
-            }
-            tokio::time::sleep(POLL).await;
-        }
-        None
-    }
-
-    /// Every request still waiting. Requests older than [`APPROVAL_WAIT`] are left over from a
-    /// daemon that died mid-wait, and are swept here.
-    pub fn pending(&self) -> Vec<Request> {
-        let Ok(dir) = fs::read_dir(self.pending_dir()) else {
-            return Vec::new();
-        };
-        let now = SystemTime::now();
-        let mut out = Vec::new();
-        for e in dir.flatten() {
-            let path = e.path();
-            if path.extension().and_then(|x| x.to_str()) != Some("json") {
-                continue;
-            }
-            let age = e
-                .metadata()
-                .and_then(|m| m.modified())
-                .ok()
-                .and_then(|t| now.duration_since(t).ok())
-                .unwrap_or_default();
-            let req = fs::read(&path)
-                .ok()
-                .and_then(|b| serde_json::from_slice::<Request>(&b).ok());
-            match req {
-                Some(r) if age < APPROVAL_WAIT => {
-                    // Already answered: no longer something to ask about.
-                    if self.verdict(&r.id).is_none() {
-                        out.push(r);
-                    }
-                }
-                Some(r) => self.withdraw(&r.id),
-                None => {
-                    let _ = fs::remove_file(&path);
-                }
-            }
-        }
-        out.sort_by(|a, b| a.id.cmp(&b.id));
-        out
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Decision, Gate, Request, Verdict};
+    use super::{Gate, Proof, STALE_CODE, UNPAIRED, WRONG_CODE};
 
     fn temp() -> Gate {
         let dir = std::env::temp_dir().join(format!("wado-gate-{}", rand::random::<u64>()));
@@ -610,46 +386,93 @@ mod tests {
     }
 
     #[test]
-    fn first_device_is_trusted_then_others_must_ask() {
+    fn no_device_gets_in_without_a_code_not_even_the_first() {
         let g = temp();
-        assert_eq!(g.decide("phone", "Phone"), Decision::FirstDevice);
-        assert_eq!(g.decide("phone", "Phone"), Decision::Trusted);
-        assert_eq!(g.decide("laptop", "Laptop"), Decision::Unknown);
-        // No key is never trusted, even into an empty list.
-        assert_eq!(temp().decide("", "old client"), Decision::Unknown);
+        assert!(!g.knows("phone"));
+        assert!(g.trusted().is_empty(), "nothing trusted on sight");
+        assert_eq!(
+            g.admit("phone", "Phone", "PK1", &Proof::None),
+            Err(UNPAIRED)
+        );
+        assert!(
+            g.trusted().is_empty(),
+            "and still nothing after the refusal"
+        );
+        assert!(!temp().knows(""));
     }
 
     #[test]
-    fn a_request_is_seen_answered_and_cleared() {
+    fn a_pairing_code_lives_ten_minutes() {
+        assert_eq!(super::PAIR_TTL, std::time::Duration::from_secs(600));
+    }
+
+    #[test]
+    fn a_qr_code_and_a_typed_code_each_pair_exactly_once() {
         let g = temp();
-        let r = Request {
-            id: "0b1c-room".into(),
-            name: "Laptop".into(),
-            addr: "1.2.3.4".into(),
-        };
-        assert!(g.post(&r));
-        assert_eq!(g.pending(), vec![r.clone()]);
-        assert!(g.answer(&r.id, Verdict::Always));
-        assert_eq!(g.verdict(&r.id), Some(Verdict::Always));
-        assert!(
-            g.pending().is_empty(),
-            "an answered request is not shown again"
+        let qr = g.mint_pair();
+        assert_eq!(
+            g.admit("phone", "Phone", "PK1", &Proof::Code(qr.code.clone())),
+            Ok(())
         );
-        g.withdraw(&r.id);
-        assert!(
-            !g.answer(&r.id, Verdict::Deny),
-            "a withdrawn request cannot be answered"
+        assert!(g.knows("phone"));
+        assert_eq!(g.entry("phone"), Some(("PK1".into(), true)), "pinned");
+        // Used: the next device holding the same code gets nothing.
+        assert_eq!(
+            g.admit("tab", "Tab", "PK2", &Proof::Code(qr.code.clone())),
+            Err(STALE_CODE)
+        );
+        let typed = g.mint_pair();
+        assert_eq!(
+            g.admit("laptop", "Laptop", "PK3", &Proof::Code(typed.typed.clone())),
+            Ok(())
+        );
+        assert_eq!(g.entry("laptop"), Some(("PK3".into(), true)), "pinned");
+        assert_eq!(
+            g.admit("tab", "Tab", "PK2", &Proof::Code(typed.typed)),
+            Err(STALE_CODE)
+        );
+        assert!(!g.knows("tab"));
+    }
+
+    #[test]
+    fn five_wrong_typed_codes_through_admit_revoke_every_live_code() {
+        let g = temp();
+        let m = g.mint_pair();
+        for _ in 0..4 {
+            assert_eq!(g.admit("x", "X", "PKX", &Proof::Wrong), Err(WRONG_CODE));
+        }
+        assert!(g.pair_live(&m.typed));
+        assert_eq!(g.admit("y", "Y", "PKY", &Proof::Wrong), Err(WRONG_CODE));
+        assert!(!g.pair_live(&m.typed) && !g.pair_live(&m.code), "revoked");
+        assert!(g.locked_out());
+        assert_eq!(
+            g.admit("z", "Z", "PKZ", &Proof::Code(m.code)),
+            Err(STALE_CODE),
+            "the real code is gone too"
         );
     }
 
     #[test]
-    fn a_pairing_code_works_once() {
+    fn a_trusted_device_keeps_working_untouched() {
         let g = temp();
-        let c = g.mint_pair();
-        assert!(g.redeem("nope").is_none());
-        assert!(g.redeem("").is_none());
-        assert!(g.redeem(&c).is_some());
-        assert!(g.redeem(&c).is_none(), "a code must be single use");
+        let m = g.mint_pair();
+        g.admit("phone", "Phone", "PK1", &Proof::Code(m.code))
+            .unwrap();
+        let line = std::fs::read_to_string(g.trusted_path()).unwrap();
+        for _ in 0..3 {
+            assert_eq!(g.admit("phone", "Phone", "PK1", &Proof::None), Ok(()));
+        }
+        assert_eq!(
+            std::fs::read_to_string(g.trusted_path()).unwrap(),
+            line,
+            "its line is not rewritten"
+        );
+        // A line from before this change — no key, no pin — is still let in, and still takes
+        // the first key proven for it.
+        g.trust("legacy", "Old phone");
+        assert!(g.knows("legacy"));
+        assert_eq!(g.admit("legacy", "Old phone", "PKL", &Proof::None), Ok(()));
+        assert_eq!(g.entry("legacy"), Some(("PKL".into(), false)));
     }
 
     #[test]
@@ -657,39 +480,37 @@ mod tests {
         let g = temp();
         // A line from before keys takes the first key proven for it…
         g.trust("phone", "Phone");
-        assert!(g.admit("phone", "Phone", "PK1", false, None).is_ok());
-        assert!(g.admit("phone", "Phone", "PK1", false, None).is_ok());
+        assert!(g.admit("phone", "Phone", "PK1", &Proof::None).is_ok());
+        assert!(g.admit("phone", "Phone", "PK1", &Proof::None).is_ok());
         // …and after that a relay naming "phone" with any other key gets nothing.
-        assert!(g.admit("phone", "Phone", "EVIL", false, None).is_err());
-        // Unknown and not "once": refused, even though the relay let it in on a pair claim.
-        assert!(g.admit("laptop", "Laptop", "PK2", false, None).is_err());
-        assert!(g.admit("laptop", "Laptop", "PK2", true, None).is_ok());
-        assert_eq!(g.entry("laptop"), None, "once is not remembered");
-        // A proven QR code trusts and pins, and replaces a lost key.
-        let c = g.mint_pair();
-        assert!(g.admit("phone", "Phone", "PK3", false, Some(&c)).is_ok());
+        assert!(g.admit("phone", "Phone", "EVIL", &Proof::None).is_err());
+        // Unknown: refused, even though the relay let it in on a pair claim.
+        assert!(g.admit("laptop", "Laptop", "PK2", &Proof::None).is_err());
+        assert_eq!(g.entry("laptop"), None);
+        // A proven code trusts and pins, and replaces a lost key.
+        let c = g.mint_pair().code;
+        assert!(
+            g.admit("phone", "Phone", "PK3", &Proof::Code(c.clone()))
+                .is_ok()
+        );
         assert_eq!(g.entry("phone"), Some(("PK3".into(), true)));
         assert!(
-            g.admit("phone", "Phone", "PK1", false, Some(&c)).is_err(),
+            g.admit("phone", "Phone", "PK1", &Proof::Code(c)).is_err(),
             "single use"
         );
         assert_eq!(g.trusted().len(), 1, "rewritten in place, not appended");
     }
 
     #[test]
-    fn file_access_needs_a_grant_and_a_qr_pinned_key() {
+    fn file_access_needs_a_grant_and_a_code_pinned_key() {
         let g = temp();
         g.trust("phone", "Phone");
-        assert!(g.admit("phone", "Phone", "PK1", false, None).is_ok());
+        assert!(g.admit("phone", "Phone", "PK1", &Proof::None).is_ok());
         assert_eq!(g.files_access("phone"), "none", "no grant yet");
         assert_eq!(g.grant("pho", "rw").unwrap(), "Phone");
-        assert_eq!(
-            g.files_access("phone"),
-            "none",
-            "trusted on first use, not pinned"
-        );
-        let c = g.mint_pair();
-        assert!(g.admit("phone", "Phone", "PK1", false, Some(&c)).is_ok());
+        assert_eq!(g.files_access("phone"), "none", "a legacy line, not pinned");
+        let c = g.mint_pair().code;
+        assert!(g.admit("phone", "Phone", "PK1", &Proof::Code(c)).is_ok());
         assert_eq!(g.files_access("phone"), "rw", "a re-pair keeps the grant");
         assert!(g.grant("phone", "root").is_err());
         assert!(g.grant("nobody", "ro").is_err());
@@ -708,19 +529,8 @@ mod tests {
         g.trust("phone", "Phone");
         g.trust("laptop", "Laptop");
         assert_eq!(g.unpair("Phone").unwrap(), "Phone");
-        assert_eq!(g.decide("phone", "Phone"), Decision::Unknown);
+        assert!(!g.knows("phone"));
         assert_eq!(g.trusted().len(), 1);
         assert!(g.unpair("phone").is_err(), "already gone");
-    }
-
-    #[test]
-    fn ids_cannot_escape_the_pending_dir() {
-        let g = temp();
-        assert!(!g.answer("../trusted_clients", Verdict::Always));
-        assert!(!g.post(&Request {
-            id: "../x".into(),
-            name: String::new(),
-            addr: String::new()
-        }));
     }
 }

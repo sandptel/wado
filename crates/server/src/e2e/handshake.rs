@@ -9,22 +9,34 @@ use ring::{hmac, signature};
 use wado_protocol::envelope::{E2eMsg, VERSION, transcript};
 
 use super::host_key::HostKey;
-use super::seal::{Opener, Sealer, keys};
+use super::seal::{Opener, Sealer, keys, pair_key};
+use crate::gate::Proof;
 
 /// Replied, waiting for the client's `e2e_finish`.
 pub struct Replied {
     t1: Vec<u8>,
     c2d: [u8; 32],
     d2c: [u8; 32],
+    /// `k_pair`, for checking a typed code's proof.
+    k_pair: [u8; 32],
 }
 
 /// A finished handshake: who the device is, and the link's keys.
 pub struct Done {
     pub dev_pk: Vec<u8>,
-    /// The QR pairing code the device proved it holds, if it sent a proof that matched one.
-    pub pair: Option<String>,
+    /// What the device proved about a pairing code. Nothing is spent or counted here.
+    pub proof: Proof,
     pub sealer: Sealer,
     pub opener: Opener,
+}
+
+/// Live pairing codes to check a proof against, in their two forms.
+#[derive(Default)]
+pub struct Codes {
+    /// The QR's long codes.
+    pub qr: Vec<String>,
+    /// The typed codes, normalised.
+    pub typed: Vec<String>,
 }
 
 fn b64(s: &str) -> Result<Vec<u8>, &'static str> {
@@ -52,10 +64,10 @@ pub fn reply(
         .to_vec();
     let t1 = transcript(room_id, client_key, &eph_c, &eph_d, host.public());
     let h1 = digest(&SHA256, &t1);
-    let (c2d, d2c) = agreement::agree_ephemeral(
+    let ((c2d, d2c), k_pair) = agreement::agree_ephemeral(
         mine,
         &agreement::UnparsedPublicKey::new(&X25519, &eph_c),
-        |shared| keys(shared, h1.as_ref()),
+        |shared| (keys(shared, h1.as_ref()), pair_key(shared, h1.as_ref())),
     )
     .map_err(|_| "bad ephemeral key")?;
     let msg = E2eMsg::E2eReply {
@@ -63,17 +75,28 @@ pub fn reply(
         host_pk: B64.encode(host.public()),
         sig: B64.encode(host.sign(h1.as_ref())),
     };
-    Ok((msg, Replied { t1, c2d, d2c }))
+    Ok((
+        msg,
+        Replied {
+            t1,
+            c2d,
+            d2c,
+            k_pair,
+        },
+    ))
 }
 
-/// Check an `e2e_finish`. `pair_codes` are the live QR codes; one that matches the proof is
-/// returned for the caller to redeem.
+/// Check an `e2e_finish` against the live `codes`. A code a proof matches comes back in
+/// [`Proof::Code`] for the caller to redeem; a proof that matches none is [`Proof::Stale`] (QR)
+/// or [`Proof::Wrong`] (typed). A QR proof is only checked against QR codes and a typed one only
+/// against typed codes, so a guess at a short code is always counted as one.
 pub fn finish(
     r: Replied,
     dev_pk: &str,
     sig: &str,
     pair_mac: &str,
-    pair_codes: &[String],
+    typed_mac: &str,
+    codes: &Codes,
 ) -> Result<Done, &'static str> {
     let dev_pk = b64(dev_pk)?;
     let mut t2 = r.t1;
@@ -82,25 +105,50 @@ pub fn finish(
     signature::UnparsedPublicKey::new(&signature::ED25519, &dev_pk)
         .verify(h2.as_ref(), &b64(sig)?)
         .map_err(|_| "the device's signature does not verify")?;
-    let pair = if pair_mac.is_empty() {
+    let qr = if pair_mac.is_empty() {
         None
     } else {
         let mac = b64(pair_mac)?;
-        pair_codes
-            .iter()
-            .find(|c| {
-                hmac::verify(
-                    &hmac::Key::new(hmac::HMAC_SHA256, c.as_bytes()),
-                    h2.as_ref(),
-                    &mac,
-                )
-                .is_ok()
-            })
-            .cloned()
+        Some(
+            codes
+                .qr
+                .iter()
+                .find(|c| {
+                    hmac::verify(
+                        &hmac::Key::new(hmac::HMAC_SHA256, c.as_bytes()),
+                        h2.as_ref(),
+                        &mac,
+                    )
+                    .is_ok()
+                })
+                .cloned(),
+        )
+    };
+    let typed = if typed_mac.is_empty() {
+        None
+    } else {
+        let mac = b64(typed_mac)?;
+        let key = hmac::Key::new(hmac::HMAC_SHA256, &r.k_pair);
+        Some(
+            codes
+                .typed
+                .iter()
+                .find(|c| {
+                    let msg = [h2.as_ref(), c.as_bytes()].concat();
+                    hmac::verify(&key, &msg, &mac).is_ok()
+                })
+                .cloned(),
+        )
+    };
+    let proof = match (qr, typed) {
+        (Some(Some(c)), _) | (_, Some(Some(c))) => Proof::Code(c),
+        (_, Some(None)) => Proof::Wrong,
+        (Some(None), None) => Proof::Stale,
+        (None, None) => Proof::None,
     };
     Ok(Done {
         dev_pk,
-        pair,
+        proof,
         sealer: Sealer::new(&r.d2c),
         opener: Opener::new(&r.c2d),
     })
@@ -110,6 +158,7 @@ pub fn finish(
 pub(crate) mod tests {
     //! A minimal client, enough to drive the daemon's half end to end.
     use super::*;
+    use crate::e2e::seal::typed_mac;
     use ring::signature::{Ed25519KeyPair, KeyPair};
 
     pub struct Client {
@@ -117,6 +166,9 @@ pub(crate) mod tests {
         eph: Option<EphemeralPrivateKey>,
         pub eph_pub: Vec<u8>,
     }
+
+    /// `(dev_pk, sig, pair_mac, typed_mac)`, as the browser sends them in `e2e_finish`.
+    pub type Finish = (String, String, String, String);
 
     impl Client {
         pub fn new() -> Self {
@@ -130,24 +182,26 @@ pub(crate) mod tests {
                 eph_pub,
             }
         }
-        /// `(e2e_finish fields, k_c2d, k_d2c)` for a reply, as the browser computes them.
+        /// `(e2e_finish fields, k_c2d, k_d2c)` for a reply, as the browser computes them — with
+        /// a QR code `pair` and/or a typed code `typed` if it holds one.
         pub fn answer(
             &mut self,
             room: &str,
             key: &str,
             reply: &E2eMsg,
             pair: Option<&str>,
-        ) -> ((String, String, String), [u8; 32], [u8; 32]) {
+            typed: Option<&str>,
+        ) -> (Finish, [u8; 32], [u8; 32]) {
             let E2eMsg::E2eReply { eph, host_pk, .. } = reply else {
                 panic!()
             };
             let (eph_d, hpk) = (b64(eph).unwrap(), b64(host_pk).unwrap());
             let t1 = transcript(room, key, &self.eph_pub, &eph_d, &hpk);
             let h1 = digest(&SHA256, &t1);
-            let (c2d, d2c) = agreement::agree_ephemeral(
+            let ((c2d, d2c), k_pair) = agreement::agree_ephemeral(
                 self.eph.take().unwrap(),
                 &agreement::UnparsedPublicKey::new(&X25519, &eph_d),
-                |s| keys(s, h1.as_ref()),
+                |s| (keys(s, h1.as_ref()), pair_key(s, h1.as_ref())),
             )
             .unwrap();
             let mut t2 = t1;
@@ -161,11 +215,15 @@ pub(crate) mod tests {
                     ))
                 })
                 .unwrap_or_default();
+            let tmac = typed
+                .map(|t| B64.encode(typed_mac(&k_pair, h2.as_ref(), t)))
+                .unwrap_or_default();
             (
                 (
                     B64.encode(self.dev.public_key()),
                     B64.encode(self.dev.sign(h2.as_ref())),
                     mac,
+                    tmac,
                 ),
                 c2d,
                 d2c,
@@ -175,6 +233,21 @@ pub(crate) mod tests {
 
     fn host() -> HostKey {
         HostKey::from_seed(&[3u8; 32])
+    }
+
+    fn codes(qr: &[&str], typed: &[&str]) -> Codes {
+        Codes {
+            qr: qr.iter().map(|s| s.to_string()).collect(),
+            typed: typed.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    /// One handshake with a fresh client: what the daemon makes of its proof.
+    fn proof(pair: Option<&str>, typed: Option<&str>, live: &Codes) -> Proof {
+        let mut c = Client::new();
+        let (m, r) = reply(&host(), "room", "ck", VERSION, &B64.encode(&c.eph_pub)).unwrap();
+        let ((pk, sig, mac, tmac), ..) = c.answer("room", "ck", &m, pair, typed);
+        finish(r, &pk, &sig, &mac, &tmac, live).unwrap().proof
     }
 
     #[test]
@@ -190,15 +263,48 @@ pub(crate) mod tests {
         signature::UnparsedPublicKey::new(&signature::ED25519, h.public())
             .verify(digest(&SHA256, &t1).as_ref(), &b64(sig).unwrap())
             .expect("host signature verifies");
-        let ((pk, sig, mac), c2d, d2c) = c.answer("room", "ck", &reply_msg, Some("CODE"));
-        let codes = vec!["OTHER".to_string(), "CODE".to_string()];
-        let mut done = finish(r, &pk, &sig, &mac, &codes).unwrap();
-        assert_eq!(done.pair.as_deref(), Some("CODE"));
+        let ((pk, sig, mac, tmac), c2d, d2c) =
+            c.answer("room", "ck", &reply_msg, Some("CODE"), None);
+        let live = codes(&["OTHER", "CODE"], &[]);
+        let mut done = finish(r, &pk, &sig, &mac, &tmac, &live).unwrap();
+        assert_eq!(done.proof, Proof::Code("CODE".into()));
         // Both directions open.
         let (n, ct) = Sealer::new(&c2d).seal(b"hi");
         assert_eq!(done.opener.open(n, ct).as_deref(), Some(&b"hi"[..]));
         let (n, ct) = done.sealer.seal(b"yo");
         assert_eq!(Opener::new(&d2c).open(n, ct).as_deref(), Some(&b"yo"[..]));
+    }
+
+    #[test]
+    fn a_typed_code_is_proven_and_a_wrong_one_is_told_apart() {
+        let live = codes(&["LONGQRCODE"], &["AAAA1111", "K7QF2MXP"]);
+        assert_eq!(
+            proof(None, Some("K7QF2MXP"), &live),
+            Proof::Code("K7QF2MXP".into())
+        );
+        assert_eq!(proof(None, Some("K7QF2MXQ"), &live), Proof::Wrong);
+        assert_eq!(proof(None, None, &live), Proof::None);
+        assert_eq!(proof(Some("USEDUP"), None, &live), Proof::Stale);
+        // A typed code sent as a QR proof is checked against QR codes only — it cannot dodge
+        // the count by coming in the other field.
+        assert_eq!(proof(Some("K7QF2MXP"), None, &live), Proof::Stale);
+        // …and a QR code sent as a typed proof is just a wrong guess.
+        assert_eq!(proof(None, Some("LONGQRCODE"), &live), Proof::Wrong);
+    }
+
+    #[test]
+    fn a_typed_proof_is_bound_to_the_session_not_just_the_transcript() {
+        // The right code under a key anyone could compute does not verify: k_pair comes from the
+        // X25519 secret, so the frame the relay sees is no oracle for the code.
+        let live = codes(&[], &["K7QF2MXP"]);
+        let mut c = Client::new();
+        let (m, r) = reply(&host(), "room", "ck", VERSION, &B64.encode(&c.eph_pub)).unwrap();
+        let ((pk, sig, ..), ..) = c.answer("room", "ck", &m, None, None);
+        let public_only = B64.encode(typed_mac(&[0u8; 32], &[0u8; 32], "K7QF2MXP"));
+        assert_eq!(
+            finish(r, &pk, &sig, "", &public_only, &live).unwrap().proof,
+            Proof::Wrong
+        );
     }
 
     #[test]
@@ -215,17 +321,15 @@ pub(crate) mod tests {
             &B64.encode(&c.eph_pub),
         )
         .unwrap();
-        let ((pk, sig, _), ..) = c.answer("room", "attacker", &m, None);
-        assert!(finish(r, &pk, &sig, "", &[]).is_err());
+        let ((pk, sig, ..), ..) = c.answer("room", "attacker", &m, None, None);
+        assert!(finish(r, &pk, &sig, "", "", &Codes::default()).is_err());
         // A wrong pair code proves nothing.
-        let mut c = Client::new();
-        let (m, r) = reply(&h, "room", "ck", VERSION, &B64.encode(&c.eph_pub)).unwrap();
-        let ((pk, sig, mac), ..) = c.answer("room", "ck", &m, Some("GUESS"));
         assert_eq!(
-            finish(r, &pk, &sig, &mac, &["CODE".into()]).unwrap().pair,
-            None
+            proof(Some("GUESS"), None, &codes(&["CODE"], &[])),
+            Proof::Stale
         );
         // A future version is refused rather than misread.
+        let c = Client::new();
         assert!(reply(&h, "room", "ck", VERSION + 1, &B64.encode(&c.eph_pub)).is_err());
     }
 }

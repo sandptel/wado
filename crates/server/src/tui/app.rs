@@ -14,7 +14,7 @@ use ratatui::layout::{Position, Rect};
 use super::actions::{self, Outcome};
 use super::data::Snapshot;
 use super::load::Load;
-use crate::gate::{Gate, Grants, Verdict};
+use crate::gate::{CodeState, Gate, Grants, Minted};
 
 /// The cards that take the cursor, in tab order.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -34,17 +34,13 @@ impl Card {
 /// The rows of the Switches card, in order.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Switch {
-    Join,
-    TrustFirst,
     Files,
     Shells,
     Trackpad,
     NewDevice,
 }
 
-pub const SWITCHES: [Switch; 6] = [
-    Switch::Join,
-    Switch::TrustFirst,
+pub const SWITCHES: [Switch; 4] = [
     Switch::Files,
     Switch::Shells,
     Switch::Trackpad,
@@ -60,16 +56,14 @@ pub const OWNER_COL: usize = 6;
 #[derive(Clone, Copy)]
 pub enum Target {
     Cell(Card, usize, usize),
-    Answer(Verdict),
-    Snooze,
     /// The QR code: compact ↔ large.
     Zoom,
 }
 
-/// The pairing code on screen.
+/// The pairing code on screen, in both its forms.
 pub struct Pair {
     pub link: String,
-    pub code: String,
+    pub code: Minted,
 }
 
 pub struct App {
@@ -85,8 +79,8 @@ pub struct App {
     pub big_qr: bool,
     /// `(key, name)` of a device waiting for `y` to be unpaired.
     pub confirm: Option<(String, String)>,
-    /// Approval requests put off with Esc; they come back when a new one arrives.
-    pub snoozed: Vec<String>,
+    /// What became of the code on screen, as of the last read.
+    pub pair_state: CodeState,
     pub toast: Option<(Outcome, Instant)>,
     pub quit: bool,
     /// Where the last frame put each clickable thing.
@@ -105,7 +99,7 @@ impl App {
             pair: Err("making a code…".into()),
             big_qr: false,
             confirm: None,
-            snoozed: Vec::new(),
+            pair_state: CodeState::Expired,
             toast: None,
             quit: false,
             hits: RefCell::new(Vec::new()),
@@ -134,17 +128,20 @@ impl App {
         self.snap = Snapshot::read();
         self.load.sample();
         self.last_read = Instant::now();
-        // The QR on screen is always one that works: a used or expired code is replaced.
+        // A used code is replaced, ready for the next device. An expired or revoked one is not:
+        // a code is made when someone asks (`n`), so a panel left open holds no live way in.
         match &self.pair {
-            Ok(p) if !Gate::default().pair_live(&p.code) => {
-                self.mint();
-                self.toast = Some((
-                    Ok("the code was used — a fresh one is up".into()),
-                    Instant::now(),
-                ));
+            Ok(p) => {
+                self.pair_state = Gate::default().state(&p.code);
+                if self.pair_state == CodeState::Used {
+                    self.mint();
+                    self.toast = Some((
+                        Ok("the code was used — a fresh one is up".into()),
+                        Instant::now(),
+                    ));
+                }
             }
             Err(_) => self.mint(),
-            Ok(_) => {}
         }
         for c in Card::ALL {
             let rows = self.rows(c);
@@ -157,17 +154,15 @@ impl App {
     /// Replace the code on screen with one carrying the current checklist.
     fn mint(&mut self) {
         if let Ok(old) = &self.pair {
-            Gate::default().revoke_pair(&old.code);
+            Gate::default().revoke_pair(&old.code.code);
         }
-        self.pair = actions::pair(&self.pair_grants).map(|link| Pair {
-            code: link
-                .split("pair=")
-                .nth(1)
-                .and_then(|r| r.split('&').next())
-                .unwrap_or_default()
-                .to_string(),
-            link,
+        self.pair = actions::pair(&self.pair_grants).map(|p| Pair {
+            link: p.link,
+            code: p.code,
         });
+        if let Ok(p) = &self.pair {
+            self.pair_state = Gate::default().state(&p.code);
+        }
     }
 
     fn done(&mut self, o: Outcome) {
@@ -197,14 +192,6 @@ impl App {
         (self.focus == c).then(|| self.cursor[c.index()])
     }
 
-    /// The device waiting at the gate that has not been put off, if any.
-    pub fn asking(&self) -> Option<&crate::gate::Request> {
-        self.snap
-            .pending
-            .iter()
-            .find(|r| !self.snoozed.contains(&r.id))
-    }
-
     pub fn key(&mut self, k: KeyEvent) {
         if k.modifiers.contains(KeyModifiers::CONTROL) && k.code == KeyCode::Char('c') {
             self.quit = true;
@@ -215,19 +202,6 @@ impl App {
                 self.done(actions::unpair(&key));
             }
             return;
-        }
-        if self.asking().is_some() {
-            let t = match k.code {
-                KeyCode::Char('y' | 'a') => Some(Target::Answer(Verdict::Always)),
-                KeyCode::Char('o') => Some(Target::Answer(Verdict::Once)),
-                KeyCode::Char('n' | 'd') => Some(Target::Answer(Verdict::Deny)),
-                KeyCode::Esc => Some(Target::Snooze),
-                _ => None,
-            };
-            if let Some(t) = t {
-                return self.hit(t);
-            }
-            // Anything else falls through: a request must not lock the panel.
         }
         match k.code {
             KeyCode::Char('q') | KeyCode::Esc => self.quit = true,
@@ -247,6 +221,10 @@ impl App {
                 }
             }
             KeyCode::Char('z') => self.big_qr = !self.big_qr,
+            KeyCode::Char('n') => {
+                self.mint();
+                self.toast = Some((Ok("a new code is up".into()), Instant::now()));
+            }
             KeyCode::Char('c') => match &self.pair {
                 Ok(p) => {
                     actions::copy(&p.link);
@@ -285,18 +263,7 @@ impl App {
                 self.cursor[card.index()] = (r, c);
                 self.flip(card, r, c);
             }
-            Target::Answer(v) => {
-                if let Some(req) = self.asking() {
-                    let (id, name) = (req.id.clone(), req.name.clone());
-                    self.done(actions::answer(&id, &name, v));
-                }
-            }
             Target::Zoom => self.big_qr = !self.big_qr,
-            Target::Snooze => {
-                if let Some(req) = self.asking() {
-                    self.snoozed.push(req.id.clone());
-                }
-            }
         }
     }
 
@@ -372,18 +339,6 @@ impl App {
             Card::Switches => {
                 let s = &self.snap.cfg;
                 let o = match SWITCHES[row] {
-                    Switch::Join => actions::set(
-                        "security.join",
-                        if s.security.open_join() {
-                            "ask"
-                        } else {
-                            "open"
-                        },
-                    ),
-                    Switch::TrustFirst => actions::set(
-                        "security.trust-first-device",
-                        bool_kdl(!s.security.trust_first_device),
-                    ),
                     Switch::Files => actions::set("files.enabled", bool_kdl(!s.files.enabled)),
                     Switch::Shells => actions::set("shells.enabled", bool_kdl(!s.shells.enabled)),
                     Switch::Trackpad => {
@@ -407,7 +362,7 @@ impl App {
 impl Drop for App {
     fn drop(&mut self) {
         if let Ok(p) = &self.pair {
-            Gate::default().revoke_pair(&p.code);
+            Gate::default().revoke_pair(&p.code.code);
         }
     }
 }

@@ -35,7 +35,6 @@ pub struct Status {
     pub remote_id: Option<String>,
     pub sessions: Vec<SessionSummary>,
     pub trusted: usize,
-    pub pending: usize,
 }
 
 pub fn read() -> Status {
@@ -52,7 +51,6 @@ pub fn read() -> Status {
         remote_id,
         sessions: crate::sessions::list(),
         trusted: gate.trusted().len(),
-        pending: gate.pending().len(),
     }
 }
 

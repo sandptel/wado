@@ -17,8 +17,6 @@ pub const UNPINNED: &str = "◇";
 pub const ON: &str = "✓";
 pub const OFF: &str = "·";
 pub const PLAY: &str = "▶";
-pub const WAIT: &str = "⧗";
-pub const ALERT: &str = "⚠";
 
 pub fn dim() -> Style {
     Style::new().fg(DIM)

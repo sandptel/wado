@@ -53,6 +53,7 @@ pub fn reload() -> Result<(), String> {
         Ok(l) => {
             let restart = needs_restart(&l.config);
             files.extend(l.files);
+            super::warn_deprecated(&l.config);
             wado_config::live::install(l.config);
             if restart.is_empty() {
                 tracing::info!("config reloaded");

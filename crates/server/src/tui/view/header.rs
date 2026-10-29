@@ -88,7 +88,7 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
         .tunnel
         .clone()
         .or_else(|| app.snap.cfg.server.public_url());
-    let mut tunnel = pill(
+    let tunnel = pill(
         public.is_some(),
         "phones",
         public.as_deref().map_or(
@@ -96,12 +96,6 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
             |t| t.trim_start_matches("https://").into(),
         ),
     );
-    if app.snap.cfg.security.open_join() {
-        tunnel.spans.push(Span::styled(
-            format!("   {} join is open", theme::ALERT),
-            Style::new().fg(theme::WARN),
-        ));
-    }
     let lines = vec![
         Line::from(
             pill(s.relay.is_some(), "relay", s.relay_addr.clone())

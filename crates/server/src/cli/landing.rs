@@ -1,7 +1,7 @@
 //! `wado` with no command: who this is, what is running, and the commands worth knowing.
 
 use super::status::Status;
-use super::style::{accent, bold, dim, dot, warn};
+use super::style::{accent, bold, dim, dot};
 
 pub const VERSION: &str = concat!(
     env!("CARGO_PKG_VERSION"),
@@ -20,10 +20,7 @@ pub const COMMANDS: &[(&str, &[(&str, &str)])] = &[
                 "tui",
                 "the control panel — starts the rig if nothing is running",
             ),
-            (
-                "daemon [addr]",
-                "run a daemon in this terminal — prints the connect QR",
-            ),
+            ("daemon [addr]", "run a daemon in this terminal"),
         ],
     ),
     (
@@ -31,11 +28,10 @@ pub const COMMANDS: &[(&str, &[(&str, &str)])] = &[
         &[
             (
                 "pair [<grant>…]",
-                "QR + link: whoever scans it is trusted, with these grants",
+                "QR + typed code, 10 min: the device that uses it is trusted",
             ),
             ("devices", "the trusted devices, their access, who is on"),
             ("unpair <device>", "forget a device — by name or key prefix"),
-            ("approve [once]", "let in the device waiting at the door"),
             (
                 "allow|deny <device> <grant>…",
                 "files-ro files-rw shells settings host",
@@ -122,13 +118,8 @@ fn running(s: &Status) {
         .as_deref()
         .map_or(String::new(), |t| format!(" · tunnel {t}"));
     println!("             {relay}{tunnel}");
-    let waiting = if s.pending > 0 {
-        warn(&format!("{} waiting — wado approve", s.pending))
-    } else {
-        "0 waiting".into()
-    };
     println!(
-        "             {} session{} · {} trusted device{} · {waiting}",
+        "             {} session{} · {} trusted device{}",
         s.sessions.len(),
         if s.sessions.len() == 1 { "" } else { "s" },
         s.trusted,

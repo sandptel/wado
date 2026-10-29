@@ -7,14 +7,23 @@
 //! ```text
 //! client → daemon  e2e_hello  { v, eph }                     X25519 ephemeral
 //! daemon → client  e2e_reply  { eph, host_pk, sig }          sig = Ed25519(host, H(T1))
-//! client → daemon  e2e_finish { dev_pk, sig, pair_mac }      sig = Ed25519(device, H(T2))
+//! client → daemon  e2e_finish { dev_pk, sig, pair_mac, typed_mac }  sig = Ed25519(device, H(T2))
 //! daemon → client  sealed(e2e_ok) — the client is now in; or e2e_fail { reason }
 //!
 //! T1 = LABEL ‖ lp(room_id) ‖ lp(client_key) ‖ eph_c ‖ eph_d ‖ host_pk
 //! T2 = T1 ‖ dev_pk
 //! k_c2d ‖ k_d2c = HKDF-SHA256(ikm = X25519(eph), salt = H(T1), info = LABEL), 64 bytes
 //! pair_mac = HMAC-SHA256(pair_code, H(T2)) — the pair code itself never leaves the device
+//! k_pair = HKDF-SHA256(ikm = X25519(eph), salt = H(T1), info = PAIR_LABEL), 32 bytes
+//! typed_mac = HMAC-SHA256(k_pair, H(T2) ‖ typed_code) — typed_code normalised, 8 ASCII bytes
 //! ```
+//!
+//! **Why the typed code's proof is keyed differently.** A QR code is 24 random characters, so an
+//! HMAC over the public transcript reveals nothing. A typed code is 40 bits: an HMAC over public
+//! data alone would let anyone who saw the frame (the relay) try every code offline, past the
+//! daemon's attempt limit. Keying it with `k_pair`, which only the two ends of the X25519
+//! exchange hold, leaves the relay no oracle — unless it impersonated the computer to a device
+//! that had no pin for it yet, which a QR's `hk` pin is what rules out.
 //!
 //! `lp(s)` is a 2-byte big-endian length then the bytes. Everything binary is base64url, no
 //! padding. After the handshake every other daemon↔client message is a [`Sealed`] frame:
@@ -26,6 +35,8 @@ use serde::{Deserialize, Serialize};
 
 /// Domain separation for the transcript, the key schedule and the signatures.
 pub const LABEL: &[u8] = b"wado-e2e-v1";
+/// HKDF info for `k_pair`, the key a typed pairing code is proven with.
+pub const PAIR_LABEL: &[u8] = b"wado-e2e-v1 pair";
 pub const VERSION: u32 = 1;
 
 /// The `type` tag of a sealed frame. Prefix-matched by both ends before any parse.
@@ -49,6 +60,9 @@ pub enum E2eMsg {
         /// Empty unless the device holds a QR pairing code.
         #[serde(default, skip_serializing_if = "String::is_empty")]
         pair_mac: String,
+        /// Empty unless the device was given a typed pairing code.
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        typed_mac: String,
     },
     /// Daemon → client, sealed: the handshake is done and this device is let in.
     E2eOk,
@@ -116,7 +130,8 @@ mod tests {
             E2eMsg::E2eFinish {
                 dev_pk: "a".into(),
                 sig: "b".into(),
-                pair_mac: String::new()
+                pair_mac: String::new(),
+                typed_mac: String::new()
             }
         );
     }
