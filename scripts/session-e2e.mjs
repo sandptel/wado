@@ -74,7 +74,7 @@ writeFileSync(join(HOME, ".config/wado/trusted_clients"), "Phone-key\tPhone\nLap
 try {
   start("wado-relay", ["--bind", `127.0.0.1:${PORT}`], {});
   await sleep(400);
-  const d = start("wado", [], {
+  const d = start("wado", ["daemon"], {
     WADO_RELAY_URL: RELAY, WADO_REMOTE_ID: RID, WADO_INSTANCE: "e2e-session", WADO_UDP_SLICE: "22",
     HOME, XDG_CONFIG_HOME: join(HOME, ".config"), SHELL: "/bin/sh",
   });

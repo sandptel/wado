@@ -1,4 +1,6 @@
-//! The default output's volume and mute, through `host::audio` (PipeWire / WirePlumber).
+//! The default output's volume and mute, through the platform's mixer (`wado_platform::audio`).
+
+use wado_platform::{Capability, Platform};
 
 use super::{Action, Does, Need};
 
@@ -25,25 +27,25 @@ pub fn all() -> Vec<Action> {
             name,
             "Sound",
             icon,
-            vec![Need::Tool("wpctl"), Need::Tool("pw-dump")],
+            vec![Need::Cap(Capability::Audio)],
             Does::Sound(op),
         )
     })
     .collect()
 }
 
-pub async fn run(op: Op) -> Result<(), String> {
-    use crate::host::audio;
-    let a = audio::state(crate::host::phone().as_deref()).await;
+pub async fn run(p: &Platform, op: Op) -> Result<(), String> {
+    let mixer = p.audio().map_err(|a| a.why)?;
+    let a = crate::host::audio::now(mixer.as_ref(), crate::host::viewer::name(p).as_deref()).await;
     let out = a
         .sinks
         .iter()
         .find(|s| s.name == a.default_sink)
         .ok_or("this computer has no sound output")?;
     match op {
-        Op::Up => audio::set_volume(out.id, step(out.volume, STEP)).await,
-        Op::Down => audio::set_volume(out.id, step(out.volume, -STEP)).await,
-        Op::Mute => audio::set_mute(out.id, !out.muted).await,
+        Op::Up => mixer.set_volume(out.id, step(out.volume, STEP)).await,
+        Op::Down => mixer.set_volume(out.id, step(out.volume, -STEP)).await,
+        Op::Mute => mixer.set_mute(out.id, !out.muted).await,
     }
 }
 

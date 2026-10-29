@@ -1,15 +1,18 @@
-//! Media players — Spotify, a browser tab, mpv — through MPRIS on D-Bus: what is playing, and
-//! play/pause, next, previous, seek and shuffle.
+//! Media players ([`MediaPlayers`] on Linux) — Spotify, a browser tab, mpv — through MPRIS on
+//! D-Bus: what is playing, and play/pause, next, previous, seek and shuffle.
 //!
 //! Two buses are searched: the computer's own session bus, and the wado session's private one
 //! (an app launched in an isolated session registers there). Each player is tied to its audio
 //! stream through the process id, which is what lets its card say where it is playing and move
 //! it.
 
-use std::{collections::HashMap, sync::Mutex};
+use std::{collections::HashMap, sync::Mutex, time::Duration};
 
 use base64::Engine;
-use wado_protocol::host::{MediaOp, Player, Stream};
+use tokio::sync::watch;
+use wado_platform::media::MediaPlayers;
+use wado_platform::{Fut, Published, Res};
+use wado_protocol::host::{HostAudio, MediaOp, Player, Stream};
 use zbus::{
     Connection,
     zvariant::{ObjectPath, OwnedValue, Value},
@@ -23,6 +26,46 @@ const PLAYER: &str = "org.mpris.MediaPlayer2.Player";
 /// ponytail: the art rides in every refresh; 128 KiB keeps that bearable on mobile data. An
 /// art hash the client asks for once is the upgrade if covers this size become common.
 const ART_MAX: u64 = 128 * 1024;
+
+/// The media players on both buses.
+pub struct Mpris {
+    state: Published<Vec<Player>>,
+    /// The mixer's state: each player is tied to its audio stream from it.
+    audio: watch::Receiver<HostAudio>,
+}
+
+impl Mpris {
+    /// Players tied to the streams in `audio` — read when the players are, so fetch the mixer's
+    /// state first for the two to agree.
+    pub fn new(audio: watch::Receiver<HostAudio>) -> Mpris {
+        Mpris {
+            state: Published::new(Vec::new()),
+            audio,
+        }
+    }
+
+    /// Fetches run, for measurement.
+    pub fn fetches(&self) -> u64 {
+        self.state.fetches()
+    }
+}
+
+impl MediaPlayers for Mpris {
+    fn state(&self) -> watch::Receiver<Vec<Player>> {
+        self.state.subscribe()
+    }
+
+    fn fresh(&self, within: Duration) -> Fut<'_, ()> {
+        Box::pin(self.state.fresh(within, || {
+            let streams = self.audio.borrow().streams.clone();
+            async move { players(&streams).await }
+        }))
+    }
+
+    fn act(&self, bus: String, op: MediaOp) -> Fut<'_, Res<()>> {
+        Box::pin(async move { act(&bus, op).await })
+    }
+}
 
 /// One connection per bus address (`""` is the computer's own session bus), kept between polls.
 static CONNS: Mutex<Vec<(String, Connection)>> = Mutex::new(Vec::new());
@@ -61,7 +104,7 @@ fn buses() -> Vec<String> {
 }
 
 /// Every player on both buses, playing ones first.
-pub async fn state(streams: &[Stream]) -> Vec<Player> {
+async fn players(streams: &[Stream]) -> Vec<Player> {
     let mut out = Vec::new();
     for address in buses() {
         let Some(conn) = connect(&address).await else {
@@ -233,12 +276,13 @@ fn percent_decode(s: &str) -> String {
     let mut out = Vec::with_capacity(b.len());
     let mut i = 0;
     while i < b.len() {
-        if b[i] == b'%' && i + 2 < b.len() {
-            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
-                out.push(v);
-                i += 3;
-                continue;
-            }
+        if b[i] == b'%'
+            && i + 2 < b.len()
+            && let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16)
+        {
+            out.push(v);
+            i += 3;
+            continue;
         }
         out.push(b[i]);
         i += 1;
@@ -246,7 +290,7 @@ fn percent_decode(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-pub async fn act(bus: &str, op: MediaOp) -> Result<(), String> {
+async fn act(bus: &str, op: MediaOp) -> Result<(), String> {
     if !bus.starts_with(PREFIX) {
         return Err("not a media player".into());
     }

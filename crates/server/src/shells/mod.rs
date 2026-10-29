@@ -20,8 +20,8 @@ use std::{
 use tokio::sync::{broadcast, mpsc};
 use wado_protocol::ShellInfo;
 
-use crate::pty::Pty;
 use scrollback::Scrollback;
+use wado_platform::pty::PtySession;
 
 /// More than this many open at once is a runaway client, not a person.
 pub const MAX: usize = 8;
@@ -40,7 +40,7 @@ pub enum Event {
 }
 
 struct Shell {
-    pty: Option<Pty>,
+    pty: Option<Box<dyn PtySession>>,
     title: String,
     host: Option<String>,
     scroll: Scrollback,
@@ -71,18 +71,18 @@ pub fn events() -> broadcast::Receiver<Event> {
 
 /// Open a shell. Must run inside a tokio runtime: the output forwarder is a task.
 pub fn open(cols: u16, rows: u16, host: Option<String>) -> Result<u32, String> {
-    if let Some(h) = &host {
-        if !hosts::list().iter().any(|a| a == h) {
-            return Err(format!(
-                "{h} is not a Host in this computer's ~/.ssh/config"
-            ));
-        }
+    if let Some(h) = &host
+        && !hosts::list().iter().any(|a| a == h)
+    {
+        return Err(format!(
+            "{h} is not a Host in this computer's ~/.ssh/config"
+        ));
     }
     if reg().shells.len() >= MAX {
         return Err(format!("{MAX} shells are open already — close one first"));
     }
     let (tx, mut rx) = mpsc::channel::<String>(64);
-    let pty = Pty::open(cols, rows, host.as_deref(), tx).map_err(|e| e.to_string())?;
+    let pty = crate::pty::open(cols, rows, host.as_deref(), tx)?;
     let title = host.clone().unwrap_or_else(shell_name);
     let id = {
         let mut r = reg();
@@ -119,10 +119,10 @@ pub fn open(cols: u16, rows: u16, host: Option<String>) -> Result<u32, String> {
 
 pub fn write(id: u32, data: &str) {
     let mut r = reg();
-    if let Some(p) = r.shells.get_mut(&id).and_then(|s| s.pty.as_mut()) {
-        if let Err(e) = p.write(data) {
-            tracing::warn!(id, "pty write failed: {e}");
-        }
+    if let Some(p) = r.shells.get_mut(&id).and_then(|s| s.pty.as_mut())
+        && let Err(e) = p.write(data)
+    {
+        tracing::warn!(id, "pty write failed: {e}");
     }
 }
 

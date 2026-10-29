@@ -26,27 +26,10 @@ use crate::Wado;
 pub const MAX: usize = 1 << 20;
 pub const MAX_IMAGE: usize = 16 << 20;
 
-/// One clipboard value. Empty `data` is nothing copied yet.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Clip {
-    pub mime: String,
-    pub data: Arc<[u8]>,
-}
-
-impl Clip {
-    pub fn is_text(&self) -> bool {
-        self.mime.starts_with("text/") || TEXT.contains(&self.mime.as_str())
-    }
-}
-
-/// What a text selection is offered as, best first.
-const TEXT: &[&str] = &[
-    "text/plain;charset=utf-8",
-    "text/plain",
-    "UTF8_STRING",
-    "TEXT",
-    "STRING",
-];
+/// One clipboard value. Empty `data` is nothing copied yet. The platform layer's type, so the
+/// session's clipboard and the desktop's speak the same value.
+pub use wado_platform::clip::Clip;
+use wado_platform::clip::TEXT;
 
 /// Images read out of the session, best first.
 const IMAGE: &[&str] = &["image/png", "image/jpeg", "image/webp", "image/gif"];

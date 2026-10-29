@@ -124,10 +124,19 @@
           pkgs = pkgsFor.${system};
           lib = pkgs.lib;
 
-          # Rust compiler + cargo (toolchain comes from the shell, not rustup)
+          # Rust compiler + cargo (toolchain comes from the shell, not rustup). `clippy` and
+          # `rustfmt` are pinned alongside `rustc` deliberately: without them here, `cargo
+          # clippy`/`cargo fmt` fall through PATH to whatever rustup toolchain is installed on
+          # the host. `cargo-clippy` wraps rustc with its own bundled `rustc_driver`, built at a
+          # different commit than this shell's `rustc` even when both report the same version
+          # number — so every crate this shell built shows as "compiled by an incompatible
+          # version of rustc" (E0514). Taking `clippy`/`rustfmt` from the same `pkgs` as `rustc`
+          # keeps all three built from one commit, by construction.
           rust = with pkgs; [
             cargo
             rustc
+            clippy
+            rustfmt
           ];
 
           # LLVM/clang libs — needed by clangStdenv and bindgen for FFI codegen

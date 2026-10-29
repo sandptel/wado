@@ -1,13 +1,12 @@
-//! The computer itself: lock, sleep, a screenshot, screen brightness.
+//! The computer itself: lock, sleep, a screenshot, screen brightness — through the platform's
+//! system power, screenshots and backlight. Where a screenshot is saved is decided here.
 
 use std::path::PathBuf;
-use std::time::Duration;
+
+use wado_platform::power::PowerOp;
+use wado_platform::{Capability, Platform};
 
 use super::{Action, Does, Need};
-
-/// Choosing an area with `slurp` is done by hand on the laptop's screen.
-const CHOOSE: Duration = Duration::from_secs(60);
-const CAPTURE: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Op {
@@ -20,78 +19,75 @@ pub enum Op {
 pub fn all() -> Vec<Action> {
     let a =
         |id, name, icon, needs, op| Action::new(id, name, "System", icon, needs, Does::System(op));
+    let shot = Need::Cap(Capability::Screenshot);
+    let backlight = Need::Cap(Capability::Brightness);
     vec![
         a(
             "lock",
             "Lock screen",
             "lock",
-            vec![Need::Tool("loginctl")],
+            vec![Need::Power(PowerOp::Lock)],
             Op::Lock,
         ),
         a(
             "suspend",
             "Sleep",
             "moon",
-            vec![Need::Tool("systemctl")],
+            vec![Need::Power(PowerOp::Suspend)],
             Op::Suspend,
         ),
         a(
             "screenshot",
             "Screenshot",
             "camera",
-            vec![Need::Tool("grim"), Need::Desktop],
+            vec![shot],
             Op::Screenshot { region: false },
         ),
         a(
             "screenshot-region",
             "Screenshot of an area",
             "image",
-            vec![Need::Tool("grim"), Need::Tool("slurp"), Need::Desktop],
+            vec![shot, Need::Region],
             Op::Screenshot { region: true },
         ),
         a(
             "brightness-up",
             "Brighter",
             "sun",
-            vec![Need::Tool("brightnessctl")],
+            vec![backlight],
             Op::Brightness { up: true },
         ),
         a(
             "brightness-down",
             "Dimmer",
             "sun",
-            vec![Need::Tool("brightnessctl")],
+            vec![backlight],
             Op::Brightness { up: false },
         ),
     ]
 }
 
-pub async fn run(op: Op) -> Result<(), String> {
-    use crate::host::cmd::run;
+pub async fn run(p: &Platform, op: Op) -> Result<(), String> {
+    let absent = |a: wado_platform::Absent| a.why;
     match op {
-        Op::Lock => run("loginctl", &["lock-session"]).await.map(drop),
-        Op::Suspend => run("systemctl", &["suspend"]).await.map(drop),
-        Op::Brightness { up } => run("brightnessctl", &["set", if up { "10%+" } else { "10%-" }])
-            .await
-            .map(drop),
-        Op::Screenshot { region } => screenshot(region).await,
+        Op::Lock => p.system_power().map_err(absent)?.run(PowerOp::Lock).await,
+        Op::Suspend => {
+            p.system_power()
+                .map_err(absent)?
+                .run(PowerOp::Suspend)
+                .await
+        }
+        Op::Brightness { up } => p.brightness().map_err(absent)?.step(up).await,
+        Op::Screenshot { region } => {
+            let file = shot_path()?;
+            p.screenshot()
+                .map_err(absent)?
+                .shoot(region, file.clone())
+                .await?;
+            tracing::info!(file = %file.display(), "actions: screenshot saved");
+            Ok(())
+        }
     }
-}
-
-async fn screenshot(region: bool) -> Result<(), String> {
-    use super::proc::desktop;
-    let file = shot_path()?;
-    let file = file.to_string_lossy();
-    if region {
-        let area = desktop("slurp", &[], CHOOSE)
-            .await
-            .map_err(|_| "no area was chosen".to_string())?;
-        desktop("grim", &["-g", &area, &file], CAPTURE).await?;
-    } else {
-        desktop("grim", &[&file], CAPTURE).await?;
-    }
-    tracing::info!(file = %file, "actions: screenshot saved");
-    Ok(())
 }
 
 /// `~/Pictures/wado-2026-10-30_21-04-05.png`, the folder made if missing.

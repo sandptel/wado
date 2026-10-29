@@ -265,16 +265,23 @@ try {
   console.log("hold");
   phone.close();
   await sleep(300);
+  // No session is ever started in this harness (see the file header), and since 2026-10-03 the
+  // daemon holds a seat only for something worth holding it for: it sends `SeatHold{hold_ms: 0}`
+  // when there is no session running (`crates/protocol/src/relay.rs`, `SeatHold` doc), so the
+  // relay frees a dropped client's seat at once instead of keeping it "in use" for 30 minutes.
+  // With nothing running, Tablet hits the gate on the now-free daemon like any unknown device —
+  // there is no occupied seat left to refuse it from, and so no takeover offer either.
   const tablet = new Client("Tablet");
-  // Tablet is unknown: with daemon 1 held for the phone it must be refused as occupied,
-  // never assigned the phone's desktop.
   const tden = await tablet.wait("join_denied", 5000);
-  check("a dropped device's seat is held: another device is refused", !!tden && /in use by Phone/.test(tden.reason), tden && tden.reason);
-  check("…with the takeover offer", tden && tden.takeover === true);
-  check("…and the pinned wording the old clients match", tden && /already has an active connection/.test(tden.reason));
+  check("with no session running, a dropped client's seat is freed at once: an unknown device hits the gate, not an occupancy refusal",
+    !!tden && /doesn't know this device yet/.test(tden.reason), tden && tden.reason);
+  check("…told how to pair, same as any unknown device", tden && /wado pair/.test(tden.reason), tden && tden.reason);
+  check("…with no takeover offered (nothing occupied to take over)", !(tden && tden.takeover === true), tden && tden.takeover);
+  await tablet.waitClosed(3000);
+  await sleep(300);
   const phone2 = new Client("Phone", { instance: `${RID}:1` });
   const pacc = await phone2.wait("join_accepted", 5000);
-  check("the owner comes back to its own seat", pacc && pacc.assignment === "reclaimed", pacc && pacc.assignment);
+  check("the owner comes back to its own (now-free) seat", pacc && pacc.assignment === "reclaimed", pacc && pacc.assignment);
 
   // ── takeover ────────────────────────────────────────────────────────────────
   console.log("takeover");

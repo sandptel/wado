@@ -62,10 +62,10 @@ pub fn report(remote_id: &str, key: &str, name: &str, link: DeviceLink) -> Optio
     };
     let _ = std::fs::create_dir_all(dir());
     let tmp = path.with_extension("tmp");
-    if let Ok(json) = serde_json::to_vec(&entry) {
-        if std::fs::write(&tmp, json).is_ok() {
-            let _ = std::fs::rename(&tmp, &path);
-        }
+    if let Ok(json) = serde_json::to_vec(&entry)
+        && std::fs::write(&tmp, json).is_ok()
+    {
+        let _ = std::fs::rename(&tmp, &path);
     }
     let mut last = last().lock().unwrap_or_else(|e| e.into_inner());
     let before = last.insert(path, entry.link.clone());
