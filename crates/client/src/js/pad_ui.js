@@ -33,6 +33,7 @@
     root.innerHTML = `
       <header class="tphead">
         <button class="linkpill tppill dim" aria-expanded="false"><span class="linkdot"></span><span class="tppilltext">Connecting…</span><span class="tprtt"></span></button>
+        <button class="iconbtn tpgearhead" aria-label="Trackpad settings">${W.padIcon("sliders")}</button>
         <button class="iconbtn tpclose" aria-label="Close trackpad">${CLOSE}</button>
       </header>
       <p class="tpwhy" hidden></p>
@@ -55,7 +56,7 @@
       </div>
       <button class="btn tpkb" aria-expanded="false">${KEYBOARD}<span>Keyboard</span></button>`;
     document.body.appendChild(root);
-    for (const k of ["pill", "pilltext", "rtt", "close", "why", "note", "rail", "bar", "area", "hint", "err", "keys", "row", "text", "kb"]) {
+    for (const k of ["pill", "pilltext", "rtt", "gearhead", "close", "why", "note", "rail", "bar", "area", "hint", "err", "keys", "row", "text", "kb"]) {
       el[k] = root.querySelector(".tp" + k);
     }
 
@@ -80,6 +81,9 @@
     W.padRail.mount({ rail: el.rail, bar: el.bar });
     W.padRail.onType(() => keyboard(true));
     W.padRail.onError(alert);
+    W.padSettings.mount(root);
+    W.padRail.onSettings((b) => W.padSettings.open(b));
+    el.gearhead.onclick = () => W.padSettings.open(el.gearhead);
     W.padRail.onDone((a, res) => W.padConfirm.show(el.area, a, res));
     W.padActions.onChange(() => { if (!root.hidden) W.padRail.paint(); });
 
@@ -111,7 +115,11 @@
       setTimeout(() => { el.note.hidden = true; }, 6000);
     });
 
-    window.addEventListener("popstate", () => { if (!root.hidden) close(false); });
+    window.addEventListener("popstate", () => {
+      if (root.hidden) return;
+      if (W.padSettings.isOpen()) W.padSettings.hide(); // Back from the settings sheet
+      else close(false);
+    });
     if (window.visualViewport) {
       const fit = () => {
         if (root.hidden) return;
@@ -200,6 +208,7 @@
   function close(viaHistory) {
     if (!root || root.hidden) return;
     if (viaHistory && history.state && history.state.wadoPad) { history.back(); return; }
+    W.padSettings.hide();
     W.padOrient.detach();
     keyboard(false);
     W.padTouch.detach();

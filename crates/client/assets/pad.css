@@ -330,3 +330,85 @@
 :root[data-motion="off"] .tpcoach-scene { grid-area: auto; opacity: 1; }
 :root[data-motion="off"] .tpcoach-hand { height: 40px; }
 :root[data-motion="off"] .tpcoach-hand i { top: 2px; }
+
+/* ── Settings (js/pad_settings.js): ⚙ in the header upright, on the rail sideways. ───────── */
+.tpgearhead { margin-left: auto; color: var(--bright); }
+#wado-trackpad[data-layout="landscape"] .tpgearhead { grid-area: pad; justify-self: end; align-self: start; z-index: 2;
+  margin: 6px 56px 0 0; background: color-mix(in oklab, var(--s2), transparent 30%); }
+#wado-trackpad[data-layout="landscape"]:not(:has(.tprail[hidden])) .tpgearhead { display: none; }
+.tpgear { color: var(--bright); background: var(--s2); }
+
+/* The sheet lives inside the pad, so it turns with it: from the bottom upright, from the right
+ * sideways. In on --spring, out faster on ease-in; the sections cascade in on open only. */
+.tpscrim { position: absolute; inset: 0; z-index: 8; background: rgb(0 0 0 / .45);
+  animation: tps-fade var(--dur) var(--ease) both; }
+.tpscrim.out { animation: tps-fade 200ms ease-in reverse forwards; }
+.tpscrim[hidden], .tpsheet[hidden] { display: none; }
+@keyframes tps-fade { from { opacity: 0; } }
+.tpsheet { position: absolute; left: 0; right: 0; bottom: 0; z-index: 9; max-height: 88%;
+  display: flex; flex-direction: column; background: var(--s0); color: var(--text);
+  border-radius: var(--r4) var(--r4) 0 0; box-shadow: 0 -20px 60px rgb(0 0 0 / .35);
+  animation: tps-up 400ms var(--spring) both; }
+.tpsheet::before { content: ""; align-self: center; flex: none; width: 36px; height: 4px; margin-top: 8px;
+  border-radius: 999px; background: var(--s3); }
+.tpsheet.out { animation: tps-down 220ms ease-in forwards; }
+@keyframes tps-up { from { translate: 0 100%; } }
+@keyframes tps-down { to { translate: 0 100%; } }
+#wado-trackpad[data-layout="landscape"] .tpsheet { top: 0; left: auto; width: min(400px, 62%); max-height: none;
+  border-radius: var(--r4) 0 0 var(--r4); box-shadow: -20px 0 60px rgb(0 0 0 / .35); animation-name: tps-in; }
+#wado-trackpad[data-layout="landscape"] .tpsheet::before { display: none; }
+#wado-trackpad[data-layout="landscape"] .tpsheet.out { animation-name: tps-outx; }
+@keyframes tps-in { from { translate: 100% 0; } }
+@keyframes tps-outx { to { translate: 100% 0; } }
+
+.tps-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 10px 4px 18px; }
+.tps-head h2 { margin: 0; font: 700 20px var(--display); letter-spacing: -0.01em; color: var(--bright); }
+.tps-err { margin: 4px 14px; font-size: 13px; }
+.tps-err[hidden] { display: none; }
+.tps-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  display: flex; flex-direction: column; gap: 12px; padding: 6px 14px calc(16px + env(safe-area-inset-bottom)); }
+.tps-body.enter > .tps-sec { animation: tps-sec 420ms var(--spring) both; animation-delay: calc(80ms + var(--i) * 40ms); }
+@keyframes tps-sec { from { opacity: 0; translate: 0 14px; } }
+.tps-sec { flex-shrink: 0; display: grid; gap: 4px; padding: 12px 14px; border-radius: var(--r3); background: var(--s1); }
+.tps-label { margin: 0 0 4px; font: 600 11px var(--body); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+.tps-note { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--dim); }
+.tps-row { display: flex; align-items: center; gap: 12px; min-height: 52px; }
+.tps-words { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.tps-title { font: 600 14px var(--body); color: var(--bright); }
+.tps-sub { font-size: 12px; line-height: 1.4; color: var(--dim); }
+
+/* Switch: 52 × 32, the thumb grows from a 16 px dim dot to a 24 px disc on the accent (the
+ * Morphing Toggle Rule), sliding on --pop. The hit area reaches 44 px. */
+.tps-switch { flex: none; position: relative; width: 52px; height: 32px; border-radius: 999px; background: var(--s3);
+  transition: background var(--dur) var(--ease); }
+.tps-switch::after { content: ""; position: absolute; inset: -6px -4px; }
+.tps-switch i { position: absolute; top: 50%; left: 8px; width: 16px; height: 16px; margin-top: -8px; border-radius: 50%;
+  background: var(--dim); transition: translate 280ms var(--pop), scale 280ms var(--pop), background var(--dur) var(--ease); }
+.tps-switch[aria-checked="true"] { background: var(--accent); }
+.tps-switch[aria-checked="true"] i { translate: 20px 0; scale: 1.5; background: var(--on-accent); }
+
+/* Segmented: a ground well, the accent knob sliding to the chosen third on --spring. */
+.tps-seg { position: relative; display: grid; grid-template-columns: repeat(var(--n), 1fr); padding: 4px;
+  border-radius: var(--r2); background: var(--s0); }
+.tps-knob { position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc((100% - 8px) / var(--n));
+  border-radius: calc(var(--r2) - 4px); background: var(--accent); translate: calc(var(--i) * 100%) 0;
+  transition: translate 380ms var(--spring); }
+.tps-seg button { position: relative; min-height: 44px; font-weight: 600; color: var(--dim);
+  transition: color var(--dur) var(--ease), scale 320ms var(--pop); }
+.tps-seg button[aria-checked="true"] { color: var(--on-accent); }
+
+.tps-list { display: grid; gap: 6px; }
+.tps-group { display: grid; }
+.tps-gname { margin: 8px 0 0; font: 600 12px var(--body); color: var(--dim); }
+.tps-chosen { padding: 2px 10px 4px; margin: 0 -10px; border-radius: var(--r2);
+  background: color-mix(in oklab, var(--accent), var(--s1) 92%); }
+.tps-act { gap: 8px; }
+.tps-ico { flex: none; width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center;
+  color: var(--accent); background: color-mix(in oklab, var(--accent), transparent 86%); }
+.tps-ico svg { width: 19px; height: 19px; }
+.tps-move { color: var(--bright); }
+.tps-move:disabled { opacity: .3; }
+.tps-gest { justify-content: space-between; }
+.tps-gest .tps-title { flex: 1; font-weight: 500; }
+.tps-pick { width: min(52%, 220px); flex: none; }

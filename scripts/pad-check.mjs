@@ -1,6 +1,7 @@
 // Runnable check for the trackpad's client side: js/pad_link.js, js/pad_prefs.js,
 // js/pad_orient.js, js/pad_touch.js, js/pad_keys.js, js/pad_icons.js, js/pad_actions.js,
-// js/pad_rail.js (views on the DOM shim in scripts/lib/pad-dom.mjs), js/pad_hints.js.
+// js/pad_rail.js, js/pad_settings.js (views on the DOM shim in scripts/lib/pad-dom.mjs),
+// js/pad_hints.js.
 //
 // Loads the real modules into a stub `W` with a fake clock, a fake relay and a fake
 // RTCPeerConnection, drives them, and asserts the wire messages.
@@ -11,7 +12,7 @@ import { makeDocument } from "./lib/pad-dom.mjs";
 
 const js = (f) => readFileSync(new URL(`../crates/client/src/js/${f}`, import.meta.url), "utf8");
 const MODULES = ["pad_link.js", "pad_prefs.js", "pad_orient.js", "pad_touch.js", "pad_keys.js",
-  "pad_icons.js", "pad_actions.js", "pad_rail.js", "pad_hints.js"];
+  "pad_icons.js", "pad_actions.js", "pad_rail.js", "pad_hints.js", "pad_settings.js"];
 const src = MODULES.map(js).join("\n");
 
 class FakeDC {
@@ -20,7 +21,13 @@ class FakeDC {
   open() { this.readyState = "open"; if (this.onopen) this.onopen(); }
 }
 
-function makeEnv() {
+// A browser's localStorage; pass one store to two envs to stand in for a reload.
+function makeStorage() {
+  const m = new Map();
+  return { m, getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k) };
+}
+
+function makeEnv({ storage = makeStorage(), hostConfig = null } = {}) {
   let now = 0;
   let timers = [];
   const add = (f, ms, every) => { const t = { f, at: now + ms, every }; timers.push(t); return t; };
@@ -44,10 +51,10 @@ function makeEnv() {
   const docListeners = {};
   const document = makeDocument();
   document.addEventListener = (e, f) => { docListeners[e] = f; };
-  const W = { _relayHandlers: {}, clientKey: "dev-1" };
+  const W = { _relayHandlers: {}, clientKey: "dev-1", hostConfig };
   W.relayOn = (type, fn) => { W._relayHandlers[type] = fn; };
   W.relaySendMsg = (o) => { relay.push(o); return true; };
-  const globals = { ...clock, RTCPeerConnection, document, queueMicrotask: (f) => f() };
+  const globals = { ...clock, RTCPeerConnection, document, localStorage: storage, queueMicrotask: (f) => f() };
   new Function("W", ...Object.keys(globals), src)(W, ...Object.values(globals));
 
   W.configSet = (key, value) => relay.push({ type: "config_set", key, value: String(value ?? ""), confirmed: false });
@@ -83,8 +90,8 @@ function makeEnv() {
 }
 
 let failures = 0;
-const run = async (name, steps) => {
-  try { await steps(makeEnv()); console.log(`ok   ${name}`); }
+const run = async (name, steps, opts) => {
+  try { await steps(makeEnv(opts)); console.log(`ok   ${name}`); }
   catch (e) { failures++; console.log(`FAIL ${name}: ${e.message}`); }
 };
 const assert = (cond, msg) => { if (!cond) throw new Error(msg); };
@@ -352,6 +359,94 @@ await run("the icon set matches ui/widgets/icon.rs", async (e) => {
   const names = [...rs.matchAll(/^\s+"([a-z0-9]+)" => "/gm)].map((m) => m[1]);
   eq(e.W.padIconNames, names, "same names, same order");
 });
+
+// ── settings (js/pad_prefs.js, js/pad_settings.js) ──────────────────────────────────────
+const configSets = (relay) => relay.filter((m) => m.type === "config_set").map((m) => [m.key, m.value]);
+function sheetEnv(e, actions = ACTIONS) {
+  const root = e.document.createElement("div");
+  e.W.pad.start();
+  e.W.padSettings.mount(root);
+  if (actions) e.out({ k: "action_list", actions });
+  e.W.padSettings.open();
+  const sheet = root.querySelector(".tpsheet");
+  return { root, sheet, click: (sel) => { sheet.querySelector(sel).click(); e.advance(200); } };
+}
+
+await run("settings: choosing the rail sends ConfigSet device.<own key>.trackpad.rail", async (e) => {
+  const s = sheetEnv(e);
+  s.click('[data-v="none"]');
+  eq(configSets(e.relay), [["device.dev-1.trackpad.rail", "none"]], "config_set");
+  eq(e.W.padPrefs.get().rail, "none", "applied");
+  assert(s.sheet.querySelector('[data-v="none"]').getAttribute("aria-checked") === "true", "re-rendered on");
+});
+
+await run("settings: switches save landscape, flip, fullscreen and keyboard as true/false", async (e) => {
+  const s = sheetEnv(e);
+  s.click('[data-key="sw:tps-Keyboardopenswiththepad"]');
+  s.click('[data-key="sw:tps-Flip"]');
+  s.click('[data-key="sw:tps-Landscape"]');
+  eq(configSets(e.relay), [["device.dev-1.trackpad.keyboard", "true"], ["device.dev-1.trackpad.flip", "true"],
+    ["device.dev-1.trackpad.landscape", "false"]], "config_sets");
+  assert(s.sheet.querySelector('[data-key="sw:tps-Flip"]').disabled, "flip greys out with landscape off");
+});
+
+await run("settings: quick actions switch on at the end, ↑ moves up, saved as a JSON list", async (e) => {
+  const s = sheetEnv(e);
+  e.W.padPrefs.set("quick", ["fullscreen"]);
+  e.relay.length = 0;
+  s.click('[data-key="act:play-pause"]');
+  s.click('[data-key="mv:play-pause:-1"]');
+  eq(configSets(e.relay), [["device.dev-1.trackpad.quick", '["fullscreen","play-pause"]'],
+    ["device.dev-1.trackpad.quick", '["play-pause","fullscreen"]']], "quick saves");
+  eq(s.sheet.querySelector(".tps-chosen").querySelectorAll("[data-id]").map((r) => r.dataset.id), ["play-pause", "fullscreen"], "chosen order");
+  s.click('[data-key="act:fullscreen"]');
+  eq(configSets(e.relay).at(-1), ["device.dev-1.trackpad.quick", '["play-pause"]'], "switched off");
+});
+
+await run("settings: a gesture picks an action or Off", async (e) => {
+  const s = sheetEnv(e);
+  const sel = s.sheet.querySelector("#tpsg-edge-left");
+  sel.value = "workspace-next"; sel.dispatch("change");
+  eq(configSets(e.relay).at(-1), ["device.dev-1.trackpad.gestures.edge-left", "workspace-next"], "assigned");
+  eq(e.W.padPrefs.get().gestures, { "edge-left": "workspace-next" }, "in prefs");
+  const again = s.sheet.querySelector("#tpsg-edge-left");
+  eq(again.value, "workspace-next", "re-rendered with it");
+  again.value = ""; again.dispatch("change");
+  eq(configSets(e.relay).at(-1), ["device.dev-1.trackpad.gestures.edge-left", ""], "Off clears it");
+});
+
+await run("settings: without host, one line with the grant copy and no pickers", async (e) => {
+  const s = sheetEnv(e, null);
+  e.out({ k: "action_list", actions: [] });
+  e.out({ k: "err", message: "this device may not run actions — on the computer: wado allow 'Pixel' host" });
+  assert(s.sheet.textContent.includes("wado allow 'Pixel' host"), "grant copy");
+  eq(s.sheet.querySelectorAll("select").length, 0, "no gesture pickers");
+});
+
+{
+  const storage = makeStorage();
+  await run("a reload reads the settings back from the mirror", async (e) => {
+    e.W.padPrefs.set("rail", "actions");
+  }, { storage });
+  await run("…in the reloaded page", async (e) => {
+    eq(e.W.padPrefs.get().rail, "actions", "mirror");
+  }, { storage });
+}
+
+await run("another browser on the same device key: the daemon's copy wins", async (e) => {
+  eq(e.W.padPrefs.get().rail, "keys", "defaults before the daemon answers");
+  const seen = [];
+  e.W.padPrefs.onChange((p) => seen.push(p.rail));
+  e.W._relayHandlers.config_state({ state: { trackpad: { landscape: true, fullscreen: false, flip: true, rail: "none",
+    quick: ["lock"], gestures: { "four-tap": "lock" }, keyboard: false } } });
+  const p = e.W.padPrefs.get();
+  eq([p.rail, p.flip, p.quick, p.gestures], ["none", true, ["lock"], { "four-tap": "lock" }], "adopted");
+  eq(seen, ["none"], "told the layout");
+});
+
+await run("a config_state already there at load is read too", async (e) => {
+  eq(e.W.padPrefs.get().rail, "actions", "from W.hostConfig");
+}, { hostConfig: { trackpad: { rail: "actions" } } });
 
 // ── gesture hints (js/pad_hints.js): what the picture says the fingers are doing ───────
 const F = (x0, y0, x, y) => ({ x0, y0, x, y });

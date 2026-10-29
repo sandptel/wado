@@ -183,6 +183,8 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/pad_rail.js"),
     "\n",
+    include_str!("js/pad_settings.js"),
+    "\n",
     include_str!("js/pad_ui.js"),
     "\n",
     include_str!("js/capture.js"),

@@ -61,7 +61,7 @@
   function settingsButton() {
     const b = node("button", "tpgear iconbtn", { "aria-label": "Trackpad settings" });
     b.innerHTML = W.padIcon("sliders");
-    b.addEventListener("click", () => call("settings"));
+    b.addEventListener("click", () => call("settings", b));
     return b;
   }
 

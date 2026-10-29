@@ -1,6 +1,7 @@
 // The least DOM the trackpad's JS-built views need (js/pad_rail.js, js/pad_settings.js), for
 // scripts/pad-check.mjs. Elements, attributes, dataset, classList, text, events (with bubbling),
-// and querySelector(All) for simple selectors: `tag`, `.class`, `[attr]`, `[attr="v"]`, chained.
+// and querySelector(All) for simple selectors: `tag`, `.class`, `#id`, `[attr]`, `[attr="v"]`,
+// chained (no combinators).
 // innerHTML is stored, not parsed: views put only icon markup there.
 
 class El {
@@ -74,9 +75,10 @@ class El {
 
 // One compound selector: tag, .class and [attr] / [attr="v"] parts, all of which must match.
 function one(el, sel) {
-  const parts = sel.match(/(^[a-z]+)|(\.[\w-]+)|(\[[^\]]+\])/gi) || [];
+  const parts = sel.match(/(^[a-z]+)|(\.[\w-]+)|(#[\w-]+)|(\[[^\]]+\])/gi) || [];
   return parts.length > 0 && parts.every((p) => {
     if (p[0] === ".") return el.classList.contains(p.slice(1));
+    if (p[0] === "#") return el.attrs.id === p.slice(1);
     if (p[0] === "[") {
       const m = p.slice(1, -1).match(/^([\w-]+)(?:="?([^"]*)"?)?$/);
       return m && (m[2] === undefined ? m[1] in el.attrs : el.attrs[m[1]] === m[2]);
