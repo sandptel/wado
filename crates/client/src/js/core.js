@@ -47,5 +47,8 @@ W.naturalScroll = false;
 W.touchMode = "pointer";
 
 const emit = (msg) => { try { dioxus.send(msg); } catch (_) {} };
+// Screenshot and UI checks only: with `?fixture` in the address, a test can play the daemon's
+// side (`W.fixture({type:"hostState", …})`) with no computer behind the page. Never set otherwise.
+if (/[?&]fixture\b/.test(location.search)) W.fixture = emit;
 const status = (text) => emit({ type: "status", text });
 const stagebar = (text) => emit({ type: "stagebar", text });

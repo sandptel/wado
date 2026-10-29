@@ -14,10 +14,13 @@ mod debug;
 mod link;
 mod persist;
 mod profile;
+mod reach;
 mod res;
+mod route;
 mod state;
 mod theme;
 mod ui;
+mod widget;
 
 use dioxus::prelude::*;
 
@@ -104,7 +107,7 @@ fn App() -> Element {
     // The computer's state (sound, Wi-Fi, Bluetooth) is polled while the control centre is
     // open — that is when someone is looking at it — and not otherwise.
     use_effect(move || {
-        // …or while the landing is up: its playback card is the computer's, live.
+        // …or while home or a computer's page is up: Now playing and Quick are the computer's, live.
         let open = (ui.live.cc_open)() || !(ui.live.session_on)();
         bridge::call(format!("window.__wado.hostWatch({open});"));
     });
@@ -126,6 +129,8 @@ fn App() -> Element {
         document::Stylesheet { href: asset!("/assets/layout.css") }
         document::Stylesheet { href: asset!("/assets/cc.css") }
         document::Stylesheet { href: asset!("/assets/landing.css") }
+        document::Stylesheet { href: asset!("/assets/home.css") }
+        document::Stylesheet { href: asset!("/assets/computer.css") }
         document::Stylesheet { href: asset!("/assets/clips.css") }
         document::Stylesheet { href: asset!("/assets/stage.css") }
         document::Stylesheet { href: asset!("/assets/gamepad.css") }
@@ -141,6 +146,8 @@ fn App() -> Element {
                 {ui::dock::render(ui)}
             }
             {ui::landing::render(ui)}
+            {ui::computer::render(ui)}
+            {ui::subpage::render(ui)}
             {ui::toast::render(ui)}
             {ui::cc::render(ui)}
             {ui::reconnecting::render(ui)}

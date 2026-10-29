@@ -175,6 +175,8 @@ pub struct Settings {
     /// The relays this device knows, beyond the built-in one — a computer can be on any of them.
     pub relays: Signal<Vec<String>>,
     pub profile: Signal<usize>,
+    /// Home's widgets, in order — see [`crate::widget`].
+    pub widgets: Signal<Vec<crate::widget::Widget>>,
     /// Hold a screen wake lock while a session runs.
     pub keep_awake: Signal<bool>,
     /// Do not disturb: notifications go to the shade without a toast.
@@ -272,6 +274,7 @@ impl Settings {
             profiles: use_signal(Vec::new),
             relays: use_signal(Vec::new),
             profile: use_signal(|| 0),
+            widgets: use_signal(Vec::new),
             keep_awake: use_signal(|| true),
             dnd: use_signal(|| false),
             volume: use_signal(|| 1.0),
@@ -323,6 +326,8 @@ pub struct Live {
     /// The computer's clipboard history, and the image tiles' pictures by entry id.
     pub clip_hist: Signal<ClipHist>,
     pub clip_imgs: Signal<std::collections::HashMap<String, String>>,
+    /// The clipboard rail is out (on a screen too narrow to dock it).
+    pub clip_rail: Signal<bool>,
     /// The notification shade, newest first.
     pub notes: Signal<Vec<Note>>,
     /// The stream is being recorded (`js/capture.js`).
@@ -337,6 +342,18 @@ pub struct Live {
     pub sessions: Signal<(String, Vec<wado_protocol::SessionSummary>)>,
     /// A one-line note for a toast — "Screenshot saved", and the like. Each new text shows again.
     pub note: Signal<String>,
+
+    /// Where the person is outside a session — home, a computer, a settings page. See
+    /// [`crate::route`]. Not persisted: a reload starts at home.
+    pub view: Signal<crate::route::View>,
+    /// What the light, control-only links say about computers other than the selected one —
+    /// the ones home has a widget for. Keyed by profile key. See `js/side_link.js`.
+    pub side: Signal<std::collections::HashMap<String, Side>>,
+    /// The actions the selected computer can run (`pad::actions`), once asked.
+    pub actions: Signal<Vec<wado_protocol::pad::ActionInfo>>,
+    /// Home's widgets are being arranged, and the widget whose computer is being picked.
+    pub widget_edit: Signal<bool>,
+    pub picker: Signal<Option<String>>,
 
     /// The control centre: whether it is up, which page it shows, and whether the tiles are
     /// being edited. Not persisted — a sheet covering the video on load is never wanted.
@@ -484,12 +501,18 @@ impl Live {
             clips: use_signal(Vec::new),
             clip_hist: use_signal(Default::default),
             clip_imgs: use_signal(Default::default),
+            clip_rail: use_signal(|| false),
             notes: use_signal(Vec::new),
             recording: use_signal(|| false),
             hoststate: use_signal(|| None),
             online: use_signal(Default::default),
             sessions: use_signal(Default::default),
             note: use_signal(String::new),
+            view: use_signal(Default::default),
+            side: use_signal(Default::default),
+            actions: use_signal(Vec::new),
+            widget_edit: use_signal(|| false),
+            picker: use_signal(|| None),
             cc_open: use_signal(|| false),
             cc_page: use_signal(Default::default),
             applied: use_signal(String::new),
@@ -543,6 +566,20 @@ impl Live {
         self.health.set(Health::default());
         self.spark.set(Spark::default());
     }
+}
+
+/// One computer as its light link sees it (`js/side_link.js`): a computer home has a widget for
+/// that is not the selected one. Control only — no picture, no sound.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Side {
+    /// `connecting` | `up` | `offline` (no daemon for its Remote ID) | `waiting` (parked by the
+    /// relay for another reason) | `busy` (every seat in use)
+    /// | `refused` (the computer or the secure handshake said no) | `unreachable` (no relay).
+    pub state: String,
+    pub host: Option<wado_protocol::HostState>,
+    pub config: Option<wado_protocol::ConfigState>,
+    pub clips: Vec<wado_protocol::ClipEntry>,
+    pub actions: Vec<wado_protocol::pad::ActionInfo>,
 }
 
 /// Sparkline history: frames per second, ping, and received kbps.
