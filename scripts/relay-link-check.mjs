@@ -35,13 +35,15 @@ const check = (name, got, want) => {
 // ── 0. Nothing writes to the relay socket but the envelope ────────────────────
 // Since 2026-10-04 the computer drops every unsealed frame, so a direct `ws.send` is a feature
 // that silently does nothing (six of them did, until this check). Only relay_link.js (its own
-// `pong`) and the e2e_* files may write to the socket; everything else goes through
-// W.relaySendMsg.
+// `pong`) and the e2e_* files may write to the main link's socket; everything else goes through
+// W.relaySendMsg. side_link.js (decided 2026-10-30) is exempt too: it is not the main link at
+// all, but its own family of light, per-computer sockets with their own handshake and `pong`,
+// structurally parallel to relay_link.js rather than a client of it.
 {
   const { readdirSync } = await import("node:fs");
   const dir = new URL("../crates/client/src/js/", import.meta.url);
   const bad = readdirSync(dir)
-    .filter((f) => f.endsWith(".js") && f !== "relay_link.js" && !f.startsWith("e2e_"))
+    .filter((f) => f.endsWith(".js") && f !== "relay_link.js" && f !== "side_link.js" && !f.startsWith("e2e_"))
     .flatMap((f) => read(f).split("\n").map((l, i) => [f, i + 1, l]))
     .filter(([, , l]) => /\b(ws|relayWs)\.send\(/.test(l))
     .map(([f, n]) => `${f}:${n}`);
@@ -88,6 +90,16 @@ function makeWorld() {
     setItem: (k, v) => store.set(k, String(v)),
     removeItem: (k) => store.delete(k),
   };
+  // Same reasoning for sessionStorage: `relayResumeIfWatching` reads `wado.crashRejoin` from it
+  // (set by watchdog.js) to tell a crash-reload apart from an ordinary cold load. Without this
+  // stub the `try/catch` around that read swallows a ReferenceError and the crash-reload cases
+  // below would pass vacuously no matter what the code does.
+  const sessionStore = new Map();
+  globalThis.sessionStorage = {
+    getItem: (k) => (sessionStore.has(k) ? sessionStore.get(k) : null),
+    setItem: (k, v) => sessionStore.set(k, String(v)),
+    removeItem: (k) => sessionStore.delete(k),
+  };
   const events = [];
   const W = {
     requestApps: () => events.push("apps_request"),
@@ -119,7 +131,7 @@ function makeWorld() {
     W, emit, status, stagebar, "input", FakeWS,
   );
   W._relayNegotiate = () => { events.push("negotiate"); return Promise.resolve(); };
-  return { W, sockets, events, store };
+  return { W, sockets, events, store, sessionStore };
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
@@ -304,11 +316,18 @@ const rejoins = (s) => s.sent.filter((m) => m.type === "session_rejoin").length;
   check("a reconnect after an explicit stop asks for nothing", started(back), 0);
 }
 
-// ── 8. A page torn down mid-session takes its session back on the next load ──
+// ── 8. A crash reload takes its session back on the next load ───────────────
 //
-// The live failure this closes, measured 2026-09-13 02:14:35: `pagehide persisted=false`, a
-// fresh load, and then the prompt — a human pressing Rejoin 4.2 s later for something they
-// never chose to leave. `sessionOn` is a JS variable and does not survive a page teardown.
+// The live failure this originally closed, measured 2026-09-13 02:14:35 (`pagehide
+// persisted=false`, a fresh load, then a human pressing Rejoin 4.2 s later for something they
+// never chose to leave), used to be fixed by rejoining on *any* cold load with a fresh crumb.
+// Superseded (watchdog.js / `relayResumeIfWatching`, 2026-10-28): an ordinary cold load — a
+// phone tab reopened, a bookmark, "Join session" from the home page — now lands on the home
+// page, where a running session is a tile with Rejoin; a page load is a choice to look at the
+// home page, not a request to be thrown back into the session. Only a *crash* reload — the UI
+// panicked or wedged and watchdog.js reloaded the page itself — takes the session back on its
+// own, via the `wado.crashRejoin` flag watchdog.js leaves in sessionStorage. Both halves are
+// covered below: this is current, intended behaviour, not a regression.
 {
   // First page: a session comes up, which leaves the crumb.
   const a = makeWorld();
@@ -319,49 +338,67 @@ const rejoins = (s) => s.sent.filter((m) => m.type === "session_rejoin").length;
   await tick();
   check("a live session leaves a crumb", a.store.has("wado.watching"), true);
 
-  // Second page: same browser, no session state at all. Nothing is pressed.
+  // An ordinary cold load: same browser, same crumb, but no crash flag — nobody pressed
+  // anything and the UI never crashed. It must not rejoin by itself, and the stale-looking
+  // crumb is cleared so later loads do not keep asking about it.
   const b = makeWorld();
   b.store.set("wado.watching", a.store.get("wado.watching"));
   b.W.relayDial("ws://r", "1");
   b.sockets[0].accept();
-  check("a cold load takes the session back by itself", rejoins(b.sockets[0]), 1);
-  check("…without a prompt", b.events.filter((e) => e === "emit:sessionAlive").length, 0);
-  check("…and without starting anything", started(b.sockets[0]), 0);
-  check("…restoring the scale the scroll conversion needs", b.W.outputScale, 1.75);
+  check("an ordinary cold load does not rejoin by itself", rejoins(b.sockets[0]), 0);
+  check("…nor starts anything", started(b.sockets[0]), 0);
+  check("…and drops the crumb", b.store.has("wado.watching"), false);
 
-  b.sockets[0].deliver({ type: "session_started", info: { encoder: { mode: "hardware" } } });
+  // A crash reload: same crumb, plus the flag watchdog.js sets before reloading.
+  const c = makeWorld();
+  c.store.set("wado.watching", a.store.get("wado.watching"));
+  c.sessionStore.set("wado.crashRejoin", "1");
+  c.W.relayDial("ws://r", "1");
+  c.sockets[0].accept();
+  check("a crash reload takes the session back by itself", rejoins(c.sockets[0]), 1);
+  check("…without a prompt", c.events.filter((e) => e === "emit:sessionAlive").length, 0);
+  check("…and without starting anything", started(c.sockets[0]), 0);
+  check("…restoring the scale the scroll conversion needs", c.W.outputScale, 1.75);
+  check("…and the crash flag is spent", c.sessionStore.has("wado.crashRejoin"), false);
+
+  c.sockets[0].deliver({ type: "session_started", info: { encoder: { mode: "hardware" } } });
   await tick();
-  check("…and ends up streaming", b.W.sessionOn, true);
+  check("…and ends up streaming", c.W.sessionOn, true);
 }
 
 // ── 9. The crumb cannot resurrect anything it should not ─────────────────────
 {
-  // Stale: older than the server grace, so there is nothing left to rejoin.
+  // Stale: older than the server grace, so there is nothing left to rejoin even with a crash
+  // flag set.
   const w = makeWorld();
   // Past the 30-minute grace (RESUME_TTL_MS), so nothing is left to rejoin.
   w.store.set("wado.watching", JSON.stringify({ t: Date.now() - 1900000, scale: 1 }));
+  w.sessionStore.set("wado.crashRejoin", "1");
   w.W.relayDial("ws://r", "1");
   w.sockets[0].accept();
   // Counting the verbs, not the frames: `rlog` puts a client_log down the socket on every
   // link-up, so "sent nothing at all" was never the right assertion.
-  check("a stale crumb rejoins nothing", [rejoins(w.sockets[0]), started(w.sockets[0])], [0, 0]);
+  check("a stale crumb rejoins nothing, even after a crash", [rejoins(w.sockets[0]), started(w.sockets[0])], [0, 0]);
 }
 {
-  // No crumb at all — a browser that has never watched anything.
+  // No crumb at all — a browser that has never watched anything — even with a crash flag set.
   const w = makeWorld();
+  w.sessionStore.set("wado.crashRejoin", "1");
   w.W.relayDial("ws://r", "1");
   w.sockets[0].accept();
   check("no crumb rejoins nothing", [rejoins(w.sockets[0]), started(w.sockets[0])], [0, 0]);
 }
 {
-  // The crumb was fresh but the session had in fact expired. A cold load has no config, so the
-  // only honest move is to go quiet — never to start a session nobody pressed for.
+  // The crumb was fresh and this was a crash reload, but the session had in fact expired. A
+  // cold load has no config, so the only honest move is to go quiet — never to start a session
+  // nobody pressed for.
   const w = makeWorld();
   w.store.set("wado.watching", JSON.stringify({ t: Date.now(), scale: 1 }));
+  w.sessionStore.set("wado.crashRejoin", "1");
   w.W.relayDial("ws://r", "1");
   w.sockets[0].accept();
   w.sockets[0].deliver({ type: "session_error", message: "the session ended before you could rejoin it" });
-  check("a failed cold rejoin starts nothing", started(w.sockets[0]), 0);
+  check("a failed crash-reload rejoin starts nothing", started(w.sockets[0]), 0);
   check("…and drops the crumb", w.store.has("wado.watching"), false);
 }
 {
@@ -532,13 +569,16 @@ const rejoins = (s) => s.sent.filter((m) => m.type === "session_rejoin").length;
 // Reported 2026-09-13: a page reload took the session back and started streaming, but Start
 // stayed enabled and Stop greyed out, so the viewer had to press Start to make the buttons
 // agree with the picture. `session_on` lived in one place — the Start button — and neither the
-// crumb resume nor a reconnect-rejoin goes through it.
+// crumb resume nor a reconnect-rejoin goes through it. The crumb resume now only fires on a
+// crash reload (see case 8), so the crash flag has to be set here too for the rejoin to happen
+// at all.
 {
-  const { W, sockets, events, store } = makeWorld();
+  const { W, sockets, events, store, sessionStore } = makeWorld();
   store.set("wado.watching", JSON.stringify({ t: Date.now(), scale: 1 }));
+  sessionStore.set("wado.crashRejoin", "1");
   W.relayDial("ws://r", "1");
   sockets[0].accept();
-  check("a cold load rejoins", rejoins(sockets[0]), 1);
+  check("a crash reload rejoins", rejoins(sockets[0]), 1);
   sockets[0].deliver({ type: "session_started", info: { encoder: { mode: "hardware" } } });
   await tick();
   check("…and tells the UI the session is on", events.includes("emit:sessionOn"), true);
@@ -556,13 +596,14 @@ const rejoins = (s) => s.sent.filter((m) => m.type === "session_rejoin").length;
 }
 {
   // And a resume whose session had actually expired must correct the UI rather than leaving it
-  // showing a session that is gone.
-  const { W, sockets, events, store } = makeWorld();
+  // showing a session that is gone — again, only reachable via a crash reload now.
+  const { W, sockets, events, store, sessionStore } = makeWorld();
   store.set("wado.watching", JSON.stringify({ t: Date.now(), scale: 1 }));
+  sessionStore.set("wado.crashRejoin", "1");
   W.relayDial("ws://r", "1");
   sockets[0].accept();
   sockets[0].deliver({ type: "session_error", message: "the session ended before you could rejoin it" });
-  check("a stale resume clears the UI", events.includes("emit:sessionOff"), true);
+  check("a stale crash-reload resume clears the UI", events.includes("emit:sessionOff"), true);
 }
 
 // ── 16. A hidden page tells the daemon to stop rendering for it ─────────────
