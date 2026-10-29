@@ -5927,6 +5927,7 @@ dependencies = [
  "tracing-subscriber",
  "wado-compositor",
  "wado-config",
+ "wado-platform",
  "wado-protocol",
  "webpki-roots 0.26.11",
  "webrtc",
