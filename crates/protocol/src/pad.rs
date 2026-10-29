@@ -77,6 +77,34 @@ pub enum PadMsg {
     },
     /// Phone → daemon: the trackpad was closed. Let go of everything and remove the devices.
     Bye,
+    /// Phone → daemon: what can run here? Needs the `host` grant, not `input`.
+    Actions,
+    /// Daemon → phone: the actions this computer can run now — only those whose tools exist.
+    ActionList {
+        actions: Vec<ActionInfo>,
+    },
+    /// Phone → daemon: run the action `id`. Needs `host`; answered by [`PadMsg::Ran`].
+    Run {
+        id: String,
+    },
+    /// Daemon → phone: how a [`PadMsg::Run`] went. `message` says why, in plain words, when not.
+    Ran {
+        id: String,
+        ok: bool,
+        #[serde(default)]
+        message: String,
+    },
+}
+
+/// One action the phone may offer: `workspace-next`, "Next workspace", group `Workspace`, and
+/// an icon name from the client's icon set.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ActionInfo {
+    pub id: String,
+    pub name: String,
+    /// `Window`, `Workspace`, `Media`, `Sound`, `System` or `Apps`.
+    pub group: String,
+    pub icon: String,
 }
 
 /// Is `seq` newer than `last`, across `u32` wrap.
@@ -98,6 +126,51 @@ mod tests {
         let s = serde_json::to_string(&m).unwrap();
         assert_eq!(s, r#"{"k":"frame","seq":7,"t":1000,"c":[[0,100,65535]]}"#);
         assert_eq!(serde_json::from_str::<PadMsg>(&s).unwrap(), m);
+    }
+
+    #[test]
+    fn actions_round_trip_tagged_k() {
+        let cases = [
+            (PadMsg::Actions, r#"{"k":"actions"}"#),
+            (
+                PadMsg::ActionList {
+                    actions: vec![ActionInfo {
+                        id: "workspace-next".into(),
+                        name: "Next workspace".into(),
+                        group: "Workspace".into(),
+                        icon: "right".into(),
+                    }],
+                },
+                r#"{"k":"action_list","actions":[{"id":"workspace-next","name":"Next workspace","group":"Workspace","icon":"right"}]}"#,
+            ),
+            (
+                PadMsg::Run {
+                    id: "fullscreen".into(),
+                },
+                r#"{"k":"run","id":"fullscreen"}"#,
+            ),
+            (
+                PadMsg::Ran {
+                    id: "lock".into(),
+                    ok: false,
+                    message: "no".into(),
+                },
+                r#"{"k":"ran","id":"lock","ok":false,"message":"no"}"#,
+            ),
+        ];
+        for (m, s) in cases {
+            assert_eq!(serde_json::to_string(&m).unwrap(), s);
+            assert_eq!(serde_json::from_str::<PadMsg>(s).unwrap(), m);
+        }
+        // `message` may be left out.
+        assert_eq!(
+            serde_json::from_str::<PadMsg>(r#"{"k":"ran","id":"x","ok":true}"#).unwrap(),
+            PadMsg::Ran {
+                id: "x".into(),
+                ok: true,
+                message: String::new()
+            }
+        );
     }
 
     #[test]

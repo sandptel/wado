@@ -7,6 +7,7 @@
 pub mod binds;
 pub mod de;
 pub mod device;
+pub mod device_trackpad;
 pub mod files;
 pub mod gestures;
 pub mod input;
@@ -24,6 +25,7 @@ use std::collections::BTreeMap;
 
 pub use binds::Binds;
 pub use device::Device;
+pub use device_trackpad::DeviceTrackpad;
 pub use files::Files;
 pub use input::Input;
 pub use rules::WindowRule;

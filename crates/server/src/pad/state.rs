@@ -125,6 +125,11 @@ impl Pad {
             PadMsg::Ping { t } => return Some(PadMsg::Pong { t }),
             // Daemon → phone only; a phone sending them is ignored.
             PadMsg::Pong { .. } | PadMsg::Err { .. } | PadMsg::Bye => Ok(()),
+            // Actions are answered before a pad exists (`actions.rs`), never here.
+            PadMsg::Actions
+            | PadMsg::ActionList { .. }
+            | PadMsg::Run { .. }
+            | PadMsg::Ran { .. } => Ok(()),
         };
         result.err().map(|message| PadMsg::Err {
             message,

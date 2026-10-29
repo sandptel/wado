@@ -4,6 +4,7 @@
 //! boundary (see [`website::start`]).
 
 pub mod a11y;
+pub mod actions;
 pub mod apps;
 pub mod audio;
 pub mod cli;

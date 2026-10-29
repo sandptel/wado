@@ -37,6 +37,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // Before `build`, which points WAYLAND_DISPLAY at the session for the apps it launches.
     wado::clip::env::capture();
+    wado::actions::hypr::capture();
     let (frame_tx, frame_rx) = tokio::sync::mpsc::channel(FRAME_CHANNEL_CAPACITY);
     let (mut event_loop, mut state, handles) = wado_compositor::build(frame_tx)?;
 
