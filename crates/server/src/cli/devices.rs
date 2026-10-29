@@ -82,12 +82,14 @@ pub fn unpair(args: &[String]) -> i32 {
         eprintln!("usage: wado unpair <device>   — its name, or the start of its key");
         return 2;
     };
-    report(Gate::default().unpair(who).map(|name| {
+    let gate = Gate::default();
+    let r = gate.unpair(who).map(|name| {
         format!(
             "unpaired {} — it must be approved or paired again",
             bold(&name)
         )
-    }))
+    });
+    report(r).max(pick_help(&gate, who, "unpair", ""))
 }
 
 /// `wado allow <device> <grant>…`, or `deny` with `on` false.
@@ -101,11 +103,31 @@ pub fn allow(args: &[String], on: bool) -> i32 {
         return 2;
     };
     let tokens: Vec<&str> = tokens.iter().map(String::as_str).collect();
-    report(
-        Gate::default()
-            .allow(who, &tokens, on)
-            .map(|(name, g)| format!("{} may now: {}", bold(&name), describe(&g))),
-    )
+    let gate = Gate::default();
+    let r = gate
+        .allow(who, &tokens, on)
+        .map(|(name, g)| format!("{} may now: {}", bold(&name), describe(&g)));
+    report(r).max(pick_help(&gate, who, verb, &tokens.join(" ")))
+}
+
+/// After a lookup that named no device: which devices there are, and the command for the first,
+/// ready to paste. Returns 0 — the failure itself was already reported.
+fn pick_help(gate: &Gate, who: &str, verb: &str, rest: &str) -> i32 {
+    let devices = gate.devices();
+    if gate.find(who).is_ok() || devices.is_empty() {
+        return 0;
+    }
+    eprintln!("  your devices:");
+    for d in &devices {
+        eprintln!("    {}", Gate::typed(&d.name));
+    }
+    let example = format!("wado {verb} {} {rest}", Gate::typed(&devices[0].name));
+    eprintln!("  e.g. {}", accent(example.trim_end()));
+    eprintln!(
+        "  {}",
+        dim("the start of a name works too, any case: wado allow android input")
+    );
+    0
 }
 
 /// Grants as tokens, or what having none means.

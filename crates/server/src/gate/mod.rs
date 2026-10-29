@@ -411,13 +411,30 @@ impl Gate {
         Ok((d.name, g))
     }
 
-    /// The one device `who` names: its key, a prefix of it, or its exact name.
+    /// A device name as it must be typed after `wado allow`: quoted when it has spaces.
+    pub fn typed(name: &str) -> String {
+        if name.contains(char::is_whitespace) {
+            format!("\"{name}\"")
+        } else {
+            name.to_string()
+        }
+    }
+
+    /// The one device `who` names: its key, a prefix of it, its exact name, or — when that
+    /// names nothing — the start of its name, any case (`android` for "Android · Chrome").
     pub fn find(&self, who: &str) -> Result<Device, String> {
         let all = self.devices();
-        let hits: Vec<_> = all
+        let mut hits: Vec<_> = all
             .iter()
             .filter(|d| !who.is_empty() && (d.key.starts_with(who) || d.name == who))
             .collect();
+        if hits.is_empty() && !who.is_empty() {
+            let low = who.to_lowercase();
+            hits = all
+                .iter()
+                .filter(|d| d.name.to_lowercase().starts_with(&low))
+                .collect();
+        }
         match hits.as_slice() {
             [one] => Ok((*one).clone()),
             [] => Err(format!("no trusted device matches `{who}`")),
@@ -576,6 +593,20 @@ mod tests {
     fn temp() -> Gate {
         let dir = std::env::temp_dir().join(format!("wado-gate-{}", rand::random::<u64>()));
         Gate::at(dir)
+    }
+
+    #[test]
+    fn a_device_is_found_by_the_start_of_its_name() {
+        let g = temp();
+        g.trust("k1", "Android · Chrome");
+        g.trust("k2", "Linux · Firefox");
+        assert_eq!(g.find("android").unwrap().key, "k1");
+        assert_eq!(g.find("Android · Chrome").unwrap().key, "k1");
+        assert!(g.find("Mac").is_err());
+        g.trust("k3", "Android · Firefox");
+        assert!(g.find("android").is_err(), "two Androids: ambiguous");
+        assert_eq!(Gate::typed("Android · Chrome"), "\"Android · Chrome\"");
+        assert_eq!(Gate::typed("pixel"), "pixel");
     }
 
     #[test]

@@ -7,11 +7,6 @@ use wado_protocol::pad::Contact;
 
 use super::uinput::{self, EV_ABS, EV_KEY};
 
-/// A phone's CSS px per mm, roughly — the axis `resolution` libinput divides pointer motion
-/// by. ponytail: this is the one knob to turn if pointer speed on the host feels off; it is
-/// not measured per-device, just a reasonable constant for a phone-sized touch surface.
-const CSS_PX_PER_MM: i32 = 6;
-
 const INPUT_PROP_POINTER: u16 = 0x00;
 const INPUT_PROP_BUTTONPAD: u16 = 0x02;
 
@@ -167,7 +162,13 @@ impl Touchpad {
     pub fn new(w_px: u16, h_px: u16) -> io::Result<Touchpad> {
         let w = w_px as i32 * 10;
         let h = h_px as i32 * 10;
-        let res = CSS_PX_PER_MM * 10;
+        // The axis `resolution` libinput divides motion by: the phone's CSS px per mm
+        // (`trackpad { px-per-mm }`), ×10 for the ×10 axis range. Not measured per phone.
+        let res = wado_config::live::current()
+            .trackpad
+            .px_per_mm
+            .clamp(1, 100) as i32
+            * 10;
 
         let device = uinput::Device::open("wado trackpad", |d| {
             d.evbit(EV_KEY)?;

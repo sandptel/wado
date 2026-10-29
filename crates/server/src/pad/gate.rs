@@ -9,10 +9,13 @@ pub fn refused(gate: &Gate, who: &Who, approved: bool) -> Option<String> {
     if !approved {
         return Some("this device has not been approved yet".into());
     }
+    if !wado_config::live::current().trackpad.enabled {
+        return Some("the trackpad is turned off on this computer (trackpad { enabled })".into());
+    }
     if !gate.grants(&who.key).input {
         return Some(format!(
             "this device may not use the trackpad — on the computer: wado allow {} input",
-            who.name
+            Gate::typed(&who.name)
         ));
     }
     None
@@ -53,6 +56,16 @@ mod tests {
             refused(&g, &who("k2", "tab"), false)
                 .unwrap()
                 .contains("not been approved")
+        );
+    }
+
+    #[test]
+    fn a_name_with_spaces_is_quoted_ready_to_paste() {
+        let g = gate();
+        let why = refused(&g, &who("k1", "Android · Chrome"), true).unwrap();
+        assert!(
+            why.ends_with("wado allow \"Android · Chrome\" input"),
+            "{why}"
         );
     }
 

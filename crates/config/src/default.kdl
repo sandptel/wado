@@ -18,7 +18,7 @@ server {
 security {
     // trust-first-device #true        // with an empty trust list, trust the first device
     // join "ask"                      // "ask" (a connected device approves) | "open" (anyone, let in once)
-    // new-device "host"               // what a new device may do: files-ro|files-rw shells settings host clipboard
+    // new-device "host"               // what a new device may do: files-ro|files-rw shells settings host input clipboard
 }
 
 stream {
@@ -52,6 +52,14 @@ files {
     // follow-symlinks "inside"        // "inside" (while they stay in the root) | "never"
     // rate-with-video 40              // Mbps cap on downloads while video is live; 0 = none
     // reserve-mib 1024                // refuse an upload that would leave less free
+}
+
+trackpad {
+    // enabled #true                   // off refuses every phone-as-trackpad; who may use it is
+    //                                 // the `input` grant (wado allow <device> input)
+    // px-per-mm 6                     // larger = smaller virtual pad = slower pointer
+    // finger-silence-ms 400           // a finger with no update this long is lifted
+    // key-silence-ms 5000             // no message at all this long: held keys are let go
 }
 
 binds {

@@ -16,6 +16,7 @@ pub mod server;
 pub mod session;
 pub mod shells;
 pub mod stream;
+pub mod trackpad;
 
 use serde::{Deserialize, Serialize};
 
@@ -31,6 +32,7 @@ pub use server::{Server, Turn};
 pub use session::Session;
 pub use shells::Shells;
 pub use stream::Stream;
+pub use trackpad::Trackpad;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields, rename_all = "kebab-case")]
@@ -42,6 +44,7 @@ pub struct Config {
     pub shells: Shells,
     pub files: Files,
     pub input: Input,
+    pub trackpad: Trackpad,
     /// Keyed by the device's client key.
     pub device: BTreeMap<String, Device>,
     pub binds: Binds,
@@ -60,6 +63,7 @@ impl Default for Config {
             shells: Shells::default(),
             files: Files::default(),
             input: Input::default(),
+            trackpad: Trackpad::default(),
             device: BTreeMap::new(),
             binds: Binds::default(),
             gestures: gestures::defaults(),

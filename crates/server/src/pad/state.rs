@@ -10,14 +10,6 @@ use wado_protocol::pad::{Contact, Mod, PadMsg, newer};
 use super::keys::{char_code, key_code};
 use super::playout::Playout;
 
-/// A finger down with no frame for this long is lifted: the phone is gone or its link is.
-/// The phone re-sends its frame every 100 ms while a finger rests, so this never cuts a hold.
-pub const SILENCE_MS: u64 = 400;
-
-/// No message at all for this long (the phone pings every 2 s) and held keys are let go too: a
-/// phone locked or out of signal with Super locked must not leave it down for good.
-pub const KEYS_SILENCE_MS: u64 = 5000;
-
 /// Where a pad's input lands. The real one is [`super::sink::Devices`].
 pub trait Sink: Send {
     /// Make the devices before they are needed — the keyboard always, the touchpad when the
@@ -39,13 +31,22 @@ pub struct Pad {
     /// When anything at all last arrived, and whether held keys were let go since.
     last_msg_ms: u64,
     keys_released: bool,
+    /// `trackpad { finger-silence-ms }`: a finger down with no frame this long is lifted — the
+    /// phone or its link is gone. The phone re-sends every 100 ms while a finger rests.
+    finger_silence_ms: u64,
+    /// `trackpad { key-silence-ms }`: no message at all this long (the phone pings every 2 s)
+    /// and held keys are let go too, so a locked phone never leaves Super down for good.
+    key_silence_ms: u64,
     playout: Playout,
     text: Vec<String>,
 }
 
 impl Pad {
     pub fn new(sink: Box<dyn Sink>) -> Pad {
+        let cfg = wado_config::live::current().trackpad.clone();
         Pad {
+            finger_silence_ms: cfg.finger_silence_ms,
+            key_silence_ms: cfg.key_silence_ms,
             sink,
             size: None,
             last_seq: None,
@@ -68,8 +69,8 @@ impl Pad {
             PadMsg::Frame { seq, t, c } => {
                 // A reloaded page starts its count again: after a quiet spell with nothing down,
                 // any number is taken as the new start rather than dropped as stale.
-                let restarted =
-                    !self.down && now_ms.saturating_sub(self.last_frame_ms) > SILENCE_MS;
+                let restarted = !self.down
+                    && now_ms.saturating_sub(self.last_frame_ms) > self.finger_silence_ms;
                 if self.last_seq.is_some_and(|last| !newer(seq, last)) && !restarted {
                     return None;
                 }
@@ -127,13 +128,13 @@ impl Pad {
                 err.get_or_insert(e);
             }
         }
-        if self.down && now_ms.saturating_sub(self.last_frame_ms) > SILENCE_MS {
+        if self.down && now_ms.saturating_sub(self.last_frame_ms) > self.finger_silence_ms {
             self.playout.clear();
             if let Err(e) = self.touch(&[]) {
                 err.get_or_insert(e);
             }
         }
-        if !self.keys_released && now_ms.saturating_sub(self.last_msg_ms) > KEYS_SILENCE_MS {
+        if !self.keys_released && now_ms.saturating_sub(self.last_msg_ms) > self.key_silence_ms {
             self.keys_released = true;
             self.sink.release_all();
         }
@@ -200,6 +201,17 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use super::*;
+
+    /// The built-in timings, which a test's pad gets.
+    const KEYS_SILENCE_MS: u64 = 5000;
+    #[test]
+    fn timings_come_from_config_defaults() {
+        let d = wado_config::schema::Trackpad::default();
+        assert_eq!(
+            (d.finger_silence_ms, d.key_silence_ms),
+            (400, KEYS_SILENCE_MS)
+        );
+    }
 
     #[derive(Debug, Clone, PartialEq)]
     enum Call {

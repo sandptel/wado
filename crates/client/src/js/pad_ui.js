@@ -19,6 +19,12 @@
     off: "Connecting to the computer…",
   };
 
+  // What this phone remembers between visits. Never a locked modifier: a key held down must not
+  // come back on its own.
+  const SAVED = "wado.trackpad";
+  const saved = () => { try { return JSON.parse(localStorage.getItem(SAVED)) || {}; } catch (_) { return {}; } };
+  const save = (patch) => { try { localStorage.setItem(SAVED, JSON.stringify({ ...saved(), ...patch })); } catch (_) {} };
+
   let root = null;
   let el = {};
   const fingers = new Map();
@@ -129,7 +135,8 @@
     el.why.textContent = WHY[s] || WHY.off;
   }
 
-  function keyboard(open) {
+  function keyboard(open, remember = true) {
+    if (remember) save({ keyboard: open });
     el.keys.hidden = !open;
     el.kb.setAttribute("aria-expanded", String(open));
     el.kb.querySelector("span").textContent = open ? "Hide keyboard" : "Keyboard";
@@ -150,6 +157,7 @@
     W.padTouch.attach(el.area);
     W.padKeys.attach(el.text, el.row);
     paintPill();
+    if (saved().keyboard) keyboard(true, false);
     if (W.wake) W.wake.acquire();
   };
 
@@ -157,7 +165,7 @@
   function close(viaHistory) {
     if (!root || root.hidden) return;
     if (viaHistory && history.state && history.state.wadoPad) { history.back(); return; }
-    keyboard(false);
+    keyboard(false, false); // closing the trackpad is not choosing "no keyboard"
     W.padTouch.detach();
     W.padKeys.detach();
     W.pad.stop();

@@ -62,6 +62,16 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
                 false,
             ),
             Switch::Shells => ("shells", c.shells.enabled, on_off(c.shells.enabled), false),
+            Switch::Trackpad => (
+                "trackpad",
+                c.trackpad.enabled,
+                if c.trackpad.enabled {
+                    "devices with input"
+                } else {
+                    "off"
+                },
+                false,
+            ),
             Switch::NewDevice => {
                 row(
                     f,

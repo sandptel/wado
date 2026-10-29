@@ -38,14 +38,16 @@ pub enum Switch {
     TrustFirst,
     Files,
     Shells,
+    Trackpad,
     NewDevice,
 }
 
-pub const SWITCHES: [Switch; 5] = [
+pub const SWITCHES: [Switch; 6] = [
     Switch::Join,
     Switch::TrustFirst,
     Switch::Files,
     Switch::Shells,
+    Switch::Trackpad,
     Switch::NewDevice,
 ];
 
@@ -384,6 +386,9 @@ impl App {
                     ),
                     Switch::Files => actions::set("files.enabled", bool_kdl(!s.files.enabled)),
                     Switch::Shells => actions::set("shells.enabled", bool_kdl(!s.shells.enabled)),
+                    Switch::Trackpad => {
+                        actions::set("trackpad.enabled", bool_kdl(!s.trackpad.enabled))
+                    }
                     Switch::NewDevice => {
                         let mut g = Grants::new_device();
                         let (token, on) = flip(&g, col);

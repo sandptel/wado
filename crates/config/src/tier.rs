@@ -14,6 +14,7 @@ pub enum Tier {
 const LIVE: &[&str] = &[
     "stream.",
     "input.",
+    "trackpad.px-per-mm",
     "session.app-cpu-weight",
     "session.audio",
     "binds.",
