@@ -1,14 +1,15 @@
 //! The open pad of the phone on the relay link, whichever way its messages arrive.
 //!
 //! One [`Pad`] serves both transports, so a phone can begin on the relay and move to its direct
-//! link mid-drag without a ghost finger. Touch frames are applied the moment they land (or, when
-//! relayed, when the playout says). Keyboard messages go through one ordered queue, so text typed
+//! link mid-drag without a ghost finger. Touch frames are written on the pad's tick, every
+//! `trackpad { rate-hz }`, by the pacer (`pacer.rs`) — or as they land, on the direct link with
+//! `trackpad { smoothing #false }`. Keyboard messages go through one ordered queue, so text typed
 //! by `wtype` can never be overtaken by the Enter pressed after it. Every message is checked
 //! against the gate first; a refusal answers why and closes the pad.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -25,9 +26,6 @@ use super::sink::Devices;
 use super::state::Pad;
 use crate::files::channel::Who;
 use crate::gate::Gate;
-
-/// How often relayed frames are released and silent fingers checked.
-const TICK: Duration = Duration::from_millis(10);
 
 /// The device on the other end, and whether it may be here — asked again on every message.
 #[derive(Clone)]
@@ -207,10 +205,12 @@ impl Live {
         inner.pad = Some(pad);
         inner.epoch = Some(Instant::now());
 
+        // How often touch frames are written and silent fingers checked.
+        let tick = super::pacer::period(wado_config::live::current().trackpad.rate_hz);
         let ticker = {
             let live = self.clone();
             tokio::spawn(async move {
-                let mut every = tokio::time::interval(TICK);
+                let mut every = tokio::time::interval(tick);
                 every.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
                 loop {
                     every.tick().await;
