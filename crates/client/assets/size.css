@@ -1,0 +1,58 @@
+/* Size (DESIGN.md, "Size"): how big this device draws wado. Two numbers on <html>, written by
+ * js/ui_size.js — `--text-scale` (base.css: the root font size, so every rem) and `--ui-scale`,
+ * the interface size, which is applied here and nowhere else.
+ *
+ * The interface size is `zoom` on the app's own pages and sheets: spacing, radii, control
+ * heights and icons grow or shrink together, and the text with them (Android's "display size";
+ * the text size is its "font size"). Never on the stage: the picture's size is the session's,
+ * and the console, trackpad and gamepad lay themselves out against the glass. `--z` tells
+ * what is inside how much it is zoomed, for the few values that must hold *on the glass*. */
+
+#landing, #computer, #sub, #cc, #wado-files, .pksheet, .wsheet {
+  zoom: var(--ui-scale);
+  --z: var(--ui-scale);
+  --tap: calc(44px / var(--ui-scale));
+}
+
+/* Viewport units inside a zoomed element are zoomed too: what must stay a share of the screen is
+ * divided back. */
+@media (max-width: 719.98px) { #cc { height: min(calc(88dvh / var(--z)), 860px); } }
+.clpick { max-height: min(calc(86dvh / var(--z)), 720px); }
+.fdialog.wide { max-height: calc(80vh / var(--z)); }
+
+/* ── touch targets ─────────────────────────────────────────────────────────────────────────
+ * 44 px on the glass, at every interface size, on a touchscreen. `--tap` is that in the
+ * element's own px (base.css). Controls drawn smaller than a target keep their look: a
+ * transparent border around the drawing is the target, and a negative margin gives the space
+ * back, so nothing around them moves. */
+@media (pointer: coarse) {
+  html .iconbtn, html .fbtn, html .editrow button, html .accent {
+    width: max(44px, var(--tap)); height: max(44px, var(--tap)); }
+  html .btn { min-height: max(48px, var(--tap)); }
+  html .seg button { min-height: max(44px, var(--tap)); }
+  html select, html input[type=text], html input[type=number], html input[type=url] { min-height: max(44px, var(--tap)); }
+  html details > summary { min-height: max(44px, var(--tap)); display: flex; align-items: center; }
+
+  /* Borders are snapped to whole device pixels, so the grown edge is rounded up. */
+  html .sw, html .infobtn, html .lmrun {
+    --grow: round(up, max(0px, (var(--tap) - var(--drawn)) / 2), 1px);
+    box-sizing: content-box; border: var(--grow) solid transparent; margin: calc(-1 * var(--grow));
+    background-clip: padding-box;
+  }
+  html .sw { --drawn: 32px; height: 32px; width: 52px; }
+  html .infobtn { --drawn: 32px; height: 32px; width: 32px; }
+  html .lmrun { --drawn: 36px; height: 36px; margin-left: auto; }
+}
+
+/* ── the Size cards on Appearance (ui/pages/size.rs) ─────────────────────────────────────── */
+.sizestep { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.sizestep .btn { gap: 6px; }
+.sizea { font: 700 1.125rem/1 var(--display); }
+.sizea.small { font-size: .8125rem; }
+/* The sample reads at the size being dragged to (`--p`), whatever the page is at now. */
+.sizesample { display: grid; gap: 2px; padding: 12px 14px; border-radius: var(--r2); background: var(--s0);
+  border: 1px solid var(--line); font-size: calc(16px * var(--p, 1)); min-width: 0; overflow-wrap: anywhere; }
+.sizesample b { font: 700 1.0625em/1.2 var(--display); color: var(--bright); letter-spacing: -.01em; }
+.sizesample span { font-size: .875em; line-height: 1.45; color: var(--text); }
+.sizesample small { font: .75em var(--mono); color: var(--dim); }
+.sizereset { justify-self: start; min-height: max(44px, var(--tap)); padding: 0 4px; color: var(--accent); font-weight: 600; }

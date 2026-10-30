@@ -245,6 +245,9 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/console_prefs.js"),
     "\n",
+    // This device's text and interface size, applied before Rust renders anything.
+    include_str!("js/ui_size.js"),
+    "\n",
     include_str!("js/stage_morph.js"),
     "\n",
     include_str!("js/deck_pad.js"),
@@ -290,6 +293,8 @@ pub const JS: &str = concat!(
     include_str!("js/native_pad.js"),
     "\n",
     include_str!("js/native_passkey.js"),
+    "\n",
+    include_str!("js/native_size.js"),
     "\n",
     include_str!("js/lifecycle.js"),
 );
@@ -801,6 +806,7 @@ pub fn run(ui: Ui) {
                 "caps" => {
                     live.device_name.set(string("device"));
                 }
+                "sizePrefs" => crate::size::on_event(&msg),
                 "stageView" | "arrangement" | "consolePrefs" => {
                     crate::ui::surround::on_event(ui, kind, &msg)
                 }
