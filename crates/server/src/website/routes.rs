@@ -58,10 +58,10 @@ pub(super) async fn handle_conn(mut stream: TcpStream, ctx: Arc<ServerCtx>) -> c
 
     let mut content_length = 0usize;
     for line in lines {
-        if let Some((name, value)) = line.split_once(':') {
-            if name.trim().eq_ignore_ascii_case("content-length") {
-                content_length = value.trim().parse().unwrap_or(0);
-            }
+        if let Some((name, value)) = line.split_once(':')
+            && name.trim().eq_ignore_ascii_case("content-length")
+        {
+            content_length = value.trim().parse().unwrap_or(0);
         }
     }
     if content_length > MAX_BODY_BYTES {

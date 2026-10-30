@@ -96,15 +96,15 @@ impl InputOrder {
             self.stats.held += 1;
         }
         // A gap that never fills must not hold input for good: past 64 waiting, give up on it.
-        if self.strict.len() > 64 {
-            if let Some(&k) = self.strict.keys().next() {
-                self.floor = Some(k);
-                self.seen.retain(|&s| s > k);
-                let rest: Vec<u64> = self.strict.keys().copied().collect();
-                for k in rest {
-                    if let Some(e) = self.strict.remove(&k) {
-                        out.push(e);
-                    }
+        if self.strict.len() > 64
+            && let Some(&k) = self.strict.keys().next()
+        {
+            self.floor = Some(k);
+            self.seen.retain(|&s| s > k);
+            let rest: Vec<u64> = self.strict.keys().copied().collect();
+            for k in rest {
+                if let Some(e) = self.strict.remove(&k) {
+                    out.push(e);
                 }
             }
         }
