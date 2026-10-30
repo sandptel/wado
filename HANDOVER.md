@@ -163,6 +163,22 @@ Timings on the computer side are fine: session stop 9–94 ms, start 87 ms to ac
 - `responsive-check` at 390×844: 36 of 240 states fail on the gamepad screens (`.gpc`) and the
   Computer page's `.vidoorname`.
 
+### 4b. Touchpad variants (asked 2026-10-30, not designed yet)
+- **The user asked for:** several touchpad *types*, like the gamepad's layouts, with the same
+  editor and an animated, "surreal" feel (/motion-design). Candidates:
+  - **Plain**: today's surface.
+  - **Laptop**: a click bar with Left / Right (also covers research P0-5, for when tap-to-click is
+    off).
+  - **Edge scroll**: a vertical strip on the right and a horizontal one at the bottom, scrolling
+    1:1.
+  - **Split**: a pointer area plus a scroll wheel area.
+  - **Precision**: a smaller, slower surface with a pointer-speed boost button.
+  - **Media**: a surface plus a volume/seek ring.
+  - Each has look options (glow trails, contact rings, a grid or texture), size and position.
+- **Build it in the native app (Compose, P3 Virtual input)** first, reusing the gamepad's layout
+  model (`js/gpad/*` documents it) so one model covers gamepad and touchpad. The web version
+  follows from the same model.
+
 ### 5. Touchpad feel (from the research doc)
 - **Frame timing per input batch:** stamp each frame with the event's time, one frame per batch.
   Then retune the pacer's 40 ms ceiling (it sits at max and still starves). Files: `pad_touch.js`,
