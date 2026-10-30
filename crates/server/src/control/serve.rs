@@ -169,6 +169,10 @@ async fn run(msg: RelayMsg, who: &Who, cx: &Ctx) {
             let state = crate::config::link::state_for(&who.key, &cx.gate);
             send(&cx.out, &RelayMsg::ConfigState { state }).await;
         }
+        RelayMsg::SessionsRequest => {
+            let sessions = crate::sessions::list();
+            send(&cx.out, &RelayMsg::Sessions { sessions }).await;
+        }
         RelayMsg::PadIn {
             msg: PadMsg::Actions,
         } => {

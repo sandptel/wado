@@ -150,7 +150,7 @@ async fn a_trusted_device_gets_controls_and_nothing_else() {
     for m in [
         r#"{"type":"session_launch","command":"touch /tmp/x"}"#,
         r#"{"type":"pad_in","msg":{"k":"key","key":"esc","mods":[]}}"#,
-        r#"{"type":"sessions_request"}"#,
+        r#"{"type":"session_stop"}"#,
     ] {
         r.rooms.frame(&r.sh, "r1", &seal(&mut s, m)).await;
         let a = open(&mut o, &r.to_client("r1").await);
@@ -159,6 +159,13 @@ async fn a_trusted_device_gets_controls_and_nothing_else() {
             "{m} → {a}"
         );
     }
+
+    // Which sessions run is shared, read-only: listed on a device's own link (parallel use).
+    r.rooms
+        .frame(&r.sh, "r1", &seal(&mut s, r#"{"type":"sessions_request"}"#))
+        .await;
+    let a = open(&mut o, &r.to_client("r1").await);
+    assert!(a.starts_with(r#"{"type":"sessions""#), "{a}");
 
     // A control still needs its grant: brightness without `host`, the clipboard without
     // `clipboard`, an action without `host`.

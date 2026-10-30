@@ -6,6 +6,7 @@
 //! Re-exports only; each module does one job.
 
 pub mod e2e;
+pub mod feeds;
 pub mod identity;
 pub mod link;
 pub mod os_logo;
