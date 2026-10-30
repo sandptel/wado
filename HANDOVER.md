@@ -43,8 +43,7 @@ starting point for picking the remaining work up **one item at a time**. Read `C
 
 ## 2. Waiting on you (not code)
 
-- [ ] `scripts/relay-deploy.sh`: the public relay is still the old one. Join (F6), the enforced
-      64 KB/s lane and the "your other device is connected" wording need it.
+- [x] Relay deployed 2026-10-30 (v0.0.4, 12 caps, lane 64 KB/s). The previous binary is at `~/wado-relay.prev` on the VM.
 - [ ] Kill leftover processes: `kill 637729 1031976` (old keep-awake holds that stop the laptop
       sleeping; the bug is fixed) and `kill 1101120 1101121` (a test server and Chrome).
 - [ ] Optional: `wado allow "<device>" input` for the trackpad, and `join takeover` for older
@@ -56,6 +55,30 @@ starting point for picking the remaining work up **one item at a time**. Read `C
 ## 3. Open work, ranked: take one at a time
 
 Each item has what you'd see, the evidence, where to start, and a suggested approach.
+
+### 0. Daemon hangs when big clipboard data floods the relay lane (found 2026-10-30 17:30Z)
+- **You see:** new devices can't connect. The daemon still says "connected", but the relay shows
+  `servers: 0`, and the daemon log goes silent; even the 45 s relay-silence warning never fires.
+- **Evidence:**
+  - `slow: lane clip_data #67 took 5534 ms (… 31 bulk / 16459 KB still waiting)` at 17:30:26.
+  - The last log line is at 17:31:17.
+  - Thread state: `wado-relay-clie` blocked in `futex_do_wait`; the main loop never returned to
+    `ws_stream.next()`.
+  - No backtrace: `ptrace_scope=1`, so gdb needs sudo.
+- **Likely chain** (not confirmed with a backtrace):
+  1. With no direct path, clipboard picture data (F10 `clip_data`, up to 8 MiB each) goes over
+     the 64 KB/s lane.
+  2. About 16 MB queues up.
+  3. The relay loop blocks waiting for room in the lane.
+  4. The relay's pings go unanswered, and the link dies unnoticed.
+- **Fix direction:**
+  - The main loop must never block on lane room. Hand bulk sends to a task with a bounded queue.
+  - Clipboard pictures over 1 MB wait for a direct path, as files do, or go as a "picture on the
+    computer, open when direct" note.
+  - The silence timeout must also cover a stuck handler: a watchdog task, not just the
+    `timeout(next())` arm.
+- **Start at:** `crates/server/src/lane/`, `crates/server/src/clip/share.rs`, the
+  `relay_client.rs` main loop (`RELAY_SILENCE`).
 
 ### 1. No picture when the computer is on the phone's hotspot
 - **You see:** "Connecting…" forever, then "Relayed — limited", no picture.
