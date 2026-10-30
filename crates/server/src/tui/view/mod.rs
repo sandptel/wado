@@ -156,7 +156,7 @@ fn footer(app: &App) -> Paragraph<'static> {
             ("c", "copy link"),
             ("z", "QR size"),
         ],
-        Card::Devices => &[("space", "flip"), ("x", "unpair")],
+        Card::Devices => &[("space", "flip"), ("L", "lock passkey"), ("x", "unpair")],
         Card::Switches => &[("space", "flip")],
     };
     for (k, what) in hints

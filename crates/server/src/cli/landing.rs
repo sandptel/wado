@@ -37,8 +37,8 @@ pub const COMMANDS: &[(&str, &[(&str, &str)])] = &[
                 "files-ro files-rw shells settings host",
             ),
             (
-                "passkey [remove <device>]",
-                "who has a passkey; remove one a device lost",
+                "passkey [lock|remove <device>]",
+                "who has a passkey; lock one now; remove one a device lost",
             ),
         ],
     ),

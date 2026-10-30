@@ -239,6 +239,12 @@ impl App {
                     self.confirm = Some((row.device.key.clone(), row.device.name.clone()));
                 }
             }
+            KeyCode::Char('L') if self.focus == Card::Devices => {
+                if let Some(row) = self.snap.devices.get(self.cursor[1].0) {
+                    let (key, name) = (row.device.key.clone(), row.device.name.clone());
+                    self.done(actions::passkey_lock(&key, &name));
+                }
+            }
             KeyCode::Char('z') => self.big_qr = !self.big_qr,
             KeyCode::Char('n') => {
                 self.mint();
