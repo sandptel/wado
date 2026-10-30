@@ -6,3 +6,7 @@
 //! Re-exports only; each module does one job.
 
 pub mod e2e;
+pub mod identity;
+pub mod pins;
+pub mod secret;
+pub mod store;
