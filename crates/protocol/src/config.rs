@@ -118,6 +118,41 @@ pub struct TrackpadPrefs {
     /// older daemon, which always meant 1.
     #[serde(default = "one")]
     pub speed: f64,
+    /// Two-finger scroll speed, 0.25–2.0.
+    #[serde(default = "one")]
+    pub scroll_speed: f64,
+    /// Natural scrolling; `None` leaves the computer's own setting.
+    #[serde(default)]
+    pub natural: Option<bool>,
+    /// Tap to click.
+    #[serde(default = "yes")]
+    pub tap: bool,
+    /// Tap, then drag.
+    #[serde(default = "yes")]
+    pub tap_drag: bool,
+    /// `off`, `briefly` or `until-tap`.
+    #[serde(default = "off")]
+    pub drag_lock: String,
+    /// The phone's press bar.
+    #[serde(default)]
+    pub click_bar: bool,
+    /// The phone ignores resting thumbs.
+    #[serde(default = "yes")]
+    pub palm: bool,
+    /// The phone draws finger marks.
+    #[serde(default = "yes")]
+    pub marks: bool,
+    /// `short`, `medium` or `long`: wado's own phone gestures.
+    #[serde(default = "medium")]
+    pub gesture_distance: String,
+}
+
+fn off() -> String {
+    "off".into()
+}
+
+fn medium() -> String {
+    "medium".into()
 }
 
 fn one() -> f64 {
@@ -135,6 +170,15 @@ impl Default for TrackpadPrefs {
             gestures: Default::default(),
             keyboard: false,
             speed: 1.0,
+            scroll_speed: 1.0,
+            natural: None,
+            tap: true,
+            tap_drag: true,
+            drag_lock: off(),
+            click_bar: false,
+            palm: true,
+            marks: true,
+            gesture_distance: medium(),
         }
     }
 }
@@ -241,7 +285,13 @@ mod tests {
         .unwrap();
         assert!(s.caps.is_empty());
         assert!(s.gamepad.is_none() && s.keyboard.is_none());
-        assert_eq!(s.trackpad.unwrap().speed, 1.0);
+        let t = s.trackpad.unwrap();
+        assert_eq!((t.speed, t.scroll_speed, t.natural), (1.0, 1.0, None));
+        assert!(t.tap && t.tap_drag && t.palm && t.marks && !t.click_bar);
+        assert_eq!(
+            (t.drag_lock.as_str(), t.gesture_distance.as_str()),
+            ("off", "medium")
+        );
     }
 
     #[test]

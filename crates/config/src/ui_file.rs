@@ -328,6 +328,55 @@ mod tests {
         );
         assert_eq!(c.device["k1"].trackpad.clone().unwrap().speed, 1.25);
 
+        // The touchpad's feel, each with its plain value; `natural` unset by an empty one.
+        for (k, v) in [
+            ("scroll-speed", "0.5"),
+            ("natural", "true"),
+            ("tap", "false"),
+            ("tap-drag", "false"),
+            ("drag-lock", "briefly"),
+            ("click-bar", "true"),
+            ("palm", "false"),
+            ("marks", "false"),
+            ("gesture-distance", "short"),
+        ] {
+            set_at(
+                &main,
+                &ui,
+                &format!("device.k1.trackpad.{k}"),
+                parse_values(v),
+            )
+            .unwrap_or_else(|e| panic!("{k}: {e}"));
+        }
+        let t = crate::kdl::load(&main).unwrap().device["k1"]
+            .trackpad
+            .clone()
+            .unwrap();
+        assert_eq!(
+            (t.scroll_speed, t.natural, t.tap, t.tap_drag),
+            (0.5, Some(true), false, false)
+        );
+        assert_eq!(
+            (t.drag_lock.as_str(), t.gesture_distance.as_str()),
+            ("briefly", "short")
+        );
+        assert!(t.click_bar && !t.palm && !t.marks);
+        set_at(&main, &ui, "device.k1.trackpad.natural", parse_values("")).unwrap();
+        let t = crate::kdl::load(&main).unwrap().device["k1"]
+            .trackpad
+            .clone()
+            .unwrap();
+        assert_eq!(t.natural, None, "unset: the computer's own setting again");
+        assert!(
+            set_at(
+                &main,
+                &ui,
+                "device.k1.trackpad.drag-lock",
+                parse_values("always")
+            )
+            .is_err()
+        );
+
         // Saved again: replaced, not doubled. Emptied: deleted.
         set_at(
             &main,

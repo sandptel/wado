@@ -11,6 +11,8 @@
 //! - `delay.rs` — how far behind the phone the pacer plays: measured, or fixed.
 //! - `arrivals.rs` — how evenly frames arrive, logged so jitter is measured, not assumed.
 //! - `sink.rs` — the devices a pad drives, made on first use.
+//! - `feel.rs` — when a phone's touchpad settings (speed, scroll, tapping) are applied on the
+//!   computer: at its pad's first size, and when it changes them while the pad is open.
 //! - `game.rs` — the sessionless gamepad: made on first use, let go when the screen closes,
 //!   removed 30 s later; axes centred after silence.
 //! - `gate.rs` — who may use the trackpad, asked of every message.
@@ -30,6 +32,7 @@ pub mod arrivals;
 pub mod bin;
 pub mod channel;
 pub mod delay;
+pub mod feel;
 pub mod game;
 pub mod gate;
 pub mod keys;

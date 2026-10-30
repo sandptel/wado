@@ -110,7 +110,7 @@ pub fn resolve(captured: Option<&str>, dir: &Path) -> Option<String> {
 }
 
 /// `hyprctl args…` against the current instance; its stdout.
-async fn hyprctl(args: &[&str]) -> Result<String, String> {
+pub(super) async fn hyprctl(args: &[&str]) -> Result<String, String> {
     let sig = signature().ok_or("Hyprland is not running on this computer")?;
     let out = tokio::time::timeout(
         DEADLINE,

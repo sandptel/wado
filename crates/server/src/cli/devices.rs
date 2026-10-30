@@ -57,7 +57,7 @@ pub fn list() -> i32 {
 }
 
 /// Its virtual input, when it has chosen anything: `gamepad racing · a controller · 2 saved ·
-/// pointer 1.25×`. `None` for a device that never opened the gamepad or changed its speed.
+/// pointer 1.25× · scroll 0.5×`. `None` for a device that never opened the gamepad or changed its speed.
 fn input_line(d: &wado_config::schema::Device) -> Option<String> {
     let mut parts = Vec::new();
     if let Some(g) = &d.gamepad {
@@ -72,8 +72,13 @@ fn input_line(d: &wado_config::schema::Device) -> Option<String> {
         }
         parts.push(s);
     }
-    if let Some(t) = d.trackpad.as_ref().filter(|t| t.speed != 1.0) {
-        parts.push(format!("pointer {}×", t.speed));
+    if let Some(t) = &d.trackpad {
+        if t.speed != 1.0 {
+            parts.push(format!("pointer {}×", t.speed));
+        }
+        if t.scroll_speed != 1.0 {
+            parts.push(format!("scroll {}×", t.scroll_speed));
+        }
     }
     (!parts.is_empty()).then(|| parts.join(" · "))
 }
@@ -188,7 +193,8 @@ mod tests {
             r#"device "k" { gamepad { layout "racing"; mine { mine-1 "A" "racing" "{}"; mine-2 "B" "xbox" "{}" } }
                trackpad { speed 1.25 } }
                device "j" { trackpad { speed 1 } }
-               device "m" { gamepad { drives "keys" } }"#,
+               device "m" { gamepad { drives "keys" } }
+               device "s" { trackpad { scroll-speed 0.5 } }"#,
         )
         .unwrap();
         assert_eq!(
@@ -196,6 +202,7 @@ mod tests {
             Some("gamepad racing · a controller · 2 saved · pointer 1.25×")
         );
         assert_eq!(input_line(&c.device["j"]), None, "nothing chosen");
+        assert_eq!(input_line(&c.device["s"]).as_deref(), Some("scroll 0.5×"));
         assert_eq!(
             input_line(&c.device["m"]).as_deref(),
             Some("gamepad xbox · keys & mouse")
