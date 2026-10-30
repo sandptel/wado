@@ -23,6 +23,10 @@ pub struct Reach {
     pub online: bool,
     /// Every seat is taken by another device.
     pub busy: bool,
+    /// With `busy`: the device holding it, and whether anything runs there — `Some(false)`: an
+    /// open page with nothing running (the relay's `idle_seat`); `None`: not known.
+    pub holder: String,
+    pub running_there: Option<bool>,
     pub host: Option<HostState>,
     pub config: Option<ConfigState>,
     /// When it was last seen online, as words ("2 h ago"); empty if never.
@@ -89,10 +93,31 @@ pub fn of(ui: Ui, key: &str) -> Reach {
         // Pairing: the relay let this device through, but the computer has not said yes.
         let confirming = !(live.pair_sas)().is_empty();
         let unpaired = !(live.unpaired)().is_empty();
+        let seat = (live.seat_busy)();
+        // Refused for a held seat: the relay only says so with a daemon registered — it is online.
+        let online = online || seat.is_some();
+        let (holder, running_there) = seat
+            .clone()
+            .map_or((String::new(), None), |(h, idle)| (h, idle.map(|i| !i)));
+        let other = if holder.is_empty() {
+            "another device".to_string()
+        } else {
+            holder.clone()
+        };
         let (tone, words) = match link.state.as_str() {
             _ if confirming => ("warn", "Waiting for the computer to confirm".to_string()),
             _ if unpaired => ("warn", "Not paired with this phone yet".to_string()),
-            _ if (live.session_on)() && stage >= 4 => ("ok", "Streaming".to_string()),
+            // Held by an open page with nothing running: online, and one tap away — not an error.
+            _ if seat.is_some() && running_there == Some(false) => (
+                "ok",
+                format!("Online · {other} is connected, nothing running"),
+            ),
+            _ if seat.is_some() => ("warn", "In use on another device".into()),
+            // Streaming only while a direct path carries it: a picture once seen is not one now,
+            // and a green dot must not say so (Decision Log 2026-10-27).
+            _ if (live.session_on)() && stage >= 4 && link.state == "direct" => {
+                ("ok", "Streaming".to_string())
+            }
             "direct" => (
                 "ok",
                 link.rtt_ms
@@ -118,7 +143,9 @@ pub fn of(ui: Ui, key: &str) -> Reach {
             nolive: "",
             selected: true,
             tone,
-            busy: words.starts_with("In use"),
+            busy: seat.is_some() || words.starts_with("In use"),
+            holder,
+            running_there,
             words,
             online,
             host,
@@ -146,6 +173,8 @@ pub fn of(ui: Ui, key: &str) -> Reach {
             selected: false,
             tone,
             busy: false,
+            holder: String::new(),
+            running_there: None,
             words,
             online,
             host: side.host,
@@ -165,6 +194,8 @@ pub fn of(ui: Ui, key: &str) -> Reach {
         selected: false,
         tone,
         busy: false,
+        holder: String::new(),
+        running_there: None,
         words,
         online,
         host: None,

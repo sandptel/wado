@@ -96,9 +96,22 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
             |t| t.trim_start_matches("https://").into(),
         ),
     );
+    // A daemon that lost its relay says so, and says whose fault it is not (`crate::relay_watch`).
+    let relay = match s.relay_lost_ms() {
+        Some(ms) => pill(
+            false,
+            "relay",
+            format!(
+                "{} — lost {} ago, not your computer",
+                s.relay_addr,
+                crate::relay_watch::record::span(ms)
+            ),
+        ),
+        None => pill(s.relay.is_some(), "relay", s.relay_addr.clone()),
+    };
     let lines = vec![
         Line::from(
-            pill(s.relay.is_some(), "relay", s.relay_addr.clone())
+            relay
                 .spans
                 .into_iter()
                 .chain([Span::styled(

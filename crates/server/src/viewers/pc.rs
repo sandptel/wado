@@ -26,6 +26,7 @@ use wado_compositor::InputEvent;
 use wado_protocol::{FAST_CHANNEL, INPUT_CHANNEL, MOTION_CHANNEL, multi::PRESENCE_CHANNEL};
 
 use super::Hub;
+use super::trickle::Trickle;
 use crate::session::membership::Origin;
 
 /// Where a participant's current peer connection lives, and the generation that lets a stale
@@ -77,14 +78,16 @@ pub fn candidate_types(sdp: &str) -> String {
 }
 
 /// Answer one participant's offer: a new peer connection in `slot`, replacing (and closing) the
-/// one before. Returns the answer's JSON.
+/// one before. Returns the answer's JSON, and the [`Trickle`] to open once it has been sent —
+/// candidates gathered after it then follow on `out` (`super::trickle`).
 pub async fn answer(
     hub: &Arc<Hub>,
     origin: Origin,
     offer_json: &str,
     slot: &Slot,
     peer: String,
-) -> crate::Result<String> {
+    out: Option<tokio::sync::mpsc::Sender<String>>,
+) -> crate::Result<(String, Trickle)> {
     let offer: RTCSessionDescription = serde_json::from_str(offer_json)
         .map_err(|e| crate::WadoError::Other(format!("bad SDP: {e}")))?;
     let offered_at = std::time::Instant::now();
@@ -326,18 +329,17 @@ pub async fn answer(
         Box::pin(async {})
     }));
 
+    let trickle = Trickle::watch(&pc, out);
     pc.set_remote_description(offer).await?;
     let answer = pc.create_answer(None).await?;
     let mut gather = pc.gathering_complete_promise().await;
     pc.set_local_description(answer).await?;
-    // Bounded: see `crate::ice::GATHER_WAIT`. Waiting for gathering to *complete* is what a
-    // dead STUN server turns into a 15-second answer, and the client has left by then.
-    if tokio::time::timeout(crate::ice::GATHER_WAIT, gather.recv())
-        .await
-        .is_err()
-    {
+    // Not until gathering *completes* (a dead STUN server makes that seconds): until the answer
+    // has what a connection needs, the rest trickling after it (`super::trickle`). Bounded by
+    // `crate::ice::GATHER_WAIT` all the same.
+    if trickle.enough(&mut gather, crate::ice::GATHER_WAIT).await {
         warn!(
-            "ICE gathering still running after {:?} — answering with what we have. A STUN \
+            "ICE gathering found nothing usable in {:?} — answering with what we have. A STUN \
              server is not replying; webrtc-ice gives each one a fixed 5s before giving up.",
             crate::ice::GATHER_WAIT
         );
@@ -368,5 +370,5 @@ pub async fn answer(
              ICE goes checking, disconnected, failed."
         );
     }
-    Ok(answer_json)
+    Ok((answer_json, trickle))
 }

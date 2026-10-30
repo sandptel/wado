@@ -116,9 +116,11 @@ impl Pad {
                 self.text.push(text);
                 Ok(())
             }
-            PadMsg::Ping { t } => return Some(PadMsg::Pong { t }),
-            // Daemon → phone only; a phone sending them is ignored.
-            PadMsg::Pong { .. } | PadMsg::Err { .. } | PadMsg::Bye => Ok(()),
+            // A phone that offers compact touch frames is told it may send them (`pad_bin`).
+            PadMsg::Ping { t, bin } => return Some(PadMsg::Pong { t, bin }),
+            // Daemon → phone only; a phone sending them is ignored. A compact frame is unpacked
+            // before it gets here (`super::bin`).
+            PadMsg::Pong { .. } | PadMsg::Err { .. } | PadMsg::Bye | PadMsg::Bin { .. } => Ok(()),
             // Actions are answered before a pad exists (`actions.rs`), never here.
             PadMsg::Actions
             | PadMsg::ActionList { .. }
@@ -335,8 +337,13 @@ mod tests {
     fn ping_is_answered() {
         let (mut p, _) = pad();
         assert_eq!(
-            p.handle(0, PadMsg::Ping { t: 5 }, false),
-            Some(PadMsg::Pong { t: 5 })
+            p.handle(0, PadMsg::Ping { t: 5, bin: false }, false),
+            Some(PadMsg::Pong { t: 5, bin: false })
+        );
+        // Offered compact frames: accepted.
+        assert_eq!(
+            p.handle(0, PadMsg::Ping { t: 6, bin: true }, false),
+            Some(PadMsg::Pong { t: 6, bin: true })
         );
     }
 

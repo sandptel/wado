@@ -14,8 +14,9 @@
 // Emitted to Rust as {type:"link", …} on change and with a fresh RTT every 2 s, and kept as
 // `W.linkNow` for device_status.js. `nat` is the computer's own NAT verdict (`host_net`).
 
-W.linkNow = { state: "offline", path: "", rtt_ms: null, net: "", nat: "", turn: false };
+W.linkNow = { state: "offline", path: "", rtt_ms: null, net: "", nat: "", turn: false, cause: "" };
 W._relayWaitingNow = "";    // the relay's reason while it parks this join
+W.iceCause = "";            // why the last ICE attempt failed, when this device can tell ("warp")
 
 // The selected candidate pair, from the transport's own pointer. The stats loop's "any
 // succeeded pair" is not the same thing: after a re-route the last pair it sees can be stale.
@@ -43,7 +44,8 @@ function netType() {
 
 let last = "";
 W.linkTick = async () => {
-  const now = { state: "offline", path: "", rtt_ms: null, net: netType(), nat: W.linkNow.nat, turn: W.linkNow.turn };
+  const now = { state: "offline", path: "", rtt_ms: null, net: netType(), nat: W.linkNow.nat, turn: W.linkNow.turn,
+    cause: W.iceCause || "" };
   const pc = W.pc;
   if (!navigator.onLine) now.state = "offline";
   else if (W.recovery && W.sessionOn) now.state = "reconnecting";
@@ -59,6 +61,13 @@ W.linkTick = async () => {
   else if (W._relayWaitingNow) {
     now.state = /no computer/i.test(W._relayWaitingNow) ? "computer_offline" : "waiting";
     now.why = W._relayWaitingNow;
+  }
+  // Refused because another device holds the seat: the relay and the computer are both fine, so
+  // this is never "offline" or "relay unreachable" — it is waiting on that device.
+  else if (W._relaySeatBusy) {
+    const b = W._relaySeatBusy, who = b.holder || "another device";
+    now.state = "waiting";
+    now.why = b.idle === true ? "your other device, " + who + ", is connected — nothing is running there" : "in use on " + who;
   }
   else if (W.recovery) now.state = "reconnecting";
   // "offline" has two causes and only one is this device's: say which.

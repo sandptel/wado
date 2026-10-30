@@ -6,8 +6,11 @@
 //                             shell | pad | files | allow | claude | new | add | paired | again
 //   W.passkeyGo()             the sheet's button: unlock, or add a passkey if there is none
 //   W.passkeyAdd()            add (or, while unlocked, replace) this device's passkey
+//   W.passkeyFor(what, fn)    straight into adding or unlocking for an open door, then `fn`
 //   W.passkeyCancel()         the sheet was dismissed
 //   W.passkeyLockNow()        lock at once
+//   W.passkeyStay(stay, leave?) how long an unlock lasts here — "15m" | "1h" | "8h" | "lock" —
+//                             and whether leaving the app locks it; only while unlocked
 //   W.passkeyIsLock(text)     is this one of the daemon's passkey refusals?
 //
 // It locks itself after the daemon's idle window without the person touching the app, and the
@@ -66,7 +69,34 @@
     return false;
   };
 
-  W.passkeyCancel = () => { P.need = ""; then = null; P.note = ""; P.busy = false; say(); };
+  // Busy never outlasts the computer's silence: waiting on its answer (not on the person's own
+  // passkey prompt, which has its own timeout) gives up after WAIT and says so, back to a button
+  // that works. A button that just stays "waiting" is how this looked broken (2026-10-30).
+  const WAIT = 20000;
+  const OFFLINE = "Not connected to the computer right now — try again when it is back.";
+  let waitTimer = 0;
+  const waitFor = () => {
+    clearTimeout(waitTimer);
+    waitTimer = setTimeout(() => {
+      if (!P.busy) return;
+      P.busy = false;
+      P.note = "The computer didn't answer — check that it is online, then try again.";
+      if (W.rlog) W.rlog("passkey: no answer from the computer in " + WAIT / 1000 + " s");
+      say();
+    }, WAIT);
+  };
+  const settle = () => clearTimeout(waitTimer);
+  // Send, and wait for the computer's answer; or say at once that the link is down.
+  const ask_ = (msg) => {
+    if (send(msg)) { waitFor(); return true; }
+    settle();
+    P.busy = false;
+    P.note = OFFLINE;
+    say();
+    return false;
+  };
+
+  W.passkeyCancel = () => { settle(); P.need = ""; then = null; P.note = ""; P.busy = false; say(); };
 
   W.passkeyGo = (purpose) => {
     if (P.busy) return;
@@ -74,11 +104,7 @@
     P.busy = true;
     say();
     purpose = purpose || (P.state.registered ? "unlock" : "register");
-    if (!send({ type: "passkey_begin", purpose })) {
-      P.busy = false;
-      P.note = "Not connected to the computer right now — try again when it is back.";
-      say();
-    }
+    ask_({ type: "passkey_begin", purpose });
   };
 
   // Add one, or replace this device's (the daemon allows that only while unlocked).
@@ -88,10 +114,36 @@
     W.passkeyGo("register");
   };
 
+  // Straight into the ceremony for `what` — add one if there is none, else unlock — and run
+  // `fn` once unlocked. For a door that is already open (the trackpad's refusal card).
+  W.passkeyFor = (what, fn) => {
+    P.need = what;
+    then = fn || null;
+    if (!P.state.registered) P.adding = true;
+    W.passkeyGo(P.state.registered ? "unlock" : "register");
+  };
+
   W.passkeyLockNow = () => {
     if (P.state.unlocked) send({ type: "passkey_lock" });
     P.state = Object.assign({}, P.state, { unlocked: false, idle_left_s: 0 });
     say();
+  };
+
+  // How long an unlock lasts on this device: "15m" | "1h" | "8h" | "lock" (until it locks
+  // itself), and whether leaving the app locks it. Only while unlocked — the daemon checks too.
+  W.passkeyStay = (stay, lockOnLeave) => {
+    if (!P.state.unlocked) return;
+    if (typeof lockOnLeave !== "boolean") {
+      // "Until I lock it" starts with leaving the app not locking it; the switch can turn it back.
+      lockOnLeave = stay === "lock" ? false : P.state.stay === "lock" ? true : P.state.lock_on_leave !== false;
+    }
+    P.state = Object.assign({}, P.state, { stay, lock_on_leave: lockOnLeave });
+    P.note = "";
+    say();
+    if (!send({ type: "passkey_stay", stay, lock_on_leave: lockOnLeave })) {
+      P.note = OFFLINE;
+      say();
+    }
   };
 
   function friendly(e) {
@@ -105,6 +157,7 @@
 
   // The daemon's challenge: make or use the passkey over it.
   W.relayOn("passkey_challenge", async (m) => {
+    settle(); // the person's own prompt now: its timeout, not ours
     picking = Date.now();
     P.busy = true;
     say();
@@ -122,7 +175,7 @@
             timeout: 120000,
           },
         });
-        send({
+        ask_({
           type: "passkey_register",
           client_data: enc(c.response.clientDataJSON),
           attestation: enc(c.response.attestationObject),
@@ -137,7 +190,7 @@
             timeout: 120000,
           },
         });
-        send({
+        ask_({
           type: "passkey_unlock",
           cred_id: enc(a.rawId),
           client_data: enc(a.response.clientDataJSON),
@@ -158,6 +211,7 @@
     const adding = P.adding;
     P.adding = false;
     P.state = m.state || P.state;
+    settle();
     P.busy = false;
     P.note = P.state.error || "";
     let go = "";
@@ -185,12 +239,15 @@
     say({ go });
   });
 
-  // A new link: the daemon has locked every window, so this page starts locked too.
+  // A new link: the daemon has locked every window bound to a link, so this page starts locked
+  // too — unless this device chose a longer unlock, which outlives a reconnect; the daemon's
+  // answer to `passkey_get` settles it either way.
   {
     const up = W._relayHandlers.__up;
     W.relayOn("__up", (m) => {
       if (up) up(m);
-      P.state = Object.assign({}, P.state, { unlocked: false, idle_left_s: 0 });
+      const kept = P.state.unlocked && P.state.stay && P.state.stay !== "15m";
+      if (!kept) P.state = Object.assign({}, P.state, { unlocked: false, idle_left_s: 0 });
       // Just paired with a code: offer the passkey as the pairing's last step.
       P.offer = !!W.e2eJustPaired;
       W.e2eJustPaired = false;
@@ -207,7 +264,8 @@
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") { picking = 0; return; }
     if (picking && Date.now() - picking < 120000) return;
-    if (P.state.unlocked) W.passkeyLockNow();
+    // Unless this device turned "Lock when I leave the app" off (an older daemon never says).
+    if (P.state.unlocked && P.state.lock_on_leave !== false) W.passkeyLockNow();
   });
   const touched = () => {
     lastAct = Date.now();
@@ -221,6 +279,7 @@
   }
   setInterval(() => {
     if (!P.state.unlocked) return;
+    if (P.state.stay === "lock") return; // until it locks itself: no idle clock
     const idle = (P.state.idle_s || 900) * 1000;
     if (Date.now() - lastAct > idle) {
       if (W.rlog) W.rlog("passkey: idle — locked");
@@ -244,10 +303,15 @@
   }
   if (W.pad && W.pad.onMsg) {
     W.pad.onMsg((m) => {
+      // The pad stays open: its refusal card (js/pad_why.js) offers the passkey right there.
+      // Asked, not assumed: a refusal can arrive late (the direct offer's, after an unlock in
+      // between), and the computer's answer is what stands.
+      // Shown locked at once all the same, so the answer is not read as "it locked itself while
+      // you were away" — the pad's card is already saying so, with its own Unlock.
       if (m && m.k === "err" && W.passkeyIsLock(m.message)) {
-        P.state.unlocked = false;
-        if (W.padClose) W.padClose();
-        ask("pad", () => W.padOpen && W.padOpen());
+        P.state = Object.assign({}, P.state, { unlocked: false, idle_left_s: 0 });
+        send({ type: "passkey_get" });
+        say();
       }
     });
   }

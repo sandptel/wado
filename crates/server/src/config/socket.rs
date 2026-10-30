@@ -79,7 +79,17 @@ fn answer(req: &str) -> String {
             }
         }
         (Some("devices"), None, None) => devices(),
-        _ => "error: commands are reload | get [key] | set <key> [value] | devices\n".into(),
+        // `wado passkey lock|remove`, `wado tui`: shut a device's unlock window (or all) now.
+        (Some("passkey-lock"), Some("all"), None) => {
+            crate::passkey::unlock::lock_every();
+            "ok\n".into()
+        }
+        (Some("passkey-lock"), Some(key), None) => {
+            crate::passkey::unlock::lock(key);
+            "ok\n".into()
+        }
+        _ => "error: commands are reload | get [key] | set <key> [value] | devices | passkey-lock <key|all>\n"
+            .into(),
     }
 }
 

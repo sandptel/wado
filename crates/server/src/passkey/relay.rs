@@ -4,7 +4,7 @@
 use base64::Engine as _;
 use tokio::sync::mpsc;
 use tracing::{info, warn};
-use wado_protocol::passkey::{PasskeyState, REGISTER, UNLOCK};
+use wado_protocol::passkey::{PasskeyState, REGISTER, STAY_DEFAULT, UNLOCK, stay_idle_s};
 use wado_protocol::relay::RelayMsg;
 
 use super::{Store, challenge, unlock, verify};
@@ -24,27 +24,77 @@ fn enc(b: &[u8]) -> String {
 /// Where `key` stands, with `error` said if the last step failed.
 pub fn state(store: &Store, key: &str, error: &str) -> PasskeyState {
     let cred = store.get(key);
-    let left = unlock::left(key);
+    let left = unlock::left_in(store, key);
+    let prefs = store.prefs(key);
+    let idle = prefs.idle();
     PasskeyState {
         registered: cred.is_some(),
         unlocked: left.is_some(),
-        idle_left_s: left.map_or(0, |d| d.as_secs() as u32),
-        idle_s: unlock::IDLE.as_secs() as u32,
+        // Without an idle clock there is nothing to count down: 0, like `idle_s`.
+        idle_left_s: left
+            .filter(|_| idle.is_some())
+            .map_or(0, |d| d.as_secs().min(u64::from(u32::MAX)) as u32),
+        idle_s: idle.map_or(0, |d| d.as_secs() as u32),
         error: error.to_string(),
         origin: cred.map(|c| c.origin).unwrap_or_default(),
+        stay: if stay_idle_s(&prefs.stay).is_some() {
+            prefs.stay
+        } else {
+            STAY_DEFAULT.into()
+        },
+        lock_on_leave: prefs.lock_on_leave,
     }
 }
 
-/// Answer one passkey message. Anything else is ignored.
+/// Why this link may not use a passkey at all, in the device's words; `None` when it may.
+fn not_here(dev: &Device<'_>, store: &Store) -> Option<&'static str> {
+    if dev.key.is_empty() {
+        Some(
+            "This browser sent no device key, so it can't hold a passkey here — allow site storage for wado and reconnect.",
+        )
+    } else if !dev.ok {
+        Some(
+            "This device isn't let in on this computer yet — wait for the link to finish connecting, then try again.",
+        )
+    } else if store.gate().entry(dev.key).is_none() {
+        Some(
+            "This device isn't on this computer's trust list — pair it again (`wado pair` on the computer).",
+        )
+    } else {
+        None
+    }
+}
+
+/// Answer one passkey message, always: a request this link cannot serve is answered with a state
+/// saying why, never dropped — a dropped one left the phone's button waiting on nothing.
 pub async fn handle(msg: RelayMsg, dev: Device<'_>, tx: &mpsc::Sender<String>) {
-    let store = Store::default();
-    if !dev.ok || dev.key.is_empty() || crate::gate::Gate::default().entry(dev.key).is_none() {
+    handle_in(&Store::default(), msg, dev, tx).await;
+}
+
+pub(crate) async fn handle_in(
+    store: &Store,
+    msg: RelayMsg,
+    dev: Device<'_>,
+    tx: &mpsc::Sender<String>,
+) {
+    if let Some(why) = not_here(&dev, store) {
+        if matches!(msg, RelayMsg::PasskeyKeepalive) {
+            return;
+        }
+        warn!(device = dev.name, "passkey: refused — {why}");
+        let state = PasskeyState {
+            error: why.into(),
+            ..PasskeyState::default()
+        };
+        crate::relay_client::send_relay(tx, &RelayMsg::PasskeyState { state })
+            .await
+            .ok();
         return;
     }
-    let reply = match step(&store, msg, &dev) {
+    let reply = match step(store, msg, &dev) {
         Some(Reply::Challenge(m)) => m,
         Some(Reply::State(err)) => RelayMsg::PasskeyState {
-            state: state(&store, dev.key, &err),
+            state: state(store, dev.key, &err),
         },
         None => return,
     };
@@ -62,16 +112,39 @@ fn step(store: &Store, msg: RelayMsg, dev: &Device<'_>) -> Option<Reply> {
     Some(match msg {
         RelayMsg::PasskeyGet => Reply::State(String::new()),
         RelayMsg::PasskeyLock => {
-            unlock::lock(key);
+            unlock::lock_in(store, key);
+            info!(device = dev.name, "passkey: locked by the device");
             Reply::State(String::new())
         }
         RelayMsg::PasskeyKeepalive => {
-            unlock::touch(key);
+            unlock::touch_in(store, key);
             return None;
         }
+        RelayMsg::PasskeyStay {
+            stay,
+            lock_on_leave,
+        } => Reply::State(match set_stay(store, key, &stay, lock_on_leave) {
+            Ok(()) => {
+                info!(
+                    device = dev.name,
+                    stay, lock_on_leave, "passkey: unlock lifetime set"
+                );
+                String::new()
+            }
+            Err(e) => {
+                warn!(device = dev.name, "passkey: lifetime not changed — {e}");
+                e.into()
+            }
+        }),
         RelayMsg::PasskeyBegin { purpose } => match begin(store, key, &purpose) {
-            Ok(m) => Reply::Challenge(m),
-            Err(e) => Reply::State(e.into()),
+            Ok(m) => {
+                info!(device = dev.name, purpose, "passkey: challenge sent");
+                Reply::Challenge(m)
+            }
+            Err(e) => {
+                warn!(device = dev.name, purpose, "passkey: no challenge — {e}");
+                Reply::State(e.into())
+            }
         },
         RelayMsg::PasskeyRegister {
             client_data,
@@ -107,13 +180,37 @@ fn step(store: &Store, msg: RelayMsg, dev: &Device<'_>) -> Option<Reply> {
     })
 }
 
+/// While unlocked only: proving the passkey once is what earns the choice. The daemon checks it,
+/// not just the card that hides the choice while locked.
+fn set_stay(store: &Store, key: &str, stay: &str, lock_on_leave: bool) -> Result<(), &'static str> {
+    if !store.has(key) {
+        return Err(super::NO_PASSKEY);
+    }
+    if unlock::left_in(store, key).is_none() {
+        return Err(
+            "Unlock with your passkey first — only then can you change how long it stays unlocked.",
+        );
+    }
+    if stay_idle_s(stay).is_none() {
+        return Err("That isn't one of the choices — update wado on this computer or this phone.");
+    }
+    let mut p = store.prefs(key);
+    p.stay = stay.to_string();
+    p.lock_on_leave = lock_on_leave;
+    store
+        .set_prefs(key, &p)
+        .map_err(|_| "the computer could not save that")?;
+    unlock::apply(store, key);
+    Ok(())
+}
+
 fn begin(store: &Store, key: &str, purpose: &str) -> Result<RelayMsg, &'static str> {
     let have = store.get(key);
     match purpose {
         // Replacing a passkey takes the one already there: whoever holds only the device key
         // must not be able to swap in a passkey of their own. A lost one is removed on the
         // computer (`wado passkey remove`).
-        REGISTER if have.is_some() && unlock::left(key).is_none() => Err(
+        REGISTER if have.is_some() && unlock::left_in(store, key).is_none() => Err(
             "This device already has a passkey here — unlock with it first to replace it, or \
              remove it on the computer with `wado passkey remove <device>`.",
         ),
@@ -142,7 +239,7 @@ fn begin(store: &Store, key: &str, purpose: &str) -> Result<RelayMsg, &'static s
 fn register(store: &Store, key: &str, cd: &str, att: &str) -> Result<(), &'static str> {
     let c = challenge::take(key, REGISTER).ok_or(STALE)?;
     // Checked again, not only at `begin`: the window may have shut in between.
-    if store.get(key).is_some() && unlock::left(key).is_none() {
+    if store.get(key).is_some() && unlock::left_in(store, key).is_none() {
         return Err("Unlock with this device's passkey first to replace it.");
     }
     let cred = verify::register(cd, att, &c)?;
@@ -150,7 +247,7 @@ fn register(store: &Store, key: &str, cd: &str, att: &str) -> Result<(), &'stati
         .put(key, &cred)
         .map_err(|_| "the computer could not save the passkey")?;
     // Making it verified the person just now: that is an unlock.
-    unlock::open(key);
+    unlock::open_in(store, key);
     Ok(())
 }
 
@@ -166,7 +263,7 @@ fn unlock_with(
     let cred = store.get(key).ok_or(super::NO_PASSKEY)?;
     let count = verify::assert(&cred, cred_id, cd, ad, sig, &c)?;
     store.set_count(key, count);
-    unlock::open(key);
+    unlock::open_in(store, key);
     Ok(())
 }
 
@@ -209,16 +306,180 @@ mod tests {
         assert!(
             matches!(begin(&store, &key, UNLOCK), Ok(RelayMsg::PasskeyChallenge { cred_id, .. }) if cred_id == "c")
         );
-        unlock::open(&key);
+        unlock::open_in(&store, &key);
         assert!(
             begin(&store, &key, REGISTER).is_ok(),
             "unlocked: may replace"
         );
-        unlock::lock(&key);
+        unlock::lock_in(&store, &key);
         assert_eq!(
             register(&store, &key, "x", "y").unwrap_err(),
             "Unlock with this device's passkey first to replace it."
         );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    fn cred() -> verify::Credential {
+        verify::Credential {
+            cred_id: "c".into(),
+            key: "k".into(),
+            count: 0,
+            origin: "https://a.b".into(),
+            rp_id: "a.b".into(),
+            added: 0,
+        }
+    }
+
+    /// A config folder with `key` trusted (`pinned`: by a pairing code) and a passkey on file.
+    fn setup(pinned: bool) -> (std::path::PathBuf, Store, String) {
+        let dir = std::env::temp_dir().join(format!("wado-pk-stay-{}", rand::random::<u64>()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let key = format!("dev-{}", rand::random::<u64>());
+        let pin = if pinned { "1" } else { "0" };
+        std::fs::write(
+            dir.join("trusted_clients"),
+            format!("{key}\tPhone\tDEVICEPK\t{pin}\n"),
+        )
+        .unwrap();
+        let store = Store::at(dir.join("passkeys"));
+        store.put(&key, &cred()).unwrap();
+        (dir, store, key)
+    }
+
+    const NOT_WHILE_LOCKED: &str =
+        "Unlock with your passkey first — only then can you change how long it stays unlocked.";
+
+    #[test]
+    fn the_lifetime_changes_only_while_unlocked() {
+        let (dir, store, key) = setup(true);
+        assert_eq!(
+            set_stay(&store, &key, "lock", false).unwrap_err(),
+            NOT_WHILE_LOCKED,
+            "locked: the daemon refuses, whatever the card shows"
+        );
+        assert_eq!(store.prefs(&key).stay, "15m", "and nothing was written");
+        let s = state(&store, &key, "");
+        assert_eq!(
+            (s.stay.as_str(), s.idle_s, s.lock_on_leave),
+            ("15m", 900, true)
+        );
+        unlock::open_in(&store, &key);
+        assert!(
+            set_stay(&store, &key, "someday", true).is_err(),
+            "only the four"
+        );
+        set_stay(&store, &key, "8h", true).unwrap();
+        let s = state(&store, &key, "");
+        assert!(s.unlocked && s.stay == "8h" && s.idle_s == 8 * 3600 && s.idle_left_s > 900);
+        set_stay(&store, &key, "lock", false).unwrap();
+        let s = state(&store, &key, "");
+        assert!(s.unlocked && s.stay == "lock" && s.idle_s == 0 && !s.lock_on_leave);
+        unlock::lock_in(&store, &key);
+        assert!(!state(&store, &key, "").unlocked, "Lock now still locks it");
+        assert_eq!(
+            set_stay(&store, &key, "15m", true).unwrap_err(),
+            NOT_WHILE_LOCKED
+        );
+        assert!(store.remove(&key));
+        assert_eq!(
+            store.prefs(&key).stay,
+            "15m",
+            "removing the passkey clears the choice"
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn until_i_lock_it_outlives_a_restart_on_a_pinned_line_only() {
+        for pinned in [true, false] {
+            let (dir, store, key) = setup(pinned);
+            unlock::open_in(&store, &key);
+            set_stay(&store, &key, "lock", false).unwrap();
+            assert_eq!(
+                store.prefs(&key).open_since.is_some(),
+                pinned,
+                "marked on file"
+            );
+            // A restart: the daemon's memory is gone, the files are not.
+            unlock::forget(&key);
+            assert_eq!(
+                unlock::left_in(&store, &key).is_some(),
+                pinned,
+                "pinned {pinned}: back after a restart"
+            );
+            unlock::lock_in(&store, &key);
+            unlock::forget(&key);
+            assert!(
+                unlock::left_in(&store, &key).is_none(),
+                "locked before the restart: stays locked"
+            );
+            let _ = std::fs::remove_dir_all(dir);
+        }
+    }
+
+    #[test]
+    fn a_timed_choice_does_not_outlive_a_restart() {
+        let (dir, store, key) = setup(true);
+        unlock::open_in(&store, &key);
+        set_stay(&store, &key, "1h", true).unwrap();
+        assert!(store.prefs(&key).open_since.is_none());
+        unlock::forget(&key);
+        assert!(unlock::left_in(&store, &key).is_none());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_removed_passkey_shuts_an_open_window_at_once() {
+        let (dir, store, key) = setup(true);
+        unlock::open_in(&store, &key);
+        set_stay(&store, &key, "lock", false).unwrap();
+        assert_eq!(super::super::refused_with(&store, &key, true), None);
+        store.remove(&key);
+        assert_eq!(
+            super::super::refused_with(&store, &key, true),
+            Some(super::super::NO_PASSKEY)
+        );
+        assert!(unlock::left_in(&store, &key).is_none());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    async fn answer(store: &Store, dev: Device<'_>, msg: RelayMsg) -> Option<PasskeyState> {
+        let (tx, mut rx) = mpsc::channel(4);
+        handle_in(store, msg, dev, &tx).await;
+        let text = rx.try_recv().ok()?;
+        match serde_json::from_str::<RelayMsg>(&text).ok()? {
+            RelayMsg::PasskeyState { state } => Some(state),
+            _ => None,
+        }
+    }
+
+    #[tokio::test]
+    async fn a_request_is_never_dropped() {
+        let (dir, store, key) = setup(true);
+        let dev = |key, ok| Device {
+            key,
+            name: "Phone",
+            ok,
+        };
+        let begin = || RelayMsg::PasskeyBegin {
+            purpose: REGISTER.into(),
+        };
+        for (d, why) in [
+            (dev(&key, false), "isn't let in"),
+            (dev("", true), "no device key"),
+            (dev("stranger", true), "trust list"),
+        ] {
+            let s = answer(&store, d, begin())
+                .await
+                .expect("answered, not dropped");
+            assert!(s.error.contains(why), "{}", s.error);
+        }
+        let stay = RelayMsg::PasskeyStay {
+            stay: "lock".into(),
+            lock_on_leave: false,
+        };
+        let s = answer(&store, dev(&key, true), stay).await.unwrap();
+        assert_eq!(s.error, NOT_WHILE_LOCKED);
         let _ = std::fs::remove_dir_all(dir);
     }
 }

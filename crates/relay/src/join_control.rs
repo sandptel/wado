@@ -23,8 +23,11 @@ use tracing::{debug, info, warn};
 use uuid::Uuid;
 use wado_protocol::relay_wire::{display_remote_id, normalize_remote_id, WireMsg, WIRE_VERSION};
 
+use crate::lane::Lane;
 use crate::registry::Instance;
-use crate::signaling::{caps, is_pong, send_deny, send_wire, AbortOnDrop, KEEPALIVE, SILENCE};
+use crate::signaling::{
+    caps, is_pong, is_relay_ping, send_deny, send_wire, AbortOnDrop, KEEPALIVE, SILENCE,
+};
 use crate::AppState;
 
 /// The refusal when no daemon of the pool serves control links.
@@ -213,8 +216,14 @@ pub async fn control_loop(
             }
         }
     }));
+    // The lane's cap applies to a seatless link exactly as to a seat (`crate::lane`).
+    let mut down = Lane::new(format!("{label} ← its computer"));
+    let mut up = Lane::new(format!("{label} → its computer"));
     let fwd = AbortOnDrop(tokio::spawn(async move {
         while let Some(text) = inbox_rx.recv().await {
+            if !is_relay_ping(&text) {
+                down.admit(text.len()).await;
+            }
             if ws_tx.send(Message::Text(text)).await.is_err() {
                 break;
             }
@@ -248,6 +257,7 @@ pub async fn control_loop(
                 let Some(w) = wrap(&room_id, &text) else {
                     continue;
                 };
+                up.admit(text.len()).await;
                 if daemon.send(w).await.is_err() {
                     break;
                 }

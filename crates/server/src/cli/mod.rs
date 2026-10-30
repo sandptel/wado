@@ -12,6 +12,7 @@ pub mod landing;
 pub mod msg;
 pub mod passkey;
 pub mod qr;
+pub mod relay;
 pub mod status;
 pub mod style;
 pub mod validate;
@@ -60,6 +61,7 @@ pub fn dispatch(args: &[String]) -> Run {
         Some("files") => files::run(rest),
         Some("pair" | "qr") => qr::run(rest),
         Some("msg") => msg::run(rest),
+        Some("relay") => relay::run(rest),
         Some("passkey") => passkey::run(rest),
         Some("claude") => claude::run(rest),
         Some("claude-event") => crate::claude::hook_cli::run(),

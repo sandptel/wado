@@ -35,6 +35,8 @@ pub struct Status {
     pub remote_id: Option<String>,
     pub sessions: Vec<SessionSummary>,
     pub trusted: usize,
+    /// Each running daemon's own link to the relay (`crate::relay_watch`).
+    pub links: Vec<crate::relay_watch::record::Record>,
 }
 
 pub fn read() -> Status {
@@ -51,6 +53,7 @@ pub fn read() -> Status {
         remote_id,
         sessions: crate::sessions::list(),
         trusted: gate.trusted().len(),
+        links: crate::relay_watch::record::list(),
     }
 }
 
@@ -64,6 +67,17 @@ impl Status {
             .nth(1)
             .or_else(|| h.split("\"servers\":").nth(1))?;
         n.split(|c: char| !c.is_ascii_digit()).next()?.parse().ok()
+    }
+
+    /// The longest any running daemon has been without its relay, in ms — `None` while every
+    /// one of them has it.
+    pub fn relay_lost_ms(&self) -> Option<u64> {
+        let now = crate::relay_watch::record::now_ms();
+        self.links
+            .iter()
+            .filter(|l| !l.up)
+            .map(|l| l.for_ms(now))
+            .max()
     }
 }
 
@@ -92,7 +106,7 @@ pub fn daemons() -> Vec<String> {
 
 /// The relay this computer's daemons dial: `WADO_RELAY_URL`, else config — the public relay
 /// unless set — else the rig's local one.
-fn relay_url() -> String {
+pub fn relay_url() -> String {
     std::env::var("WADO_RELAY_URL")
         .ok()
         .or_else(|| {
@@ -105,7 +119,7 @@ fn relay_url() -> String {
 }
 
 /// `wss://host:port/path` → `host:port`.
-fn host_of(url: &str) -> String {
+pub fn host_of(url: &str) -> String {
     url.split("://")
         .nth(1)
         .unwrap_or(url)
@@ -155,7 +169,7 @@ fn probe_relay() -> Option<String> {
 
 /// One `GET` over TLS, by hand like [`get`]: rustls and the webpki roots are already in the
 /// tree for the relay link itself. The body on a 2xx, else `None`.
-fn https_get(host: &str, path: &str) -> Option<String> {
+pub fn https_get(host: &str, path: &str) -> Option<String> {
     use std::{net::ToSocketAddrs, sync::Arc};
     let (name, port) = host.split_once(':').unwrap_or((host, "443"));
     let roots = rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());

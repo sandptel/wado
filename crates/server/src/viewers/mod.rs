@@ -20,6 +20,7 @@ pub mod forward;
 pub mod pc;
 pub mod presence;
 pub mod room;
+pub mod trickle;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering};

@@ -53,16 +53,22 @@
     });
   }
 
+  // The refusal card sits on the pad (js/pad_why.js): its buttons are buttons, not touches. A
+  // press there is neither captured nor sent, so its click lands.
+  const onCard = (e) => !!(e.target && e.target.closest && e.target.closest(".tperr"));
+
   function onDown(e) {
+    if (onCard(e)) return;
     e.preventDefault();
     try { el.setPointerCapture(e.pointerId); } catch (_) {}
     route("down", e);
   }
   function onMove(e) {
+    if (onCard(e)) return;
     e.preventDefault();
     route("move", e);
   }
-  function onUp(e) { route("up", e); }
+  function onUp(e) { if (!onCard(e)) route("up", e); }
   function onVisible() { if (document.visibilityState === "visible") invalidate(); }
 
   const on = [["pointerdown", onDown], ["pointermove", onMove], ["pointerup", onUp],

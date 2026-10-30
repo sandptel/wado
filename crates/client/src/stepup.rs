@@ -36,7 +36,10 @@ pub fn on_event(ui: Ui, msg: &serde_json::Value) {
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .unwrap_or_default();
     let was = STEP.peek().state.unlocked;
-    let opened = STEP.peek().opened + u32::from(state.unlocked && !was);
+    // Only an unlock the person just made plays the shackle: not a reconnect finding a longer
+    // unlock still open, which arrives with no ceremony underway.
+    let made = STEP.peek().busy;
+    let opened = STEP.peek().opened + u32::from(state.unlocked && !was && made);
     *STEP.write() = StepUp {
         state,
         busy: b("busy"),

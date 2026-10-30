@@ -465,6 +465,11 @@ pub struct Live {
     pub pair_sas: Signal<Vec<String>>,
     /// Which path this device is on right now — the link badge (`crate::link`).
     pub link: Signal<crate::link::Link>,
+    /// Where the relay's limited lane is being felt now (`js/lane_hint.js`): `(spot, detail)`.
+    pub lane_hints: Signal<Vec<(String, String)>>,
+    /// This device was kept out because another holds the seat (`js/relay_link.js`): who, and
+    /// whether anything runs there (`None`: an older relay did not say). `None` when not refused.
+    pub seat_busy: Signal<Option<(String, Option<bool>)>>,
 
     /// Set when the daemon reports a session was already running, holding what it is — the
     /// encoder mode, and its pipeline tier when there is one.
@@ -586,6 +591,8 @@ impl Live {
             screen_h: use_signal(|| 0),
             conn_stage: use_signal(|| 0),
             link: use_signal(crate::link::Link::default),
+            lane_hints: use_signal(Vec::new),
+            seat_busy: use_signal(|| None),
             conn_error: use_signal(String::new),
             unpaired: use_signal(String::new),
             pair_sas: use_signal(Vec::new),

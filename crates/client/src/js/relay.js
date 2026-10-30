@@ -241,7 +241,10 @@ function onLinkUp() {
     W.relayResumeIfWatching();
     return;
   }
-  W.requestApps();
+  // Once per page, not per redial: the list (its icons inline) is ~0.9 MB here, measured
+  // 2026-10-30 — re-sent on every link-up it queued ahead of the rejoin on the relay's 64 KB/s
+  // lane. The drawer asks afresh when it opens.
+  if (!(W.appsList && W.appsList.length)) W.requestApps();
   // `sessionOn` alone is not enough to know a session may be running: it is cleared when the
   // peer connection dies, and a dead peer connection is precisely what this branch exists to
   // survive. `recentlyWatching()` is the durable crumb — it outlives the page, let alone a
@@ -552,11 +555,15 @@ W._relayNegotiate = async (opts = {}) => {
     status("ICE: " + pc.iceConnectionState);
     if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
       phase(4, "");
+      W.iceCause = "";
     }
     if (pc.iceConnectionState === "failed") {
       // Cloudflare WARP (the 1.1.1.1 app) puts this device behind a symmetric NAT, which no
       // amount of STUN gets through. Its tunnel address, 100.96.0.0/12, is the tell.
       const warp = localAddrs.some((a) => /^100\.(9[6-9]|10[0-9]|11[01])\./.test(a));
+      // Named on the link badge and the lane's hints (link_state.js → crate::lane): a cause this
+      // device can see is said; none is guessed.
+      W.iceCause = warp ? "warp" : "";
       phase(3, warp
         ? "Cloudflare WARP (1.1.1.1) is on on this device, and it blocks the direct path video " +
           "needs. Turn it off — or exclude this browser from it — and reload."
@@ -584,27 +591,15 @@ W._relayNegotiate = async (opts = {}) => {
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
 
-  // Wait for ICE gathering before sending (non-trickle, consistent with server) — but only
-  // so long. "complete" needs every configured STUN server to answer or time out, and a
-  // phone that had both a host and a srflx candidate within 40 ms was still not complete
-  // 14 s later, so the handshake timeout fired and the offer was never sent at all.
-  // The candidates that matter arrive first; send what we have and let the rest go.
-  await new Promise((resolve) => {
-    if (pc.iceGatheringState === "complete") return resolve();
-    const done = () => {
-      clearTimeout(cap);
-      pc.removeEventListener("icegatheringstatechange", check);
-      resolve();
-    };
-    const check = () => { if (pc.iceGatheringState === "complete") done(); };
-    const cap = setTimeout(() => {
-      rlog("ICE gathering still " + pc.iceGatheringState + " after 3 s — sending what we have");
-      done();
-    }, 3000);
-    pc.addEventListener("icegatheringstatechange", check);
-  });
+  // Send the offer once it has what a connection needs, not once gathering is complete — that
+  // wait was ~3 s of every reconnect (js/ice_gather.js has the measurement). "complete" needs
+  // every STUN server to answer or time out; a phone with a host and a srflx candidate in 40 ms
+  // was once still not complete 14 s later. Later candidates trickle (`ice_candidate`).
+  const g = await W.iceGather(pc);
+  W.iceTrickle(pc, (candidate) => { if (W.pc === pc) W.relaySendMsg({ type: "ice_candidate", candidate }); });
 
-  rlog("sending offer — " + (pc.localDescription.sdp.match(/a=candidate:/g) || []).length + " candidates");
+  rlog("sending offer — " + (pc.localDescription.sdp.match(/a=candidate:/g) || []).length +
+    " candidates after " + g.ms + " ms (" + g.why + ")");
   if (!W.relaySendMsg({ type: "sdp_offer", sdp: JSON.stringify(pc.localDescription) })) {
     throw new Error("the relay link went away before the offer could be sent");
   }

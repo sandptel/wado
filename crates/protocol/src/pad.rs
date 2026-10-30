@@ -32,42 +32,35 @@ pub enum Mod {
 #[serde(tag = "k", rename_all = "snake_case")] // not "t": Frame has a field `t`
 pub enum PadMsg {
     /// The pad's size in CSS px. Sent first, and again on every resize.
-    Size {
-        w: u16,
-        h: u16,
-    },
+    Size { w: u16, h: u16 },
     /// Every finger down right now. Empty = all lifted. `t` = client ms, wrapping.
-    Frame {
-        seq: u32,
-        t: u32,
-        c: Vec<Contact>,
-    },
+    Frame { seq: u32, t: u32, c: Vec<Contact> },
     /// A named key (`esc`, `tab`, `enter`, `backspace`, `delete`, `left`, `right`, `up`,
     /// `down`, `home`, `end`, `pageup`, `pagedown`, `space`, `f1`…`f12`) tapped with `mods`.
-    Key {
-        key: String,
-        mods: Vec<Mod>,
-    },
+    Key { key: String, mods: Vec<Mod> },
     /// One character tapped as a key with `mods` (a latched modifier + the next character).
-    Char {
-        ch: char,
-        mods: Vec<Mod>,
-    },
+    Char { ch: char, mods: Vec<Mod> },
     /// Modifiers held down until the next `Hold` (a locked modifier). `[]` releases all.
-    Hold {
-        mods: Vec<Mod>,
-    },
+    Hold { mods: Vec<Mod> },
     /// Committed text: typed as text, any Unicode.
-    Text {
-        text: String,
-    },
+    Text { text: String },
+    /// `bin`: this phone can send compact touch frames ([`crate::pad_bin`]) once told it may.
     Ping {
         t: u32,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        bin: bool,
     },
-    /// Daemon → phone only.
+    /// Daemon → phone only. `bin`: send touch frames compact from now on — only ever in answer
+    /// to a ping that offered them, so an older phone is never told about them.
     Pong {
         t: u32,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        bin: bool,
     },
+    /// Phone → daemon, relayed: a [`PadMsg::Frame`] in [`crate::pad_bin`]'s bytes, base64
+    /// (standard alphabet, padded — what the browser's `btoa` writes). Sent only to a daemon
+    /// whose pong said `bin`.
+    Bin { b: String },
     /// Daemon → phone only: a message was refused, or a device could not be made. `fatal`: the
     /// daemon closed the pad, so the phone should stop sending.
     Err {
@@ -80,13 +73,9 @@ pub enum PadMsg {
     /// Phone → daemon: what can run here? Needs the `host` grant, not `input`.
     Actions,
     /// Daemon → phone: the actions this computer can run now — only those whose tools exist.
-    ActionList {
-        actions: Vec<ActionInfo>,
-    },
+    ActionList { actions: Vec<ActionInfo> },
     /// Phone → daemon: run the action `id`. Needs `host`; answered by [`PadMsg::Ran`].
-    Run {
-        id: String,
-    },
+    Run { id: String },
     /// Daemon → phone: how a [`PadMsg::Run`] went. `message` says why, in plain words, when not.
     Ran {
         id: String,
@@ -169,6 +158,30 @@ mod tests {
                 id: "x".into(),
                 ok: true,
                 message: String::new()
+            }
+        );
+    }
+
+    #[test]
+    fn compact_frames_are_offered_and_accepted_without_breaking_older_peers() {
+        // An older phone's ping, and an older daemon's pong, carry no `bin`.
+        assert_eq!(
+            serde_json::from_str::<PadMsg>(r#"{"k":"ping","t":5}"#).unwrap(),
+            PadMsg::Ping { t: 5, bin: false }
+        );
+        assert_eq!(
+            serde_json::to_string(&PadMsg::Pong { t: 5, bin: false }).unwrap(),
+            r#"{"k":"pong","t":5}"#
+        );
+        // A newer one's say so, and an older reader ignores the field.
+        assert_eq!(
+            serde_json::to_string(&PadMsg::Ping { t: 5, bin: true }).unwrap(),
+            r#"{"k":"ping","t":5,"bin":true}"#
+        );
+        assert_eq!(
+            serde_json::from_str::<PadMsg>(r#"{"k":"bin","b":"AAAABwAAA+gAAGT//w=="}"#).unwrap(),
+            PadMsg::Bin {
+                b: "AAAABwAAA+gAAGT//w==".into()
             }
         );
     }

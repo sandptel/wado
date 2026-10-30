@@ -20,6 +20,8 @@ pub struct Link {
     pub turn: bool,
     /// Why `offline` (`no_network` | `relay_unreachable`) or why `waiting` (the relay's words).
     pub why: String,
+    /// Why ICE last failed, when this device could tell: `warp` (Cloudflare WARP is on here).
+    pub cause: String,
 }
 
 /// How the badge is coloured.
@@ -49,7 +51,9 @@ impl Link {
                 "turn" => "Via TURN".into(),
                 _ => "Direct · internet".into(),
             },
-            "ready" => "Connected".into(),
+            // Online, not "connected": the relay sees the computer, and no direct path has been
+            // tried yet (Decision Log 2026-10-27 — a green dot must not claim more than that).
+            "ready" => "Online".into(),
             "connecting" => "Connecting…".into(),
             "relayed" => "Relayed — limited".into(),
             "reconnecting" => "Reconnecting…".into(),
@@ -88,13 +92,14 @@ impl Link {
                 format!("{how}{rtt}{net}")
             }
             "ready" => format!(
-                "Joined through the relay. The picture connects directly when you start.{net}"
+                "Online: the relay sees your computer. The picture tries a direct path when you \
+                 start.{net}"
             ),
             "relayed" => format!(
-                "No direct path, so only the relay link is up. It carries small things — shells, \
-                 clipboard, status — but not the picture or files. This is the network, not \
-                 wado: switching off a VPN or moving to mobile data usually fixes it.{}{net}",
-                self.nat_hint()
+                "No direct path, so only the relay's limited lane is up — 64 KB/s. It carries \
+                 small things: shells, clipboard, status, file lists and files up to 1 MB. Not \
+                 the picture. This is the network, not wado.{}{net}",
+                self.cause_words()
             ),
             "connecting" => format!("Setting up the direct path to your computer.{net}"),
             "reconnecting" => {
@@ -107,18 +112,23 @@ impl Link {
                 .into(),
             "waiting" => format!("The relay is holding this connection: {}.", self.why),
             _ if self.why == "no_network" => "This device has no network connection.".into(),
-            _ => "wado's relay is unreachable — this is not your computer. Retrying.".into(),
+            _ => "wado's relay is unreachable — not your computer. Retrying.".into(),
         }
     }
 
-    /// A likely cause on the computer's side, from its NAT probe — said only when it applies.
-    fn nat_hint(&self) -> String {
-        if self.nat == "symmetric" && !self.turn {
+    /// The cause, when one end could tell (this phone's WARP, the computer's NAT probe), else
+    /// the usual fixes — blaming nobody.
+    pub fn cause_words(&self) -> String {
+        if self.cause == "warp" {
+            " Cloudflare WARP (1.1.1.1) is on on this phone and blocks the direct path — turn it \
+             off, or exclude this browser from it."
+                .into()
+        } else if self.nat == "symmetric" && !self.turn {
             " Your computer is behind a VPN or a strict NAT, which blocks direct connections — \
              switching its VPN off is the likely fix."
                 .into()
         } else {
-            String::new()
+            " Switching off a VPN, or moving to mobile data, usually fixes it.".into()
         }
     }
 }
@@ -155,6 +165,23 @@ mod tests {
             why: "relay_unreachable".into(),
             ..link("offline", "")
         };
-        assert!(off.detail().contains("not your computer"));
+        assert!(off
+            .detail()
+            .contains("wado's relay is unreachable — not your computer"));
+    }
+
+    #[test]
+    fn online_is_never_called_connected_and_a_known_cause_is_named() {
+        assert_eq!(link("ready", "").label(), "Online");
+        let warp = Link {
+            cause: "warp".into(),
+            ..link("relayed", "")
+        };
+        assert!(warp.detail().contains("WARP"));
+        assert!(
+            !link("relayed", "").detail().contains("WARP"),
+            "no cause guessed"
+        );
+        assert!(link("relayed", "").detail().contains("mobile data"));
     }
 }

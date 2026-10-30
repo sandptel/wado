@@ -71,6 +71,10 @@ pub const NOTE_CLAUDE_PERMISSION: &str = "claude_permission";
 pub const NOTE_CLAUDE_DONE: &str = "claude_done";
 pub const NOTE_ONLINE: &str = "online";
 pub const NOTE_TRANSFER: &str = "transfer";
+/// wado's relay went away (or came back) while the computer stayed up: the computer says so
+/// itself, straight to the push service — the relay cannot, it is the one that is gone.
+/// Follows the device's "online" switch.
+pub const NOTE_RELAY: &str = "relay";
 pub const NOTE_TEST: &str = "test";
 
 /// What one push carries, decrypted — the same for the web app's service worker and a native

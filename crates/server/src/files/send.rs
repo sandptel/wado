@@ -33,6 +33,12 @@ pub async fn get(chan: &Chan, sc: &Scope, id: u32, path: &str, offset: u64) {
         Err(e) => return chan.fail(id, say(e)).await,
     };
     let size = md.len();
+    if let Some(max) = chan.max_bytes()
+        && size.saturating_sub(offset) > max
+    {
+        let why = super::lane::too_big(size);
+        return chan.reply(id, json!({ "err": why, "lane": true })).await;
+    }
     if offset > size {
         return chan
             .fail(id, "the file is shorter than what was already downloaded")

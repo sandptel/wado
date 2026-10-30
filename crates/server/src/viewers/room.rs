@@ -234,8 +234,11 @@ pub async fn handle(hub: &Arc<Hub>, room: &ViewRoom, who: &Who, text: &str, cx: 
                 return send(out, &RelayMsg::SessionError { message }).await;
             }
             let peer = format!("{} (joined)", who.name);
-            match pc::answer(hub, origin, &sdp, &room.slot, peer).await {
-                Ok(sdp) => send(out, &RelayMsg::SdpAnswer { sdp }).await,
+            match pc::answer(hub, origin, &sdp, &room.slot, peer, Some(out.clone())).await {
+                Ok((sdp, trickle)) => {
+                    send(out, &RelayMsg::SdpAnswer { sdp }).await;
+                    trickle.answered();
+                }
                 Err(e) => {
                     let message = format!("WebRTC setup failed: {e}");
                     send(out, &RelayMsg::SessionError { message }).await;
@@ -362,6 +365,22 @@ pub async fn handle(hub: &Arc<Hub>, room: &ViewRoom, who: &Who, text: &str, cx: 
         | RelayMsg::ClipGet { .. }
         | RelayMsg::ClipPush { .. } => {
             let _ = crate::control::serve::handle(text, who, cx).await;
+        }
+        // The device's passkey: its own, whichever link it is on — the room's envelope proved the
+        // key the unlock is bound to. Answered here, never dropped (Decision Log `2026-10-30`).
+        msg @ (RelayMsg::PasskeyBegin { .. }
+        | RelayMsg::PasskeyRegister { .. }
+        | RelayMsg::PasskeyUnlock { .. }
+        | RelayMsg::PasskeyLock
+        | RelayMsg::PasskeyKeepalive
+        | RelayMsg::PasskeyGet
+        | RelayMsg::PasskeyStay { .. }) => {
+            let dev = crate::passkey::relay::Device {
+                key: &who.key,
+                name: &who.name,
+                ok: true,
+            };
+            crate::passkey::relay::handle(msg, dev, out).await;
         }
         RelayMsg::SessionStart { .. } => {
             let message = "this link joins a running session — start a new one from the \
