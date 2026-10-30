@@ -1,0 +1,26 @@
+[package]
+name = "wado-client-core"
+version = "0.0.4"
+edition = "2021"
+license = "AGPL-3.0-only"
+description = "wado's client protocol in Rust: relay link, end-to-end envelope, pairing, feeds. Pure Rust, no FFI — the phone app (through wado-mobile-core) and the desktop app link it."
+
+[dependencies]
+wado-protocol = { path = "../protocol" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# The daemon's own primitives: one implementation of each on both ends.
+ring = "0.17"
+base64 = "0.22"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
+# The daemon's own TLS stack for the relay link; webpki roots are compiled in.
+tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+futures-util = "0.3"
+async-trait = "0.1"
+percent-encoding = "2"
+
+[dev-dependencies]
+# The daemon's own handshake, seal and host key: the client half is tested against them.
+wado = { path = "../server" }
+tokio = { version = "1", features = ["test-util"] }
