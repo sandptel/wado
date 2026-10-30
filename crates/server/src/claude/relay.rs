@@ -35,6 +35,7 @@ async fn locked(dev: &Device<'_>, why: &str, tx: &mpsc::Sender<String>) {
         send_relay(
             tx,
             &RelayMsg::SessionError {
+                ack: 0,
                 message: why.to_string(),
             },
         )
@@ -79,6 +80,7 @@ pub async fn handle(msg: RelayMsg, dev: Device<'_>, tx: &mpsc::Sender<String>) {
                 send_relay(
                     tx,
                     &RelayMsg::SessionError {
+                        ack: 0,
                         message: "That question was already answered, or Claude stopped waiting."
                             .into(),
                     },
@@ -163,7 +165,7 @@ async fn reply_shell(r: Result<u32, String>, tx: &mpsc::Sender<String>) {
         Ok(id) => RelayMsg::PtyOpened { id },
         Err(message) => {
             warn!("claude: {message}");
-            RelayMsg::SessionError { message }
+            RelayMsg::SessionError { ack: 0, message }
         }
     };
     send_relay(tx, &msg).await.ok();

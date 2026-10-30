@@ -69,7 +69,9 @@ W.relayResumeIfWatching = () => {
   try { crashed = sessionStorage.getItem("wado.crashRejoin") === "1"; sessionStorage.removeItem("wado.crashRejoin"); } catch (_) {}
   const mark = recentlyWatching();
   if (!crashed) { markWatching(false); return false; }
-  if (!mark || W.sessionOn || W._relayWanted) return false;
+  // Only a session that was showing a picture: one still connecting when the page died is not
+  // where the person was (js/session_intent.js, rule 3).
+  if (!mark || !mark.pic || W.sessionOn || W._relayWanted || W._left) return false;
   // The scroll conversion needs the session's scale and the config is not here on a cold load.
   W.outputScale = mark.scale > 0 ? mark.scale : 1;
   W._relayResuming = true;

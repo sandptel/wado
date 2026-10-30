@@ -23,6 +23,10 @@ use crate::{
 pub const JS: &str = concat!(
     include_str!("js/core.js"),
     "\n",
+    // Right after `core`: every action anywhere below may start a pending action, and every
+    // message from the computer is offered to it (`relay_link.js`'s `fire`).
+    include_str!("js/pending.js"),
+    "\n",
     // Before `storage.js`, whose connect link rewrites the address: the shortcut's `?go=` is
     // taken out first.
     include_str!("js/deeplink.js"),
@@ -355,6 +359,12 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/hero_flip.js"),
     "\n",
+    // "Waiting 0:42" in the session's in-stage state, ticked without a re-render.
+    include_str!("js/elapsed.js"),
+    "\n",
+    // Before lifecycle.js, whose functions it wraps once the bridge has loaded.
+    include_str!("js/session_intent.js"),
+    "\n",
     include_str!("js/cbar.js"),
     "\n",
     include_str!("js/widget_flip.js"),
@@ -442,6 +452,9 @@ pub fn run(ui: Ui) {
         }
         // Set even when nothing was stored: the flag means "loading is over", not "something
         // was found", and leaving it false would disable saving forever on a first run.
+        // Back to the page the person was on (before `loaded`, so remembering it does not first
+        // overwrite it with home).
+        crate::route::restore(ui).await;
         live.loaded.set(true);
         // Restoring the settings only restored the *signals*. Anything mirrored on the JS
         // side has to be pushed, or the panel and the bridge disagree until the user happens
@@ -480,9 +493,21 @@ pub fn run(ui: Ui) {
 
             match kind {
                 "status" => live.status.set(text()),
+                // Try again / Cancel on an action whose code is Rust (`pending.rs`).
+                "pendingRetry" | "pendingCancel" => crate::pending::on_event(kind, &string("id")),
                 // The Android app (`js/native.js`): its home opened a computer, or Back ran out.
                 "nativeGo" => crate::native::go(ui, &string("key"), &string("go")),
                 "nativeBack" => crate::native::back(ui),
+                // The browser's (or the WebView's) Back popped the session's history entry
+                // (`js/session_intent.js`): the control centre closes first, else this device leaves.
+                "sessionBack" => {
+                    if (live.cc_open)() {
+                        live.cc_open.set(false);
+                        call("window.__wado.sessionShown(true);".to_string());
+                    } else if (live.session_on)() {
+                        crate::actions::leave(ui);
+                    }
+                }
                 // A Back whose exit motion has run (`js/hero_flip.js`).
                 "viewBack" => crate::route::back(ui),
                 // Home's widgets: one removed after its exit, one dropped in a new place.

@@ -18,6 +18,13 @@ pub fn render(ui: Ui) -> Element {
     let (windows, _) = (live.windows)();
     let apps = (live.apps)();
     let focused = windows.iter().find(|w| w.focused).cloned();
+    // "No window open" only once there is a picture to have no window in: before that, the
+    // stage's own state says what is happening.
+    if (live.stage)().out_w <= 0.0 {
+        return rsx! {
+            div { class: "cstrip empty", role: "group", "aria-label": "Windows" }
+        };
+    }
     let Some(w) = focused else {
         return rsx! {
             div { class: "cstrip empty", role: "group", "aria-label": "No window",

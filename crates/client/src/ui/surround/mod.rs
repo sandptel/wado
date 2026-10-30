@@ -20,6 +20,7 @@
 pub mod deck;
 pub mod faces;
 pub mod layout;
+pub mod stage_state;
 pub mod top_band;
 pub mod window_strip;
 
@@ -127,7 +128,9 @@ pub fn use_layout(ui: Ui) {
     // page forgets it when the session ends.
     use_effect(move || {
         let on = (ui.live.session_on)();
-        bridge::call(format!("window.__wado.stageMorph.session({on});"));
+        bridge::call(format!(
+            "window.__wado.stageMorph.session({on}); window.__wado.sessionShown && window.__wado.sessionShown({on});"
+        ));
     });
     let mut last_face = use_signal(|| None::<Face>);
     use_effect(move || {

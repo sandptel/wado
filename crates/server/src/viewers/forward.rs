@@ -86,6 +86,7 @@ pub fn spawn(hub: &Arc<Hub>, origin: Origin, out: mpsc::Sender<String>) -> Vec<J
                 let msg = RelayMsg::Windows {
                     windows: list.windows,
                     workspace: list.workspace,
+                    launches: list.launches,
                 };
                 if !send(&out, &msg).await {
                     break;

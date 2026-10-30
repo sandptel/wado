@@ -651,12 +651,18 @@ pub fn launch_command(state: &mut Wado, command: &str) {
     match spawned {
         Ok(child) => {
             info!(pid = child.id(), command, "launched session application");
-            state
-                .app_processes
-                .push(crate::proc::Launched::new(asked, child));
+            let launched = crate::proc::Launched::new(asked, child);
+            let (n, asked) = (launched.n, launched.command.clone());
+            state.app_processes.push(launched);
+            crate::launch_clock::note(state, n, &asked, "starting", 0);
         }
-        // Not fatal to the session: the stream still runs, the window is just empty.
-        Err(e) => tracing::error!("failed to launch session app {command:?}: {e}"),
+        // Not fatal to the session: the stream still runs, the window is just empty. The phone
+        // is told, so its "Opening …" ends in a plain failure rather than a wait.
+        Err(e) => {
+            tracing::error!("failed to launch session app {command:?}: {e}");
+            let n = crate::launch_clock::next();
+            crate::launch_clock::note(state, n, &asked, "exited", 0);
+        }
     }
 }
 

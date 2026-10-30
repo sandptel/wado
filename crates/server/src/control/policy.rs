@@ -23,9 +23,11 @@ pub enum Need {
 /// The grant `msg` needs on a control link.
 pub fn need(msg: &RelayMsg) -> Need {
     match msg {
-        RelayMsg::HostGet | RelayMsg::ConfigGet => Need::Trusted,
+        RelayMsg::HostGet { .. } | RelayMsg::ConfigGet => Need::Trusted,
         // Wi-Fi can cut the computer off: the owner's say, as on the main link.
-        RelayMsg::HostDo { action } if action.is_network() => Need::Grants(&["host", "settings"]),
+        RelayMsg::HostDo { ack: _, action } if action.is_network() => {
+            Need::Grants(&["host", "settings"])
+        }
         RelayMsg::HostDo { .. } => Need::Grants(&["host"]),
         // The Clipboard widget is the whole Clipboard surface: the history, each entry's copy,
         // send, pin and delete, and following the computer's copies as they happen.
@@ -63,16 +65,18 @@ mod tests {
 
     #[test]
     fn controls_pass_and_the_desktop_never_does() {
-        assert_eq!(need(&RelayMsg::HostGet), Need::Trusted);
+        assert_eq!(need(&RelayMsg::HostGet { ack: 0 }), Need::Trusted);
         assert_eq!(need(&RelayMsg::ConfigGet), Need::Trusted);
         assert_eq!(
             need(&RelayMsg::HostDo {
+                ack: 0,
                 action: HostAction::Brightness { level: 0.5 }
             }),
             Need::Grants(&["host"])
         );
         assert_eq!(
             need(&RelayMsg::HostDo {
+                ack: 0,
                 action: HostAction::WifiKeep
             }),
             Need::Grants(&["host", "settings"])

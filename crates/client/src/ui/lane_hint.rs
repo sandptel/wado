@@ -19,10 +19,9 @@ pub fn render(ui: Ui) -> Element {
     }
     let session = (live.session_on)();
     let mut raised: Vec<(Spot, String)> = Vec::new();
-    // No picture: a session whose peer connection failed — the link badge's own `relayed`.
-    if session && link.state == "relayed" {
-        raised.push((Spot::Picture, String::new()));
-    }
+    // No picture: said in the picture's place now (`surround::stage_state`), not on a card over
+    // the deck. The other hints, in a session, ride the picture's top edge folded to one line.
+    let _ = Spot::Picture;
     for (spot, detail) in live.lane_hints.read().iter() {
         if let Some(s) = lane::Spot::from_js(spot) {
             raised.push((s, detail.clone()));
@@ -49,7 +48,7 @@ pub fn render(ui: Ui) -> Element {
         _ => "window.__wado.resync();",
     };
     rsx! {
-        div { class: "lanehint", role: "status", "aria-live": "polite", "data-spot": spot.key(),
+        div { class: if session { "lanehint insession" } else { "lanehint" }, role: "status", "aria-live": "polite", "data-spot": spot.key(),
             div { class: "lanehint-head",
                 span { class: "lanehint-dot" }
                 b { "{h.title}" }

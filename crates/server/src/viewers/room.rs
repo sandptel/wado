@@ -182,7 +182,7 @@ pub async fn handle(hub: &Arc<Hub>, room: &ViewRoom, who: &Who, text: &str, cx: 
         RelayMsg::SessionJoin | RelayMsg::SessionRejoin => {
             let Some(info) = live_session(&hub.cmd_tx).await else {
                 let message = "that session has ended".to_string();
-                return send(out, &RelayMsg::SessionError { message }).await;
+                return send(out, &RelayMsg::SessionError { ack: 0, message }).await;
             };
             match hub.join(origin, true) {
                 Ok(()) => {
@@ -193,7 +193,7 @@ pub async fn handle(hub: &Arc<Hub>, room: &ViewRoom, who: &Who, text: &str, cx: 
                 }
                 Err(message) => {
                     info!(device = %who.name, "joined room: join refused — {message}");
-                    send(out, &RelayMsg::SessionError { message }).await;
+                    send(out, &RelayMsg::SessionError { ack: 0, message }).await;
                 }
             }
         }
@@ -201,17 +201,17 @@ pub async fn handle(hub: &Arc<Hub>, room: &ViewRoom, who: &Who, text: &str, cx: 
         RelayMsg::SessionTakeover { config } => {
             if let Err(why) = config.validate() {
                 let message = format!("that configuration cannot work: {why}");
-                return send(out, &RelayMsg::SessionError { message }).await;
+                return send(out, &RelayMsg::SessionError { ack: 0, message }).await;
             }
             if live_session(&hub.cmd_tx).await.is_none() {
                 let message = "that session has ended".to_string();
-                return send(out, &RelayMsg::SessionError { message }).await;
+                return send(out, &RelayMsg::SessionError { ack: 0, message }).await;
             }
             let cfg = match hub.takeover(origin, &config) {
                 Ok(c) => c,
                 Err(message) => {
                     info!(device = %who.name, "joined room: take over refused — {message}");
-                    return send(out, &RelayMsg::SessionError { message }).await;
+                    return send(out, &RelayMsg::SessionError { ack: 0, message }).await;
                 }
             };
             hub.detached
@@ -224,14 +224,14 @@ pub async fn handle(hub: &Arc<Hub>, room: &ViewRoom, who: &Who, text: &str, cx: 
                     hub.note_session(&info, true);
                     send(out, &RelayMsg::SessionStarted { info }).await;
                 }
-                Err(message) => send(out, &RelayMsg::SessionError { message }).await,
+                Err(message) => send(out, &RelayMsg::SessionError { ack: 0, message }).await,
             }
         }
 
         RelayMsg::SdpOffer { sdp } => {
             if !member() {
                 let message = "join the session before streaming it".to_string();
-                return send(out, &RelayMsg::SessionError { message }).await;
+                return send(out, &RelayMsg::SessionError { ack: 0, message }).await;
             }
             let peer = format!("{} (joined)", who.name);
             match pc::answer(hub, origin, &sdp, &room.slot, peer, Some(out.clone())).await {
@@ -241,7 +241,7 @@ pub async fn handle(hub: &Arc<Hub>, room: &ViewRoom, who: &Who, text: &str, cx: 
                 }
                 Err(e) => {
                     let message = format!("WebRTC setup failed: {e}");
-                    send(out, &RelayMsg::SessionError { message }).await;
+                    send(out, &RelayMsg::SessionError { ack: 0, message }).await;
                 }
             }
         }
@@ -251,7 +251,7 @@ pub async fn handle(hub: &Arc<Hub>, room: &ViewRoom, who: &Who, text: &str, cx: 
             }
         }
 
-        RelayMsg::SessionDetach => {
+        RelayMsg::SessionDetach { ack } => {
             room.stop_feeds();
             let empty = hub.leave(origin);
             room.slot.close();
@@ -260,15 +260,16 @@ pub async fn handle(hub: &Arc<Hub>, room: &ViewRoom, who: &Who, text: &str, cx: 
                     .store(true, std::sync::atomic::Ordering::SeqCst);
             }
             info!(device = %who.name, "joined room: left the session; it goes on");
+            send(out, &RelayMsg::SessionDetached { ack }).await;
         }
         // Anyone in it may end it for everyone (the user's decision).
-        RelayMsg::SessionStop => {
+        RelayMsg::SessionStop { ack } => {
             // Anyone in it; from outside it, only a device that could take it over anyway.
             if !member() && !hub.gate.grants(&who.key).takeover {
                 let message = "only someone in this session can end it — or a device with the \
                                takeover grant"
                     .to_string();
-                return send(out, &RelayMsg::SessionError { message }).await;
+                return send(out, &RelayMsg::SessionError { ack, message }).await;
             }
             info!(device = %who.name, "joined room: ended the session for everyone");
             hub.end(Some(origin));
@@ -277,7 +278,7 @@ pub async fn handle(hub: &Arc<Hub>, room: &ViewRoom, who: &Who, text: &str, cx: 
             let _ = hub.cmd_tx.send(CompositorCommand::Stop);
             room.stop_feeds();
             room.slot.close();
-            send(out, &RelayMsg::SessionStopped).await;
+            send(out, &RelayMsg::SessionStopped { ack }).await;
         }
 
         RelayMsg::ViewerVisible { visible } if member() => hub.visible(origin, visible),
@@ -285,7 +286,7 @@ pub async fn handle(hub: &Arc<Hub>, room: &ViewRoom, who: &Who, text: &str, cx: 
         RelayMsg::SessionReconfigure { config } if member() => {
             if let Err(why) = config.validate() {
                 let message = format!("that configuration cannot work: {why}");
-                return send(out, &RelayMsg::SessionError { message }).await;
+                return send(out, &RelayMsg::SessionError { ack: 0, message }).await;
             }
             let result = match hub.reconfigure(origin, &config) {
                 Some(c) => reconfigure(&hub.cmd_tx, c).await,
@@ -295,24 +296,25 @@ pub async fn handle(hub: &Arc<Hub>, room: &ViewRoom, who: &Who, text: &str, cx: 
             };
             match result {
                 Ok(info) => send(out, &RelayMsg::SessionReconfigured { info }).await,
-                Err(message) => send(out, &RelayMsg::SessionError { message }).await,
+                Err(message) => send(out, &RelayMsg::SessionError { ack: 0, message }).await,
             }
         }
-        RelayMsg::SessionLaunch { command } if member() => {
+        RelayMsg::SessionLaunch { ack, command } if member() => {
             let _ = hub.cmd_tx.send(CompositorCommand::Launch { command });
-            send(out, &RelayMsg::SessionLaunched).await;
+            send(out, &RelayMsg::SessionLaunched { ack }).await;
         }
-        RelayMsg::SessionWindow { action } if member() => {
+        RelayMsg::SessionWindow { ack, action } if member() => {
             let _ = hub.cmd_tx.send(CompositorCommand::Window(action));
-            send(out, &RelayMsg::SessionWindowed).await;
+            send(out, &RelayMsg::SessionWindowed { ack }).await;
         }
-        RelayMsg::ClipboardSet { text } if member() => {
+        RelayMsg::ClipboardSet { ack, text } if member() => {
             let clip = wado_compositor::clipboard::Clip {
                 mime: "text/plain;charset=utf-8".into(),
                 data: text.into_bytes().into(),
                 secret: false,
             };
             let _ = hub.cmd_tx.send(CompositorCommand::SetClipboard(clip));
+            send(out, &RelayMsg::ClipboardSent { ack }).await;
         }
         RelayMsg::TimingRequest => {
             let mut timings = *hub.feeds.timings.borrow();
@@ -358,7 +360,7 @@ pub async fn handle(hub: &Arc<Hub>, room: &ViewRoom, who: &Who, text: &str, cx: 
             hub.set_link(origin, crate::links::describe(&link));
         }
         // The computer's controls: exactly a widget's link's policy and grants.
-        RelayMsg::HostGet
+        RelayMsg::HostGet { .. }
         | RelayMsg::HostDo { .. }
         | RelayMsg::ConfigGet
         | RelayMsg::ClipList
@@ -389,7 +391,7 @@ pub async fn handle(hub: &Arc<Hub>, room: &ViewRoom, who: &Who, text: &str, cx: 
             let message = "this link joins a running session — start a new one from the \
                            Computer page"
                 .to_string();
-            send(out, &RelayMsg::SessionError { message }).await;
+            send(out, &RelayMsg::SessionError { ack: 0, message }).await;
         }
         other => {
             let kind = crate::e2e::link::kind(text).unwrap_or("?").to_string();
@@ -399,7 +401,7 @@ pub async fn handle(hub: &Arc<Hub>, room: &ViewRoom, who: &Who, text: &str, cx: 
                 "join the session first".to_string()
             };
             info!(device = %who.name, kind, "joined room: refused");
-            send(out, &RelayMsg::SessionError { message }).await;
+            send(out, &RelayMsg::SessionError { ack: 0, message }).await;
         }
     }
 }

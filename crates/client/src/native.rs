@@ -16,11 +16,22 @@ use crate::{
 };
 
 /// Open the computer with this profile key, then the door `go` names (empty: just its page).
-/// Nothing happens for a computer this client does not have, or during a session — a session
-/// is where the person is.
+/// Nothing happens for a computer this client does not have.
+///
+/// During a session, a door is a choice to be somewhere else: this device leaves the session
+/// (it keeps running on the computer) and goes there. Refusing it — "a session is where the
+/// person is" — was the trap of 2026-10-30: every door in the app's own home led back into a
+/// session that had no picture and no way out. Only the same computer's desktop stays put.
 pub fn go(ui: Ui, key: &str, go: &str) {
-    if route::index_of(ui, key).is_none() || (ui.live.session_on)() {
+    if route::index_of(ui, key).is_none() {
         return;
+    }
+    if (ui.live.session_on)() {
+        let same = crate::profile::current_key(ui) == key;
+        if same && Go::parse(go) == Some(Go::Session) {
+            return;
+        }
+        crate::actions::leave(ui);
     }
     route::open_computer(ui, key);
     if let Some(g) = Go::parse(go) {
@@ -30,12 +41,17 @@ pub fn go(ui: Ui, key: &str, go: &str) {
 }
 
 /// One step back: a page to its computer, a computer to home (with its exit motion), home to the
-/// app. In a session, Back opens or closes the control centre instead of leaving the picture.
+/// app. In a session, Back closes the control centre if it is up, and otherwise leaves the
+/// session for the computer's page — never toggling the control centre open, which made Back a
+/// way *into* the session's chrome rather than out of it.
 pub fn back(ui: Ui) {
     let mut live = ui.live;
     if (live.session_on)() {
-        let open = (live.cc_open)();
-        live.cc_open.set(!open);
+        if (live.cc_open)() {
+            live.cc_open.set(false);
+        } else {
+            crate::actions::leave(ui);
+        }
         return;
     }
     let view = live.view.peek().clone();

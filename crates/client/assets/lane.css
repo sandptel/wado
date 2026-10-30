@@ -25,3 +25,16 @@
 
 @keyframes lanehint-in { from { opacity: 0; translate: -50% 8px; } }
 @media (prefers-reduced-motion: reduce) { .lanehint { animation: none; } }
+
+/* In a session the hint never covers a control: it rides the picture's top edge, folded to one
+ * line (title, Retry, ×); the body is in the link badge's card. The "no picture" hint is the
+ * stage's own state now (surround.css, `.sstate`). */
+.lanehint.insession { top: calc(8px + env(safe-area-inset-top)); bottom: auto; padding: 4px 4px 4px 12px;
+  grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; border-radius: 999px;
+  width: min(440px, calc(100vw - 24px)); }
+.lanehint.insession p { display: none; }
+.lanehint.insession .lanehint-head b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .75rem; }
+.lanehint.insession .btn { min-height: 36px; padding: 0 12px; font-size: .75rem; grid-column: 2; grid-row: 1; }
+.lanehint.insession .lanehint-x { margin: 0; }
+:root[data-arr="console"] .lanehint.insession { top: calc(var(--c-pic-y) + 8px); left: calc(var(--c-pic-x) + var(--c-pic-w) / 2);
+  width: min(440px, calc(var(--c-pic-w) - 16px)); }

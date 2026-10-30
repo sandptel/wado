@@ -91,6 +91,48 @@ pub fn back(ui: Ui) {
     view.set(to);
 }
 
+/// Where the person was, for a page that comes back after its process died (the Android app in
+/// the background, a reload): home or a computer's page — a settings page comes back as its
+/// computer's page. Never the session: that is only ever entered by a pick.
+const VIEW_KEY: &str = "wado.view";
+const VIEW_TTL_MS: u64 = 30 * 60 * 1000;
+
+/// Keep [`VIEW_KEY`] up to date.
+pub fn use_remember(ui: Ui) {
+    use_effect(move || {
+        if !(ui.live.loaded)() {
+            return;
+        }
+        let view = (ui.live.view)();
+        let at = match view.computer() {
+            Some(k) => format!("c:{k}"),
+            None => "home".to_string(),
+        };
+        crate::bridge::call(format!(
+            "try {{ localStorage.setItem({}, JSON.stringify({{ at: {}, t: Date.now() }})); }} catch (_) {{}}",
+            crate::bridge::js(&VIEW_KEY),
+            crate::bridge::js(&at),
+        ));
+    });
+}
+
+/// Go back to where [`use_remember`] last saw the person, if that was recent — unless the
+/// address asks for somewhere (`?go=`, handled by `deeplink`).
+pub async fn restore(ui: Ui) {
+    let code = format!(
+        "try {{ if (/[?&]go=/.test(location.search)) return null;          const v = JSON.parse(localStorage.getItem({}) || 'null');          return v && Date.now() - v.t < {VIEW_TTL_MS} ? v.at : null; }} catch (_) {{ return null; }}",
+        crate::bridge::js(&VIEW_KEY)
+    );
+    let Ok(v) = document::eval(&code).await else {
+        return;
+    };
+    if let Some(key) = v.as_str().and_then(|s| s.strip_prefix("c:")) {
+        if index_of(ui, key).is_some() {
+            open_computer(ui, key);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

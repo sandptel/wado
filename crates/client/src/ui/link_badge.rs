@@ -25,17 +25,20 @@ pub fn render(ui: Ui) -> Element {
     let label = link.label();
     let detail = link.detail();
     let can_retry = session && link.state == "relayed";
+    // With no picture, the stage itself says all of this, in the picture's place
+    // (`surround::stage_state`): a card over the bezel would only cover it.
+    let card = open() && !crate::ui::surround::stage_state::waiting(ui);
     rsx! {
         div { class: "linkbadge {tone}", class: if quiet { "quiet" },
             button {
                 class: "linkpill",
                 title: "{label}",
-                "aria-expanded": "{open()}",
+                "aria-expanded": "{card}",
                 onclick: move |_| open.toggle(),
                 span { class: "linkdot" }
                 if !quiet { span { class: "linklabel", "{label}" } }
             }
-            if open() {
+            if card {
                 div { class: "linkcard", role: "status",
                     p { b { "{label}" } }
                     p { "{detail}" }

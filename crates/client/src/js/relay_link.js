@@ -161,6 +161,8 @@ W.relayOn = (type, fn) => { W._relayHandlers[type] = fn; };
 
 function fire(type, msg) {
   if (W.askGot) W.askGot(type);
+  // Every answer settles whatever action was waiting on it (pending.js), handler or not.
+  if (W.pending) W.pending.wire(type, msg);
   const h = W._relayHandlers[type];
   if (!h) return;
   try { h(msg); } catch (e) { if (W.rlog) W.rlog("relay handler " + type + " threw: " + e); }

@@ -39,7 +39,9 @@ pub use config::{
     ConfigState, ConsolePrefs, DeviceGrants, GamepadPrefs, HostLimits, InputHost, KeyboardPrefs,
     PinnedInput, SavedLayout, SizePrefs, TrackpadPrefs,
 };
-pub use control::{SessionControl, WindowAction, WindowInfo, WindowList};
+pub use control::{
+    LaunchNote, SessionControl, WindowAction, WindowInfo, WindowList, LAUNCHES_KEPT,
+};
 pub use host::{HostAction, HostState};
 pub use menu::{MenuItem, MenuSheet};
 pub use multi::{LinkVerdict, Participant, Presence};

@@ -117,6 +117,10 @@ W.textInput = (active) => {
   emit({ type: "text_wanted", on: !!active });
   if (active) {
     if (el && document.activeElement === el) return;   // already up; do not steal focus again
+    // In the console the keyboard opens only on Type: raised by itself it took half the screen
+    // from a console laid out around it (the user's recording, 2026-10-30). The Type key and the
+    // bar's ⌨ (text_wanted) are right there.
+    if (document.documentElement.dataset.arr === "console") return;
     autoOpened = true;
     W.oskOpen();
   } else if (autoOpened) {
