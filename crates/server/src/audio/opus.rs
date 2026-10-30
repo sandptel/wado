@@ -37,7 +37,7 @@ impl Opus {
         enc.set_time_base((1, RATE as i32));
         let mut opts = ff::Dictionary::new();
         opts.set("application", "lowdelay");
-        opts.set("frame_duration", &frame_ms.to_string());
+        opts.set("frame_duration", frame_ms.to_string());
         Ok(Self {
             enc: enc.open_as_with(codec, opts)?,
             pts: 0,

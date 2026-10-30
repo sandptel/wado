@@ -68,10 +68,8 @@ pub fn find(sc: &Scope, path: &str, query: &str, kind: &str) -> Value {
             }
             let Ok(md) = e.metadata() else { continue };
             let child = format!("{}/{name}", dir.trim_end_matches('/'));
-            if md.is_dir() {
-                if depth < MAX_DEPTH && !md.file_type().is_symlink() {
-                    queue.push_back((child.clone(), depth + 1));
-                }
+            if md.is_dir() && depth < MAX_DEPTH && !md.file_type().is_symlink() {
+                queue.push_back((child.clone(), depth + 1));
             }
             let name_ok = q.is_empty() || name.to_lowercase().contains(&q);
             let kind_ok = kind.is_empty() || (md.is_file() && kind_of(&name) == kind);
@@ -81,7 +79,7 @@ pub fn find(sc: &Scope, path: &str, query: &str, kind: &str) -> Value {
             }
         }
     }
-    hits.sort_by(|a, b| b.0.cmp(&a.0));
+    hits.sort_by_key(|b| std::cmp::Reverse(b.0));
     let partial = dirs >= MAX_DIRS || hits.len() > MAX_HITS;
     let entries: Vec<Value> = hits.into_iter().take(MAX_HITS).map(|(_, v)| v).collect();
     json!({ "entries": entries, "partial": partial })

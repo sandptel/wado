@@ -310,7 +310,7 @@ async fn run(
                 } else {
                     p_bytes_total += bytes;
                 }
-                if frames % 300 == 0 {
+                if frames.is_multiple_of(300) {
                     // Tell the viewer what actually left here. Without it the viewer sees only
                     // what arrived and has to guess which end lost the difference — and it has
                     // guessed wrong twice, measured: 2026-09-12 22:33 (2.4 Mbps of 5.35 sent) and
@@ -387,7 +387,7 @@ async fn run(
                         worst = took;
                     }
                     // Same once-per-60 cadence as the drop counter, so the two lines pair up.
-                    if slow % 60 == 0 {
+                    if slow.is_multiple_of(60) {
                         warn!(
                             slow,
                             worst_ms = worst.as_millis() as u64,
@@ -997,7 +997,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             use crate::shells::Event;
             loop {
                 let ev = rx.recv().await;
-                if matches!(ev, Ok(_)) && refusal().is_some() {
+                if ev.is_ok() && refusal().is_some() {
                     continue;
                 }
                 let msg = match ev {
@@ -1407,7 +1407,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 // "a session is already active" and closing the socket — which is what this did —
                 // left a reconnecting phone with a session it could see in the logs and no way to
                 // reach. See `RelayMsg::SessionAlive`.
-                if let Some(info) = live_session(&ctx).await {
+                if let Some(info) = live_session(ctx).await {
                     info!("relay client: a session is already running — offering rejoin or drop");
                     send_relay(&out_tx, &RelayMsg::SessionAlive { info })
                         .await
@@ -1511,7 +1511,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             }
 
             RelayMsg::SessionRejoin => {
-                match live_session(&ctx).await {
+                match live_session(ctx).await {
                     Some(info) => {
                         // A rejoin is a join: it displaces nobody. The seat's own resume, so no
                         // grant asked — but a full session is full.
@@ -1771,7 +1771,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 let (pad, api, peer, out_tx) = (
                     ctx.pad.clone(),
                     Arc::clone(&ctx.api),
-                    pad_peer(&ctx),
+                    pad_peer(ctx),
                     out_tx.clone(),
                 );
                 tokio::spawn(async move {
@@ -1793,7 +1793,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             }
 
             RelayMsg::PadIn { msg } => {
-                ctx.pad.relayed(msg, &pad_peer(&ctx), &out_tx);
+                ctx.pad.relayed(msg, &pad_peer(ctx), &out_tx);
             }
 
             RelayMsg::FilesOffer { sdp } => {
@@ -1840,7 +1840,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 // compositor logged `launch ignored — no active session` and the viewer was told
                 // the application was starting. It then waited for a window that was never
                 // coming, with the only evidence in a log it cannot see.
-                if live_session(&ctx).await.is_none() {
+                if live_session(ctx).await.is_none() {
                     send_relay(
                         &out_tx,
                         &RelayMsg::SessionError {
@@ -2022,10 +2022,10 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
 
             RelayMsg::ConfigSetPrefs { prefs } => {
                 let (device, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
-                if ctx.viewer_ok.load(Ordering::SeqCst) {
-                    if let Err(e) = crate::config::link::set_prefs(&device, &name, &prefs) {
-                        warn!("could not save device settings: {e}");
-                    }
+                if ctx.viewer_ok.load(Ordering::SeqCst)
+                    && let Err(e) = crate::config::link::set_prefs(&device, &name, &prefs)
+                {
+                    warn!("could not save device settings: {e}");
                 }
             }
 
@@ -2185,10 +2185,10 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
                     .clone();
-                if let Some(pc) = pc {
-                    if let Ok(cand) = serde_json::from_str(&candidate) {
-                        let _ = pc.add_ice_candidate(cand).await;
-                    }
+                if let Some(pc) = pc
+                    && let Ok(cand) = serde_json::from_str(&candidate)
+                {
+                    let _ = pc.add_ice_candidate(cand).await;
                 }
             }
 

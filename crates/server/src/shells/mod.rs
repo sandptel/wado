@@ -71,12 +71,12 @@ pub fn events() -> broadcast::Receiver<Event> {
 
 /// Open a shell. Must run inside a tokio runtime: the output forwarder is a task.
 pub fn open(cols: u16, rows: u16, host: Option<String>) -> Result<u32, String> {
-    if let Some(h) = &host {
-        if !hosts::list().iter().any(|a| a == h) {
-            return Err(format!(
-                "{h} is not a Host in this computer's ~/.ssh/config"
-            ));
-        }
+    if let Some(h) = &host
+        && !hosts::list().iter().any(|a| a == h)
+    {
+        return Err(format!(
+            "{h} is not a Host in this computer's ~/.ssh/config"
+        ));
     }
     if reg().shells.len() >= MAX {
         return Err(format!("{MAX} shells are open already — close one first"));
@@ -119,10 +119,10 @@ pub fn open(cols: u16, rows: u16, host: Option<String>) -> Result<u32, String> {
 
 pub fn write(id: u32, data: &str) {
     let mut r = reg();
-    if let Some(p) = r.shells.get_mut(&id).and_then(|s| s.pty.as_mut()) {
-        if let Err(e) = p.write(data) {
-            tracing::warn!(id, "pty write failed: {e}");
-        }
+    if let Some(p) = r.shells.get_mut(&id).and_then(|s| s.pty.as_mut())
+        && let Err(e) = p.write(data)
+    {
+        tracing::warn!(id, "pty write failed: {e}");
     }
 }
 
