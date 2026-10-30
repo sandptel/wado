@@ -80,6 +80,11 @@ fun AboutScreen(onOpenUrl: (String) -> Unit, onBack: () -> Unit) {
             }, Modifier.fillMaxWidth())
         }
         item {
+            WadoButton("OS logos — Simple Icons, CC0", {
+                shown = if (shown == "os-logos.txt") null else "os-logos.txt"
+            }, Modifier.fillMaxWidth())
+        }
+        item {
             Text(
                 "Uses ZXing (Apache-2.0) to read QR codes and the UnifiedPush connector (Apache-2.0) for push without Google.",
                 style = Type.small,

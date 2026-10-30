@@ -36,7 +36,12 @@ data class Palette(
     val warn: Color,
     val bad: Color,
     val light: Boolean,
+    /** A computer's disc per accent slot (base08..base0F), softened into the ground. */
+    val discs: List<Color> = emptyList(),
 ) {
+    /** The disc for accent slot `hue` (0..7). */
+    fun disc(hue: Int): Color = discs.getOrElse(hue.mod(8)) { surface2 }
+
     companion object {
         fun of(s: Base16) = Palette(
             ground = Color(s.ground), surface1 = Color(s.surface1), surface2 = Color(s.surface2),
@@ -44,6 +49,7 @@ data class Palette(
             text = Color(s.text), dim = Color(s.dim), accent = Color(s.accent),
             onAccent = Color(s.onAccent), good = Color(s.good), warn = Color(s.warn), bad = Color(s.bad),
             light = s.light,
+            discs = (0x8..0xF).map { Color(Base16.mix(s.ground, s.base(it), 0.30f)) },
         )
     }
 }

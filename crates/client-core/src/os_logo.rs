@@ -88,7 +88,6 @@ mod tests {
 
     /// Every slug has a drawable in the app (made by `scripts/os-logos.mjs`).
     #[test]
-    #[ignore = "un-ignored when scripts/os-logos.mjs lands (P1 task 15)"]
     fn every_slug_has_a_drawable() {
         let res = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../android/app/src/main/res/drawable");
