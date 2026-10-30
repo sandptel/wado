@@ -34,9 +34,15 @@ pub fn run(args: &[String]) -> i32 {
             }
         }
     }
-    let url = status::relay_url();
-    let health = probe(&url);
+    // The relay the running daemons actually dial (their `WADO_RELAY_URL` may not be this
+    // shell's); the configured one when none is running.
     let links = record::list();
+    let url = links
+        .iter()
+        .map(|l| l.url.clone())
+        .find(|u| !u.is_empty())
+        .unwrap_or_else(status::relay_url);
+    let health = probe(&url);
     let ok = health.is_some() && links.iter().all(|l| l.up);
     if json_out {
         let out = json!({

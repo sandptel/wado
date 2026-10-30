@@ -52,6 +52,8 @@ pub struct AppState {
     pub limiter: ratelimit::JoinLimiter,
     /// For `/health`'s uptime.
     pub started: std::time::Instant,
+    /// Each seat's fallback-lane budget (`lane`).
+    pub lanes: lane::Lanes,
 }
 
 #[tokio::main]
@@ -78,6 +80,7 @@ async fn main() -> anyhow::Result<()> {
             std::time::Duration::from_secs(cfg.join_refill_secs),
         ),
         started: std::time::Instant::now(),
+        lanes: lane::Lanes::default(),
     };
 
     let app = Router::new()

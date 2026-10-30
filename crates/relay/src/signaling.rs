@@ -75,7 +75,7 @@ pub const SILENCE: Duration = Duration::from_secs(45);
 /// - `idle_seat`: a refusal because every seat is taken says `holder` and `idle` (no session
 ///   runs on any of the pool's daemons — an open page holding a seat with nothing running).
 /// - `lane`: what this relay forwards for a seat or a control link is paced to the fallback
-///   lane's cap, 64 KB/s each way after a 768 KB burst (`crate::lane`). Frames wait; none is
+///   lane's cap, 64 KB/s each way after a 2 MiB burst, one budget per seat (`crate::lane`). Frames wait; none is
 ///   dropped. `/health` says the numbers.
 pub const CAPS: &[&str] = &[
     "park",

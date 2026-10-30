@@ -11,20 +11,23 @@
 
 /// What the relay allows each seat, each way, in bytes per second.
 pub const LANE_BYTES_PER_SEC: u32 = 64 * 1024;
-/// How far ahead of the rate a seat may run at the relay: a session's start (its apps list,
-/// host state, answer) goes at once — and so does F6's speed test (`js/linktest.js`, 384 KB of
-/// filler, ~530 KB once sealed), which must measure the path, not this cap: held to 64 KB/s it
-/// would read 0.5 Mbps and refuse every join (`FLOOR_KBPS` is 1.5 Mbps). A burst is no TURN:
-/// past it, the long-run rate is still 64 KB/s.
-pub const LANE_BURST_BYTES: u32 = 768 * 1024;
+/// How far ahead of the rate a seat may run at the relay. Sized from what a session's start
+/// really sends, measured 2026-10-30: the apps list alone is ~0.9 MB (icons inline; ~1.2 MB
+/// sealed), and F6's speed test ~530 KB sealed — which must measure the path, not this cap (held
+/// to 64 KB/s it would read 0.5 Mbps and refuse every join; `FLOOR_KBPS` is 1.5 Mbps).
+///
+/// **Why it must be this big:** the relay cannot reorder sealed frames. A frame the relay has to
+/// hold makes every frame behind it wait too — the SDP answer of a reconnect included. So the
+/// relay must never have to hold one from a daemon that paces itself: the daemon's model
+/// ([`DAEMON_BURST_BYTES`], [`DAEMON_BYTES_PER_SEC`]) stays inside this one, and the gap between
+/// them is the room its urgent frames take without being delayed. A burst is no TURN: past it,
+/// the long-run rate is still 64 KB/s, and the relay keeps one budget per seat across reconnects.
+pub const LANE_BURST_BYTES: u32 = 2 << 20;
 
-/// What the daemon allows itself on the lane — under the relay's numbers, so the small frames it
-/// lets jump the queue (an SDP answer, a session verb) still fit inside the relay's budget.
+/// What the daemon allows itself on the lane — inside the relay's numbers, so the small frames it
+/// lets jump the queue (an SDP answer, a session verb) still fit in the relay's budget.
 pub const DAEMON_BYTES_PER_SEC: u32 = 56 * 1024;
-pub const DAEMON_BURST_BYTES: u32 = 160 * 1024;
-
-/// A frame at most this big is never worth a hint: the lane is not what is slowing it.
-pub const LANE_SMALL_BYTES: usize = 4 * 1024;
+pub const DAEMON_BURST_BYTES: u32 = 1280 * 1024;
 
 /// A generic cell rate pacer: one number, the time the budget is spent up to. A frame of `n`
 /// bytes spends `n / rate` seconds; a pacer may run up to `burst / rate` seconds ahead of now.
@@ -112,10 +115,10 @@ mod tests {
     #[test]
     fn a_frame_bigger_than_the_burst_still_goes_and_pays_for_itself() {
         let mut p = Pace::relay();
-        // 1 MB at once: it goes after its overrun, and the next frame pays the debt.
-        let w = p.take(0.0, 1 << 20);
+        // 3 MB at once: it goes after its overrun, and the next frame pays the debt.
+        let w = p.take(0.0, 3 << 20);
         let want =
-            ((1u64 << 20) - u64::from(LANE_BURST_BYTES)) as f64 / f64::from(LANE_BYTES_PER_SEC);
+            ((3u64 << 20) - u64::from(LANE_BURST_BYTES)) as f64 / f64::from(LANE_BYTES_PER_SEC);
         assert!((w - want).abs() < 1e-6, "{w} vs {want}");
         assert!(p.wait(w, 1) > 0.0);
     }

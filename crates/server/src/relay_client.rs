@@ -688,22 +688,34 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     // Files with no direct path ride this link too (`crate::files::lane`).
     let files_lane = crate::files::lane::OnLane::default();
     let ws_sink = Arc::new(tokio::sync::Mutex::new(ws_sink));
-    let write_task = tokio::spawn(crate::lane::pump::run(out_rx, outbox, move |text| {
-        let frames = link
+    let gen_link = Arc::clone(&ctx.link);
+    let generation = move || {
+        gen_link
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .outbound(text);
-        let ws_sink = Arc::clone(&ws_sink);
-        async move {
-            let mut sink = ws_sink.lock().await;
-            for f in frames {
-                if sink.send(WsMsg::Text(f)).await.is_err() {
-                    return false;
+            .generation()
+    };
+    let write_task = tokio::spawn(crate::lane::pump::run(
+        out_rx,
+        outbox,
+        generation,
+        move |text| {
+            let frames = link
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .outbound(text);
+            let ws_sink = Arc::clone(&ws_sink);
+            async move {
+                let mut sink = ws_sink.lock().await;
+                for f in frames {
+                    if sink.send(WsMsg::Text(f)).await.is_err() {
+                        return false;
+                    }
                 }
+                true
             }
-            true
-        }
-    }));
+        },
+    ));
 
     // ── 2. Register ──────────────────────────────────────────────────────────
     // What this relay can do, from its `registered`. An older relay neither waits for this

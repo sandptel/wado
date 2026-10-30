@@ -20,7 +20,6 @@ use wado_protocol::relay_wire::{
     display_remote_id, normalize_remote_id, WireMsg, LEAVE_CLOSE_CODE, WIRE_VERSION,
 };
 
-use crate::lane::Lane;
 use crate::registry::Instance;
 use crate::room::{Claim, Want};
 use crate::signaling::{
@@ -430,8 +429,9 @@ async fn join_loop(socket: WebSocket, remote_id: String, j: Joiner, peer: String
     }));
     let rid_fwd = rid.clone();
     // The lane's cap, each way (`crate::lane`). The relay's own pings are not the seat's traffic.
-    let mut down = Lane::new(format!("{label} ← its computer"));
-    let mut up = Lane::new(format!("{label} → its computer"));
+    // One budget per seat, kept across its reconnects (`crate::lane::Lanes`).
+    let down = state.lanes.seat(&instance_id, "← computer");
+    let up = state.lanes.seat(&instance_id, "→ computer");
     let mut fwd = AbortOnDrop(tokio::spawn(async move {
         while let Some(text) = client_inbox_rx.recv().await {
             if !is_relay_ping(&text) {

@@ -9,10 +9,18 @@ use tracing::debug;
 
 use super::outbox::{Next, Outbox};
 
-pub async fn run<F, Fut>(mut rx: mpsc::Receiver<String>, mut outbox: Outbox, mut send: F)
-where
+/// `generation`: which device the link serves now (`crate::e2e::link::Link::generation`);
+/// asked before every frame is taken or handed out, so nothing queued for one device is sealed
+/// for the next (`Outbox::set_generation`).
+pub async fn run<F, Fut, G>(
+    mut rx: mpsc::Receiver<String>,
+    mut outbox: Outbox,
+    generation: G,
+    mut send: F,
+) where
     F: FnMut(String) -> Fut,
     Fut: Future<Output = bool>,
+    G: Fn() -> u64,
 {
     let mut open = true;
     loop {
@@ -21,19 +29,27 @@ where
                 return;
             }
             match rx.recv().await {
-                Some(t) => outbox.push(t),
+                Some(t) => {
+                    outbox.set_generation(generation());
+                    outbox.push(t)
+                }
                 None => return,
             }
         }
-        // Take whatever else is already waiting, so an answer queued behind a burst of output
-        // is seen — but only while the backlog is small enough to keep backpressure honest.
+        // Take whatever else is already waiting, so an answer queued behind a burst of output is
+        // seen at once. Streaming producers hold themselves back on the gauge; the outbox's own
+        // stop is only a safety net for one that does not.
         while open && outbox.wants_more() {
             match rx.try_recv() {
-                Ok(t) => outbox.push(t),
+                Ok(t) => {
+                    outbox.set_generation(generation());
+                    outbox.push(t)
+                }
                 Err(mpsc::error::TryRecvError::Empty) => break,
                 Err(mpsc::error::TryRecvError::Disconnected) => open = false,
             }
         }
+        outbox.set_generation(generation());
         match outbox.next() {
             Next::Send(t) => {
                 if !send(t).await {
@@ -45,7 +61,7 @@ where
                 tokio::select! {
                     _ = tokio::time::sleep(d) => {}
                     r = rx.recv(), if open && outbox.wants_more() => match r {
-                        Some(t) => outbox.push(t),
+                        Some(t) => { outbox.set_generation(generation()); outbox.push(t) },
                         None => open = false,
                     },
                 }
@@ -76,10 +92,15 @@ mod tests {
         let t0 = tokio::time::Instant::now();
         let outbox = Outbox::new(Pace::new(64_000, 64_000));
         let gauge = outbox.gauge();
-        let pump = tokio::spawn(run(rx, outbox, move |t| {
-            log.lock().unwrap().push((tokio::time::Instant::now(), t));
-            async { true }
-        }));
+        let pump = tokio::spawn(run(
+            rx,
+            outbox,
+            || 1,
+            move |t| {
+                log.lock().unwrap().push((tokio::time::Instant::now(), t));
+                async { true }
+            },
+        ));
         let chunk = format!(r#"{{"type":"pty_output","data":"{}"}}"#, "x".repeat(24_000));
         // A streaming producer, as the shells' and the files' are: it waits for room first.
         let producer = {

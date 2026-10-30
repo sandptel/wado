@@ -241,7 +241,10 @@ function onLinkUp() {
     W.relayResumeIfWatching();
     return;
   }
-  W.requestApps();
+  // Once per page, not per redial: the list (its icons inline) is ~0.9 MB here, measured
+  // 2026-10-30 — re-sent on every link-up it queued ahead of the rejoin on the relay's 64 KB/s
+  // lane. The drawer asks afresh when it opens.
+  if (!(W.appsList && W.appsList.length)) W.requestApps();
   // `sessionOn` alone is not enough to know a session may be running: it is cleared when the
   // peer connection dies, and a dead peer connection is precisely what this branch exists to
   // survive. `recentlyWatching()` is the durable crumb — it outlives the page, let alone a

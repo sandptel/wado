@@ -13,9 +13,10 @@ use super::gauge::Gauge;
 
 /// A safety stop, not the working limit: streaming producers hold themselves to
 /// [`super::gauge::ROOM_BYTES`]. Past this the outbox takes no more until it drains, and whatever
-/// is behind in the channel — urgent or not — waits. Only a producer that ignores the gauge gets
-/// here.
-pub const BACKLOG_BYTES: usize = 4 << 20;
+/// is behind in the channel — urgent or not — waits (the daemon loop then blocks on its send).
+/// Only a producer that ignores the gauge gets here; a device leaving empties it
+/// ([`Outbox::set_generation`]), so stale bulk never piles up across reconnects.
+pub const BACKLOG_BYTES: usize = 16 << 20;
 
 /// What the next frame is, now.
 #[derive(Debug, PartialEq)]
@@ -35,6 +36,8 @@ pub struct Outbox {
     /// Spare frames dropped since the last report.
     pub dropped: u64,
     gauge: Gauge,
+    /// The link generation (`crate::e2e::link::Link::generation`) what is queued belongs to.
+    generation: u64,
 }
 
 /// What a frame costs on the wire once sealed: base64 (4/3) inside a small JSON wrapper. An
@@ -59,7 +62,23 @@ impl Outbox {
             epoch: Instant::now(),
             dropped: 0,
             gauge: Gauge::default(),
+            generation: 0,
         }
+    }
+
+    /// The device on the link is now `generation`. Anything queued for the one before — it was
+    /// sealed for nobody yet — is dropped: it must not be sealed for the next device (a shell's
+    /// output after a takeover), and it is not worth the lane's time. The relay's own frames
+    /// (uncharged) are kept: they are not a device's.
+    pub fn set_generation(&mut self, generation: u64) {
+        if generation == self.generation {
+            return;
+        }
+        self.generation = generation;
+        self.urgent.retain(|(_, charged)| !charged);
+        self.gauge.sub(self.bulk_bytes);
+        self.bulk.clear();
+        self.bulk_bytes = 0;
     }
 
     /// What producers on this link wait on (see [`Gauge::room`]).
@@ -148,6 +167,21 @@ mod tests {
         o.push(f("sdp_answer", 3_000));
         assert!(matches!(o.next(), Next::Send(t) if t.contains("sdp_answer")));
         assert!(matches!(o.next(), Next::Wait(_)));
+    }
+
+    #[test]
+    fn a_new_device_never_gets_what_was_queued_for_the_last() {
+        let mut o = Outbox::new(Pace::new(1_000, 1_000));
+        let g = o.gauge();
+        o.set_generation(1);
+        o.push(f("pty_output", 50_000));
+        o.push(f("sdp_answer", 10));
+        o.push(r#"{"type":"peer_accept","room_id":"r2"}"#.into());
+        o.set_generation(2);
+        // The relay's own verdict stays; the old device's answer and output are gone.
+        assert!(matches!(o.next(), Next::Send(t) if t.contains("peer_accept")));
+        assert_eq!(o.next(), Next::Idle);
+        assert_eq!(g.queued(), 0);
     }
 
     #[test]

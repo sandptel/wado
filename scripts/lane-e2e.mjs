@@ -26,6 +26,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deviceFor, secure } from "./lib/e2e-device.mjs";
 import { bundlePage, pairPage } from "./lib/bundle-page.mjs";
+import { authenticator, enrolAndUnlock } from "./lib/e2e-passkey.mjs";
 
 const ROOT = new URL("..", import.meta.url).pathname;
 const BIN = join(ROOT, process.env.WADO_BIN || "target/release");
@@ -73,6 +74,8 @@ async function waitFor(p, re, ms = 20000) {
   return false;
 }
 const wado = (...args) => spawnSync(join(BIN, "wado"), args, { env: { ...process.env, ...ENV }, encoding: "utf8" });
+// As the computer's user would run it: no WADO_RELAY_URL in their shell — `wado relay status`
+// must probe the relay its daemons actually dial, not the configured default.
 const mint = () => {
   const out = execFileSync(join(BIN, "wado"), ["qr", "--relay", RELAY, "--id", RID], { env: { ...process.env, ...ENV } })
     .toString().replace(/\x1b\[[0-9;]*m/g, "");
@@ -116,7 +119,7 @@ try {
   // ── caps ──
   console.log("caps");
   const health = await (await fetch(`${RELAY}/health`)).json();
-  check("/health says the lane's numbers", health.lane && health.lane.bytes_per_sec === 65536 && health.lane.burst === 786432, JSON.stringify(health));
+  check("/health says the lane's numbers", health.lane && health.lane.bytes_per_sec === 65536 && health.lane.burst === 2097152, JSON.stringify(health));
   const a = new Device("lane-phone", mint());
   check("a device pairs by code and comes up", !!(await a.wait("__up", 15000)), JSON.stringify(a.msgs.slice(0, 4)));
   const acc = a.msgs.find((m) => m.type === "join_accepted");
@@ -211,6 +214,9 @@ try {
   // ── pad: compact frames negotiated ──
   console.log("pad");
   check("wado allow … input", wado("allow", "lane-phone", "input").status === 0);
+  // The trackpad needs a fresh passkey unlock (F3): enrol one, as the phone would.
+  const unlocked = await enrolAndUnlock(a.send, (pred) => a.waitWhere(pred, 10000), await authenticator());
+  check("a passkey unlocks the trackpad", !!unlocked);
   a.clear();
   a.send({ type: "pad_in", msg: { k: "ping", t: 7, bin: true } });
   const pong = await a.waitWhere((m) => m.type === "pad_out" && m.msg.k === "pong", 8000);

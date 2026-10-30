@@ -285,40 +285,52 @@ async fn writer(
     relay: mpsc::Sender<String>,
     rooms: Rooms,
 ) {
-    crate::lane::pump::run(rx, crate::lane::Outbox::default(), move |text| {
-        let (room_id, relay, rooms) = (room_id.clone(), relay.clone(), rooms.clone());
-        let frames = if text == CLOSE {
-            Vec::new()
-        } else {
-            link.lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .outbound(text.clone())
-        };
-        async move {
-            if text == CLOSE {
-                rooms.close(&room_id);
-                send(
-                    &relay,
-                    &RelayMsg::CtlClose {
-                        room_id,
-                        reason: String::new(),
-                    },
-                )
-                .await;
-                return false;
-            }
-            for text in frames {
-                let wrapped = RelayMsg::Ctl {
-                    room_id: room_id.clone(),
-                    text,
-                };
-                if !send(&relay, &wrapped).await {
+    let gen_link = Arc::clone(&link);
+    let generation = move || {
+        gen_link
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .generation()
+    };
+    crate::lane::pump::run(
+        rx,
+        crate::lane::Outbox::default(),
+        generation,
+        move |text| {
+            let (room_id, relay, rooms) = (room_id.clone(), relay.clone(), rooms.clone());
+            let frames = if text == CLOSE {
+                Vec::new()
+            } else {
+                link.lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .outbound(text.clone())
+            };
+            async move {
+                if text == CLOSE {
+                    rooms.close(&room_id);
+                    send(
+                        &relay,
+                        &RelayMsg::CtlClose {
+                            room_id,
+                            reason: String::new(),
+                        },
+                    )
+                    .await;
                     return false;
                 }
+                for text in frames {
+                    let wrapped = RelayMsg::Ctl {
+                        room_id: room_id.clone(),
+                        text,
+                    };
+                    if !send(&relay, &wrapped).await {
+                        return false;
+                    }
+                }
+                true
             }
-            true
-        }
-    })
+        },
+    )
     .await;
 }
 

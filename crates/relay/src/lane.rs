@@ -10,7 +10,10 @@
 //! under this cap (`wado_protocol::lane::DAEMON_BYTES_PER_SEC`), so a current daemon never meets
 //! it; it is what holds an older daemon, or a client, to the budget.
 
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+
+use dashmap::DashMap;
 
 use tracing::info;
 use wado_protocol::lane::Pace;
@@ -65,6 +68,39 @@ impl Lane {
     }
 }
 
+/// A lane kept across a seat's reconnects: a redial does not buy a fresh burst, and the relay's
+/// budget for a seat is the one the daemon models on its single link
+/// (`wado_protocol::lane::LANE_BURST_BYTES` says why the two must agree).
+#[derive(Clone)]
+pub struct Shared(Arc<Mutex<Lane>>);
+
+impl Shared {
+    pub async fn admit(&self, bytes: usize) {
+        let wait = self.0.lock().unwrap_or_else(|e| e.into_inner()).take(bytes);
+        if !wait.is_zero() {
+            tokio::time::sleep(wait).await;
+        }
+    }
+}
+
+/// Every seat's lanes, by instance and direction. ponytail: never pruned — one entry per daemon
+/// instance a relay has seen, which is the pool size times restarts with new keys.
+#[derive(Clone, Default)]
+pub struct Lanes(Arc<DashMap<String, Shared>>);
+
+impl Lanes {
+    pub fn seat(&self, instance_id: &str, way: &str) -> Shared {
+        self.0
+            .entry(format!("{instance_id} {way}"))
+            .or_insert_with(|| {
+                Shared(Arc::new(Mutex::new(Lane::new(format!(
+                    "seat {instance_id} {way}"
+                )))))
+            })
+            .clone()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -76,16 +112,34 @@ mod tests {
         for _ in 0..50 {
             assert!(l.take(2_000).is_zero());
         }
-        // A megabyte at once: everything past the burst waits at the rate.
+        // Three megabytes at once: everything past the burst waits at the rate.
         let mut waited = Duration::ZERO;
-        for _ in 0..64 {
+        for _ in 0..192 {
             waited = l.take(16 * 1024);
         }
-        let want = (100_000 + 64 * 16 * 1024 - LANE_BURST_BYTES as usize) as f64
+        let want = (100_000 + 192 * 16 * 1024 - LANE_BURST_BYTES as usize) as f64
             / f64::from(LANE_BYTES_PER_SEC);
         assert!(
             (waited.as_secs_f64() - want).abs() < 0.05,
             "{waited:?} vs {want}"
         );
+    }
+
+    #[tokio::test]
+    async fn a_seat_keeps_its_budget_across_reconnects() {
+        let lanes = Lanes::default();
+        let a = lanes.seat("i", "down");
+        a.admit(LANE_BURST_BYTES as usize).await;
+        // The same seat, a new link: no fresh burst.
+        let b = lanes.seat("i", "down");
+        assert!(!b.0.lock().unwrap().take(64 * 1024).is_zero());
+        // Another seat has its own.
+        assert!(lanes
+            .seat("j", "down")
+            .0
+            .lock()
+            .unwrap()
+            .take(64 * 1024)
+            .is_zero());
     }
 }

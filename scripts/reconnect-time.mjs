@@ -25,7 +25,7 @@
 // Kills only what it started, by pid.
 
 import { spawn, execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { bundlePage, pairPage } from "./lib/bundle-page.mjs";
@@ -171,6 +171,8 @@ try {
   console.log("FAIL " + (e.stack || e));
 } finally {
   if (page) page.close();
+  // The daemon's own log, for a run that went wrong: WADO_LOG=<file>.
+  if (process.env.WADO_LOG) for (const p of procs) if (p.spawnargs.includes("daemon")) writeFileSync(process.env.WADO_LOG, p.out);
   cleanup();
 }
 process.exit(failures ? 1 : 0);
