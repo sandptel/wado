@@ -44,12 +44,16 @@ impl PowerInhibit for SystemdInhibit {
                 "--what=idle:sleep",
                 "--who=wado",
                 "--why=Kept awake from a connected device",
-                "sleep",
-                "infinity",
+                "cat",
             ])
+            // Ends with the daemon, however the daemon ends: `cat` reads a pipe only this
+            // process holds (the `Child`'s stdin), so the daemon going away is EOF, `cat` exits
+            // and the lock is released. Not a signal — systemd-inhibit blocks SIGTERM while its
+            // command runs, so PDEATHSIG alone left holds behind (seen `2026-10-30`).
+            .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
-            // Ends with the daemon, however the daemon ends.
+            // Belt and braces for the systemd-inhibit process itself.
             // SAFETY: prctl is async-signal-safe and touches only this child.
             unsafe {
                 cmd.pre_exec(|| {
@@ -75,5 +79,33 @@ impl PowerInhibit for SystemdInhibit {
             .as_mut()
             .is_some_and(|c| c.try_wait().ok().flatten().is_none());
         self.state.publish(alive);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The hold must not outlive its holder: closing the pipe (what the daemon dying does) ends
+    /// the `cat`, and with it the lock. Skipped where there is no systemd-inhibit or logind.
+    #[test]
+    fn closing_the_pipe_releases_the_hold() {
+        let inhibit = SystemdInhibit::new();
+        if inhibit.set(true).is_err() {
+            return;
+        }
+        let mut child = inhibit.hold.lock().unwrap().take().expect("held");
+        if child.try_wait().unwrap().is_some() {
+            return; // no logind here: systemd-inhibit could not take the lock
+        }
+        drop(child.stdin.take()); // the daemon going away, as far as the child can tell
+        let gone = (0..50).any(|_| {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            child.try_wait().unwrap().is_some()
+        });
+        if !gone {
+            let _ = child.kill();
+        }
+        assert!(gone, "systemd-inhibit outlived its pipe");
     }
 }

@@ -53,6 +53,21 @@ const POLL: Duration = Duration::from_millis(20);
 pub struct Launched {
     pub command: String,
     pub child: Child,
+    /// When it was started, and whether a window of its has been shown since
+    /// (`crate::launch_clock`).
+    pub at: std::time::Instant,
+    pub shown: bool,
+}
+
+impl Launched {
+    pub fn new(command: String, child: Child) -> Self {
+        Self {
+            command,
+            child,
+            at: std::time::Instant::now(),
+            shown: false,
+        }
+    }
 }
 
 /// Spawn a command as its own process-group leader.

@@ -23,6 +23,7 @@ pub async fn run<F, Fut, G>(
     G: Fn() -> u64,
 {
     let mut open = true;
+    let mut seq: u64 = 0;
     loop {
         if outbox.is_empty() {
             if !open {
@@ -52,9 +53,30 @@ pub async fn run<F, Fut, G>(
         outbox.set_generation(generation());
         match outbox.next() {
             Next::Send(t) => {
+                // Timed (`crate::slow`): how long the frame sat in the lane, and how long the
+                // socket took it. A device's "didn't answer" is one of these, or the handler.
+                seq += 1;
+                let (age, depth) = (outbox.last_age, outbox.depth());
+                let kind = crate::e2e::link::kind(&t).unwrap_or("?").to_owned();
+                let t0 = std::time::Instant::now();
                 if !send(t).await {
                     return;
                 }
+                let write = t0.elapsed();
+                crate::slow::report(
+                    "lane",
+                    age + write,
+                    &kind,
+                    seq,
+                    format_args!(
+                        "(queued {} ms; {} urgent, {} bulk / {} KB still waiting; socket write {} ms)",
+                        age.as_millis(),
+                        depth.0,
+                        depth.1,
+                        depth.2 / 1024,
+                        write.as_millis()
+                    ),
+                );
             }
             Next::Wait(d) => {
                 // While bulk waits for the budget, anything urgent that arrives still goes now.

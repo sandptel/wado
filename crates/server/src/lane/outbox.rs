@@ -28,8 +28,8 @@ pub enum Next {
 }
 
 pub struct Outbox {
-    urgent: VecDeque<(String, bool)>,
-    bulk: VecDeque<String>,
+    urgent: VecDeque<(String, bool, Instant)>,
+    bulk: VecDeque<(String, Instant)>,
     bulk_bytes: usize,
     pace: Pace,
     epoch: Instant,
@@ -38,6 +38,8 @@ pub struct Outbox {
     gauge: Gauge,
     /// The link generation (`crate::e2e::link::Link::generation`) what is queued belongs to.
     generation: u64,
+    /// How long the frame [`Outbox::next`] last handed out had been queued (`crate::slow`).
+    pub last_age: Duration,
 }
 
 /// What a frame costs on the wire once sealed: base64 (4/3) inside a small JSON wrapper. An
@@ -63,6 +65,7 @@ impl Outbox {
             dropped: 0,
             gauge: Gauge::default(),
             generation: 0,
+            last_age: Duration::ZERO,
         }
     }
 
@@ -75,7 +78,7 @@ impl Outbox {
             return;
         }
         self.generation = generation;
-        self.urgent.retain(|(_, charged)| !charged);
+        self.urgent.retain(|(_, charged, _)| !charged);
         self.gauge.sub(self.bulk_bytes);
         self.bulk.clear();
         self.bulk_bytes = 0;
@@ -93,13 +96,13 @@ impl Outbox {
     fn queue_bulk(&mut self, text: String) {
         self.bulk_bytes += text.len();
         self.gauge.add(text.len());
-        self.bulk.push_back(text);
+        self.bulk.push_back((text, Instant::now()));
     }
 
     pub fn push(&mut self, text: String) {
         match class(&text) {
-            Class::Free => self.urgent.push_back((text, false)),
-            Class::Urgent => self.urgent.push_back((text, true)),
+            Class::Free => self.urgent.push_back((text, false, Instant::now())),
+            Class::Urgent => self.urgent.push_back((text, true, Instant::now())),
             Class::Bulk => self.queue_bulk(text),
             // A log line is worth a lane that is idle, never one that is busy.
             Class::Spare => {
@@ -121,16 +124,22 @@ impl Outbox {
         self.urgent.is_empty() && self.bulk.is_empty()
     }
 
+    /// `(urgent frames, bulk frames, bulk bytes)` waiting now — for a slow frame's log line.
+    pub fn depth(&self) -> (usize, usize, usize) {
+        (self.urgent.len(), self.bulk.len(), self.bulk_bytes)
+    }
+
     /// The frame to send now, if any. Spends the budget for it.
     pub fn next(&mut self) -> Next {
         let now = self.now();
-        if let Some((text, charged)) = self.urgent.pop_front() {
+        if let Some((text, charged, at)) = self.urgent.pop_front() {
             if charged {
                 self.pace.spend(now, wire_bytes(text.len()));
             }
+            self.last_age = at.elapsed();
             return Next::Send(text);
         }
-        let Some(front) = self.bulk.front() else {
+        let Some((front, _)) = self.bulk.front() else {
             return Next::Idle;
         };
         let cost = wire_bytes(front.len());
@@ -139,7 +148,10 @@ impl Outbox {
             return Next::Wait(Duration::from_secs_f64(wait));
         }
         self.pace.spend(now, cost);
-        let text = self.bulk.pop_front().unwrap_or_default();
+        let Some((text, at)) = self.bulk.pop_front() else {
+            return Next::Idle;
+        };
+        self.last_age = at.elapsed();
         self.bulk_bytes -= text.len();
         self.gauge.sub(text.len());
         Next::Send(text)
