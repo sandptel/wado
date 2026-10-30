@@ -252,7 +252,11 @@ pub const JS: &str = concat!(
     include_str!("js/actions.js"),
     "\n",
     // After the files and pad files: it wraps `W.files.req`, `W.padOpen` and `W.pad.onMsg`.
+    include_str!("js/passkey_errors.js"),
+    "\n",
     include_str!("js/passkey.js"),
+    "\n",
+    include_str!("js/passkey_approve.js"),
     "\n",
     // After passkey.js: Allow, opening a session and starting one go through `passkeyThen`.
     include_str!("js/claude.js"),

@@ -4,11 +4,17 @@
 //! says in plain words why, and runs the phone's own prompt. On success the lock's shackle lifts
 //! before the sheet leaves, so the unlock is felt, not just inferred (`passkey.css`).
 //!
+//! It never traps the person (Decision Log `2026-10-30`): every wait gives up with a reason
+//! (`js/passkey.js`), a failure offers Try again, and two ways round the passkey are always on
+//! the sheet — approve this phone on the computer ([`approve`]), and the owner's switch to stop
+//! asking it at all (`wado passkey require <device> off`). Not now always closes it.
+//!
 //! | file | job |
 //! |---|---|
 //! | [`card`] | Connection & trust → Passkey: add, unlock, replace, lock now; how long it stays unlocked |
 //! | [`glyph`] | the lock drawn in two parts, so its shackle can open |
 
+pub mod approve;
 pub mod card;
 pub mod glyph;
 
@@ -82,14 +88,25 @@ pub fn sheet(ui: Ui) -> Element {
     } else {
         String::new()
     };
-    let button = if st.busy {
+    let failed = !st.busy && !st.note.is_empty() && st.kind != "silent";
+    let button = if st.busy && st.stage == "computer" {
+        "Asking the computer…"
+    } else if st.busy {
         "Waiting for your passkey…"
+    } else if failed {
+        "Try again"
     } else if registered && st.need != "add" {
         "Unlock"
     } else {
         "Add a passkey"
     };
     let can = st.supported && !st.busy && !elsewhere && !cheer();
+    // The ways round the passkey: for any door, not for adding one on purpose.
+    let hatches = !fresh && !cheer();
+    let device = (ui.live.host)()
+        .grants
+        .map(|g| card::typed(&g.name))
+        .unwrap_or_else(|| "<this device>".into());
 
     rsx! {
         div {
@@ -139,10 +156,26 @@ pub fn sheet(ui: Ui) -> Element {
                     },
                     "{button}"
                 }
+                if hatches && st.approve.as_ref().is_none_or(|a| a.state != "waiting") {
+                    button {
+                        class: "btn pkappr",
+                        onclick: move |_| bridge::call("window.__wado.passkeyApprove();".into()),
+                        "Approve on {name} instead"
+                    }
+                }
                 button {
                     class: "btn",
                     onclick: move |_| bridge::call("window.__wado.passkeyCancel();".into()),
                     if fresh { "Later" } else { "Not now" }
+                }
+            }
+            if hatches {
+                if let Some(a) = st.approve.clone() { {approve::status(a, name.clone())} }
+            }
+            if hatches && (failed || st.approve.is_some()) {
+                p { class: "pkfine pkoff",
+                    "Passkey never works on this phone? On {name}, its owner can stop asking for it: "
+                    span { class: "mono", "wado passkey require {device} off" }
                 }
             }
             p { class: "pkfine", "{card::lasts_after_unlock(&st.state.stay, st.state.lock_on_leave)}" }
