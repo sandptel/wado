@@ -2,6 +2,24 @@
 
 ### Added
 
+- **A passkey guards shells, file changes and the trackpad.** Your phone's own screen lock —
+  fingerprint, face or PIN — becomes the key. Pairing a new phone ends with "One last step: a
+  passkey"; a phone paired before adds one under Connection & trust → Passkey. Tapping Shell or
+  Trackpad, or changing a file, asks for it when needed; reading files stays free. It locks again
+  after 15 minutes without use and whenever you leave the app. A phone without a passkey gets none
+  of the three, and is told how to add one. Lost it? `wado passkey remove <device>` on the
+  computer, then add a new one.
+- **Claude from the couch.** Run `wado claude hooks install` on the computer (it shows you the
+  change to Claude Code's settings first) and every Claude Code session shows on that computer's
+  page — and as a home widget — as a card: its project, whether it is working, waiting for you or
+  done, and what it last said. When Claude asks permission, **Allow** and **Deny** are right on the
+  card and in the notification. Tap a card for its shell. **New Claude session** picks a project
+  folder and starts Claude there in tmux, so it keeps running and can be attached at the desk.
+- **Notifications.** Turn them on under Connection & trust → Notifications: Claude needs
+  permission, Claude finished, the computer is back online, a big transfer finished — each one a
+  switch. On iPhone, install wado to the home screen first. wado can say when your computer is
+  back, not when it goes away (nothing is left running to say it).
+
 - **Install wado as an app.** Add it to your home screen (Android and desktop browsers offer it;
   on an iPhone, Safari shows a one-time hint: Share → Add to Home Screen). It opens to your
   computers like any app, and it opens **offline** too — your computers just show as offline.

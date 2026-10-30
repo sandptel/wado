@@ -31,8 +31,14 @@ const KEYS: &[(&str, &str)] = &[
     ("pgdn", "pgdn"),
 ];
 
-/// Open the console on its shells, starting a local one if there is none.
-pub fn open_shells(ui: Ui) {
+/// Open the console on its shells — behind the passkey (`crate::stepup`): at once when this
+/// phone is unlocked, else once it is.
+pub fn open_shells(_ui: Ui) {
+    crate::stepup::then("shell", "");
+}
+
+/// Open the console on its shells, starting a local one if there is none. Unlocked already.
+pub fn open_shells_now(ui: Ui) {
     let mut live = ui.live;
     live.console_tab.set("shell".to_string());
     live.console_open.set(true);

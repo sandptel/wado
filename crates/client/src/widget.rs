@@ -18,6 +18,7 @@ pub enum WidgetKind {
     Brightness,
     Clipboard,
     Trackpad,
+    Claude,
 }
 
 /// The grant a kind needs on its computer (`wado allow <device> <grant>`).
@@ -26,6 +27,7 @@ pub enum Need {
     Host,
     Clipboard,
     Input,
+    Shells,
 }
 
 impl Need {
@@ -34,17 +36,19 @@ impl Need {
             Need::Host => "host",
             Need::Clipboard => "clipboard",
             Need::Input => "input",
+            Need::Shells => "shells",
         }
     }
 }
 
 impl WidgetKind {
-    pub const ALL: [WidgetKind; 5] = [
+    pub const ALL: [WidgetKind; 6] = [
         WidgetKind::Media,
         WidgetKind::Volume,
         WidgetKind::Brightness,
         WidgetKind::Clipboard,
         WidgetKind::Trackpad,
+        WidgetKind::Claude,
     ];
 
     /// The header's label.
@@ -55,6 +59,7 @@ impl WidgetKind {
             WidgetKind::Brightness => "Brightness",
             WidgetKind::Clipboard => "Clipboard",
             WidgetKind::Trackpad => "Trackpad",
+            WidgetKind::Claude => "Claude",
         }
     }
 
@@ -73,6 +78,7 @@ impl WidgetKind {
             WidgetKind::Brightness => "sun",
             WidgetKind::Clipboard => "clip",
             WidgetKind::Trackpad => "trackpad",
+            WidgetKind::Claude => "term",
         }
     }
 
@@ -81,6 +87,7 @@ impl WidgetKind {
             WidgetKind::Media | WidgetKind::Volume | WidgetKind::Brightness => Need::Host,
             WidgetKind::Clipboard => Need::Clipboard,
             WidgetKind::Trackpad => Need::Input,
+            WidgetKind::Claude => Need::Shells,
         }
     }
 }
