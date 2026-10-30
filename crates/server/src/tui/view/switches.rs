@@ -46,7 +46,8 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
                 "trackpad",
                 c.trackpad.enabled,
                 if c.trackpad.enabled {
-                    "devices with input"
+                    // `trackpad { enabled }` gates all three virtual input devices.
+                    "pad, keys, gamepad"
                 } else {
                     "off"
                 },
