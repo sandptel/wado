@@ -68,6 +68,16 @@ pub fn Hero(ui: Ui, pk: String, r: Reach) -> Element {
             "answer on the computer".into(),
             String::new(),
         )
+    } else if r.busy && r.running_there == Some(false) {
+        // Kept out by this user's other device with nothing running: the relay and the computer
+        // are both there — never "None · nothing to reach".
+        (
+            "ok",
+            "Free",
+            None,
+            "your other device has it, idle".into(),
+            link.detail(),
+        )
     } else if !r.online && r.tone == "bad" {
         (
             "bad",
@@ -91,13 +101,6 @@ pub fn Hero(ui: Ui, pk: String, r: Reach) -> Element {
                 "Relayed",
                 None,
                 "limited · tap for why".into(),
-                link.detail(),
-            ),
-            "waiting" if r.busy && r.running_there == Some(false) => (
-                "ok",
-                "Free",
-                None,
-                "your other device has it, idle".into(),
                 link.detail(),
             ),
             "waiting" => (

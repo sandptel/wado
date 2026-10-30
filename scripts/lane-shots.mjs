@@ -41,7 +41,7 @@ const cdp = (method, params = {}) => new Promise((r) => { const i = ++id; pend.s
 const js = async (expr) => (await cdp("Runtime.evaluate", { expression: expr, returnByValue: true, awaitPromise: true })).result?.result?.value;
 const until = async (expr, ms = 8000) => { const t = Date.now(); while (Date.now() - t < ms) { if (await js(expr)) return true; await sleep(150); } return false; };
 const shot = async (name) => {
-  await sleep(1400); // let the card's entrance and any motion settle
+  await sleep(2600); // let the page's entrance stagger and the card's motion finish
   const r = await cdp("Page.captureScreenshot", { format: "png" });
   writeFileSync(join(OUT, name + ".png"), Buffer.from(r.result.data, "base64"));
 };
@@ -68,6 +68,9 @@ async function fresh(go = "") {
 try {
   // 1. A session with no direct path: no picture.
   await fresh();
+  // The page's own link ticker reads W.pc and W.relayUp every 2 s: set them as a real session would.
+  await js(`(() => { const W = window.__wado; W.relayDrop(true); W.relayUp = true; W.sessionOn = true; W.pc = { connectionState: "failed" };
+    W.linkNow = Object.assign({}, W.linkNow, { nat: "symmetric" }); W.linkTick(); return true; })()`);
   await fx({ type: "phase", stage: 3 }, { type: "sessionOn" }, link("relayed", { nat: "symmetric" }));
   ok(await until("!!document.querySelector('.lanehint')"), "no picture: the hint card is up");
   const h1 = await text(".lanehint");
@@ -87,10 +90,14 @@ try {
 
   // 3. A big shell dump on a direct link: the relay's pace, not the network's fault.
   await fresh();
+  await js(`(() => { const W = window.__wado; W.relayDrop(true); W.relayUp = true; W.sessionOn = true;
+    W.pc = { connectionState: "connected", getStats: async () => new Map() }; W.linkTick(); return true; })()`);
   await fx({ type: "phase", stage: 4 }, { type: "sessionOn" }, link("direct", { path: "lan", rtt_ms: 4 }),
     { type: "laneHint", spot: "shell", on: true, detail: "" });
   ok(await until("!!document.querySelector('.lanehint[data-spot=shell]')"), "shell: the hint card is up");
   const h3 = await text(".lanehint");
+  await sleep(2600);
+  ok(/Direct/.test(await text(".linkbadge")) || !(await text(".linkbadge")), "…the badge still says direct after the page's own tick");
   ok(/relay's pace/.test(h3) && !/not wado/.test(h3) && !/Retry direct/.test(h3), "…on a direct link it blames nobody and offers no retry", h3);
   await shot("3-shell-dump-direct");
 
@@ -107,15 +114,19 @@ try {
   await fresh("&go=session");
   await until("!!document.querySelector('#computer')", 10000);
   await js(`window.__wado.sessionsWatch = () => {}; window.__wado.sessionsGet = () => {};`);
+  // As relay_link.js does on the refusal, so the page's own link ticker agrees with it.
+  await js(`window.__wado._relaySeatBusy = { holder: "Android · Chrome", idle: true }; window.__wado.linkTick(); true`);
   await fx({ type: "phase", stage: 1, error: "" }, { type: "seatBusy", holder: "Android · Chrome", idle: true },
     link("waiting", { why: "your other device, Android · Chrome, is connected — nothing is running there" }));
   await sleep(500);
   const page5 = await text("#computer");
   ok(/Android · Chrome is connected, nothing running/.test(page5), "the Desktop door says who has it and that nothing runs there", page5.slice(0, 600));
   ok(!/every wado session/.test(page5) && !/take over/.test(page5), "…no 'every session is in use', no take-over badge");
+  ok(!/nothing to reach/.test(page5) && /Free/.test(page5), "…and the link reads Free, not None", page5.slice(0, 300));
   await shot("5-idle-seat-other-device");
 
   // 6. …and when something does run there, sessions are not claimed to be 0.
+  await js(`window.__wado._relaySeatBusy = { holder: "Android · Chrome", idle: false }; window.__wado.linkTick(); true`);
   await fx({ type: "seatBusy", holder: "Android · Chrome", idle: false });
   await sleep(500);
   const page6 = await text("#computer");
