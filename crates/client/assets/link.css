@@ -15,7 +15,7 @@
   min-height: 32px; padding: 0 12px 0 10px; border-radius: 999px;
   background: color-mix(in oklab, var(--s1), transparent 12%);
   border: 1px solid color-mix(in oklab, var(--tone), transparent 60%);
-  color: var(--bright); font: 600 13px/1 var(--body);
+  color: var(--bright); font: 600 .8125rem/1 var(--body);
 }
 /* A healthy direct session: only the dot, so a game keeps its corner. Still a 32 px target. */
 .linkbadge.quiet .linkpill { padding: 0; width: 32px; justify-content: center; background: transparent; border-color: transparent; }
@@ -26,7 +26,7 @@
 .linkcard {
   margin-top: 6px; width: min(320px, calc(100vw - 20px)); padding: 12px 14px;
   border-radius: var(--r2); background: var(--s2); border: 1px solid var(--line);
-  color: var(--text); font: 13px/1.45 var(--body);
+  color: var(--text); font: .8125rem/1.45 var(--body);
   display: grid; gap: 8px;
 }
 .linkcard p { margin: 0; }
@@ -36,7 +36,7 @@
 .reconnecting {
   position: fixed; inset: 0; z-index: 8; pointer-events: none;
   display: flex; align-items: center; justify-content: center; gap: 10px;
-  background: rgb(0 0 0 / .35); color: var(--base07); font: 600 16px/1 var(--body);
+  background: rgb(0 0 0 / .35); color: var(--base07); font: 600 1rem/1 var(--body);
 }
 .reconnecting .spin {
   width: 18px; height: 18px; border-radius: 50%;

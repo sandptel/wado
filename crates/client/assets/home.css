@@ -13,10 +13,10 @@
 .cpick .disc { width: 46px; height: 46px; transition: scale 220ms var(--pop); }
 .cpick:active .disc { scale: .92; transition-duration: var(--dur-press); }
 .ctext { min-width: 0; display: grid; gap: 1px; }
-.cname { font: 700 17px/1.15 var(--display); color: var(--bright); letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+.cname { font: 700 1.0625rem/1.15 var(--display); color: var(--bright); letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   transform-origin: 0 0; justify-self: start; max-width: 100%; }
-.cos { font: 11.5px var(--mono); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cline { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim); margin-top: 3px; white-space: nowrap; min-width: 0; }
+.cos { font: .7188rem var(--mono); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cline { display: flex; align-items: center; gap: 6px; font-size: .75rem; color: var(--dim); margin-top: 3px; white-space: nowrap; min-width: 0; }
 /* ▶: an accent tint; solid with the accent glow while a session runs there (rejoin is the likely
  * wish); grey on a computer that is not there. */
 .cgo { position: relative; width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; flex: none; color: var(--accent);
@@ -36,12 +36,12 @@
 .ccard.add:active { scale: .98; }
 
 /* Which computer something is on: its hue dot and name. */
-.hostchip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text); white-space: nowrap; }
+.hostchip { display: inline-flex; align-items: center; gap: 6px; font-size: .75rem; font-weight: 600; color: var(--text); white-space: nowrap; }
 .hostchip i { width: 8px; height: 8px; border-radius: 50%; background: var(--hue); flex: none; }
 
 
 /* ── widgets ──────────────────────────────────────────────────────────────────────────── */
-#wsect button { color: var(--accent); letter-spacing: .02em; text-transform: none; font-size: 14px; font-weight: 600; min-height: 44px; padding: 0 6px; margin-right: -6px; }
+#wsect button { color: var(--accent); letter-spacing: .02em; text-transform: none; font-size: .875rem; font-weight: 600; min-height: 44px; padding: 0 6px; margin-right: -6px; }
 .wlist { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; position: relative; }
 .widget { position: relative; min-width: 0; border-radius: var(--r3); background: var(--s1); padding: 12px 14px 14px; display: grid;
   grid-template-columns: minmax(0, 1fr); gap: 10px; touch-action: pan-y;
@@ -49,17 +49,17 @@
 .whead { display: flex; align-items: center; gap: 8px; min-height: 28px; min-width: 0; }
 .whead > svg { width: 16px; height: 16px; color: var(--dim); }
 .wname { display: contents; }
-.wtitle { font: 600 11px var(--body); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); white-space: nowrap; }
+.wtitle { font: 600 .6875rem var(--body); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); white-space: nowrap; }
 button.wtitle.linky { min-height: 28px; display: inline-flex; align-items: center; gap: 6px; }
 button.wtitle.linky::after { content: ""; width: 5px; height: 5px; border-right: 1.5px solid currentColor; border-top: 1.5px solid currentColor; rotate: 45deg; }
-.wfor { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text);
+.wfor { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: .75rem; font-weight: 600; color: var(--text);
   min-height: 28px; padding: 0 10px 0 8px; border-radius: 999px; background: var(--s2); min-width: 0; max-width: 60%;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative; }
 .wfor .ldot { width: 7px; height: 7px; }
 .wbody { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; min-width: 0; animation: wunfold 420ms var(--spring) both; }
 @keyframes wunfold { from { opacity: 0; translate: 0 -6px; } }
 .widget.away .wbody { opacity: .55; }
-.wnote { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text); min-height: 32px; }
+.wnote { display: flex; align-items: center; gap: 8px; font-size: .7812rem; color: var(--text); min-height: 32px; }
 .wnote svg { width: 18px; height: 18px; flex: none; color: var(--dim); }
 .wnote b { color: var(--bad); font-weight: 600; }
 .wnote.quiet { color: var(--dim); }
@@ -75,8 +75,8 @@ button.wtitle.linky::after { content: ""; width: 5px; height: 5px; border-right:
   box-shadow: 0 4px 14px rgb(0 0 0 / .25); display: grid; place-items: center; color: var(--dim); }
 .wmedia .cover i { position: absolute; inset: 0; background-size: cover; background-position: center; animation: artin 520ms var(--spring) both; }
 .wmedia .mt { flex: 1; min-width: 0; display: grid; }
-.wmedia .mt b { font: 700 16px/1.2 var(--display); color: var(--bright); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.wmedia .mt span { font-size: 12.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wmedia .mt b { font: 700 1rem/1.2 var(--display); color: var(--bright); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wmedia .mt span { font-size: .7812rem; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .wmedia .iconbtn { color: var(--bright); }
 .wmedia .play { background: var(--accent); color: var(--on-accent); }
 .wmedia .play:hover { background: var(--accent); color: var(--on-accent); }
@@ -84,16 +84,16 @@ button.wtitle.linky::after { content: ""; width: 5px; height: 5px; border-right:
 .thinbar i { display: block; height: 100%; width: 100%; background: var(--bright); transform-origin: 0 50%; scale: var(--from) 1; border-radius: 2px; }
 .thinbar i.run { animation: progrun var(--left) linear forwards; }
 .padw { position: relative; height: 104px; width: 100%; border-radius: var(--r2); background: var(--s0); border: 1px solid var(--line); display: grid;
-  place-items: center; align-content: center; gap: 4px; color: var(--dim); font-size: 13px; overflow: hidden; text-align: center; touch-action: manipulation; }
+  place-items: center; align-content: center; gap: 4px; color: var(--dim); font-size: .8125rem; overflow: hidden; text-align: center; touch-action: manipulation; }
 .padw:active:not(:disabled) { scale: 1; }
 .padw > svg { width: 22px; height: 22px; }
-.padw small { display: block; font-size: 11.5px; }
+.padw small { display: block; font-size: .7188rem; }
 .padw .touch { position: absolute; width: 44px; height: 44px; margin: -22px; border-radius: 50%; background: color-mix(in oklab, var(--accent), transparent 70%);
   pointer-events: none; animation: touch 520ms cubic-bezier(.2, 0, 0, 1) forwards; }
 @keyframes touch { from { scale: .4; opacity: 1; } to { scale: 2.2; opacity: 0; } }
 .qchips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin-inline: -14px; padding-inline: 14px; }
 .qchip { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 12px; border-radius: 999px; background: var(--s2); color: var(--bright);
-  font-size: 12.5px; font-weight: 600; white-space: nowrap; flex: none; }
+  font-size: .7812rem; font-weight: 600; white-space: nowrap; flex: none; }
 .qchip svg { width: 16px; height: 16px; transition: scale 200ms var(--pop); }
 .qchip:active:not(:disabled) svg { scale: .8; }
 
@@ -101,7 +101,7 @@ button.wtitle.linky::after { content: ""; width: 5px; height: 5px; border-right:
 .wlist.editing .widget { padding: 8px 6px 8px 8px; }
 .wlist.editing .whead { min-height: 48px; gap: 6px; }
 .wlist.editing .wname { display: grid; gap: 0; min-width: 0; flex: 1; }
-.wlist.editing .wtitle { font: 600 14px var(--body); letter-spacing: 0; text-transform: none; color: var(--bright); }
+.wlist.editing .wtitle { font: 600 .875rem var(--body); letter-spacing: 0; text-transform: none; color: var(--bright); }
 .wlist.editing .wfor { margin-left: 0; background: none; padding: 0; min-height: 22px; color: var(--accent); justify-self: start; max-width: 100%; }
 .wlist.editing .wfor::after { content: ""; width: 6px; height: 6px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; rotate: 45deg;
   translate: 0 -2px; margin-left: 2px; flex: none; }
@@ -123,12 +123,12 @@ button.wtitle.linky::after { content: ""; width: 5px; height: 5px; border-right:
 .widget.lifted .grip { cursor: grabbing; color: var(--accent); }
 .widget.shift { transition: translate 300ms var(--spring); }
 .widget.settle { transition: translate 340ms var(--pop), scale 260ms var(--spring), box-shadow 260ms var(--ease); }
-.edithint { font-size: 12px; color: var(--dim); margin: 0 4px; animation: rise 420ms var(--spring) both 60ms; }
+.edithint { font-size: .75rem; color: var(--dim); margin: 0 4px; animation: rise 420ms var(--spring) both 60ms; }
 .wtray { display: grid; gap: 8px; animation: rise 420ms var(--spring) both 80ms; }
 .wtray .sect { margin-top: 4px; }
 .traygrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
 .wadd { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 12px; border-radius: var(--r2); border: 1.5px dashed var(--line);
-  color: var(--text); font-weight: 600; font-size: 13px; transition: scale var(--dur-press) var(--ease), border-color var(--dur) var(--ease); }
+  color: var(--text); font-weight: 600; font-size: .8125rem; transition: scale var(--dur-press) var(--ease), border-color var(--dur) var(--ease); }
 .wadd > svg { width: 18px; height: 18px; color: var(--accent); }
 .wadd .wadd-ic { display: none; }
 .wadd:hover { border-color: color-mix(in oklab, var(--accent), var(--line) 50%); }
@@ -141,8 +141,8 @@ button.wtitle.linky::after { content: ""; width: 5px; height: 5px; border-right:
   border-radius: var(--r4) var(--r4) 0 0; padding: 0 16px calc(20px + env(safe-area-inset-bottom)); translate: 0 104%; visibility: hidden;
   transition: translate var(--dur-sheet) var(--spring), visibility 0s linear var(--dur-sheet); box-shadow: 0 -20px 60px rgb(0 0 0 / .35); display: grid; gap: 10px; }
 .wsheet.on { translate: 0 0; visibility: visible; transition: translate var(--dur-sheet) var(--spring), visibility 0s; }
-.wsheet h3 { margin: 0 4px; font: 700 20px var(--display); color: var(--bright); letter-spacing: -.01em; }
-.wsheet .why { margin: -4px 4px 4px; font-size: 13px; }
+.wsheet h3 { margin: 0 4px; font: 700 1.25rem var(--display); color: var(--bright); letter-spacing: -.01em; }
+.wsheet .why { margin: -4px 4px 4px; font-size: .8125rem; }
 .pickrow .check { margin-left: auto; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; color: var(--on-accent);
   background: var(--accent); scale: 0; transition: scale 300ms var(--pop); flex: none; }
 .pickrow.on .check { scale: 1; }
@@ -150,4 +150,4 @@ button.wtitle.linky::after { content: ""; width: 5px; height: 5px; border-right:
 .pickrow .navtext small { display: flex; gap: 6px; align-items: center; }
 .pickrow .lstate { font-weight: 500; }
 
-.sessioncard .navtext small.mono { font-size: 11px; }
+.sessioncard .navtext small.mono { font-size: .6875rem; }
