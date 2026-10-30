@@ -9,9 +9,11 @@
 .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 /* ── the ground and the plates: they never move, they fade (spec §2.5, S3, S4) ─────────── */
-.cground, .cplate { position: fixed; pointer-events: none; opacity: 0;
+/* `.sground`, never `.cground`: that is the Computer page's ground (computer.css), and sharing
+ * the name once faded it to nothing, so home showed through every computer's page. */
+.sground, .cplate { position: fixed; pointer-events: none; opacity: 0;
   transition: opacity calc(var(--dur-stage) * .55) cubic-bezier(.3, 0, 1, 1); }
-.cground { inset: 0;
+.sground { inset: 0;
   background:
     radial-gradient(70% 30% at 50% 0%, color-mix(in oklab, var(--accent), transparent 88%), transparent 70%),
     radial-gradient(60% 26% at 100% 100%, color-mix(in oklab, var(--base0E), transparent 92%), transparent 70%),
@@ -21,9 +23,9 @@
 .cplate.deckplate { left: var(--c-deck-x); top: var(--c-deck-y); width: var(--c-deck-w); height: var(--c-deck-h);
   background: var(--s1); border-radius: var(--r3); }
 /* The picture's own slot is stage black, never themed (the Untouchable Picture Rule). */
-.cplate.screen { left: var(--c-pic-x); top: var(--c-pic-y); width: var(--c-pic-w); height: var(--c-pic-h);
+.cplate.pic { left: var(--c-pic-x); top: var(--c-pic-y); width: var(--c-pic-w); height: var(--c-pic-h);
   background: #000; border-radius: 16px; }
-:root[data-arr="console"] .cground { opacity: 1; transition: opacity calc(var(--dur-stage-out) * .55) var(--spring); }
+:root[data-arr="console"] .sground { opacity: 1; transition: opacity calc(var(--dur-stage-out) * .55) var(--spring); }
 :root[data-arr="console"] .cplate { opacity: 1; transition: opacity calc(var(--dur-stage-out) * .7) var(--spring) calc(var(--dur-stage-out) * .3); }
 :root[data-arr="console"] .cplate.deckplate { opacity: var(--c-deck-o); }
 
