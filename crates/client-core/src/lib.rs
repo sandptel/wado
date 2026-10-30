@@ -7,10 +7,12 @@
 
 pub mod e2e;
 pub mod identity;
+pub mod link;
 pub mod os_logo;
 pub mod pair;
 pub mod pins;
 pub mod profiles;
 pub mod relay;
+pub mod request;
 pub mod secret;
 pub mod store;
