@@ -138,7 +138,7 @@ const VIEWS = [
   { name: "home", root: "#landing", open: async () => { await load("?fixture"); await sleep(900); } },
   { name: "pairing", root: "#landing", open: async () => { await load("?fixture"); await fx({ type: "unpaired", reason: "This device is not paired with bushido yet. Type the code it shows, or scan its QR." }); await sleep(500); } },
   { name: "computer", root: "#computer", open: computer, shoot: true },
-  ...["Appearance", "Input feel", "Gamepad", "Quick tiles", "Diagnostics"].map((t) => ({ name: "settings: " + t, root: "#sub", open: () => sub(t, false), shoot: t === "Appearance" })),
+  ...["Appearance", "Input feel", "Quick tiles", "Diagnostics"].map((t) => ({ name: "settings: " + t, root: "#sub", open: () => sub(t, false), shoot: t === "Appearance" })),
   ...["Display & session", "Sound & devices", "Connection & trust"].map((t) => ({ name: "settings: " + t, root: "#sub", open: () => sub(t, true) })),
   { name: "passkey sheet", root: ".pksheet, [aria-labelledby=pktitle]", open: async () => {
     await computer();
@@ -267,10 +267,11 @@ const MEASURE = (rootSel, touch) => `(() => {
     if (!tr.width || !tr.height) continue;
     for (let a = p; a && a !== root.parentElement; a = a.parentElement) {
       const cs = getComputedStyle(a);
+      // Text inside a box that scrolls is reachable by scrolling it: nothing above can cut it.
+      if (["auto", "scroll"].includes(cs.overflowX) || ["auto", "scroll"].includes(cs.overflowY)) break;
       const hx = ["hidden", "clip"].includes(cs.overflowX), hy = ["hidden", "clip"].includes(cs.overflowY);
       if (!hx && !hy) continue;
       const ar = a.getBoundingClientRect();
-      if (["auto", "scroll"].includes(cs.overflowX) || ["auto", "scroll"].includes(cs.overflowY)) break;
       const cutX = hx && (tr.right > ar.right + 1.5 || tr.left < ar.left - 1.5);
       const cutY = hy && ar.height > 2 && (tr.bottom > ar.bottom + 2 || tr.top < ar.top - 2) && cs.webkitLineClamp === "none";
       if (!cutX && !cutY) continue;

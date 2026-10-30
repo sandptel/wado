@@ -158,11 +158,12 @@
 .gpscrim.on { opacity: 1; pointer-events: auto; }
 .gpsheet { position: absolute; z-index: 41; left: 0; right: 0; bottom: 0; max-height: 62%; background: var(--s1); border-radius: var(--r4) var(--r4) 0 0;
   padding: 8px 16px calc(env(safe-area-inset-bottom) + 16px); overflow: auto; overscroll-behavior: contain; touch-action: pan-y;
-  translate: 0 104%; visibility: hidden; transition: translate var(--dur-sheet) var(--spring), visibility 0s var(--dur-sheet);
-  box-shadow: 0 -20px 60px rgb(0 0 0 / .35); }
-.gpsheet.on { translate: 0 0; visibility: visible; transition: translate var(--dur-sheet) var(--spring); }
-#wado-gpad:not(.portrait) .gpsheet { left: auto; top: 8px; bottom: 8px; right: 8px; width: 360px; max-height: none; border-radius: var(--r4); translate: 110% 0; }
-#wado-gpad:not(.portrait) .gpsheet.on { translate: 0 0; }
+  display: none; box-shadow: 0 -20px 60px rgb(0 0 0 / .35); }
+.gpsheet.on { display: block; animation: gpsheetin var(--dur-sheet) var(--spring) both; }
+@keyframes gpsheetin { from { translate: 0 104%; } }
+#wado-gpad:not(.portrait) .gpsheet { left: auto; top: 8px; bottom: 8px; right: 8px; width: 360px; max-height: none; border-radius: var(--r4); }
+#wado-gpad:not(.portrait) .gpsheet.on { animation-name: gpsheetinx; }
+@keyframes gpsheetinx { from { translate: 110% 0; } }
 .gpgrab { width: 40px; height: 5px; border-radius: 999px; background: var(--s3); margin: 2px auto 10px; }
 #wado-gpad:not(.portrait) .gpgrab { display: none; }
 .gpsheet .sect { margin-top: 14px; }
