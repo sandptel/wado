@@ -102,7 +102,9 @@ pub fn sheet(ui: Ui) -> Element {
             "aria-modal": "true",
             "aria-labelledby": "pktitle",
             "aria-hidden": "{!up}",
-            inert: !up,
+            // Never `inert: bool`: Dioxus writes `inert="false"` for false, and any `inert` at all
+            // makes the sheet click-through — every tap fell to the scrim and cancelled (2026-10-30).
+            inert: (!up).then_some("true"),
             div { class: "grab" }
             div { class: if cheer() { "pkhead open" } else if st.busy { "pkhead busy" } else { "pkhead" },
                 glyph::Lock {}
