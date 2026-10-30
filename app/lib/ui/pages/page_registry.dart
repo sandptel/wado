@@ -6,6 +6,7 @@ import '../widgets/basics.dart';
 import 'add_computer.dart';
 import 'appearance.dart';
 import 'diagnostics.dart';
+import '../input/hub.dart';
 
 class PageDef {
   const PageDef(this.title, this.build, {this.fullBleed = false});
@@ -18,6 +19,7 @@ final _pages = <String, PageDef>{
   'add_computer': PageDef('Add a computer', (_) => const AddComputer()),
   'appearance': PageDef('Appearance', (_) => const Appearance()),
   'diagnostics': PageDef('Diagnostics', (_) => const Diagnostics()),
+  'input': PageDef('Virtual input', (_) => const InputHub()),
 };
 
 /// Register a page (each feature module adds its own).
