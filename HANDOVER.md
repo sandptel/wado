@@ -56,29 +56,25 @@ starting point for picking the remaining work up **one item at a time**. Read `C
 
 Each item has what you'd see, the evidence, where to start, and a suggested approach.
 
-### 0. Daemon hangs when big clipboard data floods the relay lane (found 2026-10-30 17:30Z)
-- **You see:** new devices can't connect. The daemon still says "connected", but the relay shows
-  `servers: 0`, and the daemon log goes silent; even the 45 s relay-silence warning never fires.
-- **Evidence:**
-  - `slow: lane clip_data #67 took 5534 ms (… 31 bulk / 16459 KB still waiting)` at 17:30:26.
-  - The last log line is at 17:31:17.
-  - Thread state: `wado-relay-clie` blocked in `futex_do_wait`; the main loop never returned to
-    `ws_stream.next()`.
-  - No backtrace: `ptrace_scope=1`, so gdb needs sudo.
-- **Likely chain** (not confirmed with a backtrace):
-  1. With no direct path, clipboard picture data (F10 `clip_data`, up to 8 MiB each) goes over
-     the 64 KB/s lane.
-  2. About 16 MB queues up.
-  3. The relay loop blocks waiting for room in the lane.
-  4. The relay's pings go unanswered, and the link dies unnoticed.
-- **Fix direction:**
-  - The main loop must never block on lane room. Hand bulk sends to a task with a bounded queue.
-  - Clipboard pictures over 1 MB wait for a direct path, as files do, or go as a "picture on the
-    computer, open when direct" note.
-  - The silence timeout must also cover a stuck handler: a watchdog task, not just the
-    `timeout(next())` arm.
-- **Start at:** `crates/server/src/lane/`, `crates/server/src/clip/share.rs`, the
-  `relay_client.rs` main loop (`RELAY_SILENCE`).
+### 0. Daemon hung when big clipboard data flooded the relay lane (2026-10-30 17:30Z) — fixed, not yet live
+- **What it was** (from the log, no backtrace): the phone's Clipboard surface fetched every picture
+  tile (`clip_get`), 31 pictures, 16 MB of `clip_data`. The relay then stopped taking the socket's
+  writes: after `#67` at 17:30:26 no lane frame is ever reported again, though each would have
+  queued over 5 s. The writer (`lane::pump`) sat in `sink.send`, stopped reading its channel
+  (128), the channel filled, and the relay loop blocked in `send_relay(&out_tx, &Pong).await`, so
+  it never got back to `timeout(RELAY_SILENCE, next())`. The futex is `block_on` parked on that
+  await. At 17:45:26 the outbox's 16 MiB stop (`wants_more`) did the same thing on its own.
+- **Fixed:**
+  - `lane::pump` reads its channel always, including during a socket write. Bulk past the 16 MiB
+    stop is dropped and logged (`lane: … dropped`). A write that takes nothing for 45 s ends the
+    link (`WRITE_STALL`).
+  - The relay loop reconnects when its writer ends, and `relay_watch::stuck` watches it from
+    outside: `relay client: loop stuck for Ns — reconnecting`.
+  - Clipboard copies over 1 MB stay off the lane, with a `clip_held` note in the device's words.
+    No clipboard path is direct today, so these pictures never reach the phone. A direct carrier
+    (the files channel?) is open work.
+- **Regression test:** `lane::pump::tests::a_stuck_socket_never_stalls_the_reader`. It fails on
+  the old pump with "the reader is stuck behind the lane".
 
 ### 0b. Parallel use for every feature (decided 2026-10-30 — see Decision Log)
 - **Goal:** all approved devices use Files, Clipboard, Shells, Claude, widgets, sessions (join and
