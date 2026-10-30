@@ -47,7 +47,58 @@ class Session {
     });
     l.on('error', (m) => setStatus('relay error: ${m['message'] ?? '?'}'));
     l.on('text_input', (m) => textWanted.value = m['active'] == true);
+    l.on('windows', (m) {
+      windows.value = (m['windows'] as List? ?? []).cast<Map<String, dynamic>>();
+      workspace.value = (m['workspace'] ?? 1) as int;
+    });
   }
+
+  final windows = ValueNotifier<List<Map<String, dynamic>>>([]);
+  final workspace = ValueNotifier<int>(1);
+  /// fps, round trip (ms), decoder, from the picture's stats (stats.js).
+  final stats = ValueNotifier<({double fps, double rtt, String decoder})?>(null);
+  Timer? _statsTimer;
+  int _lastFrames = 0;
+  DateTime _lastAt = DateTime.now();
+
+  void watchStats(bool on) {
+    _statsTimer?.cancel();
+    if (!on) return;
+    _statsTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
+      final p = pc;
+      if (p == null) return;
+      double fps = 0, rtt = 0;
+      var dec = '';
+      for (final r in await p.getStats()) {
+        final v = r.values;
+        if (r.type == 'inbound-rtp' && v['kind'] == 'video') {
+          final n = (v['framesDecoded'] ?? 0) as num;
+          final now = DateTime.now();
+          final dt = now.difference(_lastAt).inMilliseconds / 1000;
+          if (dt > 0 && _lastFrames > 0) fps = (n.toInt() - _lastFrames) / dt;
+          _lastFrames = n.toInt();
+          _lastAt = now;
+          dec = '${v['decoderImplementation'] ?? ''}';
+        }
+        if (r.type == 'candidate-pair' && (v['state'] == 'succeeded') && v['currentRoundTripTime'] != null) {
+          rtt = ((v['currentRoundTripTime'] as num) * 1000).toDouble();
+        }
+      }
+      stats.value = (fps: fps, rtt: rtt, decoder: dec);
+    });
+  }
+
+  /// Launch an app or command in the session (`session_launch`).
+  void launch(String command) {
+    final c = command.trim();
+    if (c.isEmpty) return;
+    RelayLink.I.send({'type': 'session_launch', 'command': c});
+    final r = Settings.I.get<List<String>>('recent').where((x) => x != c).toList()..insert(0, c);
+    Settings.I.set('recent', r.take(12).toList());
+  }
+
+  /// Act on the session's windows (`session_window`): close, maximize, focus {id}, workspace {n}…
+  void window(Object action) => RelayLink.I.send({'type': 'session_window', 'action': action});
   static final I = Session._();
 
   /// A session is running and this device is watching it.

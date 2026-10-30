@@ -10,6 +10,7 @@ import '../../wado/session.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
+import 'control_centre.dart';
 import 'input_layer.dart';
 
 void leaveToComputer() {
@@ -114,6 +115,7 @@ class Dock extends StatelessWidget {
         decoration: BoxDecoration(color: fade(t.s1, 20), borderRadius: BorderRadius.circular(999), border: Border.all(color: fade(t.line, 40))),
         padding: const EdgeInsets.symmetric(horizontal: 4),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
+          IconBtn('dots', label: 'Control centre', color: t.bright, onTap: () => openControlCentre(context)),
           IconBtn('kbd', label: 'Keyboard', color: t.bright, onTap: () => KeyboardSheet.toggle(context)),
           IconBtn('home', label: 'Leave the session running', color: t.bright, onTap: leaveToComputer),
           IconBtn('power', label: 'End the session', color: t.bad, onTap: () async {
