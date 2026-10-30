@@ -48,8 +48,16 @@ pub fn on_event(ui: Ui, msg: &serde_json::Value) {
         opened,
     };
     // The shell door is Rust's own; the others carry their action in `js/passkey.js`.
+    // Just unlocked, the shells' list is on its way (`js/passkey.js` asks): a beat for it, so an
+    // existing shell is shown rather than a new one opened beside it.
     if s("go") == "shell" {
-        crate::ui::console::open_shells_now(ui);
+        let wait = if was { 0 } else { 450 };
+        spawn(async move {
+            if wait > 0 {
+                bridge::sleep(wait).await;
+            }
+            crate::ui::console::open_shells_now(ui);
+        });
     }
 }
 

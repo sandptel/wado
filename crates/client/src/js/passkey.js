@@ -168,6 +168,8 @@
     if (P.state.unlocked && !was) {
       lastAct = Date.now();
       lastKeep = Date.now();
+      // The shells were withheld while locked: their list and scrollback come now.
+      if (W.shellsRequest) W.shellsRequest();
       if (P.need) {
         const what = P.need, fn = then;
         P.need = ""; then = null;
