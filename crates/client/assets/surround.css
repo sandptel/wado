@@ -223,3 +223,8 @@
 :root[data-arr="console"][data-face="gamepad"] #wado-pad .pill { top: auto; bottom: var(--iy); }
 :root[data-arr="console"][data-face="gamepad"][data-cdeck="col"] #wado-pad {
   --pad-u0: calc(min(24px, var(--c-deck-w) / 4.7) * var(--pad-scale, 1)); --ix: 0px; }
+
+/* The clipboard's voice (F10, #clipdock): above the dock in the cockpit; in the console it rides
+ * the picture's bottom edge, so it never covers the deck under the thumbs. Reachable in both. */
+:root[data-arr="console"] #clipdock.insession { bottom: auto; top: calc(var(--c-pic-y) + var(--c-pic-h) - 56px);
+  left: calc(var(--c-pic-x) + var(--c-pic-w) / 2); width: min(440px, calc(var(--c-pic-w) - 16px)); }
