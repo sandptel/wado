@@ -12,9 +12,39 @@
 //   W.pad.state               "off" | "relayed" | "direct"
 //   W.pad.onState(fn), W.pad.onMsg(fn)   daemon replies: {k:"err", message}, …
 //   W.pad.rtt                 ms, from a ping every 2 s
+//   W.pad.bin                 the daemon reads compact touch frames (its pong said so)
+//
+// Compact touch frames (wado_protocol::pad_bin): `seq u32 · t u32 · n × (id u8, x u16, y u16)`,
+// big-endian — ~4× smaller than the JSON. Every ping offers them (`bin: true`); only a daemon
+// whose pong says `bin` back is sent one, so an older daemon keeps getting JSON. Direct, a frame
+// is a binary message on `pad-touch`; relayed, `pad_in {k:"bin", b:<base64>}` (the relay link is
+// text).
+//
+//   W.padBin.encode(frame) → Uint8Array      W.padBin.decode(bytes) → frame | null
 
 (() => {
-  const P = (W.pad = { state: "off", rtt: null });
+  const B = (W.padBin = {});
+  B.encode = (m) => {
+    const c = (m.c || []).slice(0, 10);
+    const b = new Uint8Array(8 + 5 * c.length);
+    const v = new DataView(b.buffer);
+    v.setUint32(0, m.seq >>> 0);
+    v.setUint32(4, m.t >>> 0);
+    c.forEach(([id, x, y], i) => { v.setUint8(8 + 5 * i, id); v.setUint16(9 + 5 * i, x); v.setUint16(11 + 5 * i, y); });
+    return b;
+  };
+  B.decode = (b) => {
+    if (b.length < 8 || (b.length - 8) % 5 || (b.length - 8) / 5 > 10) return null;
+    const v = new DataView(b.buffer, b.byteOffset, b.byteLength);
+    const c = [];
+    for (let o = 8; o < b.length; o += 5) c.push([v.getUint8(o), v.getUint16(o + 1), v.getUint16(o + 3)]);
+    return { k: "frame", seq: v.getUint32(0), t: v.getUint32(4), c };
+  };
+  B.b64 = (b) => { let s = ""; for (const x of b) s += String.fromCharCode(x); return btoa(s); };
+})();
+
+(() => {
+  const P = (W.pad = { state: "off", rtt: null, bin: false });
   const states = [];
   const msgs = [];
   let want = false;
@@ -37,7 +67,10 @@
 
   function deliver(m) {
     if (!m || typeof m !== "object") return;
-    if (m.k === "pong") { P.rtt = ((now32() - m.t) >>> 0); }
+    if (m.k === "pong") {
+      P.rtt = ((now32() - m.t) >>> 0);
+      if (m.bin && !P.bin) { P.bin = true; rlog("compact touch frames on"); }
+    }
     for (const fn of msgs) { try { fn(m); } catch (_) {} }
     // The daemon closed the pad (no grant, no /dev/uinput): stop sending into it.
     if (m.k === "err" && m.fatal) stop(false);
@@ -53,11 +86,13 @@
 
   P.send = (msg, lossy) => {
     if (P.state === "off") return false;
+    const bin = P.bin && msg && msg.k === "frame" ? W.padBin.encode(msg) : null;
     if (P.state === "direct") {
       const dc = lossy ? touch : keys;
-      if (open(dc)) { dc.send(JSON.stringify(msg)); return true; }
+      if (open(dc)) { dc.send(bin || JSON.stringify(msg)); return true; }
     }
-    return !!(W.relaySendMsg && W.relaySendMsg({ type: "pad_in", msg }));
+    const out = bin ? { k: "bin", b: W.padBin.b64(bin) } : msg;
+    return !!(W.relaySendMsg && W.relaySendMsg({ type: "pad_in", msg: out }));
   };
 
   W.relayOn("pad_out", (m) => deliver(m.msg));
@@ -137,9 +172,10 @@
     if (want) return;
     want = true;
     P.rtt = null;
+    P.bin = false; // until this daemon's pong says it reads them
     setState("relayed");
-    pingTimer = setInterval(() => P.send({ k: "ping", t: now32() }, false), 2000);
-    P.send({ k: "ping", t: now32() }, false);
+    pingTimer = setInterval(() => P.send({ k: "ping", t: now32(), bin: true }, false), 2000);
+    P.send({ k: "ping", t: now32(), bin: true }, false);
     tryDirect();
   };
 

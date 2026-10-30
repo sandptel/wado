@@ -7,7 +7,8 @@
     "type": "pad_in",
     "msg": {
      "k": "ping",
-     "t": 0
+     "t": 0,
+     "bin": true
     }
    }
   ],
@@ -129,7 +130,8 @@
     "type": "pad_in",
     "msg": {
      "k": "ping",
-     "t": 0
+     "t": 0,
+     "bin": true
     }
    }
   ],
@@ -1028,7 +1030,8 @@
     "type": "pad_in",
     "msg": {
      "k": "ping",
-     "t": 0
+     "t": 0,
+     "bin": true
     }
    }
   ],
@@ -1256,7 +1259,8 @@
     "type": "pad_in",
     "msg": {
      "k": "ping",
-     "t": 0
+     "t": 0,
+     "bin": true
     }
    }
   ],
@@ -1372,7 +1376,8 @@
     "type": "pad_in",
     "msg": {
      "k": "ping",
-     "t": 0
+     "t": 0,
+     "bin": true
     }
    }
   ],
@@ -1487,7 +1492,8 @@
     "type": "pad_in",
     "msg": {
      "k": "ping",
-     "t": 0
+     "t": 0,
+     "bin": true
     }
    }
   ],
@@ -1519,7 +1525,8 @@
     "type": "pad_in",
     "msg": {
      "k": "ping",
-     "t": 0
+     "t": 0,
+     "bin": true
     }
    }
   ],
@@ -1924,7 +1931,8 @@
     "type": "pad_in",
     "msg": {
      "k": "ping",
-     "t": 0
+     "t": 0,
+     "bin": true
     }
    }
   ],
@@ -2447,7 +2455,8 @@
     "type": "pad_in",
     "msg": {
      "k": "ping",
-     "t": 0
+     "t": 0,
+     "bin": true
     }
    }
   ],
