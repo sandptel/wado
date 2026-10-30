@@ -248,6 +248,24 @@ mod tests {
             "the trackpad block is kept"
         );
         assert!(set_at(&main, &ui, "device.k1.console.face", parse_values("mouse")).is_err());
+
+        // And the size's: a number, a switch and a word.
+        set_at(&main, &ui, "device.k1.size.text", parse_values("115")).unwrap();
+        set_at(&main, &ui, "device.k1.size.follow", parse_values("true")).unwrap();
+        set_at(
+            &main,
+            &ui,
+            "device.k1.size.interface",
+            parse_values("compact"),
+        )
+        .unwrap();
+        let c = crate::kdl::load(&main).unwrap();
+        let s = c.device["k1"].size.clone().unwrap();
+        assert_eq!(
+            (s.text, s.follow, s.interface.as_str()),
+            (115, true, "compact")
+        );
+        assert!(set_at(&main, &ui, "device.k1.size.text", parse_values("113")).is_err());
         std::fs::remove_dir_all(dir).ok();
     }
 
