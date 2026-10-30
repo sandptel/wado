@@ -51,7 +51,11 @@ class CoreHost(private val context: Context) {
                 Log.e(TAG, "core did not start: $failure")
             }.getOrNull() ?: return@launch
             _model.update { m -> CoreState.reduce(m, CoreEvent.Computers(c.computers())) }
-            _ready.value = c
+            synchronized(waiting) {
+                _ready.value = c
+                waiting.forEach { it(c) }
+                waiting.clear()
+            }
             while (true) {
                 val ev = c.nextEvent()
                 if (firstOpenMs == null && ev is CoreEvent.Link && ev.link.kind == "open") {
@@ -59,6 +63,7 @@ class CoreHost(private val context: Context) {
                     firstOpenMs = ms
                     Log.i(TAG, "budget: cold start → live link words in $ms ms")
                 }
+                if (ev is CoreEvent.Pair) Log.i(TAG, "pair ${ev.op}: ${ev.step}")
                 _model.update { CoreState.reduce(it, ev) }
                 _events.tryEmit(ev)
             }
@@ -68,16 +73,20 @@ class CoreHost(private val context: Context) {
     /** The pairing screen closed: forget its last state. */
     fun clearPairing() = _model.update { it.copy(pairing = null, justPaired = null) }
 
-    fun watch(keys: List<String>) {
-        _ready.value?.watch(keys)
+    /** Asked before the core was up (a cold start from a pairing link): run once it is. */
+    private val waiting = mutableListOf<(WadoCore) -> Unit>()
+
+    private fun withCore(f: (WadoCore) -> Unit) = synchronized(waiting) {
+        _ready.value?.let(f) ?: run { waiting += f }
     }
 
-    fun pair(link: String): Long? = _ready.value?.pair(link)?.toLong()
+    fun watch(keys: List<String>) = withCore { it.watch(keys) }
 
-    fun pairTyped(relay: String, remoteId: String, code: String): Long? =
-        _ready.value?.pairTyped(relay, remoteId, code)?.toLong()
+    fun pair(link: String) = withCore { it.pair(link) }
 
-    fun forget(key: String): Long? = _ready.value?.forget(key)?.toLong()
+    fun pairTyped(relay: String, remoteId: String, code: String) = withCore { it.pairTyped(relay, remoteId, code) }
+
+    fun forget(key: String) = withCore { it.forget(key) }
 
     private fun deviceName(): String {
         val model = Build.MODEL.orEmpty().ifBlank { "Android" }
