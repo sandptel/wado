@@ -70,10 +70,6 @@
             android:exported="false"
             android:foregroundServiceType="remoteMessaging" />
 
-        <receiver
-            android:name=".notify.ActionReceiver"
-            android:exported="false" />
-
         <!-- Background push without Google: UnifiedPush (a distributor app such as ntfy). -->
         <service
             android:name=".push.PushServiceImpl"

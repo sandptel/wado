@@ -12,8 +12,10 @@
   plays shows on the lock screen and Bluetooth buttons, and the volume keys turn it up and down
   while wado is open. The clipboard follows both ways (never passwords). "Stay connected" (off by
   default) keeps notifications coming while the app is closed; with a UnifiedPush app such as
-  ntfy installed, push needs no Google at all. Build: `nix develop .#android -c
-  scripts/android-build.sh`; signing a release: `docs/android-release.md`.
+  ntfy installed, push needs no Google at all — every computer gets through, not just one. The
+  passkey that guards shells, file changes and the trackpad works in the app too, unlocked with
+  the phone's own screen lock. Build: `nix develop .#android -c scripts/android-build.sh`;
+  signing a release: `docs/android-release.md`.
 
 - **A passkey guards shells, file changes and the trackpad.** Your phone's own screen lock —
   fingerprint, face or PIN — becomes the key. Pairing a new phone ends with "One last step: a

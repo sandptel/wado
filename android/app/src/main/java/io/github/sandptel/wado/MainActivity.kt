@@ -8,7 +8,8 @@ import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.View
-import androidx.activity.ComponentActivity
+import androidx.fragment.app.FragmentActivity
+import io.github.sandptel.wado.passkey.Authenticator
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.SystemBarStyle
 import androidx.compose.runtime.LaunchedEffect
@@ -28,6 +29,7 @@ import io.github.sandptel.wado.bridge.Hub
 import io.github.sandptel.wado.device.Haptics
 import io.github.sandptel.wado.device.ScreenModes
 import io.github.sandptel.wado.links.DeepLinks
+import io.github.sandptel.wado.notify.Action
 import io.github.sandptel.wado.share.ShareIntent
 import io.github.sandptel.wado.share.ShareStore
 import io.github.sandptel.wado.shortcuts.Shortcuts
@@ -53,11 +55,12 @@ import java.net.URI
  * client's WebView, and the routing of everything that opens wado — the launcher, shortcuts,
  * a share, a QR's link, a notification.
  */
-class MainActivity : ComponentActivity(), ClientWebView.Host, AppActions {
+class MainActivity : FragmentActivity(), ClientWebView.Host, AppActions {
     private val app get() = application as WadoApp
     private val state = AppState()
     private lateinit var web: ClientWebView
     private lateinit var modes: ScreenModes
+    private val authenticator by lazy { Authenticator(this) }
     private var hudJob: Job? = null
 
     private var mediaDone: ((Boolean, Boolean) -> Unit)? = null
@@ -100,6 +103,7 @@ class MainActivity : ComponentActivity(), ClientWebView.Host, AppActions {
                 modes.active(on)
             }
             override fun orient(lock: String) = modes.orient(lock)
+            override fun webauthn(o: JSONObject) = passkey(o)
         }
         lifecycleScope.launch {
             Hub.events.collect { (t, o) -> event(t, o) }
@@ -185,6 +189,22 @@ class MainActivity : ComponentActivity(), ClientWebView.Host, AppActions {
 
     private fun route(intent: Intent?, firstLoad: Boolean) {
         if (intent == null) return
+        if (intent.action == Action.INTENT) {
+            // A notification: its body opens the client (at its computer, for a push); a button is
+            // handed to the page — queued by the Hub until the page is up, on a cold start too.
+            val action = intent.getStringExtra("action").orEmpty()
+            val computer = intent.getStringExtra("computer").orEmpty()
+            Hub.computers.value.list.firstOrNull { it.remoteId.filter(Char::isDigit) == computer }?.let { c ->
+                Hub.send(BridgeProtocol.GO) { put("key", c.key); put("go", "") }
+            }
+            if (action.isNotEmpty()) {
+                Hub.send(BridgeProtocol.NOTIFY_ACTION) {
+                    for (k in listOf("kind", "id", "action", "computer", "session", "ask")) put(k, intent.getStringExtra(k).orEmpty())
+                }
+            }
+            state.route = Route.Web
+            return
+        }
         if (ShareIntent.isShare(intent)) {
             val payload = ShareIntent.read(intent, contentResolver)
             if (!payload.isEmpty) {
@@ -324,6 +344,35 @@ class MainActivity : ComponentActivity(), ClientWebView.Host, AppActions {
         state.fullscreen = view
         fullscreenExit = exit
         modes.active(view != null || state.active)
+    }
+
+    /** The page's `navigator.credentials` call, answered by the app's authenticator. */
+    private fun passkey(o: JSONObject) {
+        val id = o.optInt("id")
+        val rpId = o.optString("rpId")
+        val challenge = runCatching { Authenticator.dec(o.optString("challenge")) }.getOrNull() ?: return
+        val allow = o.optJSONArray("allow")?.let { a -> (0 until a.length()).map { Authenticator.dec(a.getString(it)) } }.orEmpty()
+        val reply = { r: Authenticator.Result ->
+            Hub.send(BridgeProtocol.WEBAUTHN_RESULT) {
+                put("id", id)
+                when (r) {
+                    is Authenticator.Result.Made -> {
+                        put("ok", true); put("rawId", Authenticator.enc(r.credId))
+                        put("clientData", Authenticator.enc(r.clientData)); put("attestation", Authenticator.enc(r.attestation))
+                    }
+                    is Authenticator.Result.Signed -> {
+                        put("ok", true); put("rawId", Authenticator.enc(r.credId))
+                        put("clientData", Authenticator.enc(r.clientData)); put("authData", Authenticator.enc(r.authData))
+                        put("signature", Authenticator.enc(r.signature))
+                    }
+                    is Authenticator.Result.Failed -> {
+                        put("ok", false); put("errName", r.name); put("errMessage", r.message)
+                    }
+                }
+            }
+        }
+        if (o.optString("op") == "create") authenticator.create(rpId, challenge, reply)
+        else authenticator.get(rpId, challenge, allow, reply)
     }
 
     private fun has(p: String) = ContextCompat.checkSelfPermission(this, p) == PackageManager.PERMISSION_GRANTED

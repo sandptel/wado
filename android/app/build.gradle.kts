@@ -131,6 +131,9 @@ dependencies {
     implementation(libs.androidx.webkit)
     implementation(libs.androidx.splashscreen)
     implementation(libs.androidx.media)
+    implementation(libs.androidx.biometric)
+    // biometric 1.1 brings an old Fragment; the activity-result APIs need a current one.
+    implementation(libs.androidx.fragment)
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.compose.foundation)

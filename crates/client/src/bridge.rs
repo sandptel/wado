@@ -265,6 +265,8 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/native_pad.js"),
     "\n",
+    include_str!("js/native_passkey.js"),
+    "\n",
     include_str!("js/lifecycle.js"),
 );
 

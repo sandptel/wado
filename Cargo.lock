@@ -6265,9 +6265,13 @@ dependencies = [
 name = "wado-mobile-core"
 version = "0.0.3"
 dependencies = [
+ "base64",
+ "ring",
  "serde",
  "serde_json",
+ "sha2",
  "uniffi",
+ "wado",
  "wado-protocol",
 ]
 

@@ -14,6 +14,8 @@ unifiedpush = "3.3.5"
 junit = "4.13.2"
 orgJson = "20260814"
 jna = "5.19.1"
+biometric = "1.1.0"
+fragment = "1.9.1"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -33,6 +35,8 @@ camerax-view = { module = "androidx.camera:camera-view", version.ref = "camerax"
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 unifiedpush-connector = { module = "org.unifiedpush.android:connector", version.ref = "unifiedpush" }
 jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
+androidx-biometric = { module = "androidx.biometric:biometric", version.ref = "biometric" }
+androidx-fragment = { module = "androidx.fragment:fragment-ktx", version.ref = "fragment" }
 junit = { module = "junit:junit", version.ref = "junit" }
 org-json = { module = "org.json:json", version.ref = "orgJson" }
 

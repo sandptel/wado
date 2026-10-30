@@ -16,15 +16,18 @@
   const send = (o) => !!(W.relaySendMsg && W.relaySendMsg(o));
   const FROM = "wado.pushFrom";
   const P = (W.push = { info: null, busy: false });
-  const support = () =>
+  // The Android app (W.native) has no service worker: it subscribes through UnifiedPush instead
+  // (js/native_push.js), and shows the notifications itself.
+  const native = () => !!(W.native && W.native.pushSubscribe);
+  const support = () => native() ||
     !!(navigator.serviceWorker && window.PushManager && window.Notification && window.isSecureContext);
-  const standalone = () =>
+  const standalone = () => native() ||
     !!((window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone);
   const from = () => { try { return localStorage.getItem(FROM) || ""; } catch (_) { return ""; } };
   const here = () => String((W._relayTarget && W._relayTarget.id) || "").replace(/\D/g, "");
   const say = (extra) => emit(Object.assign({
     type: "push", info: P.info, support: support(), standalone: standalone(),
-    permission: window.Notification ? Notification.permission : "unsupported",
+    permission: native() ? W.native.notifications() : window.Notification ? Notification.permission : "unsupported",
     from: from(), here: here(), busy: P.busy,
   }, extra || {}));
 
@@ -39,6 +42,15 @@
     P.busy = true; say();
     try {
       if (!P.info || !P.info.key) throw new Error("The computer hasn't said its notification key yet — try again.");
+      if (native()) {
+        const j = await W.native.pushSubscribe(P.info.key, here());
+        send({
+          type: "push_subscribe",
+          sub: { endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, kind: "unifiedpush" },
+          kinds: kinds || (P.info && P.info.kinds) || {},
+        });
+        return;
+      }
       const perm = await Notification.requestPermission();
       if (perm !== "granted") throw new Error(perm === "denied"
         ? "Notifications are blocked for wado in this browser's site settings — allow them there."
@@ -67,6 +79,7 @@
   W.pushOff = async () => {
     P.busy = true; say();
     send({ type: "push_unsubscribe" });
+    if (native()) return;
     try {
       if (from() === here()) {
         const r = await reg();

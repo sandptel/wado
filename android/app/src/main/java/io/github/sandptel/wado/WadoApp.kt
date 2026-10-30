@@ -42,7 +42,7 @@ class WadoApp : Application() {
             override fun clip(text: String, sensitive: Boolean) = clip.fromComputer(text, sensitive)
             override fun notify(o: JSONObject) = notifier.show(o, foreground)
             override fun notifyClear(kind: String, id: String) = notifier.clear(kind, id)
-            override fun pushSubscribe(vapid: String) = Push.subscribe(this@WadoApp, vapid)
+            override fun pushSubscribe(vapid: String, rid: String) = Push.subscribe(this@WadoApp, vapid, rid)
             override fun nowPlaying(np: NowPlaying) = media.update(np)
         }
         if (prefs.stayConnected) StayConnectedService.sync(this, true)

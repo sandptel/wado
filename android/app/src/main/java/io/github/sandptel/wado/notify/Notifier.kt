@@ -16,9 +16,13 @@ import io.github.sandptel.wado.R
 import org.json.JSONObject
 
 /**
- * The page's notifications as the phone's own, while wado is not in front (in front, the page
- * shows them itself). One channel per kind of urgency, so a person can silence "computer came
- * online" without silencing "Claude needs permission".
+ * wado's notifications as the phone's own. Two sources, one shape ([Note]):
+ * - the page's `notify` messages, while wado is not in front (in front, the page shows them);
+ * - a computer's pushes (`wado_protocol::push::PushNote`, via UnifiedPush), always.
+ *
+ * One channel per kind of urgency, so a person can silence "computer is back" without silencing
+ * "Claude needs permission". A button opens wado with what was pressed ([Action]): Allow is
+ * behind the passkey, which needs the app in front.
  */
 class Notifier(private val context: Context) {
     data class Channel(val id: String, val name: Int, val importance: Int)
@@ -31,44 +35,39 @@ class Notifier(private val context: Context) {
         }
     }
 
-    /** `o` is the page's `notify` message: {kind, id, title, body, actions: [{id, label}]}. */
+    /** A page `notify` message: {kind, id, title, body, actions: [{id, label}]}. */
     fun show(o: JSONObject, foreground: Boolean) {
-        val kind = o.optString("kind")
+        val n = Note.fromPage(o)
         // In front, the page has shown it; a permission prompt is the exception — it must be
-        // answerable from the shade even when the page is behind another of wado's own screens.
-        if (foreground && kind != "claude_permission") return
-        if (!allowed()) return
-        val id = o.optString("id")
-        val n = NotificationCompat.Builder(context, channelFor(kind))
-            .setSmallIcon(R.drawable.ic_stat_wado)
-            .setContentTitle(o.optString("title").ifBlank { context.getString(R.string.app_name) })
-            .setContentText(o.optString("body"))
-            .setStyle(NotificationCompat.BigTextStyle().bigText(o.optString("body")))
-            .setContentIntent(openApp())
-            .setAutoCancel(true)
-            .setCategory(if (kind == "claude_permission") NotificationCompat.CATEGORY_REMINDER else NotificationCompat.CATEGORY_STATUS)
-        val actions = o.optJSONArray("actions")
-        if (actions != null) {
-            for (i in 0 until minOf(actions.length(), 3)) {
-                val a = actions.optJSONObject(i) ?: continue
-                n.addAction(0, a.optString("label"), ActionReceiver.intent(context, kind, id, a.optString("id")))
-            }
-        }
-        NotificationManagerCompat.from(context).notify(tag(kind, id), 0, n.build())
+        // answerable from the shade even behind another of wado's own screens.
+        if (foreground && n.kind != KIND_ASK) return
+        post(n)
     }
 
+    /** A pushed `PushNote`. */
+    fun showPush(o: JSONObject) = post(Note.fromPush(o))
+
     fun clear(kind: String, id: String) = NotificationManagerCompat.from(context).cancel(tag(kind, id), 0)
+
+    private fun post(n: Note) {
+        if (!allowed()) return
+        val b = NotificationCompat.Builder(context, channelFor(n.kind))
+            .setSmallIcon(R.drawable.ic_stat_wado)
+            .setContentTitle(n.title.ifBlank { context.getString(R.string.app_name) })
+            .setContentText(n.body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(n.body))
+            .setContentIntent(Action.open(context, n, ""))
+            .setAutoCancel(true)
+            .setCategory(if (n.kind == KIND_ASK) NotificationCompat.CATEGORY_REMINDER else NotificationCompat.CATEGORY_STATUS)
+        n.actions.take(2).forEach { (id, label) -> b.addAction(0, label, Action.open(context, n, id)) }
+        NotificationManagerCompat.from(context).notify(tag(n.kind, n.id), 0, b.build())
+    }
 
     private fun allowed() = Build.VERSION.SDK_INT < 33 ||
         ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
-    private fun openApp(): PendingIntent = PendingIntent.getActivity(
-        context, 0,
-        Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
-        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-    )
-
     companion object {
+        const val KIND_ASK = "claude_permission"
         const val CH_ASK = "ask"
         const val CH_DONE = "done"
         const val CH_STATUS = "status"
@@ -85,14 +84,77 @@ class Notifier(private val context: Context) {
             Channel(CH_STAY, R.string.ch_stay, NotificationManager.IMPORTANCE_MIN),
         )
 
-        /** Which channel a page notification kind goes to. */
+        /** Which channel a kind goes to — the PushNote kinds (`NOTE_*`) and the page's own. */
         fun channelFor(kind: String) = when (kind) {
-            "claude_permission" -> CH_ASK
-            "claude_done", "transfer_done" -> CH_DONE
-            "computer_online", "computer_offline" -> CH_STATUS
+            KIND_ASK -> CH_ASK
+            "claude_done", "transfer", "transfer_done" -> CH_DONE
+            "online", "computer_online", "computer_offline" -> CH_STATUS
             else -> CH_APPS
         }
 
         fun tag(kind: String, id: String) = "$kind:$id"
     }
+}
+
+/** One notification, whichever way it came. Pure, so the mapping is unit-tested. */
+data class Note(
+    val kind: String,
+    val id: String,
+    val title: String,
+    val body: String,
+    val actions: List<Pair<String, String>>,
+    val computer: String = "",
+    val session: String = "",
+    val ask: String = "",
+) {
+    companion object {
+        private fun actions(o: JSONObject) = o.optJSONArray("actions")?.let { a ->
+            (0 until a.length()).mapNotNull { i ->
+                a.optJSONObject(i)?.let { x -> x.optString("id") to x.optString("title").ifBlank { x.optString("label") } }
+            }
+        } ?: emptyList()
+
+        fun fromPage(o: JSONObject) = Note(
+            kind = o.optString("kind"),
+            id = o.optString("id"),
+            title = o.optString("title"),
+            body = o.optString("body"),
+            actions = actions(o),
+        )
+
+        /** `wado_protocol::push::PushNote`. A later note with the same tag replaces this one. */
+        fun fromPush(o: JSONObject): Note {
+            val session = o.optString("session")
+            val ask = o.optString("ask")
+            val id = o.optString("tag").ifBlank { if (ask.isNotBlank()) "$session:$ask" else o.optLong("at").toString() }
+            val name = o.optString("computer_name")
+            val title = o.optString("title")
+            return Note(
+                kind = o.optString("kind"),
+                id = id,
+                title = if (name.isNotBlank() && !title.contains(name)) "$title · $name" else title,
+                body = o.optString("body"),
+                actions = actions(o),
+                computer = o.optString("computer"),
+                session = session,
+                ask = ask,
+            )
+        }
+    }
+}
+
+/** A notification's tap or button: opens wado and hands the page `notifyAction`. */
+object Action {
+    const val INTENT = "io.github.sandptel.wado.NOTIFY_ACTION"
+
+    fun open(context: Context, n: Note, action: String): PendingIntent = PendingIntent.getActivity(
+        context,
+        "${n.kind}:${n.id}:$action".hashCode(),
+        Intent(context, MainActivity::class.java)
+            .setAction(INTENT)
+            .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            .putExtra("kind", n.kind).putExtra("id", n.id).putExtra("action", action)
+            .putExtra("computer", n.computer).putExtra("session", n.session).putExtra("ask", n.ask),
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+    )
 }

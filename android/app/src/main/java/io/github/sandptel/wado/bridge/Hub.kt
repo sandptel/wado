@@ -29,8 +29,9 @@ object Hub {
         fun clip(text: String, sensitive: Boolean) {}
         fun notify(o: JSONObject) {}
         fun notifyClear(kind: String, id: String) {}
-        fun pushSubscribe(vapid: String) {}
+        fun pushSubscribe(vapid: String, rid: String) {}
         fun nowPlaying(np: NowPlaying) {}
+        fun webauthn(o: JSONObject) {}
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -92,10 +93,11 @@ object Hub {
             BridgeProtocol.HAPTIC -> screen.haptic(o.optString("kind"))
             BridgeProtocol.ACTIVE -> screen.active(o.optBoolean("on"))
             BridgeProtocol.ORIENT -> screen.orient(o.optString("lock"))
+            BridgeProtocol.WEBAUTHN -> screen.webauthn(o)
             BridgeProtocol.CLIP -> app.clip(o.optString("text"), o.optBoolean("sensitive"))
             BridgeProtocol.NOTIFY -> app.notify(o)
             BridgeProtocol.NOTIFY_CLEAR -> app.notifyClear(o.optString("kind"), o.optString("id"))
-            BridgeProtocol.PUSH_SUBSCRIBE -> app.pushSubscribe(o.optString("vapid"))
+            BridgeProtocol.PUSH_SUBSCRIBE -> app.pushSubscribe(o.optString("vapid"), o.optString("rid"))
             else -> _events.tryEmit(t to o)
         }
     }

@@ -15,7 +15,6 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import io.github.sandptel.wado.BuildConfig
@@ -72,20 +71,19 @@ class ClientWebView(context: Context) {
             loadWithOverviewMode = false
             userAgentString = "$userAgentString wado-android/${BuildConfig.VERSION_NAME}"
         }
-        // WebAuthn (passkeys) for this app's own pages. A passkey's relying party must be tied
-        // to the app by Digital Asset Links (docs/android.md); without that, the page is told
-        // no authenticator is available and falls back as it does in any browser without one.
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_AUTHENTICATION)) {
-            WebSettingsCompat.setWebAuthenticationSupport(
-                view.settings,
-                WebSettingsCompat.WEB_AUTHENTICATION_SUPPORT_FOR_APP,
-            )
-        }
+        // Passkeys: no Digital Asset Links file can vouch for this origin, so the system's passkey
+        // providers would refuse it. The page's navigator.credentials is answered by the app's own
+        // Keystore authenticator instead (js/native_passkey.js, passkey/Authenticator.kt).
         val origins = setOf(ClientServer.ORIGIN)
         if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
             WebViewCompat.addDocumentStartJavaScript(
                 view,
-                BridgeProtocol.infoScript(BuildConfig.VERSION_NAME, Build.VERSION.SDK_INT),
+                BridgeProtocol.infoScript(
+                    BuildConfig.VERSION_NAME,
+                    Build.VERSION.SDK_INT,
+                    // As the Notification API names it (js/push.js); read when the page loads.
+                    if (androidx.core.app.NotificationManagerCompat.from(view.context).areNotificationsEnabled()) "granted" else "denied",
+                ),
                 origins,
             )
         }

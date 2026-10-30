@@ -6,8 +6,10 @@
 //! - [`pad`]: the trackpad's touch frames and when they go out (the JS original is
 //!   crates/client/src/js/pad_touch.js).
 //! - [`words`]: a typed pairing's four check words.
+//! - [`webauthn`]: the byte layouts of the app's own passkey authenticator.
 
 pub mod pad;
+pub mod webauthn;
 pub mod words;
 
 uniffi::setup_scaffolding!();

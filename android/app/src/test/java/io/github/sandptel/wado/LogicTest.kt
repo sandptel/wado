@@ -147,6 +147,23 @@ class BridgeTest {
     }
 }
 
+class NoteTest {
+    @Test fun a_pushed_claude_question_keeps_what_its_buttons_answer() {
+        val n = io.github.sandptel.wado.notify.Note.fromPush(
+            JSONObject(
+                """{"kind":"claude_permission","title":"Claude wants to run a command","body":"rm -rf build",
+                   "computer":"123456789","computer_name":"studio","tag":"","session":"s1","ask":"a9",
+                   "actions":[{"id":"allow","title":"Allow"},{"id":"deny","title":"Deny"}],"at":5}""",
+            ),
+        )
+        assertEquals("s1:a9", n.id)
+        assertEquals(listOf("allow" to "Allow", "deny" to "Deny"), n.actions)
+        assertEquals("Claude wants to run a command · studio", n.title)
+        assertEquals("ask", io.github.sandptel.wado.notify.Notifier.channelFor(n.kind))
+        assertEquals("status", io.github.sandptel.wado.notify.Notifier.channelFor("online"))
+    }
+}
+
 class TapFeelTest {
     @Test fun a_quick_still_lone_finger_is_a_tap() {
         val t = io.github.sandptel.wado.pad.TapFeel()

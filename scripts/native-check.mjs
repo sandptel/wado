@@ -6,7 +6,7 @@
 //   node scripts/native-check.mjs
 import { readFileSync } from "node:fs";
 
-const FILES = ["native.js", "native_sync.js", "native_feel.js", "native_share.js", "native_push.js", "native_pad.js"];
+const FILES = ["native.js", "native_sync.js", "native_feel.js", "native_share.js", "native_push.js", "native_pad.js", "native_passkey.js"];
 const src = FILES.map((f) => readFileSync(new URL("../crates/client/src/js/" + f, import.meta.url), "utf8")).join("\n");
 
 let failures = 0;
@@ -48,14 +48,20 @@ function world(native) {
     })(),
   };
   const vib = () => "browser";
-  const navigator = { vibrate: vib };
+  const browserCreds = { create: async () => "browser-create", get: async () => "browser-get" };
+  const navigator = { vibrate: vib, credentials: browserCreds };
+  W.b64u = {
+    enc: (u8) => Buffer.from(new Uint8Array(u8)).toString("base64url"),
+    dec: (s) => new Uint8Array(Buffer.from(s, "base64url")),
+  };
+  W.passkey = { supported: false, platform: false };
   const window = native ? { wadoNative: native, wadoNativeInfo: { platform: "android", version: "0.0.3" } } : {};
   const before = { applyTheme: W.applyTheme, saveSettings: W.saveSettings, acquire: W.wake.acquire, show: W.padConfirm.show, input: W.padTouch.input };
   new Function("W", "emit", "window", "navigator", "document", "performance", "fetch", "File", src)(
     W, (m) => emitted.push(m), window, navigator, document, { now: () => Date.now() },
     async () => ({ ok: true, blob: async () => "blob" }), class { constructor(b, n) { this.name = n; } },
   );
-  return { W, emitted, sent, handlers, navigator, vib, before, settings };
+  return { W, emitted, sent, handlers, navigator, vib, before, settings, browserCreds };
 }
 
 // ── a browser ───────────────────────────────────────────────────────────────────────────
@@ -68,6 +74,33 @@ function world(native) {
     w.W.padTouch.input === w.before.input, null);
   check("browser: navigator.vibrate untouched", w.navigator.vibrate === w.vib, null);
   check("browser: no relay handler added", Object.keys(w.handlers).length === 0, Object.keys(w.handlers));
+  check("browser: navigator.credentials untouched",
+    w.navigator.credentials.create === w.browserCreds.create && w.W.passkey.platform === false, null);
+}
+
+// ── the app's passkeys ──────────────────────────────────────────────────────────────────
+{
+  const posted = [];
+  const N = { postMessage: (s) => posted.push(JSON.parse(s)), onmessage: null };
+  const w = world(N);
+  const of = (t) => posted.filter((m) => m.t === t);
+  const answer = (m) => N.onmessage({ data: JSON.stringify(m) });
+  check("passkey: the app is the platform authenticator", w.W.passkey.platform === true && w.W.passkey.supported === true, w.W.passkey);
+  const made = w.navigator.credentials.create({ publicKey: { challenge: new Uint8Array([1, 2, 3]), rp: { id: "appassets.androidplatform.net" } } });
+  const ask = of("webauthn").at(-1);
+  check("passkey: create asks the app with the challenge", ask && ask.op === "create" && ask.challenge === "AQID" && ask.rpId === "appassets.androidplatform.net", ask);
+  answer({ t: "webauthnResult", id: ask.id, ok: true, rawId: "Bwc", clientData: "e30", attestation: "oA" });
+  const c = await made;
+  check("passkey: …and resolves to a credential js/passkey.js can read",
+    c.rawId instanceof ArrayBuffer && c.response.clientDataJSON.byteLength === 2 && c.response.attestationObject.byteLength === 1, c);
+  const got = w.navigator.credentials.get({ publicKey: { challenge: new Uint8Array([9]), rpId: "appassets.androidplatform.net", allowCredentials: [{ id: new Uint8Array([7, 7]) }] } });
+  const g = of("webauthn").at(-1);
+  check("passkey: get names the allowed credential", g.op === "get" && JSON.stringify(g.allow) === '["Bwc"]', g);
+  answer({ t: "webauthnResult", id: g.id, ok: false, errName: "NotAllowedError", errMessage: "cancelled" });
+  let err = null;
+  try { await got; } catch (e) { err = e; }
+  check("passkey: a refusal is the DOMException a browser throws", err && err.name === "NotAllowedError", err && err.name);
+  check("passkey: anything but a public-key request goes to the browser", (await w.navigator.credentials.get({ password: true })) === "browser-get", null);
 }
 
 // ── the app ─────────────────────────────────────────────────────────────────────────────

@@ -8,7 +8,10 @@ fork. It is AGPL-3.0-only like the rest of wado (About screen: licence text and 
 ## Shape
 
 ```
-MainActivity ── native screens (Compose) ─────────────── Home · Pair (QR) · Share sheet · Settings · About
+MainActivity ── native screens (Compose) ─── Home · Trackpad · Pair (QR) · Share sheet · Settings · About
+     │                 │
+     │                 └─ Rust core (crates/mobile-core, UniFFI → libwado_mobile_core.so, JNA):
+     │                    pad pacing + wire frames, passkey byte layouts, pairing check words
      │
      └─ WebView (one per process, WadoApp.web) ─ https://appassets.androidplatform.net/
             the bundled client (assets/client/, served by web/ClientServer.kt)
@@ -62,12 +65,18 @@ null in a browser, and the `native_*.js` files then do nothing). Messages are JS
 - **Haptics** (`device/Haptics.kt`): `HapticFeedbackConstants` (CONFIRM, REJECT, GESTURE_START,
   …), so the system's "touch feedback" switch is respected. Pad taps tick, gesture claims and
   action confirmations/refusals each have their own feel.
-- **Passkeys**: `WebSettingsCompat.setWebAuthenticationSupport(…FOR_APP)` is on. For a passkey
-  to work the relying party must be associated with the app by Digital Asset Links — the RP ID
-  is the page's origin, `appassets.androidplatform.net`, which no one can host
-  `assetlinks.json` on. Passkeys therefore need the RP moved to a domain wado controls (with
-  `/.well-known/assetlinks.json` naming this app's signing key) before they work in the app;
-  until then the page sees no authenticator, as in any browser without one.
+- **Passkeys** (`passkey/Authenticator.kt`, `js/native_passkey.js`, F3's step-up for shells,
+  file writes and the trackpad): the page's origin, `appassets.androidplatform.net`, is one no
+  Digital Asset Links file can vouch for, so Android's passkey providers (and the WebView's own
+  WebAuthn) refuse it. The app is the authenticator instead: `navigator.credentials` in the page
+  is answered by a P-256 key made in the phone's Keystore per passkey, usable only after the
+  screen lock (fingerprint, face or PIN) each time; the clientDataJSON, authenticatorData and
+  `none` attestation are laid out by the Rust core. `js/passkey.js` is unchanged. Verified: a
+  passkey made and used on the emulator (PIN) is accepted by the daemon's own verifier
+  (`cargo test -p wado-mobile-core -- --ignored device_capture`, with `WADO_PASSKEY_CAPTURE`
+  pointing at the page's `[create, get]` results). Such a passkey lives on this phone only: it
+  is not synced, and it is not the one the browser on the same phone made (that is another
+  origin).
 - **Share target** (`share/`): files, photos, links and text from any app → pick a computer →
   files upload into its `~/Downloads` through the file link (the page fetches each from
   `/share/<token>/<n>`, served by the app straight from the other app's content), links open in
@@ -78,18 +87,28 @@ null in a browser, and the `native_*.js` files then do nothing). Messages are JS
   services). The code's link (`?relay&id&pair&hk`) is loaded onto the app's origin, where
   `js/storage.js` takes it in exactly as a browser would. "Type a code instead" opens the
   client's own form.
+- **Native trackpad** (`ui/pad/`, `pad/`): the Trackpad door and shortcut open a Compose pad —
+  landscape for real, screen on, immersive; 1:1 rings under the fingers; a tap ticks in the hand.
+  Its frames come from the Rust core's pacer (the port of `js/pad_touch.js`: land/lift at once
+  with +20/+60 ms repeats on the direct link, 16 ms relayed tick, 100 ms resting re-send) and ride
+  the page's pad link (`js/native_pad.js`: `padStart`/`pad`/`padStop`, `padState`/`padMsg`).
+  The web pad's phone gestures, action rail, keys and settings are one tap away ("Keys &
+  gestures") until they are ported.
 - **Hardware keyboards** reach the page as ordinary key events. **Gamepads**: the WebView's
   Chromium exposes the Gamepad API; not yet verified on a device (no InputDevice bridge built).
 - **Notifications** (`notify/`): channels per urgency (Computer needs you · Finished · Apps ·
-  Status · Playing · Staying connected). Shown while wado is not in front; Allow/Deny buttons go
-  back to the page. Wired today: the session's app notifications. The F3 kinds
-  (`claude_permission`, `claude_done`, `computer_online/offline`, `transfer_done`) arrive through
-  `W.native.notify(kind, …)` once F3's page code calls it.
+  Status · Playing · Staying connected). Two sources, one shape: the page's own while wado is
+  not in front (a session app's notification today), and a computer's pushes
+  (`wado_protocol::push::PushNote`), always. A button (Allow / Deny on a Claude permission
+  prompt) opens wado and is handed to the page as `notifyAction`, which gives it to
+  `W.claudePending` — Allow then asks for the passkey, as on the card.
 - **Background without Google**: "Stay connected" (off by default, `stay/`) — a
   `remoteMessaging` foreground service with a permanent, minimum-priority notification keeps the
   page's control link open. **UnifiedPush** (`push/`): with a distributor installed (ntfy, …),
-  `W.native.pushSubscribe(vapid)` returns a Web-Push-shaped subscription the computer's RFC 8291
-  sender can use unchanged. The installed web app in Chrome gets true Web Push instead.
+  `js/push.js` subscribes through `W.native.pushSubscribe(vapid, rid)` instead of a service
+  worker, and registers the endpoint with the computer as a `PushSub` of kind `unifiedpush` —
+  one registration per computer (the instance is its Remote ID), so every computer can reach the
+  phone. The connector decrypts (RFC 8291); the computer's sender needs nothing new.
 - **Now playing + volume** (`media/RemoteMedia.kt`): the computer's player as this phone's media
   session (lock screen, shade, Bluetooth buttons); volume keys turn the computer's default output
   up and down while wado is in front, with an on-screen level. "This phone" audio is the page's
@@ -106,11 +125,23 @@ nix develop .#android -c scripts/android-build.sh          # client + debug + re
 nix develop .#android -c scripts/android-build.sh --debug  # debug only
 ```
 
-The `android` shell (flake.nix) brings the SDK (platform 37.0, build-tools 37), JDK 17, and the
-web client's toolchain (`dx`, cargo/rustc with wasm32, `wasm-opt`). The SDK is unfree; the shell accepts its licence
+The `android` shell (flake.nix) brings the SDK (platform 37.0, build-tools 37, NDK 29), JDK 17,
+the web client's toolchain (`dx`, cargo/rustc with wasm32, `wasm-opt`) and `cargo-ndk`. The Rust
+core needs Android's std, which nixpkgs' rustc lacks: `scripts/android-core.sh` installs the same
+rustc version with the two Android targets through rustup, in its own home
+(`~/.cache/wado/rustup`), and builds `libwado_mobile_core.so` for arm64-v8a and x86_64 plus the
+Kotlin bindings (library mode, so they cannot drift from the .so). Neither is committed. The SDK is unfree; the shell accepts its licence
 (`android_sdk.accept_license`) for itself only. AGP fetches `aapt2` as a generic-Linux binary
 NixOS cannot run, so the shell points `android.aapt2FromMavenOverride` at the SDK's.
 
 `nix develop .#android-emulator` adds the emulator and an x86_64 API 37 image (KVM).
 
 Release signing: `docs/android-release.md`. CI builds the debug APK (`.github/workflows/android.yml`).
+
+## Not native yet
+
+The client's own screens stay the fallback for everything not listed above: the computer page,
+the desktop session (video, input, dock, control centre), files, shells, the pad's gestures and
+rail, the clipboard history, diagnostics and deep settings. Session video plays in the WebView's
+Chromium WebRTC, which decodes H.264 in hardware (MediaCodec) already; a native libwebrtc
+session is not built.

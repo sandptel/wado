@@ -23,6 +23,7 @@ object BridgeProtocol {
     const val PUSH_SUBSCRIBE = "pushSubscribe"
     const val SHARE_DONE = "shareDone"
     const val EXIT = "exit"
+    const val WEBAUTHN = "webauthn"
     const val PAD_STATE = "padState"
     const val PAD_MSG = "padMsg"
 
@@ -34,6 +35,7 @@ object BridgeProtocol {
     const val SHARE = "share"
     const val NOTIFY_ACTION = "notifyAction"
     const val PUSH_ENDPOINT = "pushEndpoint"
+    const val WEBAUTHN_RESULT = "webauthnResult"
     const val PAD_START = "padStart"
     const val PAD = "pad"
     const val PAD_STOP = "padStop"
@@ -54,7 +56,7 @@ object BridgeProtocol {
     }
 
     /** The document-start script: what the page can read synchronously about its host. */
-    fun infoScript(version: String, sdk: Int): String =
+    fun infoScript(version: String, sdk: Int, notifications: String): String =
         "window.wadoNativeInfo=" + JSONObject().put("platform", "android").put("version", version)
-            .put("sdk", sdk).toString() + ";"
+            .put("sdk", sdk).put("notifications", notifications).toString() + ";"
 }
