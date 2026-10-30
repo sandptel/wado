@@ -106,6 +106,11 @@ pub enum FileReq {
     Thumb {
         path: String,
     },
+    /// What a zip holds, from its index: `{entries: [{name, size, dir}], total, more}` — at most
+    /// a few hundred entries, the rest counted. `err` for anything that is not a zip.
+    Entries {
+        path: String,
+    },
     /// Add a folder to the pinned ones (the GTK bookmarks file, shared with Nautilus).
     Pin {
         path: String,
