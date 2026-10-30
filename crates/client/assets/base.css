@@ -83,6 +83,9 @@
   --dur-stage: 160ms; --dur-stage-out: 160ms; }
 
 * { box-sizing: border-box; }
+/* `hidden` always hides. A component rule that sets `display` (`.card`, `.tperr:not(…)`) would
+   otherwise win on specificity or order and show an empty card (seen twice on the trackpad). */
+[hidden] { display: none !important; }
 
 /* The root's size is the text size. `text-size-adjust` keeps a phone's browser from inflating it
  * again on its own (font boosting, iOS's landscape text bump). */
