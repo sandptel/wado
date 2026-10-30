@@ -473,3 +473,23 @@ multi-seat (I2) as an experiment, if app support turns out to be good.
 7. New grants `join` and `takeover`: **on for code-paired devices**, off for others until `wado allow`.
 8. Joining: **grant + a toast to everyone** in the session; no lead approval.
 Also: take over **disconnects** the previous participants with a plain message (they can rejoin); co-control: all participants control at once.
+
+## Implementation notes — F6 (2026-10-30)
+
+What was built against the decisions above, and where it differs from the plan's letter.
+
+| Task | Where | Notes |
+|---|---|---|
+| T0 | this section | The decisions are recorded here. **The Decision Log entry in `WADO_PLAN.md` (gitignored, main checkout) is still to be written** — not touched from a worktree. |
+| T1 | relay (already on main) | `control` rooms + `strict=1` / `room_strict` reused unchanged. No relay change in F6. |
+| T2 | `server/src/viewers/` | Not the full `RelayCtx` split. The seat stays in `relay_client.rs`; it and every joined room are participants of one `viewers::Hub` (origin, sealed writer, peer connection). `handle_sdp_offer` moved to `viewers/pc.rs`, shared by both. A joined room is served by `viewers/room.rs` (session verbs, media, controls under the widget policy); shells, files, trackpad and host clipboard history stay on the device's own link. |
+| T3 | `viewers/{pc,aggregate}.rs` | One `TrackLocalStaticSample` bound into every participant's PC. Attached/visible = any, strain = any (logged by name), bitrate = lowest participant's cap floored at 1.5 Mbps (a non-lead's reconfigure is read as its bitrate only; the output stays the lead's), IDR coalesced at 500 ms. H.264 is the only codec wado has, so "force H.264" holds trivially. |
+| T4 | `compositor/src/input/{arbiter,tagged}.rs` | Input channel carries `InputItem::{Event(origin, ev), Gone(origin), Lead(origin)}` — gone/lead ride the input channel so a release lands after that device's last event. `InputSender::send` keeps the old single-device call sites unchanged (origin 0). Pointer lock lead-only. |
+| T5 | `protocol/src/{multi,relay,sessions}.rs` | **Deviation:** no `E2eHello.v` bump (it is in the handshake transcript). A daemon that can be joined says so per session: `SessionSummary.max_participants > 0`; the relay says so with caps `control` + `room_strict`. |
+| T6 | `session/membership.rs`, `viewers/mod.rs` | Lead, join (cap), same-device replace, take over with 10 s cooldown, leave, end-by-anyone, 45 s per-participant watchdog for joined rooms, reaper counts any participant, participants in `sessions/<instance>.json`. Ending from *outside* a session needs the `takeover` grant. |
+| T7 | `desks.rs` | `desk_request` → `session_elsewhere` (this daemon if idle, an idle sibling, or a spawned `WADO_SIBLING=1` daemon up to `server { max-sessions }`, default 4) or `desks_full`. A sibling exits 30 s after its session ends, or after 120 s unused. Its UDP slice follows its number from the spawning daemon's. |
+| T8 | client `ui/computer/{sessions,session_row,linkmeter}.rs`, `js/{multi,linktest}.js`, `multi.rs` | Sessions section on the Computer page; joined rooms via `relay_link.js` room mode; plain-words sheets for take over / ended / refused; toasts for joins. Without the caps, Join is hidden and says why; Take over / End fall back to today's seat takeover. |
+| T9 | `viewers/presence.rs`, `js/presence.js` | `wado-presence` data channel, unordered, no retransmits, 20 Hz per origin, never one's own; labelled dots and a "N here" chip. |
+| T10 | `gate/grants.rs`, tui, cli | `join`, `takeover` tokens; added by any pairing code (QR or typed); legacy and pre-existing lines get neither until `wado allow`. |
+| Speed test (decision 6) | `linktest/{mod,verdict,headroom}.rs` | The device pulls a sealed filler burst over its own relay link and reports down/RTT; the daemon judges with its own headroom (MemAvailable, load per core, encoder, sessions vs cap, best recent upload). Below the floor, RTT > 600 ms, out of memory or out of places → `refuse` (and the join/start it was for is refused); slower than the stream, busy → `warn`; the cap in force is lowered to what the upload carries at the floor. The burst measures the relay path, not the media path — an approximation, labelled as such. |
+| T11 | — | **Not measured.** Encode headroom, lead glass-to-glass with 1–3 participants, IDR-on-join cost and uplink saturation remain open. |

@@ -136,7 +136,7 @@ fn spawn(n: u32) -> std::io::Result<PathBuf> {
     std::process::Command::new(exe)
         .arg("daemon")
         .env("WADO_INSTANCE", n.to_string())
-        .env("WADO_UDP_SLICE", n.saturating_sub(1).to_string())
+        .env("WADO_UDP_SLICE", sibling_slice(n).to_string())
         .env(SIBLING_ENV, "1")
         .stdin(std::process::Stdio::null())
         .stdout(out)
@@ -145,6 +145,20 @@ fn spawn(n: u32) -> std::io::Result<PathBuf> {
         .process_group(0)
         .spawn()?;
     Ok(log)
+}
+
+/// Instance `n`'s UDP slice: as far from this daemon's as its number is, so a pool started with
+/// its own slices (`scripts/rig.sh`, a test) keeps its siblings out of other pools' ports.
+fn sibling_slice(n: u32) -> u32 {
+    let cfg = wado_config::live::current();
+    slice_for(n, cfg.server.instance.trim(), cfg.server.udp_slice as u32)
+}
+
+fn slice_for(n: u32, me: &str, my_slice: u32) -> u32 {
+    match me.parse::<u32>() {
+        Ok(m) if n >= m => my_slice + (n - m),
+        _ => n.saturating_sub(1),
+    }
 }
 
 /// In a sibling: exit once its session has ended, or if none was ever started on it.
@@ -206,6 +220,13 @@ mod tests {
             choose(&s(&["1"]), &s(&["1"]), "1", 1, 4),
             Desk::Failed(m) if m.is_empty()
         ));
+    }
+
+    #[test]
+    fn a_siblings_ports_follow_its_number() {
+        assert_eq!(slice_for(2, "1", 12), 13, "next to this daemon's");
+        assert_eq!(slice_for(3, "1", 0), 2, "the rig's numbering");
+        assert_eq!(slice_for(2, "e2e-a", 5), 1, "a named instance: by number");
     }
 
     #[test]
