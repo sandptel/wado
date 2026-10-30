@@ -2,11 +2,15 @@
 //! for one (or all) of them now; and `remove` for one that lost its own (a new phone, a wiped
 //! browser): the device then adds a new one from Connection & trust. Removing is the
 //! computer's call alone; a device cannot replace its passkey without it.
+//!
+//! The two ways out when a passkey will not work (Decision Log `2026-10-30`): `approve` answers a
+//! phone that asked to be let in without it — the person at this computer says yes or no — and
+//! `require <device> on|off` decides whether the computer asks that device for one at all.
 
 use std::io::Write as _;
 use std::os::unix::net::UnixStream;
 
-use super::style::{accent, bold, dim, good};
+use super::style::{accent, bold, dim, good, warn};
 use crate::gate::Gate;
 use crate::passkey::Store;
 
@@ -15,14 +19,20 @@ pub fn run(args: &[String]) -> i32 {
         None | Some("list") => list(),
         Some("remove" | "reset") => remove(args.get(1).map(String::as_str)),
         Some("lock") => lock(args.get(1).map(String::as_str)),
+        Some("approve") => super::passkey_approve::run(&args[1..]),
+        Some("require") => require(
+            args.get(1).map(String::as_str),
+            args.get(2).map(String::as_str),
+        ),
         Some(other) => {
-            eprintln!(
-                "  usage: wado passkey [list] | wado passkey lock <device|all> | wado passkey remove <device>   (not `{other}`)"
-            );
+            eprintln!("  {USAGE}   (not `{other}`)");
             2
         }
     }
 }
+
+const USAGE: &str = "usage: wado passkey [list] | lock <device|all> | remove <device> | \
+    approve [<device>] [--yes|--no|--list] [--wait] | require <device> on|off";
 
 /// How long `stay` keeps a device unlocked, in the card's words.
 fn lasts(stay: &str) -> &'static str {
@@ -44,6 +54,15 @@ fn list() -> i32 {
     }
     println!();
     for d in devices {
+        if !store.required(&d.key) {
+            println!(
+                "  {} {}  {}",
+                warn("◌"),
+                d.name,
+                dim("passkey not asked — shells, file writes and the trackpad open without one")
+            );
+            continue;
+        }
         match store.get(&d.key) {
             Some(c) => println!(
                 "  {} {}  {}",
@@ -112,6 +131,44 @@ fn lock(who: Option<&str>) -> i32 {
             1
         }
     }
+}
+
+/// Ask `who` for its passkey (`on`, the default), or stop asking it.
+fn require(who: Option<&str>, on: Option<&str>) -> i32 {
+    let (Some(who), Some(on @ ("on" | "off"))) = (who, on) else {
+        eprintln!(
+            "  usage: wado passkey require <device> on|off   — its name, or the start of its key"
+        );
+        return 2;
+    };
+    let d = match Gate::default().find(who) {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("  {e}");
+            return 1;
+        }
+    };
+    let store = Store::default();
+    if let Err(e) = store.set_required(&d.key, on == "on") {
+        eprintln!("  could not save that: {e}");
+        return 1;
+    }
+    if on == "on" {
+        // Asked again from now: any open window shuts, everywhere.
+        lock_everywhere(Some(&d.key));
+        println!(
+            "  {} is asked for its passkey again — shells, file writes and the trackpad need it",
+            bold(&d.name)
+        );
+    } else {
+        println!(
+            "  {} is no longer asked for a passkey — anyone holding it can open shells, change files \
+             and use the trackpad. Turn it back on with {}",
+            bold(&d.name),
+            accent(&format!("wado passkey require {} on", Gate::typed(&d.name)))
+        );
+    }
+    0
 }
 
 fn remove(who: Option<&str>) -> i32 {

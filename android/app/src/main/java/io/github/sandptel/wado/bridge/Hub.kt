@@ -31,7 +31,14 @@ object Hub {
         fun notifyClear(kind: String, id: String) {}
         fun pushSubscribe(vapid: String, rid: String) {}
         fun nowPlaying(np: NowPlaying) {}
-        fun webauthn(o: JSONObject) {}
+        /** No activity to show a prompt on: answer at once, never leave the page waiting. */
+        fun webauthn(o: JSONObject) {
+            send(BridgeProtocol.WEBAUTHN_RESULT) {
+                put("id", o.optInt("id")); put("ok", false); put("errName", "NotAllowedError"); put("errCode", "busy")
+                put("errMessage", "Open wado on the phone's screen to use your passkey, then try again.")
+            }
+        }
+        fun webauthnCancel(id: Int) {}
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -94,6 +101,7 @@ object Hub {
             BridgeProtocol.ACTIVE -> screen.active(o.optBoolean("on"))
             BridgeProtocol.ORIENT -> screen.orient(o.optString("lock"))
             BridgeProtocol.WEBAUTHN -> screen.webauthn(o)
+            BridgeProtocol.WEBAUTHN_CANCEL -> screen.webauthnCancel(o.optInt("id"))
             BridgeProtocol.CLIP -> app.clip(o.optString("text"), o.optBoolean("sensitive"))
             BridgeProtocol.NOTIFY -> app.notify(o)
             BridgeProtocol.NOTIFY_CLEAR -> app.notifyClear(o.optString("kind"), o.optString("id"))

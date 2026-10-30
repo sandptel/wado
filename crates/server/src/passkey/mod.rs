@@ -13,17 +13,22 @@
 //! | [`challenge`] | single-use, two-minute challenges |
 //! | [`stay`] | how long an unlock lasts: each device's own choice |
 //! | [`unlock`] | the unlock window: its idle clock, what it outlives, the locks |
+//! | [`require`] | whether a device is asked for its passkey at all — its owner's choice |
+//! | [`approve`] | unlocking without the passkey: someone at the computer says yes |
 //! | [`relay`] | the messages, over the sealed relay link |
 //!
 //! No new crate: `ring` (already here for the envelope) verifies ES256, and the CBOR is the
 //! hand-written [`cbor`].
 
+pub mod approve;
+mod approve_notify;
 pub mod authdata;
 pub mod cbor;
 pub mod challenge;
 pub mod client_data;
 pub mod cose;
 pub mod relay;
+pub mod require;
 pub mod stay;
 pub mod store;
 pub mod unlock;
@@ -58,10 +63,18 @@ pub fn refused_quiet(key: &str) -> Option<&'static str> {
     refused_with(&Store::default(), key, false)
 }
 
-fn refused_with(store: &Store, key: &str, use_it: bool) -> Option<&'static str> {
+pub(crate) fn refused_with(store: &Store, key: &str, use_it: bool) -> Option<&'static str> {
+    // Its owner chose not to ask this device ([`require`]): every passkey door is open to it.
+    if !store.required(key) {
+        return None;
+    }
     // Removed on the computer (`wado passkey remove`, unpairing) while open: shut it now. One
-    // look at the folder per use, which is what makes a removal take effect at once.
+    // look at the folder per use, which is what makes a removal take effect at once. The one
+    // window a device without a passkey can have is an approval on the computer ([`approve`]).
     if !store.has(key) {
+        if unlock::bare_open(key, use_it) {
+            return None;
+        }
         unlock::lock_in(store, key);
         return Some(NO_PASSKEY);
     }

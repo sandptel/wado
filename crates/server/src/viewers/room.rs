@@ -374,7 +374,10 @@ pub async fn handle(hub: &Arc<Hub>, room: &ViewRoom, who: &Who, text: &str, cx: 
         | RelayMsg::PasskeyLock
         | RelayMsg::PasskeyKeepalive
         | RelayMsg::PasskeyGet
-        | RelayMsg::PasskeyStay { .. }) => {
+        | RelayMsg::PasskeyStay { .. }
+        | RelayMsg::PasskeyRequire { .. }
+        | RelayMsg::PasskeyApprove
+        | RelayMsg::PasskeyApproveCancel) => {
             let dev = crate::passkey::relay::Device {
                 key: &who.key,
                 name: &who.name,

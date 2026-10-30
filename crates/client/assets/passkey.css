@@ -88,3 +88,14 @@
 .pkhint svg { width: 16px; height: 16px; flex: none; margin-top: 1px; color: var(--warn); }
 
 :root[data-motion="reduced"] .pkhead.busy .shackle { animation: none; }
+
+/* The ways round the passkey (ui/passkey/approve.rs): a request waiting at the computer. */
+.pkappwait { display: grid; gap: 6px; padding: 12px; border-radius: var(--r2);
+  background: color-mix(in oklab, var(--accent), var(--s1) 88%); border: 1px solid color-mix(in oklab, var(--accent), transparent 70%); }
+.pkappwait b { color: var(--bright); }
+.pkappwait p { margin: 0; font-size: .8125rem; }
+.pkappwait .btn { justify-self: start; min-height: 44px; }
+.pksheet.up > .pkappwait { --i: 3; }
+.pkoff { overflow-wrap: anywhere; }
+.pkreq { margin-top: 10px; padding-top: 10px; }
+.tperr .tpappr { margin-top: 8px; }

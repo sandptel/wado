@@ -333,8 +333,8 @@ impl Gate {
             .map(|l| format!("{l}\n"))
             .collect();
         fs::write(self.trusted_path(), kept).map_err(|e| e.to_string())?;
-        // Its passkey goes with it: a re-pair starts clean.
-        crate::passkey::Store::at(self.dir.join("passkeys")).remove(&key);
+        // Its passkey goes with it, and whether it was asked for one: a re-pair starts clean.
+        crate::passkey::Store::at(self.dir.join("passkeys")).forget(&key);
         info!("gate: unpaired {name}");
         Ok(name)
     }
