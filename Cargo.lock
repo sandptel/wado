@@ -6231,6 +6231,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "wado-client-core"
+version = "0.0.4"
+dependencies = [
+ "async-trait",
+ "base64",
+ "futures-util",
+ "percent-encoding",
+ "ring",
+ "rustls",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite",
+ "wado",
+ "wado-protocol",
+]
+
+[[package]]
 name = "wado-compositor"
 version = "0.0.4"
 dependencies = [
@@ -6272,6 +6290,7 @@ dependencies = [
  "sha2",
  "uniffi",
  "wado",
+ "wado-client-core",
  "wado-protocol",
 ]
 

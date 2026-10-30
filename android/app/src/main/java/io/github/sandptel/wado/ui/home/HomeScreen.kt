@@ -12,32 +12,35 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import io.github.sandptel.wado.bridge.Computer
-import io.github.sandptel.wado.bridge.Computers
-import io.github.sandptel.wado.online.OnlineProbe
+import io.github.sandptel.wado.core.CardModel
+import io.github.sandptel.wado.core.HomeModel
+import io.github.sandptel.wado.core.RunningModel
+import io.github.sandptel.wado.nav.PhonePage
 import io.github.sandptel.wado.ui.common.LineIcon
 import io.github.sandptel.wado.ui.common.Pressable
 import io.github.sandptel.wado.ui.common.WadoButton
@@ -46,34 +49,29 @@ import io.github.sandptel.wado.ui.theme.LocalPalette
 import io.github.sandptel.wado.ui.theme.Motion
 import io.github.sandptel.wado.ui.theme.Radius
 import io.github.sandptel.wado.ui.theme.Type
-import kotlinx.coroutines.delay
+
+/** What home asks of the app. */
+interface HomeActions {
+    fun open(card: CardModel)
+    fun play(card: CardModel)
+    fun door(card: CardModel, go: String)
+    fun pair()
+    fun running(r: RunningModel)
+    fun phone(page: PhonePage)
+    fun web()
+}
 
 /**
- * The app's own home: the computers this phone has, each with its live status and its doors.
- * Drawn natively from the copy the page last sent, so it is up at once on a cold start; every
- * door opens the client at that computer.
+ * The app's one native home (A7): the wordmark; Computers, each card from the core with its live
+ * link; Running sessions, each naming its computer; On this phone; Add a computer. Drawn at once on
+ * a cold start from the core's saved profiles; the link words arrive as the control rooms open.
  */
 @Composable
-fun HomeScreen(
-    computers: Computers,
-    onOpen: (Computer) -> Unit,
-    onDoor: (Computer, String) -> Unit,
-    onPair: () -> Unit,
-    onTypeCode: () -> Unit,
-    onSettings: () -> Unit,
-    onAll: () -> Unit,
-) {
+fun HomeScreen(model: HomeModel, act: HomeActions) {
     val p = LocalPalette.current
-    var seen by remember { mutableStateOf<Map<String, OnlineProbe.Seen>>(emptyMap()) }
-    LaunchedEffect(computers.list) {
-        while (true) {
-            seen = OnlineProbe.probeAll(computers.list)
-            delay(20_000)
-        }
-    }
     Box(Modifier.fillMaxSize().background(p.ground)) {
         LazyColumn(
-            Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing),
+            Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).testTag("home"),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -81,40 +79,72 @@ fun HomeScreen(
             item {
                 Row(Modifier.fillMaxWidth().widthIn(max = 720.dp).padding(bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Wordmark(Modifier.weight(1f))
-                    IconAction("qr", "Pair a computer", onPair)
-                    IconAction("gear", "Settings and about", onSettings)
+                    IconAction("qr", "Pair a computer", act::pair)
                 }
             }
-            if (computers.list.isEmpty()) {
-                item { Empty(onPair, onTypeCode) }
+            if (model.computers.isEmpty()) {
+                item { Empty(act::pair) }
             } else {
-                item {
-                    Text(
-                        "COMPUTERS",
-                        style = Type.label,
-                        color = p.dim,
-                        modifier = Modifier.fillMaxWidth().widthIn(max = 720.dp).padding(start = 6.dp, bottom = 2.dp),
-                    )
-                }
-                itemsIndexed(computers.list, key = { _, c -> c.key }) { i, c ->
+                item { Heading("Computers") }
+                itemsIndexed(model.computers, key = { _, c -> c.key }) { i, c ->
                     Arrive(i) {
                         ComputerCard(
                             c,
-                            seen[c.key] ?: OnlineProbe.Seen.UNKNOWN,
-                            selected = i == computers.selected && computers.list.size > 1,
-                            onOpen = { onOpen(c) },
-                            onDoor = { onDoor(c, it) },
+                            onOpen = { act.open(c) },
+                            onPlay = { act.play(c) },
+                            onDoor = { act.door(c, it) },
+                            onPairApp = act::pair,
                             modifier = Modifier.widthIn(max = 720.dp),
                         )
                     }
                 }
-                item {
-                    Row(Modifier.fillMaxWidth().widthIn(max = 720.dp).padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        WadoButton("Add a computer", onPair, Modifier.weight(1f)) { LineIcon("plus", p.bright, size = 18.dp) }
-                        WadoButton("Everything else", onAll, Modifier.weight(1f))
-                    }
+            }
+            if (model.running.isNotEmpty()) {
+                item { Heading("Running") }
+                items(model.running, key = { "${it.computerKey}/${it.instance}" }) { r -> RunningRow(r) { act.running(r) } }
+            }
+            item { Heading("On this phone") }
+            item { OnThisPhone(act::phone) }
+            item {
+                Row(Modifier.fillMaxWidth().widthIn(max = 720.dp).padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    WadoButton("Add a computer", act::pair, Modifier.weight(1f)) { LineIcon("plus", p.bright, size = 18.dp) }
+                    WadoButton("More (web)", act::web, Modifier.weight(1f))
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun Heading(text: String) {
+    val p = LocalPalette.current
+    Text(
+        text.uppercase(),
+        style = Type.label,
+        color = p.dim,
+        modifier = Modifier.fillMaxWidth().widthIn(max = 720.dp).padding(start = 6.dp, top = 6.dp, bottom = 2.dp),
+    )
+}
+
+/** A running session: what runs, and on which computer. */
+@Composable
+private fun RunningRow(r: RunningModel, onClick: () -> Unit) {
+    val p = LocalPalette.current
+    val what = r.appsFirst.ifEmpty { "An empty desktop" } + if (r.appsMore > 0) " +${r.appsMore}" else ""
+    val who = buildList {
+        add("on ${r.computerName}")
+        if (r.lead.isNotEmpty()) add("sized for ${r.lead}")
+        if (r.participants > 1) add("${r.participants} in it")
+    }.joinToString(" · ")
+    Pressable(onClick, Modifier.fillMaxWidth().widthIn(max = 720.dp).heightIn(min = 56.dp), color = p.surface1, radius = Radius.r3) {
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            LineIcon("monitor", p.accent, size = 20.dp)
+            Spacer(Modifier.size(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(what, style = Type.title, color = p.bright, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(who, style = Type.small, color = p.dim, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            LineIcon("right", p.dim, size = 18.dp)
         }
     }
 }
@@ -137,7 +167,7 @@ fun Wordmark(modifier: Modifier = Modifier) {
 @Composable
 private fun IconAction(icon: String, label: String, onClick: () -> Unit) {
     val p = LocalPalette.current
-    Pressable(onClick, Modifier.size(44.dp).semanticsLabel(label), color = p.ground, radius = 22.dp, sink = 0.9f) {
+    Pressable(onClick, Modifier.size(48.dp).semanticsLabel(label), color = p.ground, radius = 24.dp, sink = 0.9f) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { LineIcon(icon, p.dim) }
     }
 }
@@ -151,10 +181,10 @@ private fun Arrive(index: Int, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun Empty(onPair: () -> Unit, onTypeCode: () -> Unit) {
+private fun Empty(onPair: () -> Unit) {
     val p = LocalPalette.current
     Column(
-        Modifier.fillMaxWidth().widthIn(max = 520.dp).padding(top = 48.dp),
+        Modifier.fillMaxWidth().widthIn(max = 520.dp).padding(top = 32.dp, bottom = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -164,19 +194,18 @@ private fun Empty(onPair: () -> Unit, onTypeCode: () -> Unit) {
         Spacer(Modifier.height(4.dp))
         Text("Pair your first computer", style = Type.heroName, color = p.bright)
         Text(
-            "On the computer, run wado tui (or wado qr) and scan the code it shows. That's the whole setup.",
+            "On the computer, run wado pair (or wado tui → Pair) and scan the code it shows, or type its code.",
             style = Type.body,
             color = p.dim,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(8.dp))
         Pressable(onPair, Modifier.fillMaxWidth().height(58.dp), color = p.accent, radius = Radius.r3) {
             Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
                 LineIcon("qr", p.onAccent)
                 Spacer(Modifier.size(10.dp))
-                Text("Scan its code", style = Type.headline, color = p.onAccent)
+                Text("Pair a computer", style = Type.headline, color = p.onAccent)
             }
         }
-        WadoButton("Type a code instead", onTypeCode, Modifier.fillMaxWidth())
     }
 }

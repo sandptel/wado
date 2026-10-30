@@ -41,6 +41,10 @@ pub struct SysInfo {
     pub os: String,
     /// os-release `ID`, e.g. "nixos" — picks the logo.
     pub os_id: String,
+    /// os-release `ID_LIKE`, in order, e.g. `["arch"]` for CachyOS — the logo's fallbacks.
+    /// Absent from daemons before the native app.
+    #[serde(default)]
+    pub os_like: Vec<String>,
     pub kernel: String,
     pub uptime_s: u64,
     pub cpu: String,
@@ -272,5 +276,22 @@ mod tests {
         // A daemon from before brightness sends no field: the slider is simply not offered.
         let old: HostState = serde_json::from_str(r#"{"awake":true}"#).unwrap();
         assert_eq!(old.brightness, None);
+    }
+
+    #[test]
+    fn sysinfo_without_os_like_parses() {
+        // A daemon from before the native app sends no `os_like`: the logo falls back on `os_id`.
+        let j = r#"{"user":"u","hostname":"h","os":"Arch Linux","os_id":"arch","kernel":"k",
+            "uptime_s":1,"cpu":"c","cores":2,"gpu":"g","mem_used_mb":1,"mem_total_mb":2,
+            "shell":"zsh","desktop":"Hyprland"}"#;
+        let s: SysInfo = serde_json::from_str(j).unwrap();
+        assert_eq!(s.os_id, "arch");
+        assert!(s.os_like.is_empty());
+        let with = SysInfo {
+            os_like: vec!["arch".into()],
+            ..s
+        };
+        let back: SysInfo = serde_json::from_str(&serde_json::to_string(&with).unwrap()).unwrap();
+        assert_eq!(back.os_like, vec!["arch".to_string()]);
     }
 }

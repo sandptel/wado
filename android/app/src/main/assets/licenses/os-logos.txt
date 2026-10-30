@@ -1,0 +1,82 @@
+OS logos from Simple Icons 16.36.0 (https://simpleicons.org), CC0-1.0.
+Each mark belongs to its owner; wado shows it only to name the operating system a computer runs.
+
+AlmaLinux (almalinux)
+  source: https://almalinux.org
+  guidelines: https://almalinux.org/p/the-almalinux-os-trademark-usage-policy/
+
+Alpine Linux (alpinelinux)
+  source: https://alpinelinux.org
+  guidelines: none published
+
+Arch Linux (archlinux)
+  source: https://www.archlinux.org/art
+  guidelines: https://wiki.archlinux.org/index.php/DeveloperWiki:TrademarkPolicy#Logo_Usage_Guidelines
+
+Artix Linux (artixlinux)
+  source: https://gitea.artixlinux.org/artix/artwork/src/commit/256432e3d06b3e9024bfd6912768e80281ea3746/icons/logo-gray.svg
+  guidelines: none published
+
+CentOS (centos)
+  source: https://wiki.centos.org/ArtWork/Brand/Logo
+  guidelines: none published
+
+deepin (deepin)
+  source: https://commons.wikimedia.org/wiki/File:Deepin_logo.svg
+  guidelines: none published
+
+elementary (elementary)
+  source: https://elementary.io/brand
+  guidelines: none published
+
+EndeavourOS (endeavouros)
+  source: https://github.com/endeavouros-team/endeavouros-theming/blob/135f642c980ed8d8fc212783eb478f96226f6c72/endeavouros-logo-text.svg
+  guidelines: none published
+
+Kali Linux (kalilinux)
+  source: https://www.kali.org/docs/policy/trademark/
+  guidelines: https://www.kali.org/docs/policy/trademark/
+
+Linux (linux)
+  source: https://www.linuxfoundation.org/the-linux-mark/
+  guidelines: none published
+
+Linux Mint (linuxmint)
+  source: https://github.com/linuxmint/brand-logo/blob/540ac3b08e987866d77a340f557f994c988ac2ae/ring-mono-green.svg
+  guidelines: none published
+
+Manjaro (manjaro)
+  source: https://manjaro.org
+  guidelines: none published
+
+openSUSE (opensuse)
+  source: https://github.com/openSUSE/artwork/blob/33e94aa76837c09f03d1712705949b71a246a53b/logos/buttons/button-colour.svg
+  guidelines: https://en.opensuse.org/Portal:Artwork
+
+Pop!_OS (popos)
+  source: https://github.com/system76/brand/blob/7a31740b54f929b62a165baa61dfb0b5164261e8/Pop_OS%20branding/Pop_icon.svg
+  guidelines: none published
+
+Red Hat (redhat)
+  source: https://www.redhat.com/en/about/brand/new-brand/details
+  guidelines: none published
+
+Solus (solus)
+  source: https://getsol.us/branding/
+  guidelines: none published
+
+Steam (steam)
+  source: https://partner.steamgames.com/doc/marketing/branding
+  guidelines: https://partner.steamgames.com/doc/marketing/branding
+
+Ubuntu (ubuntu)
+  source: https://design.ubuntu.com/resources
+  guidelines: https://design.ubuntu.com/brand
+
+Void Linux (voidlinux)
+  source: https://alpha.de.repo.voidlinux.org/logos/void-dark2.svg
+  guidelines: none published
+
+Zorin (zorin)
+  source: https://zorin.com/press
+  guidelines: none published

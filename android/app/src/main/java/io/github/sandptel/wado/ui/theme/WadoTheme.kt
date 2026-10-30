@@ -36,7 +36,12 @@ data class Palette(
     val warn: Color,
     val bad: Color,
     val light: Boolean,
+    /** A computer's disc per accent slot (base08..base0F), softened into the ground. */
+    val discs: List<Color> = emptyList(),
 ) {
+    /** The disc for accent slot `hue` (0..7). */
+    fun disc(hue: Int): Color = discs.getOrElse(hue.mod(8)) { surface2 }
+
     companion object {
         fun of(s: Base16) = Palette(
             ground = Color(s.ground), surface1 = Color(s.surface1), surface2 = Color(s.surface2),
@@ -44,6 +49,7 @@ data class Palette(
             text = Color(s.text), dim = Color(s.dim), accent = Color(s.accent),
             onAccent = Color(s.onAccent), good = Color(s.good), warn = Color(s.warn), bad = Color(s.bad),
             light = s.light,
+            discs = (0x8..0xF).map { Color(Base16.mix(s.ground, s.base(it), 0.30f)) },
         )
     }
 }
@@ -87,10 +93,23 @@ object Type {
 
 /** DESIGN.md's radii. */
 object Radius {
-    val r1 = 10.dp
-    val r2 = 16.dp
-    val r3 = 22.dp
-    val r4 = 28.dp
+    /** The corner style (Appearance): `soft` 1, `round` 1.4, `square` 0.4. Read when composed. */
+    private var kState = androidx.compose.runtime.mutableFloatStateOf(1f)
+    /** Snapshot state, so a change of style redraws every corner without resetting the pages. */
+    val k get() = kState.floatValue
+
+    fun style(corners: String) {
+        kState.floatValue = when (corners) {
+            "round" -> 1.4f
+            "square" -> 0.4f
+            else -> 1f
+        }
+    }
+
+    val r1 get() = (10 * k).dp
+    val r2 get() = (16 * k).dp
+    val r3 get() = (22 * k).dp
+    val r4 get() = (28 * k).dp
 }
 
 val LocalPalette = staticCompositionLocalOf { Palette.of(Base16.DEFAULT) }

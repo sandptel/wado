@@ -7,7 +7,10 @@
 //!   crates/client/src/js/pad_touch.js).
 //! - [`words`]: a typed pairing's four check words.
 //! - [`webauthn`]: the byte layouts of the app's own passkey authenticator.
+//! - [`ffi`]: the client core (`wado-client-core`: relay link, envelope, pairing, feeds) as
+//!   `WadoCore`, its events as records.
 
+pub mod ffi;
 pub mod pad;
 pub mod webauthn;
 pub mod words;

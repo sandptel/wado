@@ -26,7 +26,7 @@ import androidx.compose.ui.unit.dp
 import io.github.sandptel.wado.BuildConfig
 import io.github.sandptel.wado.ui.common.WadoButton
 import io.github.sandptel.wado.ui.home.Wordmark
-import io.github.sandptel.wado.ui.settings.TopBar
+import io.github.sandptel.wado.ui.common.TopBar
 import io.github.sandptel.wado.ui.theme.LocalPalette
 import io.github.sandptel.wado.ui.theme.Radius
 import io.github.sandptel.wado.ui.theme.Type
@@ -77,6 +77,11 @@ fun AboutScreen(onOpenUrl: (String) -> Unit, onBack: () -> Unit) {
         item {
             WadoButton("Fonts — SIL Open Font License", {
                 shown = if (shown == "fonts") null else "fonts"
+            }, Modifier.fillMaxWidth())
+        }
+        item {
+            WadoButton("OS logos — Simple Icons, CC0", {
+                shown = if (shown == "os-logos.txt") null else "os-logos.txt"
             }, Modifier.fillMaxWidth())
         }
         item {

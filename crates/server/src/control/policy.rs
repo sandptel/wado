@@ -23,7 +23,9 @@ pub enum Need {
 /// The grant `msg` needs on a control link.
 pub fn need(msg: &RelayMsg) -> Need {
     match msg {
-        RelayMsg::HostGet { .. } | RelayMsg::ConfigGet => Need::Trusted,
+        // Reading: the computer's state, its config for this device, and which sessions run
+        // (read-only and shared by every device — parallel use, Decision Log `2026-10-30`).
+        RelayMsg::HostGet { .. } | RelayMsg::ConfigGet | RelayMsg::SessionsRequest => Need::Trusted,
         // Wi-Fi can cut the computer off: the owner's say, as on the main link.
         RelayMsg::HostDo { ack: _, action } if action.is_network() => {
             Need::Grants(&["host", "settings"])
@@ -102,9 +104,23 @@ mod tests {
         for m in [
             r#"{"type":"pad_in","msg":{"k":"key","key":"esc","mods":[]}}"#,
             r#"{"type":"session_launch","command":"foot"}"#,
-            r#"{"type":"sessions_request"}"#,
             r#"{"type":"clipboard_set","text":"into a session"}"#,
             r#"{"type":"config_set","key":"stream.max-fps","value":"30","confirmed":false}"#,
+        ] {
+            let msg: RelayMsg = serde_json::from_str(m).unwrap_or_else(|e| panic!("{m}: {e}"));
+            assert_eq!(need(&msg), Need::NotControl, "{m}");
+        }
+    }
+
+    #[test]
+    fn sessions_list_is_trusted_on_control() {
+        // The list is read-only and shared: any trusted device may see it on its own link.
+        assert_eq!(need(&RelayMsg::SessionsRequest), Need::Trusted);
+        // Starting, joining or ending one is still not a control.
+        for m in [
+            r#"{"type":"session_launch","command":"foot"}"#,
+            r#"{"type":"session_join"}"#,
+            r#"{"type":"session_stop"}"#,
         ] {
             let msg: RelayMsg = serde_json::from_str(m).unwrap_or_else(|e| panic!("{m}: {e}"));
             assert_eq!(need(&msg), Need::NotControl, "{m}");

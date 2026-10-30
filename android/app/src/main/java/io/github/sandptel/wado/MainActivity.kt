@@ -37,10 +37,14 @@ import io.github.sandptel.wado.stay.StayConnectedService
 import io.github.sandptel.wado.ui.AppActions
 import io.github.sandptel.wado.ui.AppRoot
 import io.github.sandptel.wado.ui.AppState
-import io.github.sandptel.wado.ui.Route
+import io.github.sandptel.wado.nav.Dest
+import io.github.sandptel.wado.ui.Pages
 import io.github.sandptel.wado.ui.share.ShareState
 import io.github.sandptel.wado.ui.theme.Motion
 import io.github.sandptel.wado.ui.theme.WadoTheme
+import io.github.sandptel.wado.ui.theme.Radius
+import io.github.sandptel.wado.ui.theme.Schemes
+import io.github.sandptel.wado.ui.phone.LookStore
 import io.github.sandptel.wado.web.ClientServer
 import io.github.sandptel.wado.web.ClientWebView
 import kotlinx.coroutines.Job
@@ -121,8 +125,13 @@ class MainActivity : FragmentActivity(), ClientWebView.Host, AppActions {
             override fun handleOnBackPressed() = back()
         })
         setContent {
-            val scheme by Hub.theme.collectAsState()
+            val web0 by Hub.theme.collectAsState()
+            val look by LookStore.look.collectAsState()
             val computers by Hub.computers.collectAsState()
+            // Appearance is local first: a chosen scheme wins over the web part's.
+            val scheme = Schemes.withAccent(Schemes.byName(this, look.scheme) ?: web0, look.accent)
+            Motion.setLevel(look.motion)
+            Radius.style(look.corners)
             LaunchedEffect(scheme.light) {
                 WindowCompat.getInsetsController(window, window.decorView).apply {
                     isAppearanceLightStatusBars = scheme.light
@@ -130,10 +139,11 @@ class MainActivity : FragmentActivity(), ClientWebView.Host, AppActions {
                 }
             }
             WadoTheme(scheme) {
-                AppRoot(web.view, state, computers, app.prefs, this)
+                AppRoot(web.view, state, computers, { d -> Pages(d, state.nav, computers, app.core, app.prefs, this) }, this)
             }
         }
-        if (fresh) route(intent, firstLoad = true) else route(intent, firstLoad = false)
+        // A recreated activity comes back to its saved pages; only a new launch is routed.
+        if (savedInstanceState == null) route(intent, firstLoad = fresh)
         if (Build.VERSION.SDK_INT >= 33 && Hub.computers.value.list.isNotEmpty() &&
             !has(Manifest.permission.POST_NOTIFICATIONS)
         ) askNotify.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -210,7 +220,7 @@ class MainActivity : FragmentActivity(), ClientWebView.Host, AppActions {
                     for (k in listOf("kind", "id", "action", "computer", "session", "ask")) put(k, intent.getStringExtra(k).orEmpty())
                 }
             }
-            state.route = Route.Web
+            state.nav.go(Dest.Web())
             return
         }
         if (ShareIntent.isShare(intent)) {
@@ -225,18 +235,22 @@ class MainActivity : FragmentActivity(), ClientWebView.Host, AppActions {
         val door = runCatching { DeepLinks.door(URI(data)) }.getOrNull()
         if (door != null) {
             val c = Hub.computers.value.list.firstOrNull { it.key == door.key } ?: Hub.computers.value.current
-            if (door.door == "trackpad" && c != null) {
-                state.pad = c
-                state.route = Route.Pad
-            } else door(c, door.door)
+            if (door.door == "trackpad" && c != null) state.nav.go(Dest.Pad(c.key)) else door(c, door.door)
             return
         }
-        DeepLinks.connect(data)?.let { link -> if (firstLoad) state.route = Route.Web else connect(link) }
+        DeepLinks.connect(data)?.let { link ->
+            when {
+                // A pairing code: the app's core pairs it natively (wado://pair, a QR link).
+                DeepLinks.pairs(link) -> { app.core.pair(data); state.nav.go(Dest.Pair) }
+                firstLoad -> state.nav.go(Dest.Web())
+                else -> connect(link)
+            }
+        }
     }
 
     private fun event(t: String, o: JSONObject) {
         when (t) {
-            BridgeProtocol.EXIT -> state.route = Route.Home
+            BridgeProtocol.EXIT -> state.nav.home()
             BridgeProtocol.SHARE_DONE -> {
                 val s = state.shareState
                 val to = (s as? ShareState.Sending)?.to ?: return
@@ -254,16 +268,20 @@ class MainActivity : FragmentActivity(), ClientWebView.Host, AppActions {
                 fullscreen(null, null)
             }
             state.share != null -> closeShare()
-            state.route == Route.Web -> if (web.view.canGoBack()) web.view.goBack() else Hub.send(BridgeProtocol.BACK)
-            else -> state.route.back()?.let { state.route = it } ?: moveTaskToBack(true)
+            state.nav.top is Dest.Web -> webBack()
+            !state.nav.pop() -> moveTaskToBack(true)
         }
     }
 
     // ── AppActions ──────────────────────────────────────────────────────────────────────
 
-    override fun open(c: Computer) {
-        Hub.send(BridgeProtocol.GO) { put("key", c.key); put("go", "") }
-        state.route = Route.Web
+    override fun webBack() {
+        if (web.view.canGoBack()) web.view.goBack() else Hub.send(BridgeProtocol.BACK)
+    }
+
+    override fun exitFullscreen() {
+        fullscreenExit?.invoke()
+        fullscreen(null, null)
     }
 
     override val padModes = object : PadModes {
@@ -280,16 +298,12 @@ class MainActivity : FragmentActivity(), ClientWebView.Host, AppActions {
 
     override fun door(c: Computer?, go: String) {
         Hub.send(BridgeProtocol.GO) { put("key", c?.key ?: ""); put("go", go) }
-        state.route = Route.Web
+        state.nav.go(Dest.Web(c?.key, go))
     }
 
     override fun connect(link: Map<String, String>) {
         web.loadHome(DeepLinks.connectQuery(link))
-        state.route = Route.Web
-    }
-
-    override fun showWeb() {
-        state.route = Route.Web
+        state.nav.go(Dest.Web())
     }
 
     override fun pick(c: Computer) {
@@ -307,7 +321,7 @@ class MainActivity : FragmentActivity(), ClientWebView.Host, AppActions {
             put("links", JSONArray(payload.links))
             put("text", payload.text)
         }
-        if (payload.files.isNotEmpty()) state.route = Route.Web
+        if (payload.files.isNotEmpty()) state.nav.go(Dest.Web())
     }
 
     override fun closeShare() {
