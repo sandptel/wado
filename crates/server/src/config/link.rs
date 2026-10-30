@@ -5,6 +5,10 @@ use wado_protocol::{ConfigState, HostLimits, PinnedInput};
 
 use crate::gate::Gate;
 
+/// What this daemon can do that an older one could not, as `ConfigState::caps` names it:
+/// `pad-gamepad` — the pad link carries a gamepad (`crate::pad::game`).
+pub const CAPS: &[&str] = &["pad-gamepad"];
+
 /// The config as the device `key` sees it.
 pub fn state_for(key: &str, gate: &Gate) -> ConfigState {
     let cfg = wado_config::live::current();
@@ -39,6 +43,17 @@ pub fn state_for(key: &str, gate: &Gate) -> ConfigState {
             .get(key)
             .and_then(|d| d.size.as_ref())
             .map(Into::into),
+        gamepad: cfg
+            .device
+            .get(key)
+            .and_then(|d| d.gamepad.as_ref())
+            .map(Into::into),
+        keyboard: cfg
+            .device
+            .get(key)
+            .and_then(|d| d.keyboard.as_ref())
+            .map(Into::into),
+        caps: CAPS.iter().map(|c| c.to_string()).collect(),
         // "May change privileged settings" — the owner, or a device granted `settings`.
         owner: gate.grants(key).settings,
         grants: grants_for(key, gate),
@@ -104,12 +119,12 @@ pub fn set(
 }
 
 /// May the device `key` change `cfg_key`? Privileged keys need the settings grant and an
-/// on-screen yes — except a device's own trackpad layout, console preferences and size
-/// (`device.<its key>.trackpad.*`, `….console.*`, `….size.*`), which are its own business, like
-/// its prefs blob.
+/// on-screen yes — except a device's own trackpad layout, console preferences, size, gamepad and
+/// keyboard keys (`device.<its key>.trackpad.*`, `….console.*`, `….size.*`, `….gamepad.*`,
+/// `….keyboard.*`), which are its own business, like its prefs blob.
 fn permit(key: &str, gate: &Gate, cfg_key: &str, confirmed: bool) -> Result<(), String> {
     let own = !key.is_empty()
-        && ["trackpad", "console", "size"]
+        && ["trackpad", "console", "size", "gamepad", "keyboard"]
             .iter()
             .any(|b| cfg_key.starts_with(&format!("device.{key}.{b}.")));
     if own || tier::of(cfg_key) == Tier::Live {
@@ -164,6 +179,37 @@ mod tests {
         // The rest of its own block is still the owner's to change.
         assert!(permit("k1", &g, "device.k1.name", false).is_err());
         assert!(permit("", &g, "device..trackpad.rail", false).is_err());
+    }
+
+    #[test]
+    fn a_device_sets_its_own_gamepad_and_keyboard_without_the_settings_grant() {
+        let g = gate();
+        for k in [
+            "device.k1.gamepad.layout",
+            "device.k1.gamepad.mine.mine-3f2a",
+            "device.k1.keyboard.keys",
+            "device.k1.trackpad.speed",
+        ] {
+            assert_eq!(permit("k1", &g, k, false), Ok(()), "{k}");
+        }
+        for k in ["device.k2.gamepad.layout", "device.k2.keyboard.keys"] {
+            let e = permit("k1", &g, k, false).unwrap_err();
+            assert!(e.contains("settings grant"), "{k}: {e}");
+        }
+        assert!(permit("k1", &g, "device.k1x.gamepad.layout", false).is_err());
+    }
+
+    #[test]
+    fn the_caps_say_the_pad_link_carries_a_gamepad() {
+        assert!(CAPS.contains(&"pad-gamepad"));
+        let s = wado_protocol::ConfigState {
+            caps: CAPS.iter().map(|c| c.to_string()).collect(),
+            ..Default::default()
+        };
+        assert_eq!(
+            serde_json::to_value(&s).unwrap()["caps"],
+            serde_json::json!(["pad-gamepad"])
+        );
     }
 
     #[test]

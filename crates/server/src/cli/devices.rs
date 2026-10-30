@@ -20,6 +20,7 @@ pub fn list() -> i32 {
         .map(|d| d.name.chars().count())
         .max()
         .unwrap_or(0);
+    let cfg = wado_config::live::current();
     println!();
     for d in &devices {
         let pin = if d.pinned {
@@ -40,6 +41,9 @@ pub fn list() -> i32 {
             dim(&d.key[..d.key.len().min(8)]),
             badges(&gate.grants(&d.key), d.pinned),
         );
+        if let Some(line) = cfg.device.get(&d.key).and_then(input_line) {
+            println!("    {:<width$}  {}", "", dim(&line));
+        }
     }
     println!();
     println!(
@@ -50,6 +54,28 @@ pub fn list() -> i32 {
     );
     println!();
     0
+}
+
+/// Its virtual input, when it has chosen anything: `gamepad racing · a controller · 2 saved ·
+/// pointer 1.25×`. `None` for a device that never opened the gamepad or changed its speed.
+fn input_line(d: &wado_config::schema::Device) -> Option<String> {
+    let mut parts = Vec::new();
+    if let Some(g) = &d.gamepad {
+        let drives = if g.drives == "keys" {
+            "keys & mouse"
+        } else {
+            "a controller"
+        };
+        let mut s = format!("gamepad {} · {drives}", g.layout);
+        if !g.mine.is_empty() {
+            s.push_str(&format!(" · {} saved", g.mine.len()));
+        }
+        parts.push(s);
+    }
+    if let Some(t) = d.trackpad.as_ref().filter(|t| t.speed != 1.0) {
+        parts.push(format!("pointer {}×", t.speed));
+    }
+    (!parts.is_empty()).then(|| parts.join(" · "))
 }
 
 /// `files rw · shells · host`, dim where a grant is off.
@@ -149,5 +175,30 @@ fn report(r: Result<String, String>) -> i32 {
             eprintln!("  {}", bad(&e));
             1
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_input_line_says_the_gamepad_and_a_changed_speed() {
+        let c = wado_config::kdl::parse(
+            r#"device "k" { gamepad { layout "racing"; mine { mine-1 "A" "racing" "{}"; mine-2 "B" "xbox" "{}" } }
+               trackpad { speed 1.25 } }
+               device "j" { trackpad { speed 1 } }
+               device "m" { gamepad { drives "keys" } }"#,
+        )
+        .unwrap();
+        assert_eq!(
+            input_line(&c.device["k"]).as_deref(),
+            Some("gamepad racing · a controller · 2 saved · pointer 1.25×")
+        );
+        assert_eq!(input_line(&c.device["j"]), None, "nothing chosen");
+        assert_eq!(
+            input_line(&c.device["m"]).as_deref(),
+            Some("gamepad xbox · keys & mouse")
+        );
     }
 }

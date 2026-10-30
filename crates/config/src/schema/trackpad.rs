@@ -1,4 +1,5 @@
-//! `trackpad { }` — a phone as this computer's touchpad and keyboard (`wado_server::pad`).
+//! `trackpad { }` — a phone as this computer's touchpad, keyboard and gamepad
+//! (`wado_server::pad`). The section keeps its name though it covers all three.
 //! Which device may use it is a grant (`input`, in `trusted_clients`); this is how it behaves.
 
 use serde::{Deserialize, Serialize};
@@ -6,7 +7,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields, rename_all = "kebab-case")]
 pub struct Trackpad {
-    /// Off refuses every trackpad, whatever a device's grants say.
+    /// Off refuses every phone's touchpad, keyboard and gamepad, whatever its grants say.
     pub enabled: bool,
     /// The phone's CSS pixels per millimetre of virtual touchpad. libinput accelerates by
     /// physical distance, so a larger number is a smaller pad and a slower pointer.
