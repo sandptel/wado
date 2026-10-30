@@ -50,6 +50,7 @@
     hiddenAt: 0,
     reading: false,
     readAt: 0,
+    heldSaid: new Set(), // "key id-or-hash": a too-big copy already said once
   };
   const store = (() => { try { return window.localStorage; } catch (_) { return null; } })();
   try { S.prefs = JSON.parse(store.getItem(PREFS)) || {}; } catch (_) {}
@@ -74,6 +75,8 @@
   const on = (key, which) => { const l = S.links.get(key); return !!(l && l.may) && pref(key, which); };
   const remember = (h) => { S.last = h; try { store.setItem(LAST, h); } catch (_) {} };
 
+  // The daemon's words name "the computer"; this phone knows its name.
+  const onIt = (key, why) => String(why || "").replace("the computer", nameOf(key));
   function say(text, tone) { emit({ type: "clipSaid", text, tone: tone || "good" }); }
   function setChip(c) { S.chip = c; emit({ type: "clipChip", chip: c }); }
   function share() {
@@ -340,7 +343,12 @@
       case "copy": {
         const l = S.links.get(key) || {};
         const id = el.getAttribute("data-id"), kind = el.getAttribute("data-kind");
-        const done = (ok) => { mark(el, ok ? "ok" : "no"); if (ok) say(`Copied to this phone from ${nameOf(key)}`); else say("This browser would not take it — tap again", "bad"); };
+        const done = (ok, why) => {
+          mark(el, ok ? "ok" : "no");
+          if (ok) say(`Copied to this phone from ${nameOf(key)}`);
+          else if (why) say(onIt(key, why), "dim");
+          else say("This browser would not take it — tap again", "bad");
+        };
         if (l.selected && W.clipCopy) W.clipCopy(id, kind, done);
         else if (W.sideClipCopy) W.sideClipCopy(key, id, kind, done);
         break;
@@ -359,7 +367,11 @@
             S.acks.set(h, [key]);
             mark(el, "ok");
           });
-        }).catch(() => { mark(el, "no"); say(`${nameOf(key)} did not answer`, "bad"); });
+        }).catch((e) => {
+          mark(el, "no");
+          if (e && e.held) say(onIt(key, e.message), "dim");
+          else say(`${nameOf(key)} did not answer`, "bad");
+        });
         break;
       }
       default: return;
@@ -369,6 +381,13 @@
   // ── wiring ─────────────────────────────────────────────────────────────────────────────────
   W.clipShare = {
     now, pushed, back, sync,
+    // Too big for the relay's lane (`clip_held`): said once per entry or copy.
+    held(key, m) {
+      const k = `${key} ${(m && (m.id || m.hash)) || ""}`;
+      if (S.heldSaid.has(k)) return;
+      S.heldSaid.add(k);
+      say(onIt(key, m && m.message), "dim");
+    },
     error(key, m) { if (S.acks.size) say((m && m.message) || `${nameOf(key)} did not take it`, "bad"); },
     // A link came (back) up: it has forgotten what it was told.
     linkUp(key) { S.watched.delete(key); sync(); },

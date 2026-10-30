@@ -711,6 +711,19 @@ pub enum RelayMsg {
     ClipError {
         message: String,
     },
+    /// Server → client: a copy bigger than the relay's lane carries
+    /// ([`crate::clip::LANE_MAX`] — a picture, in practice) stays on the computer. In place of
+    /// the [`RelayMsg::ClipData`] for `id`, or of the [`RelayMsg::ClipNow`] for `hash`; `message`
+    /// says so in the person's words. A client that predates it ignores it.
+    ClipHeld {
+        #[serde(default)]
+        id: String,
+        #[serde(default)]
+        hash: String,
+        mime: String,
+        bytes: u64,
+        message: String,
+    },
     /// Client → server: what this link wants to hear about the computer's clipboard. Always the
     /// history again whenever it changes; with `live`, also every new copy in full
     /// ([`RelayMsg::ClipNow`]) — the phone's "Copy from this computer automatically". Lasts for

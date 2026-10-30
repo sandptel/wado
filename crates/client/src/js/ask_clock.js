@@ -38,7 +38,7 @@ const ASK_PAIRS = {
   link_report: ["link_verdict"],
   files_offer: ["files_answer"],
   pad_offer: ["pad_answer"],
-  clip_get: ["clip_data", "clip_error"],
+  clip_get: ["clip_data", "clip_error", "clip_held"],
   passkey_begin: ["passkey_challenge", "passkey_state"],
   passkey_unlock: ["passkey_state"],
   passkey_register: ["passkey_state"],
