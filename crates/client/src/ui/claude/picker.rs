@@ -38,7 +38,7 @@ pub fn render(ui: Ui) -> Element {
             "aria-modal": "true",
             "aria-labelledby": "cpicktitle",
             "aria-hidden": "{!open}",
-            inert: !open,
+            inert: crate::ui::widgets::inert(!open),
             div { class: "grab", onclick: close }
             div { class: "pkhead",
                 h2 { id: "cpicktitle", "New Claude session" }

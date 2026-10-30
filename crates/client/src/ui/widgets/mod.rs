@@ -2,6 +2,7 @@
 
 mod badge;
 mod icon;
+mod inert;
 mod info;
 mod navrow;
 mod seg;
@@ -10,6 +11,7 @@ mod switch;
 
 pub use badge::{When, WhenBadge};
 pub use icon::Icon;
+pub use inert::inert;
 pub use info::Info;
 pub use navrow::NavRow;
 pub use seg::Seg;

@@ -33,7 +33,7 @@ pub fn render(ui: Ui) -> Element {
     };
 
     rsx! {
-        section { id: "landing", class: "{class}", "aria-hidden": "{on || covered}", inert: on || covered,
+        section { id: "landing", class: "{class}", "aria-hidden": "{on || covered}", inert: crate::ui::widgets::inert(on || covered),
             div { class: "wordmark", "wado" span { "." } }
             p { class: "tag", "Your computers, at this screen's own resolution." }
             // iOS Safari only, once: how to install, since it never offers to.
