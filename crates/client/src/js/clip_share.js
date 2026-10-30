@@ -23,6 +23,10 @@
 //     get() → { mime, data, sensitive } | null | Promise<…>
 //   }
 //   and the app calls window.__wado.clipNativeChanged() when the phone's clipboard changes.
+// The Android app (F9, native.js) speaks its own message bridge instead: a copy for the phone goes
+// to it as `clip {text, sensitive}` (it writes it, focused or not), and the phone's copy comes back
+// from it (native_sync.js → W.clipShare.fromApp) — the app reads only when it may, and never a
+// copy marked sensitive. Pictures still take the web path.
 //
 // From Rust:  W.clipLinks([{ key, name, selected, may, paired }])   the computers, and what each may
 //             W.clipSet(key, which, on)   which: "pull" | "push" — this phone's switch for that computer
@@ -51,7 +55,16 @@
   try { S.prefs = JSON.parse(store.getItem(PREFS)) || {}; } catch (_) {}
   try { S.last = store.getItem(LAST) || ""; } catch (_) {}
 
-  const native = () => { try { const n = window.wadoNative; return n && n.clipboard ? n.clipboard : null; } catch (_) { return null; } };
+  // The app's message bridge (native.js), as the same two calls: it writes text whenever, and it
+  // reads on its own — so `get` is left out and the page never reads the clipboard itself.
+  const appBridge = () => (W.native && typeof W.native.send === "function" ? {
+    set: (o) => { if (String(o.mime).startsWith("image/")) return false; W.native.send("clip", { text: o.data, sensitive: !!o.sensitive }); return true; },
+    app: true,
+  } : null);
+  const native = () => {
+    try { const n = window.wadoNative; if (n && n.clipboard) return n.clipboard; } catch (_) {}
+    return appBridge();
+  };
   const nameOf = (key) => (S.links.get(key) || {}).name || "the computer";
   const deflt = (key) => { const l = S.links.get(key); return !!(l && l.may && l.paired); };
   const pref = (key, which) => {
@@ -139,7 +152,7 @@
     const n = native();
     let p;
     try {
-      if (n && n.set) {
+      if (n && n.set && !(n.app && image)) {
         p = Promise.resolve(n.set({ mime: image ? o.mime : "text/plain", data: o.data, sensitive: false }))
           .then((ok) => { if (ok === false) throw new Error("refused"); });
       } else if (!navigator.clipboard) {
@@ -189,6 +202,11 @@
   // What this phone's clipboard holds: { mime, data, bytes, sensitive } or null.
   async function read() {
     const n = native();
+    if (S.fromApp) {
+      const t = S.fromApp;
+      S.fromApp = null;
+      return { mime: "text/plain", data: t, bytes: utf8(t), sensitive: false };
+    }
     if (n && n.get) {
       const g = await n.get();
       if (!g || !g.data) return null;
@@ -217,7 +235,9 @@
 
   // May the clipboard be read now without a tap? "yes" | "tap" | "no".
   async function readable() {
-    if (native()) return "yes";
+    const n = native();
+    if (n && n.app) return "no"; // the app sends the phone's copies itself (fromApp)
+    if (n) return "yes";
     if (!navigator.clipboard) return "no";
     try {
       const st = await navigator.permissions.query({ name: "clipboard-read" });
@@ -374,6 +394,13 @@
     sync();
   };
   W.clipNativeChanged = () => { S.readAt = 0; back(); };
+  // The app read the phone's copy (never a sensitive one): to every computer whose switch is on.
+  W.clipShare.fromApp = (text) => {
+    const keys = [...S.links.keys()].filter((k) => on(k, "push") && up(k));
+    if (!text || !keys.length) return;
+    S.fromApp = String(text);
+    sendFrom(keys, false);
+  };
 
   document.addEventListener("click", tap, true);
   window.addEventListener("focus", () => back());

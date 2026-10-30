@@ -97,7 +97,11 @@
   });
   // The phone copied, and the app came to the front: hand it to the computer. The app has
   // already left out anything marked sensitive and anything it put there itself.
+  // With the shared clipboard (clip_share.js) it goes to every computer this phone shares with,
+  // named by its hash so it is not sent twice; the session-only path is the fallback.
   N.on("clip", (m) => {
-    if (m.text && W.relayUp && W.clipboardSend) W.clipboardSend(String(m.text));
+    if (!m.text) return;
+    if (W.clipShare && W.clipShare.fromApp) W.clipShare.fromApp(String(m.text));
+    else if (W.relayUp && W.clipboardSend) W.clipboardSend(String(m.text));
   });
 })();

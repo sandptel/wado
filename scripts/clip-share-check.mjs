@@ -18,7 +18,7 @@ function page(kind, { perm = "granted" } = {}) {
   const fire = (t, e = {}) => (listeners[t] || []).forEach((f) => f(e));
   const env = {
     clip: "", focused: true, visible: true, activation: false,
-    writes: [], reads: 0, sent: [], emitted: [], nativeSets: [],
+    writes: [], reads: 0, sent: [], emitted: [], nativeSets: [], appSent: [],
   };
   const store = new Map();
   const localStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)) };
@@ -49,6 +49,9 @@ function page(kind, { perm = "granted" } = {}) {
         : Promise.reject(new TypeError("unknown permission")),
     },
   };
+  if (kind === "app") {
+    window.wadoNative = { postMessage() {} };
+  }
   if (kind === "native") {
     window.wadoNative = { clipboard: {
       set: (o) => { env.nativeSets.push(o); env.clip = o.data; env.sensitive = !!o.sensitive; return true; },
@@ -56,6 +59,7 @@ function page(kind, { perm = "granted" } = {}) {
     } };
   }
   const W = {
+    native: kind === "app" ? { send: (t, f) => env.appSent.push([t, f]) } : null,
     relayUp: true,
     relaySendMsg: (m) => env.sent.push(["laptop", m]),
     sideUp: (k) => k === "desk",
@@ -234,6 +238,30 @@ const now = (text, from = "desktop") => ({ hash: hashOf(text), mime: "text/plain
   p.W.clipNativeChanged();
   await p.sleep(40);
   check("the app's change notice sends a new copy", p.pushes().at(-1)?.[1].data === "ordinary", p.pushes());
+}
+
+// ── the Android app's message bridge (F9) ──────────────────────────────────────────────────
+{
+  const p = page("app");
+  p.links([LAPTOP]);
+  p.leave();
+  p.W.clipShare.now("laptop", now("to the app"));
+  await p.sleep();
+  check("app: the copy goes to the app to write, in the background too",
+    JSON.stringify(p.env.appSent[0]) === JSON.stringify(["clip", { text: "to the app", sensitive: false }]), p.env.appSent);
+  p.env.clip = "page must not read";
+  await p.come();
+  check("app: the page never reads the clipboard itself", p.env.reads === 0 && p.pushes().length === 0, [p.env.reads, p.pushes()]);
+  p.W.clipShare.fromApp("to the app");
+  await p.sleep(40);
+  check("app: its read-back of our own write is an echo", p.pushes().length === 0, p.pushes());
+  p.W.clipShare.fromApp("copied in another app");
+  await p.sleep(40);
+  check("app: the phone's copy it hands over goes to the computer", p.pushes().at(-1)?.[1].data === "copied in another app", p.pushes());
+  p.W.clipSet("laptop", "push", false);
+  p.W.clipShare.fromApp("switched off");
+  await p.sleep(40);
+  check("app: not with the switch off", p.pushes().length === 1, p.pushes());
 }
 
 console.log(failures ? `\n${failures} failed` : "\nall passed");
