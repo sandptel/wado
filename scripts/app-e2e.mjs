@@ -19,7 +19,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
 const shotsAt = args.indexOf("--shots");
 const SHOTS = shotsAt >= 0 ? resolve(args[shotsAt + 1]) : mkdtempSync(join(tmpdir(), "wado-app-shots-"));
-const BUILT = resolve(args.find((a, i) => !a.startsWith("--") && i !== shotsAt + 1) ||
+const BUILT = resolve(args.find((a, i) => !a.startsWith("--") && (shotsAt < 0 || i !== shotsAt + 1)) ||
   join(ROOT, "target/dx/wado-client/release/web/public"));
 const HTTP = 8770, DEBUG = 9339;
 const BASE = `http://localhost:${HTTP}/wado/`;
@@ -272,7 +272,8 @@ try {
   for (const [name, spy, door] of [
     ["trackpad", "W.padOpen=()=>{window.__opened='trackpad'}", "window.__opened==='trackpad'"],
     ["files", "W.filesOpen=()=>{window.__opened='files'}", "window.__opened==='files'"],
-    ["shell", "W.shellNew=()=>{window.__opened='shell'};W.ptyShow=W.shellNew", "window.__opened==='shell'"],
+    // Shells are passkey-locked (F3): the shortcut asks for the unlock, which then opens one.
+    ["shell", "W.passkeyThen=(door)=>{window.__opened=door}", "window.__opened==='shell'"],
     ["session", "W.start=()=>{window.__opened='started'}", "document.activeElement && document.activeElement.matches('#computer .act.primary')"],
   ]) {
     await js(`localStorage.clear(); localStorage.setItem("wado.settings", ${JSON.stringify(settings("http://10.255.255.1:9"))})`);

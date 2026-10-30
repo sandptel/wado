@@ -29,7 +29,7 @@ if [ "$CLIENT" = 1 ]; then
   OUT=${CARGO_TARGET_DIR:-$ROOT/target}/dx/wado-client/release/web/public
   # dx keeps every earlier build's hashed files beside the new ones; only the new ones ship.
   rm -rf "$OUT"
-  (cd "$ROOT" && dx build -p wado-client --release --platform web --base-path /)
+  (cd "$ROOT" && dx build -p wado-client --release --platform web --base-path / --debug-symbols false)
   [ -f "$OUT/index.html" ] || { echo "no client build at $OUT" >&2; exit 1; }
   rm -rf "$ASSETS"
   mkdir -p "$ASSETS"

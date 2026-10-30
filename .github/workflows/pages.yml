@@ -54,7 +54,9 @@ jobs:
       - run: cargo binstall -y dioxus-cli@0.7.10
 
       # --base-path, not Dioxus.toml: Pages serves under /wado/, local `dx serve` at root.
-      - run: dx build -p wado-client --release --platform web --base-path wado
+      # --debug-symbols false: the release profile keeps line tables for the daemon, and in the
+      # WASM they were ~13 of 15 MB every phone downloaded (2.6 MB gz → 0.93 MB gz without).
+      - run: dx build -p wado-client --release --platform web --base-path wado --debug-symbols false
 
       # The hashes a release key signs. No key here: deployed unsigned. While sw-keys.js lists no
       # key, installed apps take it as it is; once it does, they refuse it until its signature is

@@ -18,7 +18,9 @@ pub fn render(ui: Ui) -> Element {
     if (ui.set.conn_mode)() != "relay" || link.state.is_empty() || !session {
         return rsx! {};
     }
-    let quiet = session && link.state == "direct" && !open();
+    // The console has room for words (spec §2.7): only the cockpit folds a healthy link to its dot.
+    let cockpit = (live.stage)().cockpit;
+    let quiet = cockpit && session && link.state == "direct" && !open();
     let tone = link.tone().class();
     let label = link.label();
     let detail = link.detail();

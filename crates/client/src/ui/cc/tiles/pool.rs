@@ -196,10 +196,16 @@ pub static ALL: &[Tile] = &[
     Tile {
         id: "fullscreen",
         icon: "max",
-        label: "Fullscreen",
-        on: None,
-        sub: ("Fill this screen", ""),
+        label: "Full screen",
+        on: Some(|ui| (ui.live.stage)().cockpit),
+        sub: ("Fill this screen", "The picture fills it"),
         act: Act::Run(|ui| {
+            if (ui.live.session_on)() {
+                // In a session it is the arrangement toggle (ui::surround): the console morphs
+                // into the cockpit, asking for browser fullscreen on the way.
+                bridge::call("window.__wado.stageMorph.toggle();".to_string());
+                return;
+            }
             // The session's own size, so the orientation lock matches the output.
             let c = cfg::build(ui);
             bridge::call(format!(

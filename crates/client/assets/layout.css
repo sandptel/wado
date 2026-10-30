@@ -25,12 +25,20 @@
   transition: opacity var(--dur) var(--ease), translate var(--dur-sheet) var(--spring);
 }
 #wado-bar .grp {
-  display: flex; align-items: center; gap: 4px; padding: 5px; border-radius: 999px;
+  position: relative; isolation: isolate;
+  display: flex; align-items: center; gap: 4px; padding: 6px; border-radius: 999px;
   pointer-events: auto; min-width: 0;
+}
+/* The pill behind a group is a plate of its own (`::before`), not the group's background: in the
+ * Pocket Console's morph the buttons fly while the plate only fades (ui/surround, surround.css),
+ * and an opacity on the group would fade its buttons with it. */
+#wado-bar .grp::before, .rail::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;
   background: color-mix(in oklab, var(--s1), transparent 12%);
   border: 1px solid color-mix(in oklab, var(--line), transparent 30%);
   box-shadow: 0 6px 24px -10px rgb(0 0 0 / .55);
 }
+.rail::before { background: color-mix(in oklab, var(--s1), transparent 18%); box-shadow: none; }
 #wado-bar .grp:empty { display: none; }
 #wado-bar .left { justify-self: start; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
 #wado-bar .right { justify-self: end; }
@@ -83,9 +91,8 @@
 .chip.bad { color: var(--bad); border-color: color-mix(in oklab, var(--bad), transparent 50%); }
 
 /* ── the quick rail ─────────────────────────────────────────────────────────────────── */
-.rail { position: absolute; top: 50%; translate: 0 -50%; z-index: 10; display: grid; gap: 4px; padding: 5px;
-  border-radius: 999px; background: color-mix(in oklab, var(--s1), transparent 18%);
-  border: 1px solid color-mix(in oklab, var(--line), transparent 30%);
+.rail { position: absolute; top: 50%; translate: 0 -50%; z-index: 10; display: grid; gap: 4px; padding: 6px;
+  border-radius: 999px; isolation: isolate;
   transition: opacity var(--dur) var(--ease), translate var(--dur-sheet) var(--spring); }
 .rail.right { right: calc(8px + env(safe-area-inset-right)); }
 .rail.left { left: calc(8px + env(safe-area-inset-left)); }

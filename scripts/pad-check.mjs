@@ -347,7 +347,7 @@ await run("a flip keeps the size but still lifts the fingers", async (e) => {
 // ── rail and quick actions (js/pad_actions.js, js/pad_rail.js) ───────────────────────────
 const ACTIONS = [
   { id: "workspace-next", name: "Next workspace", group: "Workspace", icon: "right" },
-  { id: "fullscreen", name: "Fullscreen", group: "Window", icon: "max" },
+  { id: "fullscreen", name: "Window full screen", group: "Window", icon: "max" },
   { id: "play-pause", name: "Play / pause", group: "Media", icon: "play" },
 ];
 function railEnv(e, { rail = "actions", quick, landscape = true } = {}) {

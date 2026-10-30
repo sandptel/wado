@@ -244,6 +244,19 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/presence.js"),
     "\n",
+    // The Pocket Console (ui/surround): the slots, this device's console preferences, the
+    // arrangement and its morph, then the deck's faces. After presence.js (the morph refits its
+    // dots) and the input files (the deck sends through `W.coalesce`).
+    include_str!("js/stage_fit.js"),
+    "\n",
+    include_str!("js/console_prefs.js"),
+    "\n",
+    include_str!("js/stage_morph.js"),
+    "\n",
+    include_str!("js/deck_pad.js"),
+    "\n",
+    include_str!("js/deck_keys.js"),
+    "\n",
     include_str!("js/hero_flip.js"),
     "\n",
     include_str!("js/cbar.js"),
@@ -810,6 +823,9 @@ pub fn run(ui: Ui) {
                 // What this browser is: names the sound output that plays here.
                 "caps" => {
                     live.device_name.set(string("device"));
+                }
+                "stageView" | "arrangement" | "consolePrefs" => {
+                    crate::ui::surround::on_event(ui, kind, &msg)
                 }
                 "winMenu" => {
                     live.win_menu.set(msg.get("id").and_then(|v| v.as_u64()));
