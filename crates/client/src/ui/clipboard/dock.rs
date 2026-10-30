@@ -78,24 +78,24 @@ fn chip_view(c: crate::state::ClipChip) -> Element {
     rsx! {
         div { key: "{c.id}", class: if copy { "clipchip2 copy" } else { "clipchip2 send" },
             // Where it goes: computer → phone, or phone → computer, with a dot travelling.
-            span { class: "cflow", "aria-hidden": "true",
+            span { class: "chipflow", "aria-hidden": "true",
                 Icon { name: if copy { "laptop" } else { "phone" } }
-                i { class: "cdot" }
+                i { class: "chipdot" }
                 Icon { name: if copy { "phone" } else { "laptop" } }
             }
-            span { class: "ctext",
+            span { class: "chiptext",
                 b { if copy { "Copied on {c.name}" } else { "Send this phone's clipboard?" } }
                 small { if copy { "{what}" } else { "To {c.name}" } }
             }
             button {
-                class: "cgo",
+                class: "chipgo",
                 "data-clip": if copy { "chip-copy" } else { "chip-send" },
                 "data-key": "{c.key}",
                 "aria-label": if copy { "Copy to this phone" } else { "Send to {c.name}" },
                 if copy { "Copy" } else { "Send" }
             }
             button {
-                class: "cno",
+                class: "chipno",
                 "data-clip": "chip-close",
                 "aria-label": "Not now",
                 Icon { name: "x" }

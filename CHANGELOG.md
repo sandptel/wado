@@ -2,6 +2,21 @@
 
 ### Added
 
+- **The clipboard just follows you.** Copy something on your computer — on its desktop or in a
+  wado session — and it is on your phone, ready to paste. Copy something on your phone, come back
+  to wado, and it is on your computer. Each computer's page has two switches for this phone ("Copy
+  from Laptop automatically", "Send this phone's copies automatically"), on by default for a phone
+  paired with a code that may use the clipboard. Where a browser only lets a tap use the clipboard
+  (Safari; Chrome before you allow it once), a small "Copy" or "Send" chip does it in one tap.
+  - **Passwords never travel.** A copy your password manager marks as secret (KeePassXC,
+    Bitwarden, 1Password and the rest) stays where it was made, and is kept in no history.
+  - **One clipboard, everywhere.** The computer's page has its whole clipboard — pinned first,
+    search, pictures previewed, and for each entry Copy to this phone, Put back on the computer,
+    Pin and Delete. The home Clipboard widget is the same thing, short. A computer without
+    `cliphist` keeps its last 50 copies in memory instead.
+  - Works without a session, on a widget's light link too, and every message still asks for the
+    `clipboard` grant.
+
 - **A passkey guards shells, file changes and the trackpad.** Your phone's own screen lock —
   fingerprint, face or PIN — becomes the key. Pairing a new phone ends with "One last step: a
   passkey"; a phone paired before adds one under Connection & trust → Passkey. Tapping Shell or

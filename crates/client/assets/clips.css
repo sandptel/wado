@@ -71,7 +71,7 @@
 .clipico svg { width: 18px; height: 18px; }
 .cliptile.fresh .clipico { animation: clippop 420ms var(--pop) both; }
 @keyframes clippop { from { scale: .6; } }
-.cliptext { display: grid; gap: 4px; min-width: 0; }
+.cliptxt { display: grid; gap: 4px; min-width: 0; }
 .clipbody { margin: 0; font: 13px/1.45 var(--mono); color: var(--text);
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .cliptile.link .clipbody { -webkit-line-clamp: 2; color: color-mix(in oklab, var(--base0E), var(--bright) 50%); }
@@ -148,25 +148,25 @@
   border: 1px solid var(--line); box-shadow: 0 18px 50px -20px #000a;
   animation: chipin var(--dur-sheet) var(--spring) both; }
 @keyframes chipin { from { opacity: 0; translate: 0 24px; scale: .94; } 60% { opacity: 1; } }
-.cflow { display: inline-flex; align-items: center; gap: 4px; color: var(--dim); }
-.cflow svg { width: 18px; height: 18px; }
-.cflow svg:last-child { color: var(--accent); }
-.cdot { position: relative; width: 18px; height: 2px; border-radius: 1px; background: color-mix(in oklab, var(--accent), transparent 75%); }
-.cdot::after { content: ""; position: absolute; top: -2px; left: 0; width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
-  animation: cflow 1400ms ease-in-out infinite; }
-@keyframes cflow { 0% { translate: 0 0; opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } 100% { translate: 12px 0; opacity: 0; } }
-.ctext { display: grid; min-width: 0; }
-.ctext b { font-size: 14px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ctext small { color: var(--dim); font: 12px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cgo { min-height: 44px; padding: 0 18px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-weight: 700; font-size: 14px;
+.chipflow { display: inline-flex; align-items: center; gap: 4px; color: var(--dim); }
+.chipflow svg { width: 18px; height: 18px; }
+.chipflow svg:last-child { color: var(--accent); }
+.chipdot { position: relative; width: 18px; height: 2px; border-radius: 1px; background: color-mix(in oklab, var(--accent), transparent 75%); }
+.chipdot::after { content: ""; position: absolute; top: -2px; left: 0; width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+  animation: chipflow 1400ms ease-in-out infinite; }
+@keyframes chipflow { 0% { translate: 0 0; opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } 100% { translate: 12px 0; opacity: 0; } }
+.chiptext { display: grid; min-width: 0; }
+.chiptext b { font-size: 14px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chiptext small { color: var(--dim); font: 12px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chipgo { min-height: 44px; padding: 0 18px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-weight: 700; font-size: 14px;
   transition: scale var(--dur-press) var(--pop); }
-.cgo:active { scale: .94; }
-.cno { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; color: var(--dim); }
-.cno svg { width: 18px; height: 18px; }
+.chipgo:active { scale: .94; }
+.chipno { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; color: var(--dim); }
+.chipno svg { width: 18px; height: 18px; }
 
 @media (prefers-reduced-motion: reduce) {
   .cliptile, .clippic img, .clipsaid, .clipchip2, .cliptile.fresh .clipico { animation: none !important; }
-  .cdot::after { animation: none; translate: 6px 0; }
+  .chipdot::after { animation: none; translate: 6px 0; }
   .cliptile.fresh .clipcard::after { animation: none; opacity: 0; }
 }
-:root[data-motion="reduced"] .cdot::after { animation: none; translate: 6px 0; }
+:root[data-motion="reduced"] .chipdot::after { animation: none; translate: 6px 0; }

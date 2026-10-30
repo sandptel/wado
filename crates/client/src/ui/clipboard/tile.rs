@@ -76,7 +76,7 @@ pub fn Tile(
                 span { class: "sr", "{label}" }
                 div { class: "clipmain", "aria-hidden": "true",
                     span { class: "clipico", "aria-hidden": "true", Icon { name: icon } }
-                    div { class: "cliptext",
+                    div { class: "cliptxt",
                         if image {
                             div { class: "clippic",
                                 if let Some(src) = img { img { src: "{src}", alt: "{entry.preview}" } }
