@@ -139,6 +139,9 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/cliphost.js"),
     "\n",
+    // After `cliphost.js`, whose relay handlers hand it the selected computer's copies.
+    include_str!("js/clip_share.js"),
+    "\n",
     include_str!("js/notify.js"),
     "\n",
     // The file manager. After `relay.js` (it wraps the `__down` handler) and `sheet.js`;
@@ -580,9 +583,13 @@ pub fn run(ui: Ui) {
                         .and_then(|v| serde_json::from_value(v.clone()).ok())
                         .unwrap_or_default();
                     // Pictures of entries no longer in the history go with them.
-                    live.clip_imgs
-                        .write()
-                        .retain(|id, _| entries.iter().any(|e| e.id == *id));
+                    let here = crate::profile::current_key(ui);
+                    live.clip_imgs.write().retain(|k, _| {
+                        !k.starts_with(&format!("{here}\n"))
+                            || entries
+                                .iter()
+                                .any(|e| *k == crate::state::clip_img_key(&here, &e.id))
+                    });
                     live.clip_hist.set(crate::state::ClipHist {
                         loaded: true,
                         available: msg
@@ -593,8 +600,49 @@ pub fn run(ui: Ui) {
                         error: string("error"),
                     });
                 }
+                // A picture for an image entry: the selected computer's, or a light link's (`key`).
                 "clipImage" => {
-                    live.clip_imgs.write().insert(string("id"), string("data"));
+                    let key = match string("key") {
+                        k if k.is_empty() => crate::profile::current_key(ui),
+                        k => k,
+                    };
+                    live.clip_imgs.write().insert(
+                        crate::state::clip_img_key(&key, &string("id")),
+                        string("data"),
+                    );
+                }
+                "clipShare" => {
+                    let prefs = msg
+                        .get("prefs")
+                        .and_then(|v| v.as_object())
+                        .map(|m| {
+                            m.iter()
+                                .map(|(k, v)| {
+                                    let b = |w: &str| {
+                                        v.get(w).and_then(|x| x.as_bool()).unwrap_or(false)
+                                    };
+                                    (k.clone(), (b("pull"), b("push")))
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    live.clip_prefs.set(prefs);
+                }
+                "clipChip" => live.clip_chip.set(
+                    msg.get("chip")
+                        .and_then(|v| serde_json::from_value(v.clone()).ok()),
+                ),
+                "clipSaid" => {
+                    let n = live.clip_said.peek().n.wrapping_add(1);
+                    let tone = match string("tone") {
+                        t if t.is_empty() => "good".to_string(),
+                        t => t,
+                    };
+                    live.clip_said.set(crate::state::ClipSaid {
+                        n,
+                        text: string("text"),
+                        tone,
+                    });
                 }
                 "clipError" => {
                     let mut h = live.clip_hist.write();

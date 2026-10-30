@@ -609,10 +609,20 @@ pub enum RelayMsg {
         data: String,
     },
     /// Client → server: make this the host's (and the session's) clipboard. `data` as in
-    /// [`RelayMsg::ClipData`].
+    /// [`RelayMsg::ClipData`]. Answered with [`RelayMsg::ClipPushed`], or a
+    /// [`RelayMsg::ClipError`] that says why not (too big, not a type that is shared).
     ClipPush {
         mime: String,
         data: String,
+        /// The phone marked it a secret (a password manager's copy, sent by a deliberate tap):
+        /// the computer marks it secret too, keeps it out of every history, and sends it to no
+        /// other device. An automatic send never carries one — a secret is never sent by itself.
+        #[serde(default)]
+        sensitive: bool,
+    },
+    /// Server → client: the push with this hash is on the computer's clipboard now.
+    ClipPushed {
+        hash: String,
     },
     ClipPin {
         id: String,
@@ -624,6 +634,25 @@ pub enum RelayMsg {
     /// Server → client: a clipboard request failed, and why.
     ClipError {
         message: String,
+    },
+    /// Client → server: what this link wants to hear about the computer's clipboard. Always the
+    /// history again whenever it changes; with `live`, also every new copy in full
+    /// ([`RelayMsg::ClipNow`]) — the phone's "Copy from this computer automatically". Lasts for
+    /// the link. Needs the `clipboard` grant, checked again for every message sent.
+    ClipWatch {
+        #[serde(default)]
+        live: bool,
+    },
+    /// Server → client: something new was copied on the computer — on its desktop, in a wado
+    /// session, or sent by another device. Never a secret, never this device's own copy coming
+    /// back. `data` as in [`RelayMsg::ClipData`]; `hash` names the bytes (see
+    /// `wado_protocol::clip`); `from` is `desktop`, `session` or a device's name.
+    ClipNow {
+        hash: String,
+        mime: String,
+        data: String,
+        from: String,
+        at_ms: u64,
     },
 
     // ── Daemon config (see `wado-config`) ──────────────────────────────────

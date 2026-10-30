@@ -313,6 +313,7 @@ impl ClipHistory for FakeHistory {
             Ok(Clip {
                 mime: "text/plain;charset=utf-8".into(),
                 data: e.preview.as_bytes().into(),
+                ..Default::default()
             })
         })
     }

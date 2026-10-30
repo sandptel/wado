@@ -1,7 +1,10 @@
 //! The desktop's clipboard ([`Clipboard`] on Linux): set with `wl-copy`, read with `wl-paste`,
 //! followed with `wl-paste --watch` — on the desktop's display.
 //!
-//! The desktop's own `wl-paste --watch cliphist store` puts what is set here in its history.
+//! The desktop's own `wl-paste --watch cliphist store` puts what is set here in its history —
+//! except a secret, which is set with `wl-copy --sensitive` (the password-manager hint, which
+//! `cliphist` and every other clipboard manager honour), and read as one when a password manager
+//! offered that hint (`wado_platform::clip::is_secret`).
 
 use std::process::Stdio;
 use std::sync::OnceLock;
@@ -59,10 +62,16 @@ async fn set(clip: &Clip) -> Result<(), String> {
     } else {
         clip.mime.as_str()
     };
+    let mut args = vec!["--type", mime];
+    // A wl-copy too old for the flag fails, and the secret is then not set at all — never set
+    // without its mark.
+    if clip.secret {
+        args.push("--sensitive");
+    }
     // stdout and stderr to null: wl-copy forks a child that keeps serving the clipboard, and a
     // pipe it inherited would never reach EOF.
     let mut child = command("wl-copy")?
-        .args(["--type", mime])
+        .args(&args)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -81,15 +90,19 @@ async fn set(clip: &Clip) -> Result<(), String> {
         .success();
     if ok {
         Ok(())
+    } else if clip.secret {
+        Err("this computer's wl-copy cannot mark a secret (wl-clipboard 2.2 or newer can)".into())
     } else {
         Err("wl-copy failed".into())
     }
 }
 
-/// What is on the host clipboard now: text if offered, else the first image type.
+/// What is on the host clipboard now: text if offered, else the first image type; a secret if a
+/// password manager said so.
 async fn current() -> Result<Clip, String> {
     let types = run_with("wl-paste", &["--list-types"], b"").await?;
     let types = String::from_utf8_lossy(&types);
+    let secret = wado_platform::clip::is_secret(&types.lines().collect::<Vec<_>>());
     let image = types.lines().find(|t| t.starts_with("image/"));
     let text = types
         .lines()
@@ -105,6 +118,7 @@ async fn current() -> Result<Clip, String> {
     Ok(Clip {
         mime,
         data: data.into(),
+        secret,
     })
 }
 

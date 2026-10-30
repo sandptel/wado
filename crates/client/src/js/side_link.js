@@ -9,7 +9,9 @@
 //                                                     `wants`: "clips" and/or "actions"
 //   W.sideDrop(key)          drop one now (it is about to become the selected computer)
 //   W.sideDo(key, msg)       send a sealed message on that computer's link
-//   W.sideClipCopy(key, id, kind) / W.sidePaste(key)   the Clipboard widget's two taps
+//   W.sideClipCopy(key, id, kind, done) / W.sideClipFetch(key, id) / W.sideClipThumb(key, id)
+//                            the Clipboard surface's copy, send and pictures (clip_share.js taps)
+//   W.sideUp(key)            is that computer's link open?
 //
 // **A light link takes no seat** (decided 2026-10-30): it joins with `control=1`, which a relay
 // with the `control` cap turns into a seatless control-only link (crates/relay/src/controls.rs) —
@@ -182,9 +184,11 @@
       let tick = 0;
       l.poll = setInterval(() => {
         send(l, { type: "host_get" });
-        // Nothing is pushed on a control link, so the clipboard is asked for now and then.
+        // A computer that follows the clipboard for this link pushes its history; an older one
+        // is asked now and then.
         if (l.wants.includes("clips") && ++tick % 4 === 0) send(l, { type: "clip_list" });
       }, POLL_MS);
+      if (W.clipShare) W.clipShare.linkUp(l.key);
       return;
     }
     switch (m.type) {
@@ -203,9 +207,13 @@
       case "clip_history": say(l, { clips: m.entries || [] }); break;
       case "clip_data":
         l.clipFull[m.id] = { mime: m.mime, data: m.data };
+        if (String(m.mime).startsWith("image/")) emit({ type: "clipImage", key: l.key, id: m.id, data: m.data });
         (l.clipWait[m.id] || []).forEach((f) => f(l.clipFull[m.id]));
         delete l.clipWait[m.id];
         break;
+      case "clip_now": if (W.clipShare) W.clipShare.now(l.key, m); break;
+      case "clip_pushed": if (W.clipShare) W.clipShare.pushed(l.key, m); break;
+      case "clip_error": if (W.clipShare) W.clipShare.error(l.key, m); break;
       case "pad_out":
         if (m.msg && m.msg.k === "action_list") say(l, { actions: m.msg.actions || [] });
         if (m.msg && m.msg.k === "ran" && !m.msg.ok) emit({ type: "ran", message: m.msg.message || "That did not work." });
@@ -258,29 +266,30 @@
   };
   W.sideDrop = drop;
   W.sideDo = (key, msg) => { const l = links.get(key); return !!(l && send(l, msg)); };
+  W.sideUp = (key) => { const l = links.get(key); return !!(l && l.e2e === "open" && l.ws && l.ws.readyState === WebSocket.OPEN); };
 
-  // Inside a tap, as cliphost.js does for the selected computer: the write is the tap's, however
-  // long the fetch takes.
-  W.sideClipCopy = (key, id, kind) => {
+  // Entry `id` of that computer's history in full: { mime, data }.
+  W.sideClipFetch = (key, id) => {
     const l = links.get(key);
-    const note = (text) => emit({ type: "captureNote", text });
-    if (!l || !navigator.clipboard || !window.ClipboardItem) return note("This browser has no clipboard to write to.");
-    const image = kind === "image";
-    const got = l.clipFull[id] ? Promise.resolve(l.clipFull[id]) : new Promise((ok, no) => {
+    if (!l) return Promise.reject(new Error("no link"));
+    if (l.clipFull[id]) return Promise.resolve(l.clipFull[id]);
+    return new Promise((ok, no) => {
+      const first = !l.clipWait[id];
       (l.clipWait[id] = l.clipWait[id] || []).push(ok);
-      send(l, { type: "clip_get", id });
+      if (first) send(l, { type: "clip_get", id });
       setTimeout(() => no(new Error("no answer")), 8000);
     });
-    const blob = got.then(async (c) => image ? await (await fetch(c.data)).blob() : new Blob([c.data], { type: "text/plain" }));
-    navigator.clipboard.write([new ClipboardItem({ [image ? "image/png" : "text/plain"]: blob })])
-      .then(() => note("Copied to this device."), () => note("This browser would not take it — tap again."));
   };
-  W.sidePaste = async (key) => {
-    const note = (text) => emit({ type: "captureNote", text });
-    try {
-      const t = await navigator.clipboard.readText();
-      if (!t) return note("This device's clipboard is empty.");
-      if (W.sideDo(key, { type: "clip_push", mime: "text/plain", data: t })) note("Sent to the computer's clipboard.");
-    } catch (_) { note("This browser would not share its clipboard."); }
+  W.sideClipThumb = (key, id) => { const l = links.get(key); if (l && !l.clipFull[id] && !l.clipWait[id]) W.sideClipFetch(key, id).catch(() => {}); };
+
+  // Inside a tap, as cliphost.js does for the selected computer: the write is the tap's, however
+  // long the fetch takes. `done(ok)` says whether it took.
+  W.sideClipCopy = (key, id, kind, done) => {
+    const fin = done || (() => {});
+    if (!links.get(key) || !navigator.clipboard || !window.ClipboardItem) return fin(false);
+    const image = kind === "image";
+    const blob = W.sideClipFetch(key, id).then(async (c) => image ? await (await fetch(c.data)).blob() : new Blob([c.data], { type: "text/plain" }));
+    navigator.clipboard.write([new ClipboardItem({ [image ? "image/png" : "text/plain"]: blob })])
+      .then(() => fin(true), () => fin(false));
   };
 })();

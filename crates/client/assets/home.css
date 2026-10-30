@@ -39,10 +39,6 @@
 .hostchip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text); white-space: nowrap; }
 .hostchip i { width: 8px; height: 8px; border-radius: 50%; background: var(--hue); flex: none; }
 
-/* The clipboard rail's edge tab sits low, clear of the cards' ▶; with a Clipboard widget on
- * home it is not needed at all — the widget's header opens the rail. */
-#landing .cliptab { top: auto; bottom: calc(96px + env(safe-area-inset-bottom)); translate: 0 0; }
-#landing.has-clipw .cliptab { display: none; }
 
 /* ── widgets ──────────────────────────────────────────────────────────────────────────── */
 #wsect button { color: var(--accent); letter-spacing: .02em; text-transform: none; font-size: 14px; font-weight: 600; min-height: 44px; padding: 0 6px; margin-right: -6px; }
@@ -87,17 +83,6 @@ button.wtitle.linky::after { content: ""; width: 5px; height: 5px; border-right:
 .thinbar { height: 4px; border-radius: 2px; background: var(--s3); overflow: hidden; }
 .thinbar i { display: block; height: 100%; width: 100%; background: var(--bright); transform-origin: 0 50%; scale: var(--from) 1; border-radius: 2px; }
 .thinbar i.run { animation: progrun var(--left) linear forwards; }
-.clipsw { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
-.clipw { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 12px; border-radius: var(--r2); background: var(--s0); min-height: 48px;
-  transition: background var(--dur) var(--ease); }
-.clipw .ct { flex: 1; min-width: 0; font: 12px var(--mono); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.clipw .pin { display: grid; }
-.clipw .pin svg { width: 14px; height: 14px; color: var(--base0A); }
-.clipw .iconbtn { width: 40px; height: 40px; }
-.clipw .iconbtn svg { width: 18px; height: 18px; }
-.clipw.copied { background: color-mix(in oklab, var(--good), var(--s0) 82%); }
-.clipw.copied .iconbtn { color: var(--good); }
-.btn.sendclip { min-height: 44px; }
 .padw { position: relative; height: 104px; width: 100%; border-radius: var(--r2); background: var(--s0); border: 1px solid var(--line); display: grid;
   place-items: center; align-content: center; gap: 4px; color: var(--dim); font-size: 13px; overflow: hidden; text-align: center; touch-action: manipulation; }
 .padw:active:not(:disabled) { scale: 1; }
@@ -165,6 +150,4 @@ button.wtitle.linky::after { content: ""; width: 5px; height: 5px; border-right:
 .pickrow .navtext small { display: flex; gap: 6px; align-items: center; }
 .pickrow .lstate { font-weight: 500; }
 
-/* Folded away, the clipboard rail casts nothing onto the cards' edge. */
-@media (max-width: 1099px) { #landing #cliprail:not(.open) { box-shadow: none; } }
 .sessioncard .navtext small.mono { font-size: 11px; }

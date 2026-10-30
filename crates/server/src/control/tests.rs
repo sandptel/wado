@@ -182,6 +182,16 @@ async fn a_trusted_device_gets_controls_and_nothing_else() {
         .await;
     let a = open(&mut o, &r.to_client("r1").await);
     assert!(a.contains("clip_error") && a.contains("clipboard"), "{a}");
+    // Following the computer's copies needs it too.
+    r.rooms
+        .frame(
+            &r.sh,
+            "r1",
+            &seal(&mut s, r#"{"type":"clip_watch","live":true}"#),
+        )
+        .await;
+    let a = open(&mut o, &r.to_client("r1").await);
+    assert!(a.contains("clip_error") && a.contains("clipboard"), "{a}");
     r.rooms
         .frame(
             &r.sh,
@@ -195,13 +205,76 @@ async fn a_trusted_device_gets_controls_and_nothing_else() {
         "{a}"
     );
 
-    // Granted now: the clipboard goes through (to a compositor this test does not have).
+    // Granted now: the clipboard goes through — with no session and no desktop here, to wado's
+    // own history in memory.
     g.allow("phone", &["clipboard"], true).unwrap();
     r.rooms
         .frame(&r.sh, "r1", &seal(&mut s, r#"{"type":"clip_list"}"#))
         .await;
     let a = open(&mut o, &r.to_client("r1").await);
-    assert!(a.contains("no compositor here"), "{a}");
+    assert!(
+        a.contains("clip_history") && a.contains(r#""available":true"#),
+        "{a}"
+    );
+
+    // A push lands (no session needed) and is acknowledged by its hash.
+    r.rooms
+        .frame(
+            &r.sh,
+            "r1",
+            &seal(
+                &mut s,
+                r#"{"type":"clip_push","mime":"text/plain","data":"from the widget 41"}"#,
+            ),
+        )
+        .await;
+    let a = open(&mut o, &r.to_client("r1").await);
+    let hash = crate::clip::hub::hash(b"from the widget 41");
+    assert!(a.contains("clip_pushed") && a.contains(&hash), "{a}");
+
+    // Too big is refused, and says so.
+    let big = "x".repeat(wado_protocol::clip::MAX_TEXT + 1);
+    let push = serde_json::json!({"type": "clip_push", "mime": "text/plain", "data": big});
+    r.rooms
+        .frame(&r.sh, "r1", &seal(&mut s, &push.to_string()))
+        .await;
+    let a = open(&mut o, &r.to_client("r1").await);
+    assert!(a.contains("clip_error") && a.contains("too long"), "{a}");
+
+    // Following, live: a copy on the computer reaches the widget's link in full.
+    r.rooms
+        .frame(
+            &r.sh,
+            "r1",
+            &seal(&mut s, r#"{"type":"clip_watch","live":true}"#),
+        )
+        .await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    crate::clip::hub::get().note(
+        wado_compositor::clipboard::Clip {
+            mime: "text/plain".into(),
+            data: b"copied on the desktop 41".as_slice().into(),
+            secret: false,
+        },
+        crate::clip::hub::Origin::Desktop,
+    );
+    let mut got = String::new();
+    for _ in 0..6 {
+        let a = open(&mut o, &r.to_client("r1").await);
+        if a.contains("clip_now") {
+            got = a;
+            break;
+        }
+    }
+    assert!(
+        got.contains("copied on the desktop 41") && got.contains(r#""from":"desktop""#),
+        "{got}"
+    );
+    // The history follows it; nothing else is pending after that.
+    while tokio::time::timeout(Duration::from_millis(300), r.relay.recv())
+        .await
+        .is_ok()
+    {}
 
     // A plaintext injection by the relay is dropped, never answered.
     r.rooms.frame(&r.sh, "r1", r#"{"type":"host_get"}"#).await;

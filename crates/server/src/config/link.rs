@@ -62,6 +62,7 @@ fn grants_for(key: &str, gate: &Gate) -> Option<wado_protocol::config::DeviceGra
         clipboard: g.clipboard,
         join: g.join,
         takeover: g.takeover,
+        paired: d.pinned,
     })
 }
 

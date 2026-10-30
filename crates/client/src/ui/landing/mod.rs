@@ -6,7 +6,6 @@
 //! the stream once the session is up, and recedes under a computer's page or a settings page
 //! pushed over it.
 
-pub mod clips;
 mod install_hint;
 mod pair;
 
@@ -20,7 +19,6 @@ use crate::{
 
 pub fn render(ui: Ui) -> Element {
     let on = (ui.live.session_on)();
-    let s = ui.set;
     let view = (ui.live.view)();
     // Covered by a computer's page (which runs its own motion over home) or by a pushed page.
     let under = matches!(view, View::Sub(None, _));
@@ -30,18 +28,7 @@ pub fn render(ui: Ui) -> Element {
         (_, true) => "under",
         _ => "",
     };
-    // A Clipboard widget for the selected computer opens the clipboard rail itself.
-    let key = crate::profile::current_key(ui);
-    let clipw = s
-        .widgets
-        .read()
-        .iter()
-        .any(|w| w.kind == crate::widget::WidgetKind::Clipboard && w.host == key);
-    let class = if clipw {
-        format!("{state} has-clipw")
-    } else {
-        state.to_string()
-    };
+    let class = state;
 
     rsx! {
         section { id: "landing", class: "{class}", "aria-hidden": "{on || covered}",
@@ -57,7 +44,6 @@ pub fn render(ui: Ui) -> Element {
             div { class: "sect", span { "On this phone" } }
             {settings::render(ui)}
             {crate::ui::scoped(ui, "widgets", widgets::render)}
-            if (s.conn_mode)() == "relay" { {crate::ui::scoped(ui, "clips", clips::render)} }
         }
     }
 }
