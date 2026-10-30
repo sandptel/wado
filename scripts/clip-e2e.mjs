@@ -276,10 +276,35 @@ try {
   const small = await phone.ev(`[...document.querySelectorAll("#clipsec .clipact, #clipsec .clipkind, #clipsec .sw, #clipsec .clipsend")].filter((b) => { const r = b.getBoundingClientRect(); return r.width && (r.width < 44 || r.height < 44) && !b.classList.contains("sw"); }).length`);
   check("targets are 44 px or more", small === 0, small);
 
+  // the home widget: the same component, short
+  await phone.click(`document.querySelector('.cbar .iconbtn[aria-label="Back to home"]')`);
+  await phone.until(`!document.querySelector("#computer:not(.gone):not(.screen.gone)") || !!document.querySelector(".wempty")`, 4000);
+  await sleep(800);
+  await phone.click(`document.querySelector(".wempty")`);
+  await phone.click(`[...document.querySelectorAll(".wadd")].find((b) => b.textContent.includes("Clipboard"))`);
+  await phone.click(`document.querySelector("#wsect button")`);
+  check("the Clipboard widget shows the newest three, pinned first",
+    await phone.until(`(() => { const t = document.querySelectorAll(".widget .clipsurf.compact .cliptile"); return t.length === 3 && t[0].textContent.includes("hello from the desktop"); })()`, 8000),
+    await phone.ev(`[...document.querySelectorAll(".widget .clipsurf.compact .cliptile")].map((t) => t.textContent.slice(0, 40))`));
+  check("…with Copy and Send only", await phone.ev(`!document.querySelector(".widget .clipact.del") && !!document.querySelector(".widget .clipact.go")`));
+  await phone.ev(`document.querySelector(".widget .clipsurf").scrollIntoView({ block: "center" })`);
+  await sleep(700);
+  await phone.shot("f10-widget.png");
+  await phone.click(`document.querySelector(".widget .clipact.go")`);
+  check("…and the widget's Copy works", await phone.until(`${phoneClip}.then((t) => t === "hello from the desktop")`));
+
   // grant, and the defaults of a device paired with a code
   await laptop.open();
   check("a QR-paired laptop connects", await laptop.until(`!!window.__wado && window.__wado.e2eReady`, 20000));
-  await laptop.click(`document.querySelector(".ccard .cpick")`);
+  // A wide screen opens with the console (its logs) up: close it, as a person would.
+  for (let i = 0; i < 10; i++) {
+    await sleep(500);
+    await laptop.ev(`for (const e of document.querySelectorAll("#console.open .grab")) e.click(); true`);
+  }
+  for (let i = 0; i < 4 && !(await laptop.ev(`!!document.querySelector("#clipsec")`)); i++) {
+    await laptop.click(`document.querySelector(".ccard .cpick")`);
+    await laptop.until(`!!document.querySelector("#clipsec")`, 3000);
+  }
   check("without the clipboard grant: what is missing, and the command",
     await laptop.until(`(document.querySelector("#clipsec .grant") || {}).textContent?.includes("wado allow")`), await laptop.ev(`document.querySelector("#clipsec")?.textContent`));
   execFileSync(join(BIN, "wado"), ["allow", "Laptop-key", "clipboard"], { env: { ...process.env, ...env } });

@@ -85,12 +85,14 @@ pub fn Tile(
                         } else {
                             p { class: "clipbody", "{entry.preview}" }
                         }
-                        if !meta.is_empty() || pinned {
-                            small { class: "clipmeta",
-                                if pinned { span { class: "clippin", Icon { name: "pin" } "Pinned" } }
-                                "{meta}"
-                            }
-                        }
+                    }
+                }
+                // Where and when, then what can be done with it (side by side on a wide card).
+                div { class: "clipfoot",
+                if pinned || !meta.is_empty() {
+                    small { class: "clipmeta", "aria-hidden": "true",
+                        if pinned { span { class: "clippin", Icon { name: "pin" } "Pinned" } }
+                        "{meta}"
                     }
                 }
                 div { class: "clipacts",
@@ -139,6 +141,7 @@ pub fn Tile(
                             Icon { name: "trash" }
                         }
                     }
+                }
                 }
             } }
         }
