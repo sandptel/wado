@@ -29,6 +29,11 @@ pub fn state_for(key: &str, gate: &Gate) -> ConfigState {
             .get(key)
             .and_then(|d| d.trackpad.as_ref())
             .map(Into::into),
+        console: cfg
+            .device
+            .get(key)
+            .and_then(|d| d.console.as_ref())
+            .map(Into::into),
         // "May change privileged settings" — the owner, or a device granted `settings`.
         owner: gate.grants(key).settings,
         grants: grants_for(key, gate),
@@ -93,10 +98,13 @@ pub fn set(
 }
 
 /// May the device `key` change `cfg_key`? Privileged keys need the settings grant and an
-/// on-screen yes — except a device's own trackpad layout (`device.<its key>.trackpad.*`), which
-/// is its own business, like its prefs blob.
+/// on-screen yes — except a device's own trackpad layout and console preferences
+/// (`device.<its key>.trackpad.*`, `….console.*`), which are its own business, like its prefs blob.
 fn permit(key: &str, gate: &Gate, cfg_key: &str, confirmed: bool) -> Result<(), String> {
-    let own = !key.is_empty() && cfg_key.starts_with(&format!("device.{key}.trackpad."));
+    let own = !key.is_empty()
+        && ["trackpad", "console"]
+            .iter()
+            .any(|b| cfg_key.starts_with(&format!("device.{key}.{b}.")));
     if own || tier::of(cfg_key) == Tier::Live {
         return Ok(());
     }
@@ -149,6 +157,16 @@ mod tests {
         // The rest of its own block is still the owner's to change.
         assert!(permit("k1", &g, "device.k1.name", false).is_err());
         assert!(permit("", &g, "device..trackpad.rail", false).is_err());
+    }
+
+    #[test]
+    fn a_device_sets_its_own_console_without_the_settings_grant() {
+        let g = gate();
+        assert_eq!(permit("k1", &g, "device.k1.console.face", false), Ok(()));
+        assert_eq!(permit("k1", &g, "device.k1.console.open", false), Ok(()));
+        let other = permit("k1", &g, "device.k2.console.face", false).unwrap_err();
+        assert!(other.contains("settings grant"), "{other}");
+        assert!(permit("k1", &g, "device.k1x.console.face", false).is_err());
     }
 
     #[test]
