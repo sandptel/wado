@@ -205,8 +205,20 @@ mod tests {
         // Ten seconds of an open pad, nothing touched, the phone pinging every 2 s.
         for at in (2000..=10_000).step_by(2000) {
             until(&after, at).await;
-            before.send(PadMsg::Ping { t: at as u32 }, false);
-            after.send(PadMsg::Ping { t: at as u32 }, false);
+            before.send(
+                PadMsg::Ping {
+                    t: at as u32,
+                    bin: false,
+                },
+                false,
+            );
+            after.send(
+                PadMsg::Ping {
+                    t: at as u32,
+                    bin: false,
+                },
+                false,
+            );
         }
         until(&after, 10_000).await;
         let (b, a) = (before.locks(), after.locks());

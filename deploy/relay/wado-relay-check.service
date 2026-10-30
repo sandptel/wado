@@ -1,0 +1,13 @@
+# One check of the public relay (deploy/relay/uptime.md, option B). Run by wado-relay-check.timer.
+# Edit the path to the script, the relay URL and HC_PING_URL (a healthchecks.io check's ping URL,
+# or remove that line to only log). A user unit: ~/.config/systemd/user/.
+
+[Unit]
+Description=Check wado's public relay is up
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=HC_PING_URL=https://hc-ping.com/REPLACE-WITH-YOUR-CHECK-UUID
+ExecStart=%h/wado/scripts/relay-health.sh https://wado-relay.indiasouthcentral.cloudapp.azure.com

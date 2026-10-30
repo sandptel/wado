@@ -119,7 +119,7 @@ pub fn SessionRow(
                 }
             } else if let Some(v) = s.viewer.clone() {
                 ul { class: "devchips",
-                    li { class: "devchip lead", style: "--hue:var(--accent)", i { class: "hdot" } span { "{v}" } }
+                    li { class: "devchip lead", style: "--hue:var(--accent)", title: "{v}", i { class: "hdot" } span { "{v}" } }
                 }
             }
             if !apps.is_empty() {

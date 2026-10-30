@@ -1,0 +1,12 @@
+# Every five minutes, wado-relay-check.service (deploy/relay/uptime.md, option B).
+
+[Unit]
+Description=Check wado's public relay every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+RandomizedDelaySec=20s
+
+[Install]
+WantedBy=timers.target

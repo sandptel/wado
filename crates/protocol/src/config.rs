@@ -47,6 +47,10 @@ pub struct ConfigState {
     /// filled; `None` when the file has no block for it, and the device keeps its own copy.
     #[serde(default)]
     pub console: Option<ConsolePrefs>,
+    /// This device's text and interface size (`device "<key>" { size { … } }`), every field
+    /// filled; `None` when the file has no block for it, and the device keeps its own copy.
+    #[serde(default)]
+    pub size: Option<SizePrefs>,
     /// What this device may do here, so a page can say what is missing — and the exact command
     /// that allows it — instead of offering a control the daemon will refuse. `None`: a daemon
     /// from before this was sent; the client then offers everything and lets the daemon say no.
@@ -104,6 +108,18 @@ pub struct ConsolePrefs {
     pub open: String,
     /// `auto`, `pad`, `keys`, `quick` or `gamepad`.
     pub face: String,
+}
+
+/// How big one device draws the client, as `wado_config::schema::DeviceSize` types it. The
+/// device changes a field with `ConfigSet` on `device.<its key>.size.<field>`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SizePrefs {
+    /// Text size in percent, 85–150 in steps of 5.
+    pub text: u32,
+    /// Text follows the device's own font size instead of `text`.
+    pub follow: bool,
+    /// `compact`, `cozy`, `comfortable` or `large`.
+    pub interface: String,
 }
 
 fn yes() -> bool {

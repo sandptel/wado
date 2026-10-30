@@ -69,7 +69,8 @@
   // On the relay's limited lane (the fallback when there is no direct path) only listings and
   // files this small come through; bigger previews wait for Direct, and the viewer says so.
   V.LANE_MAX = 1 << 20;
-  V.lane = () => F.lane || "direct";
+  // `W.files.lane` is true while the files channel rides that lane (js/files_link.js).
+  V.lane = () => (F.lane ? "fallback" : "direct");
 
   const DEFS = {};
   V.add = (kind, def) => { DEFS[kind] = def; };

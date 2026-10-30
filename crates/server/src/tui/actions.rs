@@ -20,6 +20,12 @@ pub fn unpair(key: &str) -> Outcome {
         .map(|name| format!("unpaired {name}"))
 }
 
+/// Shut a device's passkey unlock now, on every running daemon: it asks for its passkey again.
+pub fn passkey_lock(key: &str, name: &str) -> Outcome {
+    crate::cli::passkey::lock_everywhere(Some(key));
+    Ok(format!("locked {name} — it asks for its passkey again"))
+}
+
 /// A fresh pairing code carrying `grants`, and its link.
 pub fn pair(grants: &Grants) -> Result<crate::cli::qr::Pairing, String> {
     crate::cli::qr::pair_link(None, None, grants)

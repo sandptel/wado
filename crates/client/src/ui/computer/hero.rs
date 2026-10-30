@@ -68,6 +68,16 @@ pub fn Hero(ui: Ui, pk: String, r: Reach) -> Element {
             "answer on the computer".into(),
             String::new(),
         )
+    } else if r.busy && r.running_there == Some(false) {
+        // Kept out by this user's other device with nothing running: the relay and the computer
+        // are both there — never "None · nothing to reach".
+        (
+            "ok",
+            "Free",
+            None,
+            "your other device has it, idle".into(),
+            link.detail(),
+        )
     } else if !r.online && r.tone == "bad" {
         (
             "bad",
@@ -150,8 +160,16 @@ pub fn Hero(ui: Ui, pk: String, r: Reach) -> Element {
     };
 
     // ── Sessions ──
+    // Kept out by another device's seat, this page could not ask: say what the relay said, or
+    // that it is not known — never "0" beside "every session is in use".
     let (sval, ssub) = if !r.online {
         ("—".to_string(), String::new())
+    } else if r.busy && session_list.is_empty() {
+        match r.running_there {
+            Some(false) => ("0".to_string(), "none running".to_string()),
+            Some(true) => ("—".to_string(), "running on another device".to_string()),
+            None => ("—".to_string(), "not known while in use".to_string()),
+        }
     } else if session_list.is_empty() {
         ("0".to_string(), "none running".to_string())
     } else {
@@ -171,7 +189,7 @@ pub fn Hero(ui: Ui, pk: String, r: Reach) -> Element {
             div { class: "hrow",
                 span { class: "disc", style: "--hue:var(--base{hue})", Icon { name: icon } }
                 div { class: "htext",
-                    h1 { class: "hname", "{name}" }
+                    h1 { class: "hname", title: "{name}", "{name}" }
                     div { class: "hsub", "{os}" }
                 }
             }

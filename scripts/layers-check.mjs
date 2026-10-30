@@ -156,7 +156,7 @@ const INSPECT = String.raw`((top) => {
   const order = (a, b) => a.z - b.z || (a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
   const painted = present.filter((l) => l.p > 0.02).sort(order).reverse();
   const T = present.find((l) => l.name === top);
-  const res = { top, ok: !!T && T.p > 0.5, live: !!T && !T.inert, painted: painted.map((l) => l.name + (l.full ? "" : "·part") + "@" + l.p.toFixed(2)), bleed: [], visiblePages: [], opaque: [], scrim: [], hits: [], inert: [] };
+  const res = { top, ok: !!T && T.p > 0.5, live: !!T && !T.inert, painted: painted.map((l) => l.name + (l.full ? "" : "·part") + "@" + l.p.toFixed(2)), bleed: [], overlap: [], visiblePages: [], opaque: [], scrim: [], hits: [], inert: [] };
   if (!T) return res;
   // Sample on a grid and walk down the layers at each point.
   const seen = new Set(), reached = new Set();
@@ -191,6 +191,41 @@ const INSPECT = String.raw`((top) => {
     }
   }
   res.bleed = [...bleeds].map(([k, n]) => k + " ×" + n);
+  // Content, not just pixels: every piece of text of every page, at its own centre — is it seen
+  // (no opaque layer above it there)? Two pages with text seen at once is two pages drawn over
+  // each other, whatever their opacity says; named by the words that collide.
+  const textOf = (l) => [...l.panel.querySelectorAll("*")].filter((e) => {
+    if (![...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())) return false;
+    return paint(e) > 0.05;
+  });
+  const seenAt = (l, x, y) => {
+    for (const o of painted) {
+      if (o === l) return true;
+      if (o.p > 0.99 && o.ground.some((r) => inside(r, x, y))) return false;
+    }
+    return true;
+  };
+  const words = new Map();
+  for (const l of painted) {
+    if (l.base || !(l.page || l.full)) continue;
+    const seen = [];
+    for (const e of textOf(l)) {
+      const r = e.getBoundingClientRect();
+      const x = r.left + r.width / 2, y = r.top + r.height / 2;
+      if (x < 0 || y < 0 || x >= W || y >= H) continue;
+      if (seenAt(l, x, y)) seen.push({ e, r, t: e.textContent.trim().slice(0, 24) });
+    }
+    if (seen.length) words.set(l, seen);
+  }
+  res.overlap = [];
+  if (words.size > 1) {
+    const [a, b] = [...words.entries()];
+    for (const p of a[1]) {
+      const q = b[1].find((q) => p.r.left < q.r.right && q.r.left < p.r.right && p.r.top < q.r.bottom && q.r.top < p.r.bottom);
+      if (q) res.overlap.push(a[0].name + ' "' + p.t + '" over ' + b[0].name + ' "' + q.t + '"');
+    }
+    res.overlap.unshift(a[0].name + ": " + a[1].length + " texts seen, " + b[0].name + ": " + b[1].length + " texts seen");
+  }
   res.visiblePages = [...seen].filter((n) => present.find((l) => l.name === n && (l.page || l.full)));
   // Opaque: the top layer and every sheet painted.
   for (const l of painted) {
@@ -221,9 +256,9 @@ async function check(tag, top, opts = {}) {
   const where = `${tag} [painted: ${r.painted.join(", ")}]`;
   ok(r.ok, `${tag}: ${top} is on top`, where);
   // The layer on top takes taps and focus (Dioxus once wrote `inert="false"`, which is inert).
-  if (!r.live && opts.knownInert) console.log(`KNOWN ${tag}: ${top} is inert while up — ${opts.knownInert}`);
-  else ok(r.live, `${tag}: ${top} is live, not inert`);
+  ok(r.live, `${tag}: ${top} is live, not inert`);
   ok(!r.bleed.length, `${tag}: nothing shows through`, r.bleed.join("; "));
+  ok(!r.overlap.length, `${tag}: no two pages' words are seen at once`, r.overlap.slice(0, 5).join("; "));
   const pages = r.visiblePages.filter((n) => n !== "stage" || opts.stage);
   ok(pages.length === 1, `${tag}: exactly one full page visible (${pages.join(", ") || "none"})`, where);
   ok(!r.opaque.length, `${tag}: every page and sheet is opaque`, r.opaque.join(", "));
@@ -311,19 +346,21 @@ for (const [w, h] of [[390, 844], [1440, 900], [2000, 1270]]) {
   await check(`${sz} viewer`, "viewer");
   // Its details: a sheet on a scrim on a phone (the picture and its controls inert under it), a
   // panel beside the picture on a wide screen (never over it).
-  await click(".fview .fvdbtn");
-  ok(await until("!!document.querySelector('.fvdetails.up')", 3000), `${sz}: the details open`);
-  if (w < 900) {
-    await check(`${sz} viewer details`, "viewer-details");
-    ok(await js(`[...document.querySelectorAll(".fview .fvstage, .fview .fvfoot")].every((n) => n.inert)`), `${sz}: under the details sheet, the picture and its controls are inert`);
-  } else {
-    await check(`${sz} viewer details`, "viewer");
-    const r = await js(`(() => { const a = document.querySelector(".fvdetails.up").getBoundingClientRect(), b = document.querySelector(".fview .fvstage").getBoundingClientRect();
-      return { overlap: a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1, w: a.width }; })()`);
-    ok(!r.overlap && r.w > 300, `${sz}: the details are a panel beside the picture, not over it`, JSON.stringify(r));
+  if (!(await click(".fview .fvdbtn"))) ok(false, `${sz}: the viewer has a Details button`);
+  else {
+    ok(await until("!!document.querySelector('.fvdetails.up')", 3000), `${sz}: the details open`);
+    if (w < 900) {
+      await check(`${sz} viewer details`, "viewer-details");
+      ok(await js(`[...document.querySelectorAll(".fview .fvstage, .fview .fvfoot")].every((n) => n.inert)`), `${sz}: under the details sheet, the picture and its controls are inert`);
+    } else {
+      await check(`${sz} viewer details`, "viewer");
+      const r = await js(`(() => { const a = document.querySelector(".fvdetails.up").getBoundingClientRect(), b = document.querySelector(".fview .fvstage").getBoundingClientRect();
+        return { overlap: a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1, w: a.width }; })()`);
+      ok(!r.overlap && r.w > 300, `${sz}: the details are a panel beside the picture, not over it`, JSON.stringify(r));
+    }
+    await js(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); true`);
+    ok(await until("!document.querySelector('.fvdetails.up') && !!document.querySelector('.fview')", 2000), `${sz}: Escape closes the details first, the viewer stays`);
   }
-  await js(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); true`);
-  ok(await until("!document.querySelector('.fvdetails.up') && !!document.querySelector('.fview')", 2000), `${sz}: Escape closes the details first, the viewer stays`);
   await js(`(() => { const F = window.__wado.files; F.viewClose(); F.closeUi(); return true; })()`);
   ok(await until("!document.querySelector('.fview')", 2000), `${sz}: the viewer is gone from the page once closed`);
   await check(`${sz} computer after files`, "computer", { shot: false });
@@ -343,8 +380,7 @@ for (const [w, h] of [[390, 844], [1440, 900], [2000, 1270]]) {
 
   // The passkey sheet over home.
   await js(`window.__wado.fixture({ type: "passkey", state: { registered: true, unlocked: false, origin: "" }, busy: false, need: "pad", note: "", supported: true, platform: true }); true`);
-  if (await until("!!document.querySelector('.pksheet.up')", 2000)) await check(`${sz} passkey`, "passkey",
-    { knownInert: "ui/passkey/mod.rs writes `inert: !up`, which Dioxus renders as inert=\"false\"; use `inert: crate::ui::widgets::inert(!up)` (left to the passkey work)" });
+  if (await until("!!document.querySelector('.pksheet.up')", 2000)) await check(`${sz} passkey`, "passkey");
   else ok(false, `${sz}: the passkey sheet opens`);
   await js(`window.__wado.passkeyCancel && window.__wado.passkeyCancel(); true`);
 

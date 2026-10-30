@@ -48,6 +48,9 @@ pub fn registered() -> Up {
         .unwrap_or_else(|e| e.into_inner())
         .take()
         .map(|t| t.elapsed());
+    // The devices were told the *relay* was gone (`crate::relay_watch`): the computer never was,
+    // and "relay is back" is that module's to say.
+    let away = away.filter(|_| !crate::relay_watch::state::told());
     if let Some(words) = verdict(first, away) {
         // Once per machine boot for the first; once per minute for a return.
         let tag = if first {

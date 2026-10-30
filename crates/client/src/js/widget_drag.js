@@ -23,7 +23,10 @@
     if (from < 0) return;
     e.preventDefault();
     const gap = parseFloat(getComputedStyle(list).rowGap) || 8;
-    d = { el, items, rects, from, to: from, h: rects[from].height + gap, y0: e.clientY, pid: e.pointerId };
+    // Rects and the finger are on the glass; a translate is in the page's own px, which the
+    // interface size zooms (size.css).
+    const z = el.currentCSSZoom || 1;
+    d = { el, items, rects, from, to: from, h: rects[from].height / z + gap, y0: e.clientY, pid: e.pointerId, z };
     try { grip.setPointerCapture(e.pointerId); } catch (_) {}
     el.classList.add("lifted");
     for (const x of items) if (x !== el) x.classList.add("shift");
@@ -37,7 +40,7 @@
     if (!d || e.pointerId !== d.pid) return;
     const { el, items, rects, from, h } = d;
     const dy = e.clientY - d.y0;
-    el.style.translate = `0 ${dy}px`;
+    el.style.translate = `0 ${dy / d.z}px`;
     const mid = rects[from].top + rects[from].height / 2 + dy;
     let to = from;
     rects.forEach((r, i) => {
@@ -56,14 +59,14 @@
 
   function end(e) {
     if (!d) return;
-    const { el, items, rects, from, to } = d;
+    const { el, items, rects, from, to, z } = d;
     e.target.removeEventListener("pointermove", move);
     d = null;
     // The slot it lands in, measured from where the widget now at `to` started.
     const target = to === from ? 0 : to > from ? rects[to].bottom - rects[from].bottom : rects[to].top - rects[from].top;
     el.classList.remove("lifted");
     el.classList.add("settle");
-    el.style.translate = target ? `0 ${target}px` : "";
+    el.style.translate = target ? `0 ${target / z}px` : "";
     const done = () => {
       if (to === from) {
         for (const x of items) { x.classList.remove("shift", "settle"); x.style.translate = ""; }

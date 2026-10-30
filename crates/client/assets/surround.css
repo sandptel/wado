@@ -53,11 +53,11 @@
 .cname { left: calc(var(--c-link-x) + var(--c-linkw, 0px) + 12px); top: var(--c-band-y); height: var(--c-band-h);
   max-width: calc(var(--c-band-w) - var(--c-linkw, 0px) - 150px);
   display: inline-flex; align-items: center; gap: 8px; color: var(--bright);
-  font: 700 15px var(--display); letter-spacing: -.01em; white-space: nowrap; }
+  font: 700 .9375rem var(--display); letter-spacing: -.01em; white-space: nowrap; }
 .cname span { overflow: hidden; text-overflow: ellipsis; }
 .cname i { width: 8px; height: 8px; border-radius: 50%; background: var(--hue); flex: none; }
 .cname.enc { top: calc(var(--c-band-y) + (var(--c-band-h) - 28px) / 2); height: 28px; padding: 0 10px; border-radius: 999px;
-  font: 600 12px var(--body); letter-spacing: 0; color: var(--warn); background: color-mix(in oklab, var(--warn), transparent 85%); }
+  font: 600 .75rem var(--body); letter-spacing: 0; color: var(--warn); background: color-mix(in oklab, var(--warn), transparent 85%); }
 .cname.enc .ldot { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); animation: breathe 2.4s ease-in-out infinite; }
 :root[data-arr="console"] #wado-here { left: var(--c-people-x); right: var(--c-people-r); top: var(--c-people-y);
   box-shadow: none; max-width: min(46vw, 260px); }
@@ -97,9 +97,9 @@
 .rail .full .lbl { display: none; }
 :root[data-arr="console"] .rail .full { position: fixed; left: var(--c-full-x); right: var(--c-full-r); top: var(--c-full-y);
   width: var(--c-full-w); height: 44px; display: inline-flex; justify-content: center; gap: 8px; padding: 0 14px 0 12px;
-  background: color-mix(in oklab, var(--accent), transparent 82%); color: var(--accent); font: 600 13px var(--body); white-space: nowrap; }
+  background: color-mix(in oklab, var(--accent), transparent 82%); color: var(--accent); font: 600 .8125rem var(--body); white-space: nowrap; }
 :root[data-arr="console"] .rail .full .lbl { display: inline; }
-:root[data-arr="console"][data-form="land"] .rail .full { padding: 0 8px; gap: 6px; font-size: 12px; }
+:root[data-arr="console"][data-form="land"] .rail .full { padding: 0 8px; gap: 6px; font-size: .75rem; }
 
 /* ── the window strip (the bezel's chin) ───────────────────────────────────────────────── */
 .cstrip { left: var(--c-strip-x); top: var(--c-strip-y); width: var(--c-strip-w); height: var(--c-strip-h);
@@ -109,12 +109,12 @@
   border-radius: var(--r2); text-align: left; transition: background var(--dur) var(--ease), scale var(--dur-press) var(--ease); }
 .ctitle:hover { background: var(--s2); }
 .ctitle:active { scale: .98; }
-.ctitle.none { color: var(--dim); font-size: 13px; padding-left: 12px; }
+.ctitle.none { color: var(--dim); font-size: .8125rem; padding-left: 12px; }
 .cglyph { width: 28px; height: 28px; flex: none; display: grid; place-items: center; }
 .cglyph img { width: 26px; height: 26px; }
 .ctt { min-width: 0; display: grid; }
-.ctt b { color: var(--bright); font-weight: 600; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ctt small { color: var(--dim); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctt b { color: var(--bright); font-weight: 600; font-size: .8438rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctt small { color: var(--dim); font-size: .7188rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cwin { width: 44px; height: 44px; flex: none; border-radius: var(--r2); background: var(--s2); color: var(--bright);
   transition: background var(--dur) var(--ease), color var(--dur) var(--ease), scale var(--dur-press) var(--ease); }
 .cwin:active { scale: .96; }
@@ -152,10 +152,10 @@
 :root[data-cdeck="col"] .dpbtn + .dpbtn { border-left: 0; border-top: 1px solid var(--line); }
 .dpsurf { position: relative; display: grid; place-items: center; text-align: center; color: var(--dim);
   touch-action: none; user-select: none; -webkit-user-select: none; cursor: crosshair; }
-.dphint b { display: block; font-size: 12.5px; color: var(--text); font-weight: 600; }
-.dphint small { display: block; font-size: 11px; }
+.dphint b { display: block; font-size: .7812rem; color: var(--text); font-weight: 600; }
+.dphint small { display: block; font-size: .6875rem; }
 .dpbtns { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--line); }
-.dpbtn { font-size: 11px; color: var(--dim); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; touch-action: none; }
+.dpbtn { font-size: .6875rem; color: var(--dim); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; touch-action: none; }
 .dpbtn + .dpbtn { border-left: 1px solid var(--line); }
 .dpbtn.down { background: var(--s2); color: var(--bright); }
 /* The pointer the touchpad moves, drawn over the picture (the compositor draws none). */
@@ -180,15 +180,15 @@
 .dquick .tpact { flex: 1 1 0; min-width: 0; }
 :root[data-cdeck="col"] .dquick { flex-direction: column; }
 :root[data-cdeck="col"] .dquick .tpact { flex: none; }
-.dnote { font-size: 11.5px; color: var(--dim); line-height: 1.4; margin: 0; align-self: center; }
+.dnote { font-size: .7188rem; color: var(--dim); line-height: 1.4; margin: 0; align-self: center; }
 .npmini { display: none; }
 :root[data-cdeck="col"] .npmini { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 4px 8px; align-items: center;
   margin-top: 10px; padding: 8px; border-radius: var(--r2); background: var(--s2); }
 .npmini .cv { width: 36px; height: 36px; border-radius: 8px; object-fit: cover; background: var(--s3); display: grid; place-items: center; }
 .npmini .nt { min-width: 0; display: grid; }
 .npmini .nt b, .npmini .nt small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.npmini .nt b { font-size: 12px; color: var(--bright); }
-.npmini .nt small { font-size: 11px; color: var(--dim); }
+.npmini .nt b { font-size: .75rem; color: var(--bright); }
+.npmini .nt small { font-size: .6875rem; color: var(--dim); }
 .npmini .ctl { grid-column: 1 / -1; display: flex; justify-content: space-around; }
 .npmini .ctl button { width: 44px; height: 36px; border-radius: 999px; color: var(--bright); }
 

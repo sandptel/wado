@@ -140,6 +140,16 @@ class BridgeTest {
         assertNull(BridgeProtocol.parse("{}"))
     }
 
+    @Test fun the_page_is_told_the_phones_font_scale() {
+        val info = BridgeProtocol.infoScript("1.0", 34, "granted", 1.3f)
+        assertTrue(info.startsWith("window.wadoNativeInfo="))
+        val o = JSONObject(info.removePrefix("window.wadoNativeInfo=").removeSuffix(";"))
+        assertEquals(1.3, o.getDouble("fontScale"), 1e-6)
+        val (t, m) = BridgeProtocol.parse(BridgeProtocol.fontScale(0.85f))!!
+        assertEquals(BridgeProtocol.FONT_SCALE, t)
+        assertEquals(0.85, m.getDouble("scale"), 1e-6)
+    }
+
     @Test fun online_probe_reads_the_relay() {
         assertEquals(OnlineProbe.Seen.ONLINE, OnlineProbe.parse("""{"daemons":1}"""))
         assertEquals(OnlineProbe.Seen.OFFLINE, OnlineProbe.parse("""{"daemons":0}"""))

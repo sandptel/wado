@@ -15,10 +15,12 @@ pub mod control;
 pub mod envelope;
 pub mod files;
 pub mod host;
+pub mod lane;
 pub mod link;
 pub mod menu;
 pub mod multi;
 pub mod pad;
+pub mod pad_bin;
 pub mod passkey;
 pub mod push;
 pub mod relay;
@@ -33,7 +35,9 @@ use serde::{Deserialize, Serialize};
 /// two sides cannot disagree on a path.
 pub use apps::AppEntry;
 pub use clip::{ClipEntry, ClipKind};
-pub use config::{ConfigState, ConsolePrefs, DeviceGrants, HostLimits, PinnedInput, TrackpadPrefs};
+pub use config::{
+    ConfigState, ConsolePrefs, DeviceGrants, HostLimits, PinnedInput, SizePrefs, TrackpadPrefs,
+};
 pub use control::{SessionControl, WindowAction, WindowInfo, WindowList};
 pub use host::{HostAction, HostState};
 pub use menu::{MenuItem, MenuSheet};

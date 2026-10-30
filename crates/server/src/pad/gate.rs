@@ -10,7 +10,10 @@ pub fn refused(gate: &Gate, who: &Who, approved: bool) -> Option<String> {
         return Some("this device has not been approved yet".into());
     }
     if !wado_config::live::current().trackpad.enabled {
-        return Some("the trackpad is turned off on this computer (trackpad { enabled })".into());
+        return Some(
+            "the trackpad is turned off on this computer — on the computer: wado msg set trackpad.enabled true"
+                .into(),
+        );
     }
     if !gate.grants(&who.key).input {
         return Some(format!(
@@ -126,10 +129,8 @@ mod tests {
             step_up(&w, true).as_deref(),
             Some(crate::passkey::NO_PASSKEY)
         );
-        crate::passkey::unlock::open(&key);
-        assert_eq!(step_up(&w, true), None);
-        crate::passkey::unlock::lock(&key);
-        assert!(step_up(&w, false).is_some(), "locked again");
+        assert!(step_up(&w, false).is_some(), "a look is refused the same");
+        // The unlocked path is `crate::passkey`'s own tests, against a passkey store of their own.
     }
 
     #[test]

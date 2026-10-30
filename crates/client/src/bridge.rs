@@ -44,6 +44,9 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/latency.js"),
     "\n",
+    // Before `relay.js`, whose negotiation waits on it, and the pad's and the files' links.
+    include_str!("js/ice_gather.js"),
+    "\n",
     include_str!("js/webrtc.js"),
     "\n",
     // Before `relay.js`: that file calls `W.relayOn(...)` at load to register its handlers, and
@@ -204,6 +207,9 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/viewer/shell.js"),
     "\n",
+    // After `pty.js` (it chains the `pty_output` handler) and the files (it reads `W.files`).
+    include_str!("js/lane_hint.js"),
+    "\n",
     // The trackpad. After `relay_link.js` (it registers relay handlers and chains `__up`) and
     // `wakelock.js`; `pad_link` first, as the others call the `W.pad` it creates.
     include_str!("js/pad_link.js"),
@@ -237,6 +243,8 @@ pub const JS: &str = concat!(
     include_str!("js/pad_rail.js"),
     "\n",
     include_str!("js/pad_settings.js"),
+    "\n",
+    include_str!("js/pad_why.js"),
     "\n",
     include_str!("js/pad_ui.js"),
     "\n",
@@ -278,6 +286,9 @@ pub const JS: &str = concat!(
     include_str!("js/stage_fit.js"),
     "\n",
     include_str!("js/console_prefs.js"),
+    "\n",
+    // This device's text and interface size, applied before Rust renders anything.
+    include_str!("js/ui_size.js"),
     "\n",
     include_str!("js/stage_morph.js"),
     "\n",
@@ -324,6 +335,8 @@ pub const JS: &str = concat!(
     include_str!("js/native_pad.js"),
     "\n",
     include_str!("js/native_passkey.js"),
+    "\n",
+    include_str!("js/native_size.js"),
     "\n",
     include_str!("js/lifecycle.js"),
 );
@@ -445,6 +458,23 @@ pub fn run(ui: Ui) {
                 "link" => {
                     if let Ok(l) = serde_json::from_value(msg.clone()) {
                         live.link.set(l);
+                    }
+                }
+                // Kept out by another device's seat — and whether anything runs there.
+                "seatBusy" => {
+                    let clear = msg.get("clear").and_then(|v| v.as_bool()).unwrap_or(false);
+                    live.seat_busy
+                        .set((!clear).then(|| {
+                            (string("holder"), msg.get("idle").and_then(|v| v.as_bool()))
+                        }));
+                }
+                // Where the relay's limited lane is felt (`js/lane_hint.js`, `ui::lane_hint`).
+                "laneHint" => {
+                    let spot = string("spot");
+                    let mut hints = live.lane_hints.write();
+                    hints.retain(|(s, _)| *s != spot);
+                    if msg.get("on").and_then(|v| v.as_bool()).unwrap_or(false) {
+                        hints.push((spot, string("detail")));
                     }
                 }
                 "screen" => {
@@ -835,6 +865,7 @@ pub fn run(ui: Ui) {
                 "caps" => {
                     live.device_name.set(string("device"));
                 }
+                "sizePrefs" => crate::size::on_event(&msg),
                 "stageView" | "arrangement" | "consolePrefs" => {
                     crate::ui::surround::on_event(ui, kind, &msg)
                 }

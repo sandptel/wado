@@ -55,9 +55,12 @@
     t();
   });
   // A rect `s` as a transform on an element whose rest rect is `d`. `uni`: scale evenly (text).
+  // Rects are on the glass; a translate is in the page's own px, which the interface size zooms
+  // (size.css), so it is divided back.
   const tf = (s, d, uni) => {
     const sx = s.width / d.width, sy = uni ? sx : s.height / d.height;
-    return `translate(${s.left - d.left}px, ${s.top - d.top}px) scale(${sx}, ${sy})`;
+    const z = document.getElementById("computer")?.currentCSSZoom || 1;
+    return `translate(${(s.left - d.left) / z}px, ${(s.top - d.top) / z}px) scale(${sx}, ${sy})`;
   };
   const onScreen = (r) => r && r.width > 0 && r.bottom > 0 && r.top < innerHeight;
   const cardFor = (key) => [...document.querySelectorAll("#landing .ccard[data-key]")].find((c) => c.dataset.key === key) || null;

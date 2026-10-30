@@ -1,0 +1,27 @@
+/* The lane's hint card (ui/lane_hint.rs): where the relay's 64 KB/s cap is felt. Bottom-centre,
+ * clear of the link badge (top-left) and the toasts (top-centre); above the stage, the landing
+ * and the control centre, below toasts. Colour only from base16 tokens, as link.css. */
+
+.lanehint {
+  position: fixed; z-index: 66;
+  left: 50%; translate: -50% 0;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  width: min(380px, calc(100vw - 24px)); padding: 12px 14px;
+  border-radius: var(--r2); background: var(--s2);
+  border: 1px solid color-mix(in oklab, var(--warn), transparent 55%);
+  color: var(--text); font: .8125rem/1.45 var(--body);
+  display: grid; gap: 8px;
+  animation: lanehint-in .22s ease-out;
+}
+.lanehint p { margin: 0; }
+.lanehint-head { display: flex; align-items: center; gap: 8px; }
+.lanehint-head b { color: var(--bright); flex: 1; font-weight: 600; }
+.lanehint-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); flex: none; }
+.lanehint-x {
+  width: 32px; height: 32px; margin: -6px -8px -6px 0; border-radius: 50%;
+  background: transparent; border: 0; color: var(--dim); font: 1.125rem/1 var(--body);
+}
+.lanehint .btn { justify-self: start; min-height: 40px; }
+
+@keyframes lanehint-in { from { opacity: 0; translate: -50% 8px; } }
+@media (prefers-reduced-motion: reduce) { .lanehint { animation: none; } }

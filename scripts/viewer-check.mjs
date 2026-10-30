@@ -182,7 +182,7 @@ for (const theme of ["default-dark", "catppuccin-latte"]) {
       ok(await until(`document.querySelector(".fvtitle b").textContent === ${JSON.stringify(n0)}`, 3000), `${tag}: the › arrow goes to the next`);
     }
     // The relay's limited lane: a big preview waits, a small one comes, a listing comes.
-    await js(`window.__wado.files.fakeLane("fallback"); window.__wado.files.lane = "fallback"; window.__wado.files.viewerForget(); true`);
+    await js(`window.__wado.files.fakeLane("fallback"); window.__wado.files.lane = true; window.__wado.files.viewerForget(); true`);
     const waits = `/waits for a direct connection/.test(document.querySelector(".fview .fvcardtitle")?.textContent || "")`;
     await view("sunset.webp");
     ok(await until(waits, 3000), `${tag}: limited lane — a picture over 1 MB waits for Direct, and says so`);
@@ -193,7 +193,7 @@ for (const theme of ["default-dark", "catppuccin-latte"]) {
     ok(await until(`document.querySelectorAll(".fview .fvalist li").length === 5`, 3000), `${tag}: limited lane — an archive's listing still comes`);
     await view("package.json");
     ok(await until(`(document.querySelector(".fview .fvtext")?.textContent || "").includes('"scripts"')`, 4000), `${tag}: limited lane — a small file still opens`);
-    await js(`window.__wado.files.lane = "direct"; true`);
+    await js(`window.__wado.files.lane = false; true`);
     await js(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); true`);
     ok(await until(`!document.querySelector(".fview") && !document.getElementById("wado-files").inert`, 2000), `${tag}: Escape closes the viewer; Files is live again`);
   }

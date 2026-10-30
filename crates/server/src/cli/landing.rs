@@ -37,8 +37,8 @@ pub const COMMANDS: &[(&str, &[(&str, &str)])] = &[
                 "files-ro files-rw shells settings host",
             ),
             (
-                "passkey [remove <device>]",
-                "who has a passkey; remove one a device lost",
+                "passkey [lock|remove <device>]",
+                "who has a passkey; lock one now; remove one a device lost",
             ),
         ],
     ),
@@ -61,6 +61,10 @@ pub const COMMANDS: &[(&str, &[(&str, &str)])] = &[
             (
                 "msg get|set|reload [--instance N]",
                 "talk to a running daemon",
+            ),
+            (
+                "relay status [--json]",
+                "is the relay up, and does each daemon have it",
             ),
             (
                 "validate [file]",
@@ -125,10 +129,20 @@ fn running(s: &Status) {
             bold(id)
         );
     }
-    let relay = if s.relay.is_some() {
-        format!("{} relay {}", dot(true), s.relay_addr)
-    } else {
-        format!("{} relay {} {}", dot(false), s.relay_addr, dim("(down)"))
+    // What the daemons say outranks the probe from here: a daemon without its relay is what a
+    // phone feels.
+    let relay = match (s.relay.is_some(), s.relay_lost_ms()) {
+        (_, Some(ms)) => format!(
+            "{} relay {} {}",
+            dot(false),
+            s.relay_addr,
+            dim(&format!(
+                "(lost {} ago — not your computer; `wado relay status`)",
+                crate::relay_watch::record::span(ms)
+            ))
+        ),
+        (true, None) => format!("{} relay {}", dot(true), s.relay_addr),
+        (false, None) => format!("{} relay {} {}", dot(false), s.relay_addr, dim("(down)")),
     };
     let tunnel = s
         .tunnel

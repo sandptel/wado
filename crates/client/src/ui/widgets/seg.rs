@@ -24,6 +24,8 @@ pub fn Seg(
                     class: if v == value { "on" } else { "" },
                     role: "radio",
                     "aria-checked": "{v == value}",
+                    // A long label is cut to fit at a large text size; the whole of it is here.
+                    title: "{label}",
                     disabled,
                     onclick: move |_| onpick.call(v.clone()),
                     "{label}"

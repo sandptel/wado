@@ -292,6 +292,7 @@ function openLink() {
 
     if (msg.type === "join_accepted") {
       W._relayTakeover = false;
+      if (W._relaySeatBusy) { W._relaySeatBusy = null; emit({ type: "seatBusy", holder: "", idle: null, clear: true }); }
       W._relayUpAt = Date.now();
       if (W._relayStage !== undefined) W._relayStage = 2;
       if (W.relayPhase) W.relayPhase(2, "");
@@ -377,8 +378,15 @@ function openLink() {
         // bare failure cannot tell it from a broken connection — which is the whole reason
         // this branch says how many sessions exist and that another daemon raises the limit.
         W.pool = { instance: "", size: 0, busy: 0, assignment: "refused: pool full" };
-        if (W.relayPhase) W.relayPhase(1, "every wado session on this Remote ID is in use");
-        if (W.rlog) W.rlog("join refused — " + (msg.reason || "the pool is full"));
+        // Who holds it, and whether anything runs there (`idle`, a relay with `idle_seat`; absent
+        // from an older one: not known). An open page with nothing running is not "every session
+        // is in use" — it is the user's other device, and saying so is not an error.
+        const who = msg.holder || ((/in use by ([^)]*)\)/.exec(msg.reason || "") || [])[1]) || "";
+        const idle = msg.idle === true ? true : msg.idle === false ? false : null;
+        W._relaySeatBusy = { holder: who, idle };
+        emit({ type: "seatBusy", holder: who, idle });
+        if (W.relayPhase) W.relayPhase(1, idle === true ? "" : "every wado session on this Remote ID is in use");
+        if (W.rlog) W.rlog("join refused — " + (idle === true ? "held by " + (who || "another device") + ", nothing running there" : (msg.reason || "the pool is full")));
         return;
       }
       if (W.relayPhase) W.relayPhase(1, msg.reason || "no daemon answered for this Remote ID");

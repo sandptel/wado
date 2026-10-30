@@ -67,7 +67,11 @@
       el.why.hidden = !open;
       el.pill.setAttribute("aria-expanded", String(open));
     };
-    el.err.onclick = () => { el.err.hidden = true; };
+    // A plain note goes on a tap; a card with something to do stays until it is done.
+    el.err.onclick = (e) => {
+      if (e.target.closest("button, code") || el.err.dataset.cause !== "other") return;
+      el.err.hidden = true;
+    };
     el.kb.onclick = () => keyboard(el.keys.hidden);
     el.row.onclick = (e) => {
       const b = e.target.closest("button");
@@ -105,7 +109,7 @@
     W.pad.onMsg((m) => {
       if (m.k === "pong") paintPill();
       // The action list's refusal is shown where the actions would be (js/pad_actions.js).
-      if (m.k === "err" && !W.padActions.owns(m)) { alert(m.message); paintPill(); }
+      if (m.k === "err" && !W.padActions.owns(m)) { (m.fatal ? refuse : alert)(m.message); paintPill(); }
     });
 
     // First-touch hint fade. The rings, connector, chip and ambient highlight are js/pad_feel.js,
@@ -141,9 +145,26 @@
     }
   }
 
+  // Something that did not work (an action, a word typed): a note, gone on a tap.
   function alert(text) {
+    el.err.replaceChildren();
     el.err.textContent = text;
+    el.err.dataset.cause = "other";
+    el.err.dataset.msg = "";
     el.err.hidden = false;
+  }
+
+  // The computer closed the pad: a card that says what to do (js/pad_why.js), never a bare pad.
+  function refuse(text) {
+    W.padWhyShow(el.err, text, retry);
+  }
+
+  // After the fix (an unlock, a grant, a setting): the same pad, linked again.
+  function retry() {
+    if (!root || root.hidden) return;
+    el.err.hidden = true;
+    W.pad.start();
+    paintPill();
   }
 
   function paintPill() {

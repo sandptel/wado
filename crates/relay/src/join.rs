@@ -23,8 +23,8 @@ use wado_protocol::relay_wire::{
 use crate::registry::Instance;
 use crate::room::{Claim, Want};
 use crate::signaling::{
-    caps, head, is_pong, occupied_reason, peer_ip, send_deny, send_wire, AbortOnDrop, WsTx,
-    KEEPALIVE, SILENCE,
+    caps, head, is_pong, is_relay_ping, occupied_reason, peer_ip, send_busy, send_deny, send_wire,
+    AbortOnDrop, WsTx, KEEPALIVE, SILENCE,
 };
 use crate::AppState;
 
@@ -185,8 +185,23 @@ async fn join_loop(socket: WebSocket, remote_id: String, j: Joiner, peer: String
                     break Pick::Takeover(target.clone(), pool.len());
                 }
                 Err(holders) => {
-                    warn!(client = %label, remote_id = %rid, pool_size = pool.len(), "join: every daemon in the pool is in use");
-                    send_deny(&mut ws_tx, &occupied_reason(pool.len(), &holders), true, 0).await;
+                    // Held, but is anything running? An open page holds a seat with no session;
+                    // the device kept out is told so (cap `idle_seat`), not "every session is in
+                    // use". Each daemon says itself whether it runs one (`occupancy`).
+                    let idle = pool.iter().all(|i| !i.session);
+                    let holder = holders
+                        .iter()
+                        .find(|h| !h.is_empty())
+                        .cloned()
+                        .unwrap_or_default();
+                    warn!(client = %label, remote_id = %rid, pool_size = pool.len(), idle, "join: every daemon in the pool is in use");
+                    send_busy(
+                        &mut ws_tx,
+                        &occupied_reason(pool.len(), &holders),
+                        idle,
+                        &holder,
+                    )
+                    .await;
                     return;
                 }
             }
@@ -413,8 +428,15 @@ async fn join_loop(socket: WebSocket, remote_id: String, j: Joiner, peer: String
         }
     }));
     let rid_fwd = rid.clone();
+    // The lane's cap, each way (`crate::lane`). The relay's own pings are not the seat's traffic.
+    // One budget per seat, kept across its reconnects (`crate::lane::Lanes`).
+    let down = state.lanes.seat(&instance_id, "← computer");
+    let up = state.lanes.seat(&instance_id, "→ computer");
     let mut fwd = AbortOnDrop(tokio::spawn(async move {
         while let Some(text) = client_inbox_rx.recv().await {
+            if !is_relay_ping(&text) {
+                down.admit(text.len()).await;
+            }
             if ws_tx.send(Message::Text(text)).await.is_err() {
                 debug!(remote_id = %rid_fwd, "client fwd task: ws write failed");
                 break;
@@ -460,6 +482,7 @@ async fn join_loop(socket: WebSocket, remote_id: String, j: Joiner, peer: String
                     continue;
                 }
                 debug!(remote_id = %rid, client = %peer, "client msg: {}", head(&text));
+                up.admit(text.len()).await;
                 if server_inbox_tx.send(text.to_string()).await.is_err() {
                     info!(remote_id = %rid, "server inbox closed — ending room");
                     break;

@@ -29,6 +29,7 @@ pub mod gamepad;
 pub mod host;
 pub mod input;
 pub mod network;
+pub mod size;
 pub mod sound;
 pub mod switcher;
 pub mod tiles;

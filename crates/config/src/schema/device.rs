@@ -9,7 +9,8 @@
 //!
 //! `trackpad` is that upgrade for the trackpad screen: typed, because it is meant to be read and
 //! edited in the file, `wado tui` and `wado devices` as well as from the phone. `console` is the
-//! same for how a session opens (console or full screen) and the deck's input face.
+//! same for how a session opens (console or full screen) and the deck's input face, and `size`
+//! for how big it draws the client (text size and interface size).
 
 use serde::{Deserialize, Serialize};
 
@@ -22,4 +23,6 @@ pub struct Device {
     pub trackpad: Option<super::DeviceTrackpad>,
     /// How a session opens on it, and the deck's face (the Pocket Console).
     pub console: Option<super::DeviceConsole>,
+    /// Its text size and interface size.
+    pub size: Option<super::DeviceSize>,
 }

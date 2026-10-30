@@ -38,7 +38,8 @@ pub fn render(ui: Ui) -> Element {
             "aria-modal": "true",
             "aria-labelledby": "cpicktitle",
             "aria-hidden": "{!open}",
-            inert: crate::ui::widgets::inert(!open),
+            // Not `inert: bool`: Dioxus writes `inert="false"`, which is inert (see `ui::passkey`).
+            inert: (!open).then_some("true"),
             div { class: "grab", onclick: close }
             div { class: "pkhead",
                 h2 { id: "cpicktitle", "New Claude session" }

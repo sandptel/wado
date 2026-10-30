@@ -583,6 +583,8 @@ async fn run(
     }
 
     // ── Reconnect loop ──────────────────────────────────────────────────────
+    // The link's health, for `wado relay status`, the TUI and the relay-down push.
+    crate::relay_watch::state::start(&ctx.relay_url);
     let mut backoff = BACKOFF_INITIAL;
     let mut first_attempt = true;
     loop {
@@ -614,6 +616,7 @@ async fn run(
             }
             // Err = we never got as far as a successful registration.
             Err(e) => {
+                crate::relay_watch::state::failed(&e.to_string());
                 if first_attempt {
                     warn!("relay client: cannot reach relay ({e}) — retrying in {backoff:?}");
                 } else {
@@ -667,35 +670,59 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     let (ws_stream, _) = connect_async(&register_url)
         .await
         .map_err(|e| crate::WadoError::Other(format!("connect: {e}")))?;
-    let (mut ws_sink, mut ws_stream) = ws_stream.split();
+    let (ws_sink, mut ws_stream) = ws_stream.split();
 
     // All outbound relay WS messages go through this channel so multiple tasks
     // can write without fighting over the SplitSink.
     //
     // This writer is also the envelope's one sealing point (`crate::e2e::link`): a frame for the
     // device leaves sealed, in counter order, or is held until the handshake finishes.
+    //
+    // And it is the lane's pacer (`crate::lane`): signalling first and at once, everything bulk
+    // held under the relay's 64 KB/s cap — ordered *before* sealing, so the counters stay in order.
     ctx.link.lock().unwrap_or_else(|e| e.into_inner()).clear();
-    let (out_tx, mut out_rx) = mpsc::channel::<String>(128);
+    let (out_tx, out_rx) = mpsc::channel::<String>(128);
     let link = Arc::clone(&ctx.link);
-    let write_task = tokio::spawn(async move {
-        while let Some(text) = out_rx.recv().await {
+    let outbox = crate::lane::Outbox::default();
+    let lane = outbox.gauge();
+    // Files with no direct path ride this link too (`crate::files::lane`).
+    let files_lane = crate::files::lane::OnLane::default();
+    let ws_sink = Arc::new(tokio::sync::Mutex::new(ws_sink));
+    let gen_link = Arc::clone(&ctx.link);
+    let generation = move || {
+        gen_link
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .generation()
+    };
+    let write_task = tokio::spawn(crate::lane::pump::run(
+        out_rx,
+        outbox,
+        generation,
+        move |text| {
             let frames = link
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
                 .outbound(text);
-            for f in frames {
-                if ws_sink.send(WsMsg::Text(f)).await.is_err() {
-                    return;
+            let ws_sink = Arc::clone(&ws_sink);
+            async move {
+                let mut sink = ws_sink.lock().await;
+                for f in frames {
+                    if sink.send(WsMsg::Text(f)).await.is_err() {
+                        return false;
+                    }
                 }
+                true
             }
-        }
-    });
+        },
+    ));
 
     // ── 2. Register ──────────────────────────────────────────────────────────
     // What this relay can do, from its `registered`. An older relay neither waits for this
     // daemon's verdict on a join nor pings it, so neither may be assumed.
     let relay_gates: bool;
     let relay_pings: bool;
+    let relay_caps: Vec<String>;
     let display_name = std::env::var("HOSTNAME").ok();
     send_relay(
         &out_tx,
@@ -724,6 +751,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             }) => {
                 relay_gates = caps.iter().any(|c| c == "gate");
                 relay_pings = caps.iter().any(|c| c == "ping");
+                relay_caps = caps.clone();
                 // Tell the relay whether a session runs here, on every change, so a device
                 // without a daemon of its own is handed an idle one. Ends with the link: its
                 // sends fail once the write task's receiver is gone.
@@ -785,8 +813,10 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     }
 
     // Registered: "back online" is pushed if the computer was away (`crate::push::online`);
-    // dropping this when the link ends marks when it went.
+    // dropping this when the link ends marks when it went. Then the relay's own health
+    // (`crate::relay_watch`) — after, because "back online" defers to its "relay is back".
     let _online = crate::push::online::registered();
+    let _relay_up = crate::relay_watch::state::registered(&relay_caps);
 
     // ── 3. Log forwarding task (per connection) ──────────────────────────────
     let log_task = {
@@ -1025,9 +1055,14 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
         let mut rx = crate::shells::events();
         let out_tx_s = out_tx.clone();
         let refusal = shell_refusal(ctx, false);
+        let lane = lane.clone();
         tokio::spawn(async move {
             use crate::shells::Event;
             loop {
+                // A big dump waits for the lane (`crate::lane::gauge`) rather than queueing
+                // minutes of output behind a 64 KB/s link; what overflows meanwhile is the lag
+                // below, said in-band.
+                lane.room().await;
                 let ev = rx.recv().await;
                 if ev.is_ok() && refusal().is_some() {
                     continue;
@@ -1262,8 +1297,9 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 }
                 // A new viewer never inherits the last one's trackpad or what it held down.
                 ctx.pad.close();
-                // Nor its passkey unlock: a new link proves itself again.
-                crate::passkey::unlock::lock_all();
+                // Nor its passkey unlock: a new link proves itself again — unless the device chose a
+                // longer one, which is bound to its key, not to a link (`crate::passkey::stay`).
+                crate::passkey::unlock::lock_link();
                 // The audio sink appears for this device, named after it.
                 tokio::spawn(crate::host::viewer(Some(client_name.clone())));
                 ctx.media_sent.clear();
@@ -1403,7 +1439,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 // Files go with the device: no transfer outlives the link that authorised it.
                 close_files(&ctx.files_pc);
                 ctx.pad.close(); // and the trackpad: no key stays held after the device leaves
-                crate::passkey::unlock::lock_all();
+                crate::passkey::unlock::lock_link();
                 if let Some(pc) = dead {
                     tokio::spawn(async move {
                         if let Err(e) = pc.close().await {
@@ -1883,6 +1919,20 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 send_relay(&out_tx, &reply).await.ok();
             }
 
+            // No direct path for files: the same requests on the fallback lane (`files::lane`).
+            RelayMsg::FilesIn { text } => {
+                let (key, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                let asker = crate::files::lane::Asker {
+                    who: crate::files::channel::Who { key, name },
+                    gate: &ctx.gate,
+                    ok: ctx.viewer_ok.load(Ordering::SeqCst),
+                    out: &out_tx,
+                    gauge: &lane,
+                };
+                files_lane.request(&text, asker).await;
+            }
+            RelayMsg::FilesChunk { id, b } => files_lane.chunk(id, &b).await,
+
             RelayMsg::SessionLaunch { command } => {
                 // Answered honestly. This used to send `SessionLaunched` unconditionally, so a
                 // launch into a session that does not exist was reported as a success — the
@@ -2284,7 +2334,8 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             | RelayMsg::PasskeyUnlock { .. }
             | RelayMsg::PasskeyLock
             | RelayMsg::PasskeyKeepalive
-            | RelayMsg::PasskeyGet) => {
+            | RelayMsg::PasskeyGet
+            | RelayMsg::PasskeyStay { .. }) => {
                 let (key, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
                 let dev = crate::passkey::relay::Device {
                     key: &key,
@@ -2358,8 +2409,9 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     notify_task.abort();
     files_note_task.abort();
     close_files(&ctx.files_pc);
+    files_lane.close();
     ctx.pad.close(); // and the trackpad: no key stays held after the device leaves
-    crate::passkey::unlock::lock_all();
+    crate::passkey::unlock::lock_link();
     menu_task.abort();
     ctl_rooms.clear(&ctl);
     write_task.abort();
@@ -2422,8 +2474,17 @@ async fn handle_sdp_offer(
         pc: Arc::clone(&ctx.active_pc),
         generation: Arc::clone(&ctx.generation),
     };
-    let answer = crate::viewers::pc::answer(&ctx.hub, origin, &offer_json, &slot, peer).await?;
+    let (answer, trickle) = crate::viewers::pc::answer(
+        &ctx.hub,
+        origin,
+        &offer_json,
+        &slot,
+        peer,
+        Some(out_tx.clone()),
+    )
+    .await?;
     send_relay(&out_tx, &RelayMsg::SdpAnswer { sdp: answer }).await?;
+    trickle.answered();
     Ok(())
 }
 

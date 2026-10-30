@@ -119,7 +119,7 @@ export const FILES_FAKE = String.raw`(() => {
   F.fakeLane = (l) => { lane = l; };
   F.fakeEntries = () => entries().map((e) => ({ ...e, path: DL + "/" + e.name }));
   const thumb = (name) => canvasBytes(160, 160, /portrait|IMG/.test(name) ? portrait : landscape).then((b) => btoa(String.fromCharCode(...b)));
-  F.connect = () => { F.ready = true; F.lane = lane; F.info = { roots: [HOME], home: HOME, access: "rw", device: "Pixel 8", space: [{ root: HOME, free: 182e9, total: 512e9 }], trash: HOME + "/.local/share/Trash/files" }; return Promise.resolve(F.info); };
+  F.connect = () => { F.ready = true; F.lane = lane === "fallback"; F.info = { roots: [HOME], home: HOME, access: "rw", device: "Pixel 8", space: [{ root: HOME, free: 182e9, total: 512e9 }], trash: HOME + "/.local/share/Trash/files" }; return Promise.resolve(F.info); };
   F.open = () => true;
   F.forget = (id) => { gone.add(id); };
   const gone = new Set();

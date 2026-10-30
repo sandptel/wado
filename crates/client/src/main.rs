@@ -14,6 +14,7 @@ mod cfg;
 mod claude;
 mod debug;
 mod deeplink;
+mod lane;
 mod link;
 mod multi;
 mod native;
@@ -23,6 +24,7 @@ mod push;
 mod reach;
 mod res;
 mod route;
+mod size;
 mod state;
 mod stepup;
 mod theme;
@@ -154,11 +156,14 @@ fn App() -> Element {
         document::Stylesheet { href: asset!("/assets/files.css") }
         document::Stylesheet { href: asset!("/assets/viewer.css") }
         document::Stylesheet { href: asset!("/assets/link.css") }
+        document::Stylesheet { href: asset!("/assets/lane.css") }
         document::Stylesheet { href: asset!("/assets/pad.css") }
         document::Stylesheet { href: asset!("/assets/surround.css") }
         document::Stylesheet { href: asset!("/assets/app.css") }
         document::Stylesheet { href: asset!("/assets/passkey.css") }
         document::Stylesheet { href: asset!("/assets/claude.css") }
+        // Last: the interface size's zoom and the touch-target floor override the others.
+        document::Stylesheet { href: asset!("/assets/size.css") }
 
         // The stage is the whole screen, always. Everything else floats over it and never
         // takes space from the picture — the control centre included (Decision Log 2026-10-02).
@@ -177,6 +182,7 @@ fn App() -> Element {
             {ui::cc::render(ui)}
             {ui::reconnecting::render(ui)}
             {ui::link_badge::render(ui)}
+            {ui::lane_hint::render(ui)}
             {ui::scoped(ui, "claude-picker", ui::claude::picker::render)}
             {ui::scoped(ui, "passkey", ui::passkey::sheet)}
         }
