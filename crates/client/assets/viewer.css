@@ -53,6 +53,11 @@
 .fvnav:hover { background: var(--s2); }
 .fvnav.prev { justify-self: start; }
 .fvnav.next { justify-self: end; }
+/* Over text, a table or a document they would sit on the words: there they wait in the footer. */
+.fview:not([data-kind="image"]):not([data-kind="video"]) .fvnav { grid-area: foot; justify-self: center; margin: 0; width: 44px; height: 44px;
+  background: var(--s2); border: 0; box-shadow: none; }
+.fview:not([data-kind="image"]):not([data-kind="video"]) .fvnav.prev { translate: -26px 0; }
+.fview:not([data-kind="image"]):not([data-kind="video"]) .fvnav.next { translate: 26px 0; }
 @media (pointer: coarse) { .fvnav { display: none; } }
 
 /* ── foot ── */
@@ -223,3 +228,5 @@
   --plyr-audio-control-color-hover: var(--on-accent); --plyr-audio-control-background-hover: var(--accent);
   --plyr-audio-range-track-background: var(--s3); --plyr-audio-progress-buffered-background: var(--s3);
   border-radius: var(--r3); border: 1px solid var(--line); overflow: hidden; }
+/* Plyr's bar on a phone is a dark scrim for video; a song's sits on the ground, on a plate. */
+.fview .fplayer.audio .plyr__controls { background: var(--s1); color: var(--bright); padding-bottom: 8px; }

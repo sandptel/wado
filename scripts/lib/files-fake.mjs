@@ -103,11 +103,12 @@ export const FILES_FAKE = String.raw`(() => {
     "index.html": async () => enc.encode(HTML),
     "photos.zip": async () => ZIP,
     "backup.tar.gz": async () => BIN,
-    "Inter-Regular.ttf": async () => BIN,
+    // A real font when the check found one on this machine (window.__fakeFont, base64), else noise.
+    "Inter-Regular.ttf": async () => (window.__fakeFont ? Uint8Array.from(atob(window.__fakeFont), (c) => c.charCodeAt(0)) : BIN),
     "firmware.bin": async () => BIN,
     "server.log": async () => enc.encode(Array.from({ length: 9000 }, (_, i) => "2026-10-30 12:" + String(i % 60).padStart(2, "0") + " INFO request " + i + " served in " + (i % 17) + " ms").join("\n")),
   };
-  const SIZES = { "cristiano-ronaldo-3840x2160-14055.png": 171008, "holiday.mp4": 48234496, "backup.tar.gz": 734003200, "firmware.bin": 4096 };
+  const SIZES = { "cristiano-ronaldo-3840x2160-14055.png": 171008, "sunset.webp": 3565158, "holiday.mp4": 48234496, "backup.tar.gz": 734003200, "firmware.bin": 4096 };
   const made = new Map();
   const bytes = (name) => { if (!made.has(name)) made.set(name, SRC[name]()); return made.get(name); };
   const entries = () => Object.keys(SRC).map((name, i) => ({ name, dir: false, size: SIZES[name] || 2048, mtime: now - i * 3700, link: false }));
@@ -129,7 +130,7 @@ export const FILES_FAKE = String.raw`(() => {
       recent: F.fakeEntries().slice(0, 8).map(({ path, name, mtime, size }) => ({ path, name, mtime, size })) };
     if (op === "list") return { entries: a.path === DL ? entries() : DIRS[a.path] || [] };
     if (op === "find") return { entries: F.fakeEntries().filter((e) => !a.kind || F.kind(e.name).image === (a.kind === "image")), partial: false };
-    if (op === "thumb") { const n = a.path.split("/").pop(); if (!/\.(png|jpe?g|webp|mp4)$/.test(n)) throw new Error("no thumbnail"); return { png: await thumb(n) }; }
+    if (op === "thumb") { const n = a.path.split("/").pop(); if (!/\.(png|jpe?g|webp|mp4|heic)$/.test(n)) throw new Error("no thumbnail"); return { png: await thumb(n) }; }
     if (op === "probe") return { duration: 2, video: null, audio: [{ codec: "pcm", lang: "" }], subs: [], sidecars: [] };
     if (op === "devices") return { devices: [] };
     return {};

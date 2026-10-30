@@ -56,6 +56,7 @@
   function undecodable(ctx) {
     const { e, stage } = ctx;
     const x = V.ext(e.name);
+    stage.classList.remove("dark");
     stage.replaceChildren(h("div", { class: "fspin", role: "status", "aria-label": "Loading" }));
     F.req("thumb", { path: e.path }).then((r) => {
       if (!ctx.alive()) return;
