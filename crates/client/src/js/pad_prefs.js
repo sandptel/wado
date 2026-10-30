@@ -28,8 +28,20 @@
     quick: ["workspace-prev", "workspace-next", "fullscreen", "play-pause"],
     gestures: {},
     keyboard: false,
-    // Pointer speed, 0.5–2×: the daemon tells libinput the pad is this much bigger (T17).
+    // Applied by the computer to this phone's touchpad only (Hyprland, runtime: never a file, never
+    // the laptop's own pad) — docs/superpowers/research/2026-10-30-touchpad-feel.md §4.2, §5.
     speed: 1,
+    scroll_speed: 1,
+    natural: null, // null: the computer's own setting
+    tap: true,
+    tap_drag: true,
+    drag_lock: "off", // off | briefly | until-tap
+    // Kept for this phone; what they do lands with the click bar and thumb marking.
+    click_bar: false,
+    palm: true,
+    // The phone's own.
+    marks: true,
+    gesture_distance: "medium", // short | medium | long
   };
   const changeFns = [];
   const rejectFns = [];
@@ -43,7 +55,13 @@
       if (typeof src[k] === "boolean") out[k] = src[k];
     }
     if (P.RAILS.includes(src.rail)) out.rail = src.rail;
-    if (typeof src.speed === "number" && isFinite(src.speed)) out.speed = Math.round(Math.min(2, Math.max(0.5, src.speed)) * 100) / 100;
+    const num = (k, lo, hi) => { if (typeof src[k] === "number" && isFinite(src[k])) out[k] = Math.round(Math.min(hi, Math.max(lo, src[k])) * 100) / 100; };
+    num("speed", 0.5, 2);
+    num("scroll_speed", 0.25, 2);
+    if (typeof src.natural === "boolean" || src.natural === null) out.natural = src.natural;
+    for (const k of ["tap", "tap_drag", "click_bar", "palm", "marks"]) if (typeof src[k] === "boolean") out[k] = src[k];
+    if (["off", "briefly", "until-tap"].includes(src.drag_lock)) out.drag_lock = src.drag_lock;
+    if (["short", "medium", "long"].includes(src.gesture_distance)) out.gesture_distance = src.gesture_distance;
     if (Array.isArray(src.quick)) out.quick = src.quick.map((s) => String(s).trim()).filter(Boolean);
     if (src.gestures && typeof src.gestures === "object") {
       for (const g of P.GESTURES) {
@@ -68,7 +86,8 @@
     if (typeof emit === "function") emit({ type: "padPrefs", prefs: p });
   };
 
-  const own = (field) => `device.${W.clientKey}.trackpad.${field}`;
+  // The JS field `scroll_speed` is `scroll-speed` in config.kdl.
+  const own = (field) => `device.${W.clientKey}.trackpad.${field.replace(/_/g, "-")}`;
   function save(field, wire) {
     writeMirror();
     changed();
@@ -81,7 +100,7 @@
     const next = clean({ ...cur, [field]: value });
     if (JSON.stringify(next[field]) === JSON.stringify(cur[field])) return;
     cur = next;
-    save(field, field === "quick" ? JSON.stringify(cur.quick) : String(cur[field]));
+    save(field, field === "quick" ? JSON.stringify(cur.quick) : cur[field] === null ? "" : String(cur[field]));
   };
 
   P.setGesture = (name, id) => {

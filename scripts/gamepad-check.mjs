@@ -120,14 +120,26 @@ console.log("model");
     assert.ok(Math.abs((1160 - tab.get("rt").x) - (824 - phone.get("rt").x)) < 1e-6, "right edge");
   });
   check("the console deck packs by side: inside the box, ≥ 44 px, left left and right right", () => {
-    for (const id of V.ORDER) for (const [w, h] of [[370, 170], [360, 150], [150, 420]]) {
+    for (const id of V.ORDER) for (const [w, h] of [[378, 138], [808, 200], [360, 150]]) {
       const L = M.builtin(id);
       const m = P.deck(L, w, h);
       for (const [cid, r] of m) {
         assert.ok(Math.min(r.w, r.h) >= 44 - 1e-6, `${id} ${w}×${h} ${cid} ${r.w}×${r.h}`);
       }
       if (w > h && m.has("stick-l") && m.has("a")) assert.ok(m.get("stick-l").x < m.get("a").x, `${id}: left stays left`);
+      // Never one control drawn over another: a group that cannot fit is left out instead.
+      const rs = [...m.entries()];
+      for (let i = 0; i < rs.length; i++) for (let j = i + 1; j < rs.length; j++) {
+        const [ia, a] = rs[i], [ib, b] = rs[j];
+        const over = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) > 1 && Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) > 1;
+        const sameGroup = L.controls.find((c) => c.id === ia).g === L.controls.find((c) => c.id === ib).g;
+        assert.ok(!over || sameGroup, `${id} ${w}×${h}: ${ia} and ${ib} overlap`);
+      }
+      assert.ok(m.size > 0, `${id} ${w}×${h}: the deck is not empty`);
     }
+    // The landscape console: the gutters beside the picture and the band under it.
+    const m = P.deck(M.builtin("xbox"), 832, 328, { x: 111, y: 0, w: 610, h: 282 });
+    for (const [cid, r] of m) assert.ok(r.x + r.w <= 111 + 1 || r.x >= 721 - 1 || r.y >= 282 - 1, `${cid} is on the picture: ${JSON.stringify(r)}`);
   });
   check("the comfort check flags a far control, a small one and two too close; the middle row never for reach", () => {
     const L = M.builtin("xbox");

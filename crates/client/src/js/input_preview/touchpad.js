@@ -13,6 +13,7 @@
     edge: "edge swipe → action", hold: "hold two → action", keys: "keys beside the pad",
   };
   const RAIL_KEYS = ["esc", "tab", "super", "ctrl", "alt"];
+  const IPtext = (t) => W.inputPreview.text("touchpad", t);
 
   function mount(el) {
     el.innerHTML = `<div class="vitphone"><div class="vitrail"></div><div class="vitsurf"><span class="vifing"></span><span class="vifing"></span></div></div>
@@ -59,9 +60,12 @@
       } else if (current === "scroll") {
         [f1, f2].forEach((f, i) => A(f, [{ transform: P(W_ * (0.42 + i * 0.16), H * 0.72), opacity: 0 }, { opacity: 1, offset: 0.12, transform: P(W_ * (0.42 + i * 0.16), H * 0.72) },
           { transform: P(W_ * (0.42 + i * 0.16), H * 0.3), opacity: 1, offset: 0.75 }, { opacity: 0, transform: P(W_ * (0.42 + i * 0.16), H * 0.3) }]));
-        A(ws.firstElementChild, [{ translate: "0 0" }, { translate: "0 0", offset: 0.12 }, { translate: "0 -22px", offset: 0.75 }, { translate: "0 -22px" }], { easing: SPRING });
+        // Natural: the content follows the fingers. How far: the scroll speed.
+        const pp = W.padPrefs.get(), d = (pp.natural === false ? 1 : -1) * 22 * (pp.scroll_speed || 1);
+        A(ws.firstElementChild, [{ translate: "0 0" }, { translate: "0 0", offset: 0.12 }, { translate: `0 ${d}px`, offset: 0.75 }, { translate: `0 ${d}px` }], { easing: SPRING });
       } else if (current === "tap") {
         A(f1, [{ transform: P(W_ / 2, H / 2) + " scale(.6)", opacity: 0 }, { transform: P(W_ / 2, H / 2), opacity: 1, offset: 0.2 }, { transform: P(W_ / 2, H / 2), opacity: 0, offset: 0.45 }, { opacity: 0 }], { easing: SPRING });
+        if (W.padPrefs.get().tap === false) { IPtext("tap: nothing — Tap to click is off"); return; }
         A(ring, [{ transform: P(px + 2, py + 2) + " scale(.4)", opacity: 0 }, { transform: P(px + 2, py + 2) + " scale(.4)", opacity: 0.9, offset: 0.25 },
           { transform: P(px + 2, py + 2) + " scale(1.6)", opacity: 0, offset: 0.7 }, { opacity: 0 }], { easing: SPRING });
       } else if (current === "edge" || current === "hold") {

@@ -53,6 +53,7 @@ pub fn render(ui: Ui) -> Element {
                         }
                         h3 { "{page.title()}" }
                     }
+                    crate::ui::computer::input::PageOpen { ui, page }
                 }
                 {pages::render(ui, page)}
             }

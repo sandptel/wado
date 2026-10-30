@@ -9,10 +9,9 @@ use dioxus::prelude::*;
 use super::{
     open,
     prefs::{self, GAMEPAD},
-    HeadOpen,
 };
 use crate::{
-    bridge, reach,
+    bridge,
     state::Ui,
     ui::widgets::{Icon, Seg, Slider},
 };
@@ -22,12 +21,9 @@ const DRIVES_PAD: &str =
 const DRIVES_KEYS: &str = "Each button presses a key or clicks the mouse in your session: the left stick walks with WASD, the right stick looks. Away from a session this is not available yet.";
 
 pub fn render(ui: Ui) -> Element {
-    let pk = crate::profile::current_key(ui);
-    let r = reach::of(ui, &pk);
     let name = crate::profile::current_name(ui);
     let gp = GAMEPAD.read().clone();
     let mut more = use_signal(|| false);
-    let session = (ui.live.session_on)();
     let away_own = !gp.away.is_empty() && gp.away != "same";
     let drives = if gp.drives.is_empty() {
         "pad".to_string()
@@ -39,7 +35,6 @@ pub fn render(ui: Ui) -> Element {
     } else {
         gp.stick.clone()
     };
-    let why = open::shut(ui, &r, open::Door::Gamepad);
     let away_seg = if away_own { "own" } else { "same" }.to_string();
     let stick_words = match stick.as_str() {
         "floating" => "The stick comes to where your thumb lands. Best when you never look down.",
@@ -50,12 +45,6 @@ pub fn render(ui: Ui) -> Element {
     };
     rsx! {
         div { class: "vipage",
-            if !session {
-                div { class: "vihead",
-                    HeadOpen { label: "Play", disabled: why.is_some(), onopen: move |_| open::open(ui, open::Door::Gamepad) }
-                    if let Some(w) = &why { small { class: "vicap", "{w}" } }
-                }
-            }
             div { class: "vipreview",
                 div { class: "vicap", span { "Try it · press anything" } span { class: "videmo mono", "data-vi-demo": "gamepad", "—" } }
                 div { class: "vigpv", "data-vi": "gamepad", role: "application", "aria-label": "A preview of the gamepad. Presses here go nowhere." }

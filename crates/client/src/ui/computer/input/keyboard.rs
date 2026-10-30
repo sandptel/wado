@@ -30,16 +30,8 @@ pub fn render(ui: Ui) -> Element {
     let name = crate::profile::current_name(ui);
     let keys = KEYS.read().clone();
     let mut more = use_signal(|| false);
-    let r = crate::reach::of(ui, &crate::profile::current_key(ui));
-    let why = super::open::shut(ui, &r, super::open::Door::Keyboard);
     rsx! {
         div { class: "vipage",
-            if !(ui.live.session_on)() {
-                div { class: "vihead",
-                    super::HeadOpen { label: "Open", disabled: why.is_some(), onopen: move |_| super::open::open(ui, super::open::Door::Keyboard) }
-                    if let Some(w) = &why { small { class: "vicap", "{w}" } }
-                }
-            }
             div { class: "vipreview", "aria-hidden": "true",
                 div { class: "vicap", span { "Preview" } span { class: "videmo", "data-vi-demo": "keyboard", "typing" } }
                 div { class: "vikpv", "data-vi": "keyboard" }

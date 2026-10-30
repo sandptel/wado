@@ -29,13 +29,34 @@ pub mod touchpad;
 
 use dioxus::prelude::*;
 
-use crate::ui::widgets::Icon;
+use crate::{state::Ui, ui::pages::Page, ui::widgets::Icon};
 
-/// A page's head action: the device's own Open / Play, so settings are never a dead end (D5).
+/// A Virtual input page's head action: the device's own Open / Play, so its settings are never a
+/// dead end (D5). Away from a session only — in one, the console's faces are the way in.
 #[component]
-pub fn HeadOpen(label: String, disabled: bool, onopen: EventHandler<()>) -> Element {
+pub fn PageOpen(ui: Ui, page: Page) -> Element {
+    let door = match page {
+        Page::InputTouchpad => open::Door::Touchpad,
+        Page::InputKeyboard => open::Door::Keyboard,
+        Page::InputGamepad => open::Door::Gamepad,
+        _ => return rsx! {},
+    };
+    if (ui.live.session_on)() {
+        return rsx! {};
+    }
+    let r = crate::reach::of(ui, &crate::profile::current_key(ui));
+    let why = open::shut(ui, &r, door);
+    let label = if door == open::Door::Gamepad {
+        "Play"
+    } else {
+        "Open"
+    };
     rsx! {
-        button { class: "btn primary viopen", disabled, onclick: move |_| onopen.call(()),
+        button {
+            class: "btn primary viopen",
+            disabled: why.is_some(),
+            title: why.clone().unwrap_or_default(),
+            onclick: move |_| open::open(ui, door),
             Icon { name: "play", fill: true }
             "{label}"
         }

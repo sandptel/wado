@@ -62,6 +62,9 @@ pub struct Spec {
     pub demo: &'static str,
     /// Only while this boolean field is on.
     pub needs: Option<&'static str>,
+    /// Shown only when the computer says it can apply it (`ConfigState.caps`): `pad-hypr` for
+    /// what Hyprland sets per device; a feature still to come names a cap no daemon sends yet.
+    pub cap: Option<&'static str>,
 }
 
 /// The value of `key` in a JSON model, as a number / bool / the JSON literal choices compare by.

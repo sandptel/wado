@@ -69,7 +69,7 @@
 
 /* ── the settings pages ───────────────────────────────────────────────────────────────── */
 .vihead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.viopen { min-height: 44px; gap: 8px; padding: 0 18px; }
+.spage .phead .viopen { width: auto; min-height: 44px; margin-left: auto; gap: 6px; padding: 0 16px; flex: none; border-radius: 999px; }
 .vipreview { position: sticky; top: calc(56px + env(safe-area-inset-top)); z-index: 1; border-radius: var(--r3); background: var(--s1); padding: 10px; }
 .vipreview .vicap { display: flex; align-items: center; justify-content: space-between; gap: 8px; font: 600 .6875rem var(--body); letter-spacing: .08em;
   text-transform: uppercase; color: var(--dim); padding: 0 4px 8px; }

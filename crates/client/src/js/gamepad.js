@@ -59,6 +59,13 @@
     return root;
   }
 
+  // In a landscape console the pad's slot surrounds the picture: its rect, inside the slot.
+  function picInPad() {
+    const F = W.stageFit, pad = F && F.slot("pad"), pic = F && F.slot("pic");
+    if (!pad || !pic || document.documentElement.dataset.cdeck !== "col") return null;
+    return { x: pic.x - pad.x, y: pic.y - pad.y, w: pic.w, h: pic.h };
+  }
+
   function draw(morph) {
     const root = G.root;
     if (!root || root.hidden) return;
@@ -76,7 +83,7 @@
     const first = morph && root._gp ? W.gpadMotion.rects(root._gp) : null;
     W.gpadRender(root, L, {
       o, k: 1, live: true, w, h,
-      place: deck ? P.deck(L, w, h) : P.all(L, o, 1, w, h),
+      place: deck ? P.deck(L, w, h, picInPad()) : P.all(L, o, 1, w, h),
       opacity: deck ? 1 : OVER_PICTURE,
     });
     if (first) W.gpadMotion.morph(root, first, []);
