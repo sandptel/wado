@@ -251,7 +251,7 @@ details.card > summary { cursor: pointer; font-weight: 600; color: var(--bright)
 
 /* Tile editor rows. */
 .editrow { display: flex; align-items: center; gap: 10px; min-height: 48px; }
-.editrow b { flex: 1; font-weight: 600; color: var(--bright); }
+.editrow b { flex: 1; min-width: 0; overflow-wrap: anywhere; font-weight: 600; color: var(--bright); }
 .editrow button { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: var(--dim); }
 .editrow button:hover { background: var(--s2); color: var(--bright); }
 

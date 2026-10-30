@@ -49,7 +49,7 @@
 .hrow .disc { width: 64px; height: 64px; transform-origin: 0 0; }
 .hrow .disc svg { width: 28px; height: 28px; }
 .htext { min-width: 0; }
-.hname { margin: 0; font: 700 1.875rem/1.12 var(--display); letter-spacing: -.025em; color: var(--bright); transform-origin: 0 0;
+.hname { margin: 0; font: 700 1.875rem/1.2 var(--display); letter-spacing: -.025em; color: var(--bright); transform-origin: 0 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hsub { font: .75rem var(--mono); color: var(--dim); margin-top: 4px; overflow-wrap: anywhere; }
 .hmeta { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 5.5rem), 1fr)); gap: 8px; }

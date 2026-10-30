@@ -43,7 +43,7 @@ typography:
     fontFamily: "Bricolage Grotesque, Figtree, system-ui, sans-serif"
     fontSize: "30px"
     fontWeight: 700
-    lineHeight: 1.12
+    lineHeight: 1.2
     letterSpacing: "-0.025em"
   headline:
     fontFamily: "Bricolage Grotesque, Figtree, system-ui, sans-serif"
@@ -257,7 +257,7 @@ machine produced: addresses, resolutions, workspace numbers, values.
 
 ### Hierarchy
 - **Display** (700, clamp(42px, 12vw, 64px), 1, -0.045em): the wordmark on the home page only.
-- **Hero name** (700, 30px/1.12, -0.025em; 38px from 960px; one line, ellipsis, the whole name in its `title`): a computer's name in its Computer
+- **Hero name** (700, 30px/1.2, -0.025em; 38px from 960px; one line, ellipsis, the whole name in its `title`): a computer's name in its Computer
   page hero. Between Display and Headline; nothing else uses it.
 - **Headline** (700, 19–20px, -0.01em): control-centre page heads, the hero host name, and the
   Start button at 17px.
