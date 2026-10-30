@@ -122,6 +122,10 @@ impl Live {
 
     /// One message from the phone, by either path.
     pub(super) fn accept(&self, msg: PadMsg, relayed: bool, peer: &Peer) {
+        let Some(msg) = super::bin::unpack(msg) else {
+            warn!(device = %peer.who.name, "pad: an unreadable compact frame — dropped");
+            return;
+        };
         if msg == PadMsg::Bye {
             self.close();
             return;

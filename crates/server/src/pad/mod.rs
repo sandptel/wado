@@ -15,6 +15,7 @@
 //! - `actions.rs` — listing and running the computer's actions (`crate::actions`), on `host`.
 //! - `live.rs` — the open pad, fed by either transport, its tick and its ordered keyboard queue.
 //! - `channel.rs` — the direct link: a peer connection with a touch and a keys channel.
+//! - `bin.rs` — compact touch frames (`wado_protocol::pad_bin`) back into frames.
 //!
 //! The devices themselves — touchpad, keyboard, typist — are the platform's
 //! (`wado_platform::input`, provided on Linux by `crate::platform::linux`).
@@ -24,6 +25,7 @@
 
 pub mod actions;
 pub mod arrivals;
+pub mod bin;
 pub mod channel;
 pub mod delay;
 pub mod gate;
