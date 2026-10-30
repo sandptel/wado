@@ -87,7 +87,7 @@ const INSPECT = String.raw`((top) => {
     { name: "sub", sel: "#sub", page: true },
     { name: "files", sel: "#wado-files", panel: ".fpanel", scrim: "#wado-files" },
     { name: "viewer", sel: ".fview", page: true },
-    { name: "viewer-details", sel: ".fvdetails.up", scrim: ".fvdscrim" },
+    { name: "viewer-details", sel: ".fvdetails.up:not(.side)", scrim: ".fvdscrim" },
     { name: "trackpad", sel: "#wado-trackpad", page: true },
     { name: "pad-settings", sel: ".tpsheet:not([hidden])", scrim: ".tpscrim:not([hidden])" },
     { name: "cc", sel: "#cc.open", scrim: ".ccscrim.open" },
@@ -306,12 +306,23 @@ for (const [w, h] of [[390, 844], [1440, 900], [2000, 1270]]) {
   await js(`(() => { const F = window.__wado.files; const e = F.fakeEntries(); F.view(e.find((x) => x.name.endsWith(".png")), e); return true; })()`);
   ok(await until("!!document.querySelector('.fview img')", 4000), `${sz}: a picture opens in the viewer`);
   await check(`${sz} viewer`, "viewer");
-  if (await js(`!!document.querySelector('.fview [data-act="details"]')`)) {
-    await click('.fview [data-act="details"]');
-    await until("!!document.querySelector('.fvdetails.up')", 3000);
+  // Its details: a sheet on a scrim on a phone (the picture and its controls inert under it), a
+  // panel beside the picture on a wide screen (never over it).
+  await click(".fview .fvdbtn");
+  ok(await until("!!document.querySelector('.fvdetails.up')", 3000), `${sz}: the details open`);
+  if (w < 900) {
     await check(`${sz} viewer details`, "viewer-details");
+    ok(await js(`[...document.querySelectorAll(".fview .fvstage, .fview .fvfoot")].every((n) => n.inert)`), `${sz}: under the details sheet, the picture and its controls are inert`);
+  } else {
+    await check(`${sz} viewer details`, "viewer");
+    const r = await js(`(() => { const a = document.querySelector(".fvdetails.up").getBoundingClientRect(), b = document.querySelector(".fview .fvstage").getBoundingClientRect();
+      return { overlap: a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1, w: a.width }; })()`);
+    ok(!r.overlap && r.w > 300, `${sz}: the details are a panel beside the picture, not over it`, JSON.stringify(r));
   }
+  await js(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); true`);
+  ok(await until("!document.querySelector('.fvdetails.up') && !!document.querySelector('.fview')", 2000), `${sz}: Escape closes the details first, the viewer stays`);
   await js(`(() => { const F = window.__wado.files; F.viewClose(); F.closeUi(); return true; })()`);
+  ok(await until("!document.querySelector('.fview')", 2000), `${sz}: the viewer is gone from the page once closed`);
   await check(`${sz} computer after files`, "computer", { shot: false });
 
   await click("#computer .cbar button");
