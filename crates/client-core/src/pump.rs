@@ -1,8 +1,9 @@
 //! One watched computer: what its link reports, turned into events, and what it asks for while it
-//! is up — the host state and the sessions list, at once and then every 5 s (only while watched:
-//! nothing polls off screen). Its host state also refreshes the profile's cached name and OS, so
-//! an offline card keeps them.
+//! is up — the host state and the sessions list, at once and then every 5 s while the UI is on
+//! screen (`visible`). Off screen nothing polls: the link stays a quiet, long-lived one. Its host
+//! state also refreshes the profile's cached name and OS, so an offline card keeps them.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -27,6 +28,8 @@ pub struct Pump {
     pub profiles: Arc<Mutex<Profiles>>,
     pub pins: Arc<Mutex<Pins>>,
     pub clock: Clock,
+    /// The UI is on screen: poll. Shared by every pump of the core.
+    pub visible: Arc<AtomicBool>,
 }
 
 fn ask(cmds: &mpsc::UnboundedSender<LinkCmd>, msg: &RelayMsg) {
@@ -94,7 +97,7 @@ impl Pump {
                     match o {
                         LinkOut::State(s) => {
                             open = matches!(s, LinkState::Open { .. });
-                            if open {
+                            if open && self.visible.load(Ordering::Relaxed) {
                                 self.poll();
                                 tick.reset();
                             }
@@ -119,7 +122,11 @@ impl Pump {
                         LinkOut::Msg(_) => {}
                     }
                 }
-                _ = tick.tick(), if open => self.poll(),
+                _ = tick.tick(), if open => {
+                    if self.visible.load(Ordering::Relaxed) {
+                        self.poll();
+                    }
+                }
             }
         }
     }

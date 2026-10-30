@@ -64,6 +64,11 @@ impl WadoCore {
         self.core.watch(keys)
     }
 
+    /// On screen (poll) or in the background (links stay up, quiet).
+    pub fn set_visible(&self, on: bool) {
+        self.core.set_visible(on)
+    }
+
     pub fn pair(&self, link: String) -> u64 {
         self.core.pair(link)
     }

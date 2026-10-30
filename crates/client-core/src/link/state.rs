@@ -134,6 +134,22 @@ pub struct LinkCfg {
     pub remote_id: String,
     /// This device's name, as the computer lists it.
     pub name: String,
+    /// Silence after which the socket counts as dead and is redialled. The relay pings every 15 s,
+    /// so a long-lived background link (push without a distributor) keeps the default; a link
+    /// behind a NAT that drops idle mappings sooner can lower it.
+    pub silence_ms: u64,
+}
+
+impl LinkCfg {
+    pub fn new(key: &str, relay_url: &str, remote_id: &str, name: &str) -> LinkCfg {
+        LinkCfg {
+            key: key.into(),
+            relay_url: relay_url.into(),
+            remote_id: remote_id.into(),
+            name: name.into(),
+            silence_ms: SILENCE_MS,
+        }
+    }
 }
 
 pub struct Link {
@@ -420,7 +436,7 @@ pub fn step(l: &mut Link, now_ms: u64, input: Input) -> Vec<Action> {
                 return out;
             }
             l.connected = true;
-            out.push(Action::Arm(Timer::Silence, SILENCE_MS));
+            out.push(Action::Arm(Timer::Silence, l.cfg.silence_ms));
         }
         Input::DialFailed => l.lost(now_ms, true, &mut out),
         Input::Closed => {
@@ -455,7 +471,7 @@ pub fn step(l: &mut Link, now_ms: u64, input: Input) -> Vec<Action> {
             if !l.connected {
                 return out;
             }
-            out.push(Action::Arm(Timer::Silence, SILENCE_MS));
+            out.push(Action::Arm(Timer::Silence, l.cfg.silence_ms));
             match classify(&text) {
                 Frame::Wire(w) => l.wire(now_ms, w, &mut out),
                 Frame::E2e(m) => l.e2e(now_ms, &text, m, &mut out),
@@ -482,12 +498,7 @@ mod tests {
 
     fn link(pin: Option<Pin>) -> Link {
         Link::new(
-            LinkCfg {
-                key: "1".into(),
-                relay_url: "https://relay.example".into(),
-                remote_id: "1".into(),
-                name: "Phone".into(),
-            },
+            LinkCfg::new("1", "https://relay.example", "1", "Phone"),
             Arc::new(Identity::ephemeral()),
             pin,
         )

@@ -40,6 +40,7 @@ struct Inner {
     ops: Mutex<Ops>,
     links: Mutex<HashMap<String, Watched>>,
     clock: Clock,
+    visible: Arc<std::sync::atomic::AtomicBool>,
 }
 
 pub struct Core {
@@ -77,6 +78,7 @@ impl Core {
             ops: Mutex::new(Ops::default()),
             links: Mutex::new(HashMap::new()),
             clock: Arc::new(move || start.elapsed().as_millis() as u64),
+            visible: Arc::new(std::sync::atomic::AtomicBool::new(true)),
         };
         Ok(Core {
             inner: Arc::new(inner),
@@ -112,6 +114,14 @@ impl Core {
         self.rt.lock().unwrap().as_ref().map(|rt| rt.spawn(f))
     }
 
+    /// The UI is on screen (polls the host state and sessions) or not (links stay up, quiet — a
+    /// background holder such as push without a distributor). On by default.
+    pub fn set_visible(&self, on: bool) {
+        self.inner
+            .visible
+            .store(on, std::sync::atomic::Ordering::Relaxed);
+    }
+
     /// Hold a control room for exactly `keys` (the computers on screen), and drop the rest.
     pub fn watch(&self, keys: Vec<String>) {
         let mut links = self.inner.links.lock().unwrap();
@@ -131,12 +141,7 @@ impl Core {
             };
             let pin = self.inner.pins.lock().unwrap().get(&p.remote_id);
             let link = Link::new(
-                LinkCfg {
-                    key: key.clone(),
-                    relay_url: p.relay_url.clone(),
-                    remote_id: p.remote_id.clone(),
-                    name: self.inner.name.clone(),
-                },
+                LinkCfg::new(&key, &p.relay_url, &p.remote_id, &self.inner.name),
                 self.inner.identity.clone(),
                 pin,
             );
@@ -150,6 +155,7 @@ impl Core {
                 profiles: self.inner.profiles.clone(),
                 pins: self.inner.pins.clone(),
                 clock: self.inner.clock.clone(),
+                visible: self.inner.visible.clone(),
             };
             let tasks = [
                 self.spawn(driver::run(
