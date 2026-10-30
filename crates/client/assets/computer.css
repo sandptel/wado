@@ -52,7 +52,9 @@
 .hname { margin: 0; font: 700 1.875rem/1.2 var(--display); letter-spacing: -.025em; color: var(--bright); transform-origin: 0 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hsub { font: .75rem var(--mono); color: var(--dim); margin-top: 4px; overflow-wrap: anywhere; }
-.hmeta { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 5.5rem), 1fr)); gap: 8px; }
+.hmeta { display: flex; flex-wrap: wrap; gap: 8px; }
+/* Three across while they fit (Link widest, Sessions narrowest); else two, and the third takes the row. */
+.hmeta > * { flex: 1 1 5.5rem; } .hmeta > :first-child { flex-grow: 1.25; } .hmeta > :last-child { flex-grow: .8; }
 .hcell { background: color-mix(in oklab, var(--s0), transparent 35%); border-radius: var(--r2); padding: 9px 10px 8px; min-width: 0;
   text-align: left; display: grid; gap: 2px; align-content: start; }
 button.hcell:disabled { opacity: 1; cursor: default; }
@@ -87,7 +89,8 @@ button.hcell:active:not(:disabled) { scale: .97; }
 @keyframes roll { from { translate: 0 60%; opacity: 0; } }
 
 /* ── big actions ──────────────────────────────────────────────────────────────────────── */
-.acts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 8.5rem), 1fr)); gap: 8px; }
+/* Two across (never three: four doors make a 2 × 2), one under the other once two would be under 8.5rem. */
+.acts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, max(8.5rem, 50% - 4px)), 1fr)); gap: 8px; }
 .act > * { min-width: 0; }
 .act { position: relative; display: grid; align-content: space-between; gap: 14px; min-height: 104px; padding: 12px 14px 14px; border-radius: var(--r3);
   background: var(--s2); text-align: left; overflow: hidden; }
@@ -212,10 +215,6 @@ button.hcell:active:not(:disabled) { scale: .97; }
   .hname { font-size: 2.375rem; }
   .hero2 { padding: 22px 20px 20px; }
   .act { min-height: 120px; }
-}
-@media (max-width: 380px) {
-  .hmeta { grid-template-columns: 1fr 1fr; }
-  .hmeta .hcell:last-child { grid-column: 1 / -1; }
 }
 .navtext small.mono { font-size: .6875rem; }
 .hopnote { margin: -8px 0 0; display: flex; align-items: center; gap: 8px; font-size: .7812rem; color: var(--text); }

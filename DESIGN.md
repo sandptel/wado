@@ -304,8 +304,9 @@ the glass is `16px × text × interface × (rem / 16)`.
   control drawn smaller (a switch, an ⓘ, the link test's Again) keeps its drawing and grows a
   transparent border, with a negative margin giving the space back. Viewport units inside a zoom
   are zoomed too, so a share of the screen is written `calc(88dvh / var(--z))`.
-- **Reflow, not clip.** Rows of tiles are `repeat(auto-fit, minmax(min(100%, Nrem), 1fr))` — the
-  stat cells at 5.5rem, the doors at 8.5rem — so they wrap as the text grows. A grid that holds
+- **Reflow, not clip.** The doors are two across, or one under the other below 8.5rem each, and the
+  three stat cells a wrapping flex row (basis 5.5rem; a cell that wraps alone takes the whole
+  row), so both re-flow as the text grows instead of cutting words off. A grid that holds
   text gives its column `minmax(0, 1fr)`. Subtitles, hints and machine lines wrap
   (`overflow-wrap: anywhere`); only a *name* is cut to one line with an ellipsis, and then the
   whole of it is in its `title`.
