@@ -23,7 +23,10 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,9 +45,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import io.github.sandptel.wado.core.CoreHost
 import io.github.sandptel.wado.links.DeepLinks
 import io.github.sandptel.wado.ui.common.LineIcon
 import io.github.sandptel.wado.ui.common.Pressable
@@ -54,18 +57,22 @@ import io.github.sandptel.wado.ui.theme.LocalPalette
 import io.github.sandptel.wado.ui.theme.Motion
 import io.github.sandptel.wado.ui.theme.Radius
 import io.github.sandptel.wado.ui.theme.Type
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * "Pair this phone": the computer's QR, scanned with the camera and decoded here; or, without a
- * camera (or a code too far away), the typed code in the client's own form. A code that is not
- * a wado link shakes the frame and says so, and scanning goes on.
+ * "Pair this phone": the computer's QR, scanned with the camera and decoded here, then paired by
+ * the app's own core (seat join, proven code, pinned computer, leave) — no WebView; or, without a
+ * camera, the typed code ([PairTypedScreen]). A code that is not a wado pairing code shakes the
+ * frame and says so, and scanning goes on.
  */
 @Composable
-fun PairScreen(onLink: (Map<String, String>) -> Unit, onTypeCode: () -> Unit, onBack: () -> Unit) {
+fun PairScreen(core: CoreHost, onTyped: () -> Unit, onDone: () -> Unit, onBack: () -> Unit) {
     val p = LocalPalette.current
     val context = LocalContext.current
+    val model by core.model.collectAsState()
+    var attempt by remember { mutableStateOf(0) }
+    LaunchedEffect(model.justPaired) { if (model.justPaired != null) onDone() }
+    DisposableEffect(Unit) { onDispose { core.clearPairing() } }
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     var granted by remember {
@@ -80,10 +87,10 @@ fun PairScreen(onLink: (Map<String, String>) -> Unit, onTypeCode: () -> Unit, on
     val shake = remember { Animatable(0f) }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        if (granted) {
+        if (granted) key(attempt) {
             QrScanner(
                 accept = { text ->
-                    val link = DeepLinks.connect(text)
+                    val link = DeepLinks.connect(text)?.takeIf(DeepLinks::pairs)
                     if (link == null) {
                         haptics.performHapticFeedback(HapticFeedbackType.Reject)
                         note = "That code isn't a wado pairing code."
@@ -93,12 +100,9 @@ fun PairScreen(onLink: (Map<String, String>) -> Unit, onTypeCode: () -> Unit, on
                         false
                     } else {
                         haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-                        note = if (DeepLinks.pairs(link)) "Found it — pairing…" else "Found it — connecting…"
-                        scope.launch {
-                            found.animateTo(1f, Motion.pop(Motion.DUR))
-                            delay(260)
-                            onLink(link)
-                        }
+                        note = "Found it — pairing…"
+                        scope.launch { found.animateTo(1f, Motion.pop(Motion.DUR)) }
+                        core.pair(text)
                         true
                     }
                 },
@@ -131,17 +135,20 @@ fun PairScreen(onLink: (Map<String, String>) -> Unit, onTypeCode: () -> Unit, on
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Text("Pair this phone", style = Type.headline, color = p.bright)
-                Text(
-                    when {
+                PairStatus(
+                    model.pairing,
+                    idle = when {
                         granted -> note
                         asked -> "wado can't use the camera, so type the code instead — or allow the camera in Android's settings."
                         else -> "wado asks for the camera only to read this code."
                     },
-                    style = Type.body,
-                    color = p.dim,
-                    textAlign = TextAlign.Start,
-                )
-                WadoButton("Type a code instead", onTypeCode, Modifier.fillMaxWidth())
+                ) {
+                    core.clearPairing()
+                    note = "Point the camera at a fresh code on your computer."
+                    scope.launch { found.snapTo(0f) }
+                    attempt++
+                }
+                WadoButton("Type a code instead", onTyped, Modifier.fillMaxWidth())
             }
         }
     }

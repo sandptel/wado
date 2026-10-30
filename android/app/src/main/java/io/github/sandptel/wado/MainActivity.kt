@@ -42,6 +42,9 @@ import io.github.sandptel.wado.ui.Pages
 import io.github.sandptel.wado.ui.share.ShareState
 import io.github.sandptel.wado.ui.theme.Motion
 import io.github.sandptel.wado.ui.theme.WadoTheme
+import io.github.sandptel.wado.ui.theme.Radius
+import io.github.sandptel.wado.ui.theme.Schemes
+import io.github.sandptel.wado.ui.phone.LookStore
 import io.github.sandptel.wado.web.ClientServer
 import io.github.sandptel.wado.web.ClientWebView
 import kotlinx.coroutines.Job
@@ -122,8 +125,13 @@ class MainActivity : FragmentActivity(), ClientWebView.Host, AppActions {
             override fun handleOnBackPressed() = back()
         })
         setContent {
-            val scheme by Hub.theme.collectAsState()
+            val web0 by Hub.theme.collectAsState()
+            val look by LookStore.look.collectAsState()
             val computers by Hub.computers.collectAsState()
+            // Appearance is local first: a chosen scheme wins over the web part's.
+            val scheme = Schemes.withAccent(Schemes.byName(this, look.scheme) ?: web0, look.accent)
+            Motion.setLevel(look.motion)
+            Radius.style(look.corners)
             LaunchedEffect(scheme.light) {
                 WindowCompat.getInsetsController(window, window.decorView).apply {
                     isAppearanceLightStatusBars = scheme.light
@@ -131,7 +139,7 @@ class MainActivity : FragmentActivity(), ClientWebView.Host, AppActions {
                 }
             }
             WadoTheme(scheme) {
-                AppRoot(web.view, state, computers, { d -> Pages(d, state.nav, computers, app.prefs, this) }, this)
+                AppRoot(web.view, state, computers, { d -> Pages(d, state.nav, computers, app.core, app.prefs, this) }, this)
             }
         }
         // A recreated activity comes back to its saved pages; only a new launch is routed.
@@ -230,7 +238,14 @@ class MainActivity : FragmentActivity(), ClientWebView.Host, AppActions {
             if (door.door == "trackpad" && c != null) state.nav.go(Dest.Pad(c.key)) else door(c, door.door)
             return
         }
-        DeepLinks.connect(data)?.let { link -> if (firstLoad) state.nav.go(Dest.Web()) else connect(link) }
+        DeepLinks.connect(data)?.let { link ->
+            when {
+                // A pairing code: the app's core pairs it natively (wado://pair, a QR link).
+                DeepLinks.pairs(link) -> { app.core.pair(data); state.nav.go(Dest.Pair) }
+                firstLoad -> state.nav.go(Dest.Web())
+                else -> connect(link)
+            }
+        }
     }
 
     private fun event(t: String, o: JSONObject) {
