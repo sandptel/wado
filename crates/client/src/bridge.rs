@@ -219,6 +219,14 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/sessions.js"),
     "\n",
+    // Several devices in one session: the speed test, joined rooms (after relay.js and
+    // sessions.js, whose handlers they chain), and the other devices' pointers.
+    include_str!("js/linktest.js"),
+    "\n",
+    include_str!("js/multi.js"),
+    "\n",
+    include_str!("js/presence.js"),
+    "\n",
     include_str!("js/hero_flip.js"),
     "\n",
     include_str!("js/cbar.js"),
@@ -618,6 +626,41 @@ pub fn run(ui: Ui) {
                     .recording
                     .set(msg.get("on").and_then(|v| v.as_bool()).unwrap_or(false)),
                 "captureNote" => live.note.set(string("text")),
+                // Several devices in one session (`js/multi.js`, `crate::multi`).
+                "multiNote" => live.note.set(string("text")),
+                "relayCaps" => {
+                    live.multi.write().caps = msg
+                        .get("caps")
+                        .and_then(|v| serde_json::from_value(v.clone()).ok())
+                        .unwrap_or_default();
+                }
+                "participants" => {
+                    let mut m = live.multi.write();
+                    m.list = msg
+                        .get("list")
+                        .and_then(|v| serde_json::from_value(v.clone()).ok())
+                        .unwrap_or_default();
+                    m.you = num("you").unwrap_or(0.0) as u16;
+                }
+                "multiBusy" => live.multi.write().busy = (string("instance"), string("kind")),
+                "linkTest" => {
+                    let mut m = live.multi.write();
+                    m.testing = string("phase") == "run";
+                    if !m.testing {
+                        m.verdict = msg
+                            .get("verdict")
+                            .and_then(|v| serde_json::from_value(v.clone()).ok());
+                    }
+                }
+                // "Start new" found where the session goes: start it the ordinary way. `fresh`:
+                // an older daemon could not say, so do what Start always did.
+                "multiGo" => {
+                    if msg.get("fresh").and_then(|v| v.as_bool()).unwrap_or(false) {
+                        crate::ui::home::sessions::new(ui);
+                    } else {
+                        crate::actions::start(ui);
+                    }
+                }
                 "notificationClosed" => {
                     let id = num("id").unwrap_or(0.0) as u32;
                     live.notes.write().retain(|n| n.id != id);
@@ -699,6 +742,8 @@ pub fn run(ui: Ui) {
                 // connected session"*.
                 "sessionOn" => {
                     live.session_on.set(true);
+                    // A join or take over that got this far is done.
+                    live.multi.write().busy = Default::default();
                     // Not from this page's Start: a session resumed — after a reload, from the home
                     // page, or from another device. It is re-fitted to this device's shape: the
                     // same apps, at this screen's size and aspect.

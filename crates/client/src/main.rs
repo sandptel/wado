@@ -14,6 +14,7 @@ mod cfg;
 mod debug;
 mod deeplink;
 mod link;
+mod multi;
 mod persist;
 mod profile;
 mod reach;
@@ -135,6 +136,8 @@ fn App() -> Element {
         document::Stylesheet { href: asset!("/assets/landing.css") }
         document::Stylesheet { href: asset!("/assets/home.css") }
         document::Stylesheet { href: asset!("/assets/computer.css") }
+        document::Stylesheet { href: asset!("/assets/sessions.css") }
+        document::Stylesheet { href: asset!("/assets/presence.css") }
         document::Stylesheet { href: asset!("/assets/clips.css") }
         document::Stylesheet { href: asset!("/assets/stage.css") }
         document::Stylesheet { href: asset!("/assets/gamepad.css") }

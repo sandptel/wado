@@ -1,0 +1,110 @@
+/* The Computer page's Sessions section (ui/computer/sessions.rs, session_row.rs, linkmeter.rs).
+ *
+ * Motion, heavy and deliberate, on the two curves only (DESIGN.md): rows rise in a long stagger
+ * on --spring; each row's device chips pop in after it lands, one by one, on --pop; the link meter
+ * sweeps while it measures (a clock: linear), then its fill settles on --spring over a slow
+ * --dur-hero and the capacity pips light in sequence. Transform and opacity only — nothing here
+ * competes with video decode. Reduced motion and data-motion are base.css's. */
+
+.sessions2 .sect .sectcount { padding: 1px 8px; border-radius: 999px; background: var(--s2); color: var(--bright); font-size: 11px; }
+.srows { display: grid; gap: 8px; }
+
+/* ── a session ───────────────────────────────────────────────────────────────────────── */
+.srow { position: relative; display: grid; gap: 12px; padding: 14px; border-radius: var(--r3); background: var(--s1); border: 1px solid var(--line);
+  animation: srise var(--dur-hero) var(--spring) backwards; animation-delay: calc(var(--i, 0) * 90ms + 60ms); }
+@keyframes srise { from { opacity: 0; translate: 0 22px; scale: .985; } }
+/* Someone is in it: the active-session border (good), and a slow wash that says it is alive. */
+.srow.live { border-color: color-mix(in oklab, var(--good), transparent 55%); }
+.srow.live::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: radial-gradient(70% 90% at 0% 0%, color-mix(in oklab, var(--good), transparent 90%), transparent 70%);
+  animation: swash 3.2s ease-in-out infinite; }
+@keyframes swash { 50% { opacity: .35; } }
+.srow > * { position: relative; }
+
+.srowhead { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.srowtext { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.srowtext b { font: 600 15px var(--body); color: var(--bright); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.srowtext small { font-size: 11px; color: var(--dim); }
+.srow:not(.live) .sessionshape span { border-color: var(--dim); background: color-mix(in oklab, var(--dim), transparent 86%); }
+
+/* The state pill: a tone dot that breathes while someone is in it. */
+.spill { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 999px; flex: none;
+  font-size: 11.5px; font-weight: 600; color: var(--dim); background: color-mix(in oklab, var(--dim), transparent 88%); }
+.spill i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.spill.on { color: var(--good); background: color-mix(in oklab, var(--good), transparent 85%); }
+.spill.on i { animation: breathe 2s ease-in-out infinite; }
+
+/* ── who is in it: a chip per device ─────────────────────────────────────────────────── */
+.devchips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.devchip { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px 0 10px; border-radius: 999px;
+  background: color-mix(in oklab, var(--hue), var(--s1) 84%); color: var(--bright); font-size: 12.5px; font-weight: 600;
+  transform-origin: 16px 50%;
+  animation: chipin 460ms var(--pop) backwards; animation-delay: calc(var(--i, 0) * 90ms + var(--k, 0) * 70ms + 260ms); }
+@keyframes chipin { from { opacity: 0; scale: .4; translate: -6px 0; } }
+.devchip .hdot { width: 10px; height: 10px; border-radius: 50%; background: var(--hue); flex: none;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--hue), transparent 75%); }
+.devchip em { font-style: normal; font-weight: 500; font-size: 11px; color: var(--dim); }
+/* The lead: what the session is sized for — a hairline ring and a small mark, never a shout. */
+.devchip.lead { box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--hue), transparent 30%); }
+.leadmark { font: 600 9.5px var(--body); letter-spacing: .08em; text-transform: uppercase; padding: 2px 6px; border-radius: 999px;
+  background: var(--hue); color: var(--on-accent); }
+
+.swhy { display: flex; align-items: flex-start; gap: 8px; margin: 0; font-size: 12px; line-height: 1.45; color: var(--dim); }
+.swhy svg { width: 16px; height: 16px; flex: none; margin-top: 1px; }
+
+/* ── what it may do ──────────────────────────────────────────────────────────────────── */
+.sacts { display: flex; gap: 8px; }
+.sacts .btn { flex: 1; min-width: 0; padding: 0 10px; }
+.sacts .btn.danger { flex: 0 0 auto; }
+.sacts .btn svg { width: 18px; height: 18px; }
+.sconfirm { animation: srise var(--dur-sheet) var(--spring) both; }
+.sconfirm .actions { display: flex; gap: 8px; }
+.sdoing { display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 14px; border-radius: var(--r2); background: var(--s2); color: var(--bright); font-weight: 600;
+  animation: srise var(--dur-sheet) var(--spring) both; }
+.sdoing i { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); animation: breathe 1.1s ease-in-out infinite; }
+
+.sempty { display: flex; align-items: center; gap: 14px; padding: 14px; border-radius: var(--r3); background: var(--s1); color: var(--dim); font-size: 13px;
+  animation: srise var(--dur-hero) var(--spring) backwards 60ms; }
+.sempty p { margin: 0; }
+.semptyart { display: inline-flex; gap: 4px; flex: none; }
+.semptyart i { width: 10px; height: 26px; border-radius: 4px; background: var(--s3); animation: breathe 2.4s ease-in-out infinite; }
+.semptyart i:nth-child(2) { height: 18px; animation-delay: .3s; } .semptyart i:nth-child(3) { height: 22px; animation-delay: .6s; }
+
+.snew { justify-content: center; }
+.snew small { margin-left: auto; color: color-mix(in oklab, var(--bright), transparent 40%); font-size: 11px; }
+
+/* ── the link test ───────────────────────────────────────────────────────────────────── */
+.lmeter { --tone: var(--dim); display: grid; gap: 10px; padding: 14px; border-radius: var(--r3); background: var(--s1);
+  animation: srise var(--dur-hero) var(--spring) backwards 220ms; }
+.lmeter.tone-ok { --tone: var(--good); } .lmeter.tone-warn { --tone: var(--base0A); } .lmeter.tone-bad { --tone: var(--bad); }
+.lmeter.tone-run { --tone: var(--accent); }
+.lmhead { display: flex; align-items: center; gap: 10px; }
+.lmkey { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; font-weight: 600; color: var(--dim); }
+.lmverdict { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  color: var(--tone); background: color-mix(in oklab, var(--tone), transparent 86%);
+  transition: color var(--dur) var(--spring), background var(--dur) var(--spring); }
+.lmverdict i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.lmeter.tone-run .lmverdict i { animation: breathe .9s ease-in-out infinite; }
+.lmrun { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px; border-radius: 999px;
+  background: var(--s2); color: var(--bright); font-size: 12.5px; font-weight: 600; }
+.lmrun svg { width: 16px; height: 16px; }
+
+.lmtrack { position: relative; height: 8px; border-radius: 999px; background: var(--s3); overflow: hidden; }
+.lmfill { position: absolute; inset: 0; border-radius: inherit; background: var(--tone); transform-origin: 0 50%;
+  scale: var(--f, 0) 1; transition: scale var(--dur-hero) var(--spring), background var(--dur) var(--spring); transition-duration: 900ms, var(--dur); }
+/* Measuring: a band sweeps the track — a clock, so linear (DESIGN.md's named exception). */
+.lmfill.sweep { scale: .32 1; animation: lmsweep 1.1s linear infinite; }
+@keyframes lmsweep { from { translate: -100% 0; } to { translate: 320% 0; } }
+
+.lmnums { display: flex; flex-wrap: wrap; gap: 6px 16px; animation: srise var(--dur-sheet) var(--spring) backwards 120ms; }
+.lmnums .num { font: 600 17px/1.1 var(--display); font-variant-numeric: tabular-nums; color: var(--bright); }
+.lmnums small { font-size: 11.5px; color: var(--dim); }
+.lmcap { display: flex; align-items: center; gap: 10px; color: var(--dim); font-size: 12px; }
+.pips { display: inline-flex; gap: 4px; }
+.pips i { width: 14px; height: 14px; border-radius: 50%; background: var(--s3); }
+.pips i.on { background: var(--tone); animation: pipon 380ms var(--pop) backwards; animation-delay: calc(var(--i) * 80ms + 420ms); }
+@keyframes pipon { from { scale: 0; opacity: 0; } }
+.lmwhy { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.lmwhy li { position: relative; padding-left: 16px; font-size: 12.5px; line-height: 1.45; color: var(--text);
+  animation: srise var(--dur-sheet) var(--spring) backwards; animation-delay: calc(var(--i) * 70ms + 300ms); }
+.lmwhy li::before { content: ""; position: absolute; left: 2px; top: .5em; width: 6px; height: 6px; border-radius: 50%; background: var(--tone); }
