@@ -6,7 +6,8 @@
 // a finger moving right *as the phone is held* is +x on the pad, whatever the screen thinks.
 // When the screen is already landscape nothing is turned. Fullscreen asks for the real thing —
 // `requestFullscreen()` then `screen.orientation.lock("landscape")` — and falls back to drawing
-// it turned, saying so once.
+// it turned, saying so once. Inside the Android app the lock is real and needs no fullscreen:
+// landscape alone asks the app for it (`W.native`), and nothing is drawn turned.
 //
 // Typing un-turns it: the phone's own keyboard always comes up upright, so while the keyboard
 // is open the whole pad is upright with it (layout A), and turns back when it closes.
@@ -70,6 +71,12 @@
 
   async function goFull() {
     if (wentFull || !root) return;
+    // The Android app locks the real orientation, no fullscreen needed (native_feel.js).
+    if (W.native) {
+      wentFull = true;
+      W.native.send("orient", { lock: want.flip ? "reverse" : "landscape" });
+      return compute();
+    }
     const de = document.documentElement;
     try {
       if (!document.fullscreenElement) {
@@ -87,13 +94,16 @@
   function leaveFull() {
     if (!wentFull) return;
     wentFull = false;
+    if (W.native) return W.native.send("orient", { lock: "none" });
     try { screen.orientation.unlock(); } catch (_) {}
     if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
   }
 
   O.update = (patch) => {
+    const flipped = "flip" in patch && patch.flip !== want.flip;
     want = { ...want, ...patch };
-    if (root && want.landscape && want.fullscreen) goFull();
+    if (W.native && flipped) leaveFull();
+    if (root && want.landscape && (want.fullscreen || W.native)) goFull();
     else leaveFull();
     compute();
   };
@@ -109,7 +119,7 @@
     addEventListener("resize", onResize);
     addEventListener("orientationchange", onResize);
     compute();
-    if (want.landscape && want.fullscreen) goFull();
+    if (want.landscape && (want.fullscreen || W.native)) goFull();
   };
 
   O.detach = () => {

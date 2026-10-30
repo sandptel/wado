@@ -218,6 +218,68 @@
 
           # Everything the running binary links or dlopens — also fed to LD_LIBRARY_PATH
           runtimeLibs = rust ++ llvm ++ fonts ++ graphics ++ display ++ media ++ systemLibs ++ buildLibs;
+
+          # The Android app's toolchain. Versions are the ones android/ builds against: compileSdk
+          # and targetSdk 37 (platform "37.0"), build-tools 37, and the NDK the Rust core
+          # (crates/mobile-core) is cross-compiled with (scripts/android-core.sh).
+          androidPkgs = import nixpkgs {
+            inherit system;
+            config = {
+              allowUnfree = true;
+              android_sdk.accept_license = true;
+            };
+          };
+          androidShell =
+            { emulator }:
+            let
+              composed = androidPkgs.androidenv.composeAndroidPackages {
+                platformVersions = [ "37.0" ];
+                buildToolsVersions = [ "37.0.0" ];
+                includeNDK = true;
+                ndkVersions = [ ndkVersion ];
+                includeEmulator = emulator;
+                includeSystemImages = emulator;
+                systemImageTypes = [ "google_apis" ];
+                abiVersions = [ "x86_64" ];
+              };
+              ndkVersion = "29.0.14206865";
+              sdk = composed.androidsdk;
+              root = "${sdk}/libexec/android-sdk";
+            in
+            androidPkgs.mkShell {
+              packages = [
+                sdk
+                androidPkgs.jdk17
+                androidPkgs.dioxus-cli
+                androidPkgs.binaryen # wasm-opt, which `dx build --release` runs
+                # The web client's toolchain (wasm32), as the default shell has it. Not rustup: a
+                # rustup toolchain's linker wrapper points into a store path NixOS may have
+                # collected.
+                androidPkgs.cargo
+                androidPkgs.rustc
+                androidPkgs.lld
+                androidPkgs.nodejs
+                androidPkgs.cargo-ndk
+              ];
+              ANDROID_NDK_HOME = "${root}/ndk/${ndkVersion}";
+              # The Rust core needs Android's std, which nixpkgs' rustc does not carry: rustup brings
+              # it, kept off PATH (its `cargo` proxy would shadow the one above) and in its own home
+              # (~/.cache/wado/rustup) at the same version as this rustc. scripts/android-core.sh.
+              WADO_RUSTUP = "${androidPkgs.rustup}/bin/rustup";
+              WADO_RUST_VERSION = androidPkgs.rustc.version;
+              ANDROID_HOME = root;
+              ANDROID_SDK_ROOT = root;
+              JAVA_HOME = androidPkgs.jdk17.home;
+              # AGP fetches aapt2 from Maven as a generic-Linux binary, which NixOS cannot run; this
+              # points it at the SDK's own, patched for this system.
+              GRADLE_OPTS = "-Dorg.gradle.project.android.aapt2FromMavenOverride=${root}/build-tools/37.0.0/aapt2";
+              # The default shell's LD_LIBRARY_PATH (entered first, by direnv) points at a newer glibc's
+              # libraries, and the JDK here dies loading them.
+              shellHook = ''
+                unset LD_LIBRARY_PATH
+                printf '\033[1;36m%s\033[0m\n' "wado › android · sdk 37 · jdk 17 · ndk 29${if emulator then " · emulator" else ""}"
+              '';
+            };
         in
         {
           default = pkgs.mkShell.override { stdenv = pkgs.clangStdenv; } {
@@ -274,6 +336,15 @@
               printf '\033[2m  env › PROTOC LIBCLANG_PATH RUST_SRC_PATH BINDGEN_EXTRA_CLANG_ARGS · linker: mold\033[0m\n'
             '';
           };
+
+          # ── Android (android/, scripts/android-build.sh) ──────────────────────
+          # `nix develop .#android`. The SDK is unfree and its licence must be accepted to build it:
+          # `android_sdk.accept_license` below is that acceptance, scoped to these two shells only —
+          # the default shell and the packages never import it.
+          android = androidShell { emulator = false; };
+          # `nix develop .#android-emulator`: the same plus an emulator and an x86_64 system image
+          # (KVM), for scripts/android-emulator.sh. Kept apart: it is a large download.
+          android-emulator = androidShell { emulator = true; };
         }
       );
     };

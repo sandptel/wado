@@ -79,6 +79,7 @@
 
   async function fire(action, x, y) {
     pulse(action, x, y);
+    if (W.native && W.native.haptic) W.native.haptic("claim"); // the Android app (native_feel.js)
     const res = await W.padActions.run(action.id);
     for (const fn of doneFns) { try { fn(action, res); } catch (_) {} }
   }
