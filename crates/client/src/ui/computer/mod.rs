@@ -62,61 +62,60 @@ pub fn render(ui: Ui) -> Element {
     let k2 = pk.clone();
 
     rsx! {
-            section {
-                id: "computer",
-                class: "{class}",
-                style: "--hue:var(--base{hue})",
-                "aria-hidden": "{session || under}",
-                "aria-label": "{name}",
-                div { class: "cground" }
-                header { class: "cbar",
-                    button {
-                        class: "iconbtn",
-                        "aria-label": "Back to home",
-                        onclick: move |_| bridge::call(format!("window.__wado.heroClose({});", bridge::js(&k2))),
-                        Icon { name: "left" }
-                    }
-                    span { class: "cbtitle", "{name}" }
+        section {
+            id: "computer",
+            class: "{class}",
+            style: "--hue:var(--base{hue})",
+            "aria-hidden": "{session || under}",
+            "aria-label": "{name}",
+            div { class: "cground" }
+            header { class: "cbar",
+                button {
+                    class: "iconbtn",
+                    "aria-label": "Back to home",
+                    onclick: move |_| bridge::call(format!("window.__wado.heroClose({});", bridge::js(&k2))),
+                    Icon { name: "left" }
                 }
-                div { class: "cpage",
-                    div { class: "cgrid",
-                        div { class: "col",
-                            hero::Hero { ui, pk: pk.clone(), r: r.clone() }
-                            if off {
-                                div { class: "offcard sx o2", style: "--n:1",
-                                    b { "{name} is offline" }
-                                    p { "It is turned off, asleep, or its wado is not running. This page fills in by itself when it is back — nothing to retry." }
-                                }
-                            }
-                            actions::Actions { ui, r: r.clone() }
-                            sessions::Sessions { ui, r: r.clone() }
-                            // Claude's cards come over the selected computer's own link.
-                            if r.selected && r.may("shells") && !off {
-                                section { class: "sx claude o2", style: "--n:2", id: "claude", "aria-label": "Claude",
-                                    div { class: "sect", span { "Claude" } }
-                                    {crate::ui::scoped(ui, "claude", crate::ui::claude::section)}
-                                }
-                            }
-                            section { class: "sx settings o5", style: "--n:4", "aria-label": "This computer",
-                                div { class: "sect", span { "This computer" } }
-                                {settings_list::render(ui)}
+                span { class: "cbtitle", "{name}" }
+            }
+            div { class: "cpage",
+                div { class: "cgrid",
+                    div { class: "col",
+                        hero::Hero { ui, pk: pk.clone(), r: r.clone() }
+                        if off {
+                            div { class: "offcard sx o2", style: "--n:1",
+                                b { "{name} is offline" }
+                                p { "It is turned off, asleep, or its wado is not running. This page fills in by itself when it is back — nothing to retry." }
                             }
                         }
-                        div { class: "col",
-                            if !off {
-                                section { class: "sx o3", style: "--n:2", "aria-label": "Now playing",
-                                    div { class: "sect", span { "Now playing" } }
-                                    match host.clone() {
-                                        Some(h) => rsx! { playing::Playing { ui, pk: pk.clone(), name: name.clone(), h, may: r.may("host") } },
-                                        None => rsx! { div { class: "npempty", Icon { name: "music" } "Asking {name}…" } },
-                                    }
+                        actions::Actions { ui, r: r.clone() }
+                        sessions::Sessions { ui, r: r.clone() }
+                        // Claude's cards come over the selected computer's own link.
+                        if r.selected && r.may("shells") && !off {
+                            section { class: "sx claude o2", style: "--n:2", id: "claude", "aria-label": "Claude",
+                                div { class: "sect", span { "Claude" } }
+                                {crate::ui::scoped(ui, "claude", crate::ui::claude::section)}
+                            }
+                        }
+                        section { class: "sx settings o5", style: "--n:4", "aria-label": "This computer",
+                            div { class: "sect", span { "This computer" } }
+                            {settings_list::render(ui)}
+                        }
+                    }
+                    div { class: "col",
+                        if !off {
+                            section { class: "sx o3", style: "--n:2", "aria-label": "Now playing",
+                                div { class: "sect", span { "Now playing" } }
+                                match host.clone() {
+                                    Some(h) => rsx! { playing::Playing { ui, pk: pk.clone(), name: name.clone(), h, may: r.may("host") } },
+                                    None => rsx! { div { class: "npempty", Icon { name: "music" } "Asking {name}…" } },
                                 }
-                                section { class: "sx o4", style: "--n:3", "aria-label": "Quick",
-                                    div { class: "sect", span { "Quick" } }
-                                    match host {
-                                        Some(h) => rsx! { quick::Quick { ui, pk: pk.clone(), name: name.clone(), h, r: r.clone() } },
-                                        None => rsx! { div { class: "npempty", Icon { name: "sliders" } "Its controls show once it answers." } },
-                                    }
+                            }
+                            section { class: "sx o4", style: "--n:3", "aria-label": "Quick",
+                                div { class: "sect", span { "Quick" } }
+                                match host {
+                                    Some(h) => rsx! { quick::Quick { ui, pk: pk.clone(), name: name.clone(), h, r: r.clone() } },
+                                    None => rsx! { div { class: "npempty", Icon { name: "sliders" } "Its controls show once it answers." } },
                                 }
                             }
                         }
@@ -124,4 +123,5 @@ pub fn render(ui: Ui) -> Element {
                 }
             }
         }
+    }
 }
