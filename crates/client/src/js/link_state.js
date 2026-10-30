@@ -62,6 +62,13 @@ W.linkTick = async () => {
     now.state = /no computer/i.test(W._relayWaitingNow) ? "computer_offline" : "waiting";
     now.why = W._relayWaitingNow;
   }
+  // Refused because another device holds the seat: the relay and the computer are both fine, so
+  // this is never "offline" or "relay unreachable" — it is waiting on that device.
+  else if (W._relaySeatBusy) {
+    const b = W._relaySeatBusy, who = b.holder || "another device";
+    now.state = "waiting";
+    now.why = b.idle === true ? "your other device, " + who + ", is connected — nothing is running there" : "in use on " + who;
+  }
   else if (W.recovery) now.state = "reconnecting";
   // "offline" has two causes and only one is this device's: say which.
   if (now.state === "offline") now.why = navigator.onLine ? "relay_unreachable" : "no_network";

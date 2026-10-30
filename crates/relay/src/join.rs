@@ -24,7 +24,7 @@ use crate::lane::Lane;
 use crate::registry::Instance;
 use crate::room::{Claim, Want};
 use crate::signaling::{
-    caps, head, is_pong, is_relay_ping, occupied_reason, peer_ip, send_deny, send_wire,
+    caps, head, is_pong, is_relay_ping, occupied_reason, peer_ip, send_busy, send_deny, send_wire,
     AbortOnDrop, WsTx, KEEPALIVE, SILENCE,
 };
 use crate::AppState;
@@ -186,8 +186,23 @@ async fn join_loop(socket: WebSocket, remote_id: String, j: Joiner, peer: String
                     break Pick::Takeover(target.clone(), pool.len());
                 }
                 Err(holders) => {
-                    warn!(client = %label, remote_id = %rid, pool_size = pool.len(), "join: every daemon in the pool is in use");
-                    send_deny(&mut ws_tx, &occupied_reason(pool.len(), &holders), true, 0).await;
+                    // Held, but is anything running? An open page holds a seat with no session;
+                    // the device kept out is told so (cap `idle_seat`), not "every session is in
+                    // use". Each daemon says itself whether it runs one (`occupancy`).
+                    let idle = pool.iter().all(|i| !i.session);
+                    let holder = holders
+                        .iter()
+                        .find(|h| !h.is_empty())
+                        .cloned()
+                        .unwrap_or_default();
+                    warn!(client = %label, remote_id = %rid, pool_size = pool.len(), idle, "join: every daemon in the pool is in use");
+                    send_busy(
+                        &mut ws_tx,
+                        &occupied_reason(pool.len(), &holders),
+                        idle,
+                        &holder,
+                    )
+                    .await;
                     return;
                 }
             }

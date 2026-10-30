@@ -33,7 +33,11 @@ pub fn doors(r: &Reach) -> Doors {
 /// The Desktop door: take over a computer in use elsewhere, rejoin what runs, or start anew.
 pub fn desktop(ui: Ui, r: &Reach) {
     let running = !(ui.live.sessions)().1.is_empty();
-    if r.busy {
+    if r.busy && r.running_there == Some(false) {
+        // The other device holds the seat with nothing running: one tap moves it here *and*
+        // starts (`relayConnect` takes the seat, then asks for a session).
+        crate::actions::start(ui);
+    } else if r.busy {
         bridge::call("window.__wado.relayTakeover();".to_string());
     } else if running {
         sessions::join(ui);
@@ -56,7 +60,15 @@ pub fn Actions(ui: Ui, r: Reach) -> Element {
         shell: shell_ok,
     } = doors(&r);
 
-    let desk_sub = if r.busy {
+    let idle_elsewhere = r.busy && r.running_there == Some(false);
+    let desk_sub = if idle_elsewhere {
+        let who = if r.holder.is_empty() {
+            "your other device"
+        } else {
+            &r.holder
+        };
+        format!("Use it here — {who} is connected, nothing running")
+    } else if r.busy {
         "In use on another device".to_string()
     } else if running {
         let apps: Vec<String> = list
@@ -83,7 +95,7 @@ pub fn Actions(ui: Ui, r: Reach) -> Element {
                     move |_| desktop(ui, &r)
                 },
                 if running && !r.busy { span { class: "badge", "running" } }
-                if r.busy { span { class: "badge", "take over" } }
+                if r.busy && !idle_elsewhere { span { class: "badge", "take over" } }
                 span { class: "aic", Icon { name: "play", fill: true } }
                 span { b { "Desktop" } small { "{desk_sub}" } }
             }

@@ -221,6 +221,14 @@ pub enum RelayMsg {
         /// Rate-limited: try again no sooner than this.
         #[serde(default)]
         retry_ms: u64,
+        /// With `takeover`: whether the device(s) holding the pool run a session (`false`: a
+        /// seat held by an open page with nothing running — "your other device is connected,
+        /// nothing is running"). `None` from a relay without the `idle_seat` cap: not known.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        idle: Option<bool>,
+        /// With `takeover`: the device holding the seat, as it named itself.
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        holder: String,
     },
     /// Relay → client: the join is parked, not refused — the socket stays open and
     /// `join_accepted` follows on it when the reason clears (a daemon registers, the client's

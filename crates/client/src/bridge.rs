@@ -406,6 +406,14 @@ pub fn run(ui: Ui) {
                         live.link.set(l);
                     }
                 }
+                // Kept out by another device's seat — and whether anything runs there.
+                "seatBusy" => {
+                    let clear = msg.get("clear").and_then(|v| v.as_bool()).unwrap_or(false);
+                    live.seat_busy
+                        .set((!clear).then(|| {
+                            (string("holder"), msg.get("idle").and_then(|v| v.as_bool()))
+                        }));
+                }
                 // Where the relay's limited lane is felt (`js/lane_hint.js`, `ui::lane_hint`).
                 "laneHint" => {
                     let spot = string("spot");

@@ -120,7 +120,15 @@ try {
   const a = new Device("lane-phone", mint());
   check("a device pairs by code and comes up", !!(await a.wait("__up", 15000)), JSON.stringify(a.msgs.slice(0, 4)));
   const acc = a.msgs.find((m) => m.type === "join_accepted");
-  check("join_accepted announces `lane`", acc && acc.caps.includes("lane"), JSON.stringify(acc && acc.caps));
+  check("join_accepted announces `lane`", acc && acc.caps.includes("lane") && acc.caps.includes("idle_seat"), JSON.stringify(acc && acc.caps));
+
+  // ── a seat held by a page with nothing running is said to be just that ──
+  console.log("idle seat");
+  const b = new Device("other-phone", null);
+  const denied = await b.wait("join_denied", 8000);
+  check("a second device is told who holds the seat and that nothing runs there (cap idle_seat)",
+    denied && denied.takeover === true && denied.idle === true && denied.holder === "lane-phone", JSON.stringify(denied));
+  b.close();
 
   check("wado files grant", wado("files", "grant", "lane-phone", "rw").status === 0);
   let fid = 0;

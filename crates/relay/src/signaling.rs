@@ -72,6 +72,8 @@ pub const SILENCE: Duration = Duration::from_secs(45);
 ///   What such a room may carry is the daemon's policy; the relay reads only the room id.
 /// - `room_strict`: `strict=1` (with `control=1` and `instance=`) reaches exactly that daemon, or
 ///   parks until it is back — never another daemon of the pool.
+/// - `idle_seat`: a refusal because every seat is taken says `holder` and `idle` (no session
+///   runs on any of the pool's daemons — an open page holding a seat with nothing running).
 /// - `lane`: what this relay forwards for a seat or a control link is paced to the fallback
 ///   lane's cap, 64 KB/s each way after a 768 KB burst (`crate::lane`). Frames wait; none is
 ///   dropped. `/health` says the numbers.
@@ -87,6 +89,7 @@ pub const CAPS: &[&str] = &[
     "control",
     "room_strict",
     "lane",
+    "idle_seat",
 ];
 
 pub fn caps() -> Vec<String> {
@@ -157,6 +160,25 @@ pub async fn send_deny(ws_tx: &mut WsTx, reason: &str, takeover: bool, retry_ms:
             reason: reason.to_string(),
             takeover,
             retry_ms,
+            idle: None,
+            holder: String::new(),
+        },
+    )
+    .await;
+}
+
+/// Every seat is taken (cap `idle_seat`): the refusal says who holds it and whether anything is
+/// running there, so a device kept out by an idle page is told "nothing is running — use it
+/// here", not "every session is in use".
+pub async fn send_busy(ws_tx: &mut WsTx, reason: &str, idle: bool, holder: &str) {
+    send_wire(
+        ws_tx,
+        &WireMsg::JoinDenied {
+            reason: reason.to_string(),
+            takeover: true,
+            retry_ms: 0,
+            idle: Some(idle),
+            holder: holder.to_string(),
         },
     )
     .await;

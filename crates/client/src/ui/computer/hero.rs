@@ -93,6 +93,13 @@ pub fn Hero(ui: Ui, pk: String, r: Reach) -> Element {
                 "limited · tap for why".into(),
                 link.detail(),
             ),
+            "waiting" if r.busy && r.running_there == Some(false) => (
+                "ok",
+                "Free",
+                None,
+                "your other device has it, idle".into(),
+                link.detail(),
+            ),
             "waiting" => (
                 "warn",
                 "Waiting",
@@ -150,8 +157,16 @@ pub fn Hero(ui: Ui, pk: String, r: Reach) -> Element {
     };
 
     // ── Sessions ──
+    // Kept out by another device's seat, this page could not ask: say what the relay said, or
+    // that it is not known — never "0" beside "every session is in use".
     let (sval, ssub) = if !r.online {
         ("—".to_string(), String::new())
+    } else if r.busy && session_list.is_empty() {
+        match r.running_there {
+            Some(false) => ("0".to_string(), "none running".to_string()),
+            Some(true) => ("—".to_string(), "running on another device".to_string()),
+            None => ("—".to_string(), "not known while in use".to_string()),
+        }
     } else if session_list.is_empty() {
         ("0".to_string(), "none running".to_string())
     } else {
