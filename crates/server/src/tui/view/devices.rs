@@ -77,6 +77,12 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
         } else {
             theme::UNPINNED
         };
+        // Not asked for a passkey: said on its name, so it is never forgotten that way.
+        let name = if app.snap.not_required.contains(&d.key) {
+            format!("{name} · no passkey asked")
+        } else {
+            name
+        };
         let selected = cur.is_some_and(|(cr, _)| cr == i);
         let name_style = if selected {
             theme::selected()

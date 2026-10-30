@@ -3,7 +3,11 @@
 //! while unlocked, how long an unlock lasts here ([`stay`]).
 //!
 //! Every button answers on the card itself: busy while the computer and the phone's prompt
-//! work, then the result or the reason it did not happen (`js/passkey.js` gives up after 20 s).
+//! work, then the result or the reason it did not happen (`js/passkey.js` gives up after 20 s
+//! on the computer, 60 s on the phone's prompt).
+//!
+//! While unlocked it also offers to stop asking this phone at all ([`require`]) — the owner's
+//! way out for a phone whose passkey never works, with an honest word about what that means.
 
 use dioxus::prelude::*;
 
@@ -110,6 +114,39 @@ fn stay(stay: String, leave: bool) -> Element {
     }
 }
 
+/// "Ask for my passkey on this phone": on by default; off only while unlocked (the daemon
+/// checks), and said plainly when it is off.
+fn require(on: bool) -> Element {
+    rsx! {
+        div { class: "pkstay pkreq",
+            div { class: "switchrow",
+                div { class: "swtext",
+                    b { "Ask for my passkey on this phone" }
+                    small {
+                        if on {
+                            "Shells, file changes and the trackpad need your fingerprint, face or PIN."
+                        } else {
+                            "Off — this phone opens shells, file changes and the trackpad without it."
+                        }
+                    }
+                }
+                button {
+                    class: if on { "sw on" } else { "sw" },
+                    role: "switch",
+                    "aria-checked": "{on}",
+                    "aria-label": "Ask for my passkey on this phone",
+                    onclick: move |_| bridge::call(format!("window.__wado.passkeyRequire({});", !on)),
+                }
+            }
+            if !on {
+                p { class: "pkhint", Icon { name: "info" }
+                    span { "Anyone holding this phone can open shells, change files and use the trackpad on this computer. Turn it back on here, or on the computer." }
+                }
+            }
+        }
+    }
+}
+
 pub fn render(device: String) -> Element {
     let st = STEP();
     let s = &st.state;
@@ -119,13 +156,15 @@ pub fn render(device: String) -> Element {
         .nth(1)
         .unwrap_or(&s.origin)
         .to_string();
+    let asked = s.required;
     let (tone, words) = match (s.registered, s.unlocked) {
+        _ if !asked => ("on", "Not asked".to_string()),
         (false, _) => ("off", "None yet".to_string()),
         (true, true) => ("on", "Unlocked".to_string()),
         (true, false) => ("lock", "Locked".to_string()),
     };
     // A daemon older than the choice sends no `stay`: nothing to choose there.
-    let choosable = s.unlocked && !s.stay.is_empty();
+    let choosable = asked && s.unlocked && !s.stay.is_empty();
     let busy = st.busy;
     // The sheet, when up, says the same note itself; the card says it otherwise.
     let alert = st.need.is_empty();
@@ -137,7 +176,9 @@ pub fn render(device: String) -> Element {
                 span { class: "pkwhat",
                     b { "{words}" }
                     small {
-                        if !s.registered {
+                        if !asked {
+                            "This computer doesn't ask this phone for a passkey: shells, file changes and the trackpad are open."
+                        } else if !s.registered {
                             "Shells, file changes and the trackpad stay shut on this phone until it has one."
                         } else if s.unlocked {
                             "Shells, file changes and the trackpad are open. {lasts(&s.stay, s.lock_on_leave)}"
@@ -148,8 +189,10 @@ pub fn render(device: String) -> Element {
                 }
             }
             if choosable { {stay(s.stay.clone(), s.lock_on_leave)} }
+            if s.unlocked { {require(asked)} }
             div { class: "pkacts row",
-                if !s.registered {
+                if !asked {
+                } else if !s.registered {
                     button { class: "btn primary", disabled: !st.supported || busy,
                         onclick: move |_| bridge::call("window.__wado.passkeyAdd();".into()),
                         if busy { "Waiting for your passkey…" } else { "Add a passkey" }
@@ -177,8 +220,11 @@ pub fn render(device: String) -> Element {
                 p { class: "why", "This browser can't use passkeys — open wado in Chrome, Safari, Edge or Firefox, with a screen lock set on this device." }
             } else if s.registered && !s.unlocked {
                 p { class: "why", "Lost it, or a new phone? On the computer run " span { class: "mono", "wado passkey remove {device}" } ", then add a new one here." }
-            } else if s.unlocked {
+            } else if s.unlocked && asked {
                 p { class: "why", "To lock it from the computer: " span { class: "mono", "wado passkey lock {device}" } "." }
+            }
+            if asked && !s.unlocked {
+                p { class: "why", "Passkey not working here? Use “Approve on the computer” on the passkey sheet, or on the computer run " span { class: "mono", "wado passkey require {device} off" } "." }
             }
         }
     }

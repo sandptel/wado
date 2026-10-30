@@ -28,6 +28,10 @@ pub struct Snapshot {
     pub devices: Vec<Row>,
     /// Typed pairings waiting for their check words to be confirmed here, oldest first.
     pub asking: Vec<Ask>,
+    /// Phones asking to be let in without their passkey (`crate::passkey::approve`), oldest first.
+    pub approving: Vec<crate::passkey::approve::Ask>,
+    /// Device keys this computer does not ask for a passkey (`crate::passkey::require`).
+    pub not_required: Vec<String>,
     pub cfg: Arc<Config>,
     /// Gate, files, shells and config lines from every daemon's log, oldest first.
     pub activity: Vec<String>,
@@ -64,6 +68,12 @@ impl Snapshot {
             .collect();
         Self {
             asking: gate.asking(),
+            approving: crate::passkey::approve::Approvals::default().asking(),
+            not_required: crate::passkey::Store::default()
+                .not_required()
+                .into_iter()
+                .map(|o| o.key)
+                .collect(),
             devices,
             cfg: wado_config::live::current(),
             activity: activity(),

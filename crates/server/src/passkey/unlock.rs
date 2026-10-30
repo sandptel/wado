@@ -29,6 +29,9 @@ pub const FOREVER: Duration = Duration::MAX;
 struct Open {
     at: Instant,
     how: How,
+    /// Opened by an approval on the computer for a device with no passkey here
+    /// ([`open_approved`]): the only window a device without one can have.
+    bare: bool,
 }
 
 #[derive(Default)]
@@ -38,9 +41,23 @@ pub struct Window {
 
 impl Window {
     pub fn open(&mut self, key: &str, now: Instant, how: How) {
+        self.open_as(key, now, how, false);
+    }
+
+    fn open_as(&mut self, key: &str, now: Instant, how: How, bare: bool) {
         if !key.is_empty() {
-            self.open.insert(key.to_string(), Open { at: now, how });
+            self.open
+                .insert(key.to_string(), Open { at: now, how, bare });
         }
+    }
+
+    /// Open for a device that has no passkey here — approved on the computer.
+    pub fn open_bare(&mut self, key: &str, now: Instant) {
+        self.open_as(key, now, How::default(), true);
+    }
+
+    pub fn is_bare(&self, key: &str) -> bool {
+        self.open.get(key).is_some_and(|o| o.bare)
     }
 
     /// A new choice for an open window; its idle clock restarts. False when it is not open.
@@ -130,6 +147,31 @@ pub(crate) fn open_in(store: &Store, key: &str) {
     let how = how_for(store, key);
     global().open(key, Instant::now(), how);
     persist(store, key, how);
+}
+
+/// Someone at the computer approved `key` (`super::approve`): the same window a passkey would
+/// open — its own lifetime rules — or, for a device with no passkey here, the default one,
+/// bound to its link.
+pub(crate) fn open_approved(store: &Store, key: &str) {
+    if store.has(key) {
+        open_in(store, key);
+    } else {
+        global().open_bare(key, Instant::now());
+    }
+}
+
+/// Is `key` open by an approval though it has no passkey? A use restarts its idle clock.
+pub(crate) fn bare_open(key: &str, use_it: bool) -> bool {
+    let mut w = global();
+    if !w.is_bare(key) {
+        return false;
+    }
+    let now = Instant::now();
+    if use_it {
+        w.touch(key, now)
+    } else {
+        w.left(key, now).is_some()
+    }
 }
 
 /// `key` changed its choice while unlocked: apply it to the open window. False if not open.

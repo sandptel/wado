@@ -2359,7 +2359,10 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             | RelayMsg::PasskeyLock
             | RelayMsg::PasskeyKeepalive
             | RelayMsg::PasskeyGet
-            | RelayMsg::PasskeyStay { .. }) => {
+            | RelayMsg::PasskeyStay { .. }
+            | RelayMsg::PasskeyRequire { .. }
+            | RelayMsg::PasskeyApprove
+            | RelayMsg::PasskeyApproveCancel) => {
                 let (key, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
                 let dev = crate::passkey::relay::Device {
                     key: &key,

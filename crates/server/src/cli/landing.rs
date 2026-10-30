@@ -40,6 +40,10 @@ pub const COMMANDS: &[(&str, &[(&str, &str)])] = &[
                 "passkey [lock|remove <device>]",
                 "who has a passkey; lock one now; remove one a device lost",
             ),
+            (
+                "passkey approve | require <device> on|off",
+                "let a phone in without its passkey; stop asking one for it",
+            ),
         ],
     ),
     (
