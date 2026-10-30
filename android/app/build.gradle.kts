@@ -3,6 +3,8 @@ import java.util.Properties
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    // Navigation 3 keys are @Serializable, so the back stack survives process death.
+    alias(libs.plugins.kotlin.serialization)
 }
 
 // One version for the whole of wado's client: the web client's crate version is the app's.
@@ -52,6 +54,7 @@ android {
         versionName = clientVersion
         // Static shortcuts name their target package; it differs for the debug build.
         resValue("string", "package_name", "io.github.sandptel.wado")
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
@@ -146,7 +149,19 @@ dependencies {
     // UniFFI's Kotlin calls the Rust core through JNA (the Android AAR carries its native part).
     implementation(libs.jna) { artifact { type = "aar" } }
 
+    implementation(libs.navigation3.runtime)
+    implementation(libs.navigation3.ui)
+    implementation(libs.kotlinx.serialization.core)
+    implementation(libs.kotlinx.coroutines.android)
+
     testImplementation(libs.junit)
     // android.jar's org.json is stubs on the JVM; the real one for unit tests.
     testImplementation(libs.org.json)
+
+    androidTestImplementation(platform(libs.compose.bom))
+    androidTestImplementation(libs.compose.ui.test.junit4)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.core)
+    androidTestImplementation(libs.androidx.test.junit)
+    debugImplementation(libs.compose.ui.test.manifest)
 }

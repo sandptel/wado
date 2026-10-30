@@ -21,6 +21,8 @@ object Motion {
     const val DUR = 220
     const val DUR_SHEET = 480
     const val DUR_SHEET_EXIT = 420
+    /** A page popping back (M17's exit). */
+    const val DUR_POP = 340
     const val STAGGER = 40
 
     var reduced = false
