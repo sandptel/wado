@@ -54,8 +54,9 @@ Put `deploy/relay/Caddyfile` at `/etc/caddy/Caddyfile` with `relay.example.com` 
 curl -fsS https://relay.<domain>/health          # from anywhere
 ```
 
-Add an uptime monitor on that URL (any free HTTP checker) that alerts you — the client will say
-"wado's relay is unreachable — not your computer", but you should hear first.
+Add an uptime monitor on that URL that alerts you — the client will say "wado's relay is
+unreachable — not your computer", but you should hear first. [`uptime.md`](uptime.md) has a
+keyword-monitor config and a timer for `scripts/relay-health.sh`.
 
 ## 6. Point wado at it (P0 code change)
 

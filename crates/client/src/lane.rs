@@ -92,7 +92,7 @@ pub fn hint(spot: Spot, link: &Link, detail: &str) -> Hint {
             spot,
             title: "Big output — arriving at the relay's pace".into(),
             body: "Shells always ride wado's relay, which carries 64 KB/s, so a dump this size \
-                   takes a moment. Nothing is lost; it is still coming."
+                   takes a moment to arrive."
                 .into(),
             retry: false,
         },
