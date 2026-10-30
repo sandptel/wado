@@ -307,6 +307,7 @@ pub async fn handle(hub: &Arc<Hub>, room: &ViewRoom, who: &Who, text: &str, cx: 
             let clip = wado_compositor::clipboard::Clip {
                 mime: "text/plain;charset=utf-8".into(),
                 data: text.into_bytes().into(),
+                secret: false,
             };
             let _ = hub.cmd_tx.send(CompositorCommand::SetClipboard(clip));
         }
