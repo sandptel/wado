@@ -138,7 +138,10 @@ pub fn render(ui: Ui) -> Element {
                 }
             }
         }
-        video { id: "wado-video", autoplay: true, playsinline: true, muted: true }
+        // A transparent poster: with no frame yet, an Android WebView paints its own grey "play"
+        // poster, scaled to the whole stage in full screen (the user's recording, 2026-10-30).
+        video { id: "wado-video", autoplay: true, playsinline: true, muted: true,
+            poster: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" }
         // An empty, stable mount point that `js/gamepad.js` builds the on-screen pad inside.
         //
         // A *portal*, and deliberately: the pad is ~30 absolutely-positioned elements that

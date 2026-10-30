@@ -93,9 +93,15 @@ pub fn rotate(ui: Ui, to: &str) {
     }
 }
 
-/// Go home and leave the session running — kept by the daemon until someone ends it.
+/// Leave the session on this device — it keeps running on the computer until someone ends it —
+/// and go to that computer's page. Also how Back leaves, whatever state the connection is in:
+/// the retry loop on this device stops with it (`js/session_intent.js`).
 pub fn leave(ui: Ui) {
     let mut live = ui.live;
+    let key = crate::profile::current_key(ui);
+    if !key.is_empty() && crate::route::index_of(ui, &key).is_some() {
+        live.view.set(crate::route::View::Computer(key));
+    }
     live.session_on.set(false);
     live.clear_telemetry();
     live.applied.set(String::new());

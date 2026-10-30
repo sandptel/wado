@@ -2,6 +2,7 @@ package io.github.sandptel.wado.web
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
 import android.os.Build
@@ -126,6 +127,11 @@ class ClientWebView(context: Context) {
     }
 
     private inner class Chrome : WebChromeClient() {
+        // An empty <video> otherwise paints the WebView's own grey play poster, scaled to the
+        // whole stage in full screen while a session has no picture yet. Transparent instead.
+        override fun getDefaultVideoPoster(): Bitmap =
+            Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+
         override fun onPermissionRequest(request: PermissionRequest) {
             if (request.origin.host != ClientServer.DOMAIN) return request.deny()
             val wantsCamera = PermissionRequest.RESOURCE_VIDEO_CAPTURE in request.resources

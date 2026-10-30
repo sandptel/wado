@@ -61,6 +61,7 @@ fn App() -> Element {
 
     bridge::run(ui);
     pending::use_name(ui);
+    route::use_remember(ui);
     // A shortcut from the app icon (`?go=`), followed on the last used computer.
     deeplink::follow(ui);
 
@@ -179,6 +180,8 @@ fn App() -> Element {
                 {ui::surround::backdrop(ui)}
                 {ui::stage::render(ui)}
                 {ui::surround::render(ui)}
+                // No picture yet, or no path for one: said in the picture's place, with Leave.
+                {ui::surround::stage_state::render(ui)}
                 {ui::dock::render(ui)}
             }
             {ui::landing::render(ui)}

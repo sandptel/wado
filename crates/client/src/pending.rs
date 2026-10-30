@@ -9,6 +9,9 @@
 //! The request is sent only if the action was not already under way: a second tap while it works
 //! sends nothing. The JS gets the action's `ack` number as `a.ack`, for the request to carry.
 
+// The Rust half is built and tested; wiring it into each action is the handover's next step.
+#![allow(dead_code)]
+
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use serde_json::{json, Value};

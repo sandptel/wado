@@ -42,9 +42,27 @@
     return "desk";
   };
 
+  // The soft keyboard is not a new viewport. On Android (and an installed PWA) it resizes the
+  // page, and laying the console out again for the half that is left shrank the picture and
+  // threw the deck around under the thumbs. While a text field has focus and only the height
+  // went down, the console keeps the height it had: the picture stays put and the keyboard
+  // simply covers the deck's lower part until it goes.
+  let full = { w: innerWidth, h: innerHeight };
+  const typing = () => {
+    const a = document.activeElement;
+    return !!a && (a.id === "wado-osk" || a.tagName === "TEXTAREA" ||
+      (a.tagName === "INPUT" && !/^(button|checkbox|radio|range|submit)$/.test(a.type)) || a.isContentEditable);
+  };
+  F.keyboard = false;
   let last = "";
   F.report = () => {
-    const w = innerWidth, h = innerHeight;
+    const w = innerWidth;
+    let h = innerHeight;
+    F.keyboard = w === full.w && h < full.h - 100 && typing();
+    if (F.keyboard) h = full.h;
+    else full = { w, h };
+    root.toggleAttribute("data-ime", F.keyboard);
+    if (F.keyboard) root.style.setProperty("--stage-h", h + "px");
     const v = document.getElementById("wado-video");
     const vw = (v && v.videoWidth) || 0, vh = (v && v.videoHeight) || 0;
     const sa = insets();
@@ -102,6 +120,8 @@
   });
 
   addEventListener("resize", F.report);
+  // The keyboard going away is a focus change as much as a resize.
+  addEventListener("focusout", () => setTimeout(F.report, 50), true);
   addEventListener("orientationchange", () => setTimeout(F.report, 120));
   if (typeof visualViewport !== "undefined" && visualViewport) visualViewport.addEventListener("resize", F.report);
   // The session's aspect arrives with its first frame, and changes when a joiner's lead turns.
