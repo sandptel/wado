@@ -17,6 +17,7 @@ import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
 import 'playing.dart';
+import 'clips.dart';
 import '../../wado/passkey.dart';
 import '../passkey/passkey_card.dart';
 import 'quick.dart';
@@ -125,6 +126,9 @@ class _ComputerPageState extends State<ComputerPage> {
                       const Sect('Quick'),
                       const SizedBox(height: 8),
                       host == null ? const _Empty(icon: 'sliders', text: 'Its controls show once it answers.') : Quick(h: host, name: c.name),
+                      const Sect('Clipboard'),
+                      const SizedBox(height: 8),
+                      const Clips(),
                     ],
                     const Sect('This computer'),
                     const SizedBox(height: 8),

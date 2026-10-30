@@ -5,6 +5,7 @@ import 'core/core_host.dart';
 import 'ui/theme/look.dart';
 import 'wado/e2e.dart';
 import 'wado/host.dart';
+import 'wado/clip.dart';
 import 'wado/pad.dart';
 import 'wado/passkey.dart';
 import 'wado/shells.dart';
@@ -25,6 +26,7 @@ Future<void> main() async {
     Shells.I;
     Pad.I;
     Passkey.I;
+    Clip.I;
     final sel = Settings.I.s('selected');
     if (sel.isNotEmpty && CoreHost.I.computer(sel) != null) RelayLink.I.dial(sel);
     e2eHooks();

@@ -2,9 +2,12 @@
 // code shown on the computer — a pairing link (the QR's, pasted) or the typed code with its Remote
 // ID. A typed code shows four check words the computer shows too; you confirm them there.
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+import 'package:flutter_zxing/flutter_zxing.dart';
 
 import '../../core/core_host.dart';
 import '../../wado/nav.dart';
@@ -145,6 +148,16 @@ class _AddComputerState extends State<AddComputer> {
       ],
       WCard(children: [
         const Why('On the computer, run `wado pair` (or wado tui → Pair). It shows a QR code, a pairing link and a code.'),
+        if (Platform.isAndroid || Platform.isIOS)
+          Btn('Scan the QR code', primary: true, icon: 'camera', onTap: busy
+              ? null
+              : () async {
+                  final link = await Navigator.of(context).push<String>(MaterialPageRoute(builder: (_) => const _Scan()));
+                  if (link != null && link.isNotEmpty) {
+                    _link.text = link;
+                    _start(CoreHost.I.pair(link));
+                  }
+                }),
         field('Pairing link', _link, hint: 'Paste the link the computer shows', kb: TextInputType.url),
         Row(children: [
           Expanded(
@@ -201,5 +214,23 @@ class _AddComputerState extends State<AddComputer> {
           const SizedBox(width: 10),
           Expanded(child: Text(text, style: body(context, size: .8125, color: t.dim))),
         ]),
+      );
+}
+
+/// The camera, reading the computer's pairing QR (zxing-cpp; nothing leaves the phone).
+class _Scan extends StatelessWidget {
+  const _Scan();
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white, title: const Text('Scan the QR code')),
+        body: ReaderWidget(
+          codeFormat: Format.qrCode,
+          showGallery: false,
+          onScan: (code) {
+            final t = code.text;
+            if (code.isValid && t != null && (t.contains('pair=') || t.startsWith('wado:'))) Navigator.of(context).pop(t);
+          },
+        ),
       );
 }
