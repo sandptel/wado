@@ -280,9 +280,28 @@
                   libsecret
                   jsoncpp
                   libepoxy
+                  # flutter_webrtc's libwebrtc links these on Linux.
+                  libgbm
+                  libdrm
                 ]
               );
               ANDROID_NDK_HOME = "${root}/ndk/${ndkVersion}";
+              # flutter_webrtc's prebuilt libwebrtc.so needs libgbm and libdrm found at link time
+              # (indirect deps: -rpath-link) and at run time (scripts/app-run.sh).
+              LDFLAGS = androidPkgs.lib.optionalString withFlutter "-Wl,-rpath-link,${androidPkgs.libgbm}/lib:${androidPkgs.libdrm.out}/lib";
+              WADO_APP_LIBS = androidPkgs.lib.optionalString withFlutter (
+                androidPkgs.lib.makeLibraryPath (
+                  with androidPkgs;
+                  [
+                    libgbm
+                    libdrm
+                    gtk3
+                    libsecret
+                    libepoxy
+                    jsoncpp
+                  ]
+                )
+              );
               # The Rust core needs Android's std, which nixpkgs' rustc does not carry: rustup brings
               # it, kept off PATH (its `cargo` proxy would shadow the one above) and in its own home
               # (~/.cache/wado/rustup) at the same version as this rustc. scripts/android-core.sh.

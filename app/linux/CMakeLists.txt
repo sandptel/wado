@@ -97,6 +97,10 @@ install(TARGETS ${BINARY_NAME} RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}"
 install(FILES "${FLUTTER_ICU_DATA_FILE}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   COMPONENT Runtime)
 
+# The Rust core (crates/app-bridge), built by scripts/app-build.sh before `flutter build linux`.
+set(WADO_BRIDGE_LIB "${PROJECT_SOURCE_DIR}/../../target/$<IF:$<CONFIG:Debug>,debug,release>/libwado_app_bridge.so")
+install(FILES "${WADO_BRIDGE_LIB}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}" COMPONENT Runtime)
+
 install(FILES "${FLUTTER_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
   COMPONENT Runtime)
 

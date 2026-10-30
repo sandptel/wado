@@ -19,6 +19,7 @@ const PIN = "16.36.0";
 const ALLOWED = new Set(["CC0-1.0"]);
 const ROOT = new URL("..", import.meta.url).pathname;
 const DRAW = join(ROOT, "android/app/src/main/res/drawable");
+const APP_OS = join(ROOT, "app/assets/os");
 const LIC = join(ROOT, "android/app/src/main/assets/licenses");
 
 const src = readFileSync(join(ROOT, "crates/client-core/src/os_logo.rs"), "utf8");
@@ -60,6 +61,10 @@ try {
       "",
     ].join("\n");
     writeFileSync(join(DRAW, `os_${slug}.xml`), xml);
+    // The Flutter app's copy (app/assets/os/<slug>.svg), tinted at draw time.
+    mkdirSync(APP_OS, { recursive: true });
+    writeFileSync(join(APP_OS, `${slug}.svg`),
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">${paths.map((d) => `<path fill="#fff" d="${d}"/>`).join("")}</svg>\n`);
     notes.push(`${e.title} (${slug})`, `  source: ${e.source}`, `  guidelines: ${e.guidelines || "none published"}`, "");
   }
   writeFileSync(join(LIC, "os-logos.txt"), notes.join("\n"));

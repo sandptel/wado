@@ -1,5 +1,5 @@
 name: wado
-description: "A new Flutter project."
+description: "wado — your computer, from your phone. The native app (Flutter over the Rust client core)."
 publish_to: 'none'
 version: 0.1.0+1
 
@@ -10,6 +10,11 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_rust_bridge: 2.13.0
+  flutter_secure_storage: ^11.2.0
+  flutter_svg: ^2.3.2
+  flutter_webrtc: ^1.6.3
+  path_provider: ^2.1.6
+  shared_preferences: ^2.5.6
 
 dev_dependencies:
   flutter_test:
@@ -18,3 +23,16 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/schemes.json
+    - assets/os/
+  fonts:
+    - family: Bricolage Grotesque
+      fonts:
+        - asset: assets/fonts/BricolageGrotesque.ttf
+    - family: Figtree
+      fonts:
+        - asset: assets/fonts/Figtree.ttf
+    - family: JetBrains Mono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono.ttf
