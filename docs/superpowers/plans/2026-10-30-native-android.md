@@ -4,6 +4,8 @@
 
 **Goal:** Replace the WebView client inside the Android app with a fully native Jetpack Compose app. The app is driven by one Rust client core that the F8 desktop app also links. The web client stays for browsers and iOS.
 
+> **2026-10-31:** the framework is now Compose Multiplatform for every platform, Android first. Keep screens free of `android.*` imports where a common API exists; platform features go behind `expect`/`actual`.
+
 **Architecture:** A new pure-Rust crate `crates/client-core` holds the client protocol:
 - the relay link
 - the E2E handshake and seal
