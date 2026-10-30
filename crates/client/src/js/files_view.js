@@ -108,6 +108,8 @@
     if (el) el.remove();
     el = null;
     removeEventListener("keydown", keys, true);
+    const files = document.getElementById("wado-files");
+    if (files) files.inert = false;
   };
   F.viewClose = close;
 
@@ -119,6 +121,9 @@
     if (!el) {
       el = h("div", { class: "fview", role: "dialog", "aria-label": "Viewer" });
       document.body.appendChild(el);
+      // The file manager under it is covered: never tapped or focused through the viewer.
+      const files = document.getElementById("wado-files");
+      if (files) files.inert = true;
       addEventListener("keydown", keys, true);
       swipe(el);
     }
@@ -168,7 +173,7 @@
       at < list.length - 1 ? h("button", { class: "fvnav next", "aria-label": "Next", onclick: () => step(1) }, ico("back")) : null,
     ] : [];
     el.classList.remove("zoomed");
-    el.replaceChildren(head, bar, stage, ...nav);
+    el.replaceChildren(head, bar, stage, ...nav.filter(Boolean));
 
     const load = () => {
       stage.replaceChildren(h("div", { class: "fspin" }));

@@ -5,6 +5,10 @@
 .files { position: fixed; inset: 0; z-index: 56; display: grid; background: color-mix(in oklab, #000, transparent 45%);
   font-family: var(--body); color: var(--text); backdrop-filter: blur(6px); }
 .files[hidden] { display: none; }
+/* On a phone the window is a full-height sheet: once it is up, the page under it is hidden, so it
+ * can never show through, be tapped or be reached by Tab. (Wide, the page stays dimmed under
+ * the window's scrim.) The stage is left alone: a session's video keeps playing under it. */
+html:has(#wado-files[data-layout="narrow"]:not([hidden]):not(.opening)) :is(#landing, #computer, #sub) { visibility: hidden; }
 /* Entrance animations run once, on open — not on every re-render of the panel. */
 .files.opening { animation: fade var(--dur) both; }
 /* Sheets and prompts asked from inside the window go over it. */
