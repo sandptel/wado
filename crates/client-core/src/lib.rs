@@ -5,7 +5,9 @@
 //!
 //! Re-exports only; each module does one job.
 
+pub mod core;
 pub mod e2e;
+pub mod event;
 pub mod feeds;
 pub mod identity;
 pub mod link;
@@ -13,6 +15,8 @@ pub mod os_logo;
 pub mod pair;
 pub mod pins;
 pub mod profiles;
+pub mod pump;
+pub mod queue;
 pub mod relay;
 pub mod request;
 pub mod secret;
