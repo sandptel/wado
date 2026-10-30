@@ -33,6 +33,11 @@ pub struct PasskeyState {
     /// Lock the moment the app goes to the background. On unless the device turned it off.
     #[serde(default = "default_lock_on_leave")]
     pub lock_on_leave: bool,
+    /// The computer asks this device for its passkey at all. On unless its owner turned it off
+    /// (`wado passkey require <device> off`, or the device itself while unlocked); off, every
+    /// passkey door is open to it and `unlocked` says so.
+    #[serde(default = "default_required")]
+    pub required: bool,
 }
 
 impl Default for PasskeyState {
@@ -46,8 +51,14 @@ impl Default for PasskeyState {
             origin: String::new(),
             stay: String::new(),
             lock_on_leave: true,
+            required: true,
         }
     }
+}
+
+/// `required` when a message leaves it out: on.
+pub fn default_required() -> bool {
+    true
 }
 
 /// `lock_on_leave` when a message leaves it out: on.
@@ -75,6 +86,31 @@ pub fn stay_idle_s(stay: &str) -> Option<u32> {
     STAYS.iter().find(|(n, _)| *n == stay).map(|(_, s)| *s)
 }
 
+/// How an "approve on the computer" request stands (`passkey_approve_state`): sent while it
+/// waits, and once more when it ends.
+pub const APPROVE_WAITING: &str = "waiting";
+pub const APPROVE_APPROVED: &str = "approved";
+pub const APPROVE_DECLINED: &str = "declined";
+pub const APPROVE_EXPIRED: &str = "expired";
+pub const APPROVE_REFUSED: &str = "refused";
+pub const APPROVE_CANCELLED: &str = "cancelled";
+
 /// What a `passkey_challenge` is for.
 pub const REGISTER: &str = "register";
 pub const UNLOCK: &str = "unlock";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_older_daemons_state_still_asks_for_the_passkey() {
+        let s: PasskeyState =
+            serde_json::from_str(r#"{"registered":true,"unlocked":false}"#).unwrap();
+        assert!(s.required && s.lock_on_leave);
+        let off: PasskeyState =
+            serde_json::from_str(r#"{"registered":false,"unlocked":true,"required":false}"#)
+                .unwrap();
+        assert!(!off.required && off.unlocked);
+    }
+}

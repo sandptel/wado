@@ -27,9 +27,11 @@ pub fn state(store: &Store, key: &str, error: &str) -> PasskeyState {
     let left = unlock::left_in(store, key);
     let prefs = store.prefs(key);
     let idle = prefs.idle();
+    let required = store.required(key);
     PasskeyState {
         registered: cred.is_some(),
-        unlocked: left.is_some(),
+        // Not asked at all: open, as far as every door is concerned.
+        unlocked: left.is_some() || !required,
         // Without an idle clock there is nothing to count down: 0, like `idle_s`.
         idle_left_s: left
             .filter(|_| idle.is_some())
@@ -43,6 +45,7 @@ pub fn state(store: &Store, key: &str, error: &str) -> PasskeyState {
             STAY_DEFAULT.into()
         },
         lock_on_leave: prefs.lock_on_leave,
+        required,
     }
 }
 
@@ -91,6 +94,23 @@ pub(crate) async fn handle_in(
             .ok();
         return;
     }
+    // The two that wait on a person, or answer on their own: off the link's own loop.
+    match msg {
+        RelayMsg::PasskeyApprove => {
+            super::approve::start(
+                store.clone(),
+                dev.key.to_string(),
+                dev.name.to_string(),
+                tx.clone(),
+            );
+            return;
+        }
+        RelayMsg::PasskeyApproveCancel => {
+            super::approve::cancel(store, dev.key, dev.name, tx).await;
+            return;
+        }
+        _ => {}
+    }
     let reply = match step(store, msg, &dev) {
         Some(Reply::Challenge(m)) => m,
         Some(Reply::State(err)) => RelayMsg::PasskeyState {
@@ -133,6 +153,26 @@ fn step(store: &Store, msg: RelayMsg, dev: &Device<'_>) -> Option<Reply> {
             }
             Err(e) => {
                 warn!(device = dev.name, "passkey: lifetime not changed — {e}");
+                e.into()
+            }
+        }),
+        RelayMsg::PasskeyRequire { on } => Reply::State(match set_required(store, key, on) {
+            Ok(()) => {
+                if on {
+                    info!(
+                        device = dev.name,
+                        "passkey: asked for again — turned on by the device"
+                    );
+                } else {
+                    warn!(
+                        device = dev.name,
+                        "passkey: no longer asked — turned off by the device while unlocked"
+                    );
+                }
+                String::new()
+            }
+            Err(e) => {
+                warn!(device = dev.name, "passkey: requirement not changed — {e}");
                 e.into()
             }
         }),
@@ -201,6 +241,18 @@ fn set_stay(store: &Store, key: &str, stay: &str, lock_on_leave: bool) -> Result
         .set_prefs(key, &p)
         .map_err(|_| "the computer could not save that")?;
     unlock::apply(store, key);
+    Ok(())
+}
+
+/// Stop asking this device for its passkey — only while unlocked, so whoever holds it has proven
+/// the passkey (or been approved at the computer) once — or start asking again, at any time.
+fn set_required(store: &Store, key: &str, on: bool) -> Result<(), &'static str> {
+    if !on && store.required(key) && unlock::left_in(store, key).is_none() {
+        return Err("Unlock first — only then can this phone stop asking for its passkey.");
+    }
+    store
+        .set_required(key, on)
+        .map_err(|_| "the computer could not save that")?;
     Ok(())
 }
 
