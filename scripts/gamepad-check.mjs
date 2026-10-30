@@ -10,14 +10,12 @@
 //            stick and game_off; a variant morphs (same ids fly, new ones pop); the editor drags,
 //            resizes (never under 44 px), undoes and redoes, and saves as it goes. SHOTS=<dir> also
 //            writes the screenshots: 390×844, 844×390, 820×1180, default-dark and latte.
-//   daemon   (DAEMON=target/release, with wado + wado-relay) a paired phone with `input`, unlocked
-//            with a passkey, sends game_on over the relay: the daemon answers `game` (a real uinput
-//            pad) or refuses with the words `pad_why.js` reads (no /dev/uinput — run it under
-//            `bwrap --dev /dev …` for that path). Btn and Axes after it are not refused.
+//   daemon   not written yet: the sessionless wire against a release daemon (game_on → `game`, or
+//            the uinput refusal under bwrap) is tested in Rust (`crates/server/src/pad/game.rs`)
+//            and the refusal card by passkey-ui-e2e's pad phase; the end-to-end run is to do.
 //
 //   node scripts/gamepad-check.mjs                 model only, plus browser when the client is built
 //   SHOTS=/tmp/gp node scripts/gamepad-check.mjs
-//   DAEMON=target/release node scripts/gamepad-check.mjs
 //
 // Chrome and the daemon need the Bash sandbox off. It kills only what it started.
 
@@ -462,14 +460,6 @@ if (!existsSync(join(PUB, "index.html"))) {
   } finally {
     P.close();
   }
-}
-
-// ── daemon ───────────────────────────────────────────────────────────────────────────────────
-if (process.env.DAEMON) {
-  const { runDaemon } = await import("./lib/gamepad-daemon.mjs");
-  const r = await runDaemon(join(ROOT, process.env.DAEMON));
-  passes += r.passes;
-  failures += r.failures;
 }
 
 console.log(`\n${passes} passed, ${failures} failed`);
