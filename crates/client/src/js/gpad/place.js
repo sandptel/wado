@@ -55,11 +55,11 @@
 
   P.thumbK = (o, w, h) => Math.min(w / V.REF[o][0], h / V.REF[o][1]);
 
-  // The smallest k at which every control in `cs` is still 44 px on its short side.
-  const floorK = (cs, o) => Math.max(0, ...cs.map((c) => {
+  // The smallest k at which `c` is still 44 px on its short side.
+  const floorK = (c, o) => {
     const [w, h] = P.size(c, o, 1);
     return V.MIN_PX / Math.min(w, h);
-  }));
+  };
 
   // Bounding box of controls in reference px (orientation `o`).
   function bbox(cs, o) {
@@ -74,13 +74,16 @@
     return { l, t, w: Math.max(1, r - l), h: Math.max(1, b - t) };
   }
 
-  // Lay `cs` out at scale k with their bbox's top-left at (x0, y0).
-  function lay(out, cs, o, k, bb, x0, y0) {
+  // Lay `cs` out with their bbox's top-left at (x0, y0): offsets at scale `kp`; each control as
+  // small as `kp` but never under its own 44 px floor; each kept inside the A × B box.
+  function lay(out, cs, o, kp, bb, x0, y0, A, B) {
     const [DW, DH] = V.REF[o];
     for (const c of cs) {
-      const [w, h] = P.size(c, o, k);
-      const cx = x0 + (c[o][0] * DW - bb.l) * k, cy = y0 + (c[o][1] * DH - bb.t) * k;
-      out.set(c.id, { x: cx - w / 2, y: cy - h / 2, w, h });
+      const [w, h] = P.size(c, o, Math.max(kp, floorK(c, o)));
+      const cx = x0 + (c[o][0] * DW - bb.l) * kp, cy = y0 + (c[o][1] * DH - bb.t) * kp;
+      const x = Math.min(Math.max(0, cx - w / 2), Math.max(0, A - w));
+      const y = Math.min(Math.max(0, cy - h / 2), Math.max(0, B - h));
+      out.set(c.id, { x, y, w, h });
     }
   }
 
@@ -96,8 +99,8 @@
     // A tall deck (a column beside the picture) takes the portrait arrangement whole.
     if (B > A) {
       const bb = bbox(shown, "p");
-      const k = Math.max(floorK(shown, "p"), Math.min(1, (A - pad * 2) / bb.w, (B - pad * 2) / bb.h));
-      lay(out, shown, "p", k, bb, (A - bb.w * k) / 2, (B - bb.h * k) / 2);
+      const kp = Math.min(1, (A - pad * 2) / bb.w, (B - pad * 2) / bb.h);
+      lay(out, shown, "p", kp, bb, (A - bb.w * kp) / 2, (B - bb.h * kp) / 2, A, B);
       return out;
     }
     const sides = { left: [], centre: [], right: [] };
@@ -108,11 +111,12 @@
     const used = Object.values(boxes);
     const sumW = used.reduce((a, b) => a + b.w, 0) + gap * Math.max(0, used.length - 1);
     const maxH = Math.max(...used.map((b) => b.h));
-    const k = Math.max(floorK(shown, "l"), Math.min(1, (A - pad * 2) / sumW, (B - pad * 2) / maxH));
+    // Offsets shrink to fit; sizes only as far as the 44 px floor allows.
+    const kp = Math.min(1, (A - pad * 2) / sumW, (B - pad * 2) / maxH);
     for (const s in boxes) {
       const bb = boxes[s];
-      const x0 = s === "left" ? pad : s === "right" ? A - pad - bb.w * k : (A - bb.w * k) / 2;
-      lay(out, sides[s], "l", k, bb, x0, (B - bb.h * k) / 2);
+      const x0 = s === "left" ? pad : s === "right" ? A - pad - bb.w * kp : (A - bb.w * kp) / 2;
+      lay(out, sides[s], "l", kp, bb, x0, (B - bb.h * kp) / 2, A, B);
     }
     return out;
   };

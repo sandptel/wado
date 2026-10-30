@@ -117,11 +117,25 @@
     const [DW, DH] = V.REF[G.o()];
     E.change(() => { for (const m of E.members()) { m.pos[0] += (dx * 8) / DW; m.pos[1] += (dy * 8) / DH; M.clampPos(m.c, G.o()); } });
   };
+  // The Size slider: the selection grows or shrinks, and a group spreads around its centre with
+  // it, as the corner dot does — never under 44 px.
   E.setScale = (v, live) => {
-    const apply = () => { for (const m of E.members()) m.pos[2] = Math.min(V.MAX_SCALE, Math.max(M.minScale(m.c.kind), v)); };
+    const apply = () => {
+      const ms = E.members(), sel = ms.find((m) => m.c.id === G.S.sel) || ms[0];
+      if (!sel) return;
+      let f = v / (sel.pos[2] || 1);
+      for (const m of ms) f = Math.min(Math.max(f, M.minScale(m.c.kind) / m.pos[2]), V.MAX_SCALE / m.pos[2]);
+      const gc = groupCentre(ms.map((m) => m.pos));
+      for (const m of ms) {
+        m.pos[2] = +(m.pos[2] * f).toFixed(3);
+        if (ms.length > 1) { m.pos[0] = gc[0] + (m.pos[0] - gc[0]) * f; m.pos[1] = gc[1] + (m.pos[1] - gc[1]) * f; }
+        M.clampPos(m.c, G.o());
+      }
+    };
     if (live) { apply(); G.draw(); W.gpadInspector.draw(true); G.commit(); return; }
     E.change(apply, { numbersOnly: true });
   };
+
   E.setLook = (k, v) => {
     const S = G.S;
     const ids = S.scope === "all" ? S.L.controls.map((c) => c.id) : E.selIds();
