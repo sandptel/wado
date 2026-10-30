@@ -363,6 +363,22 @@ pub async fn handle(hub: &Arc<Hub>, room: &ViewRoom, who: &Who, text: &str, cx: 
         | RelayMsg::ClipPush { .. } => {
             let _ = crate::control::serve::handle(text, who, cx).await;
         }
+        // The device's passkey: its own, whichever link it is on — the room's envelope proved the
+        // key the unlock is bound to. Answered here, never dropped (Decision Log `2026-10-30`).
+        msg @ (RelayMsg::PasskeyBegin { .. }
+        | RelayMsg::PasskeyRegister { .. }
+        | RelayMsg::PasskeyUnlock { .. }
+        | RelayMsg::PasskeyLock
+        | RelayMsg::PasskeyKeepalive
+        | RelayMsg::PasskeyGet
+        | RelayMsg::PasskeyStay { .. }) => {
+            let dev = crate::passkey::relay::Device {
+                key: &who.key,
+                name: &who.name,
+                ok: true,
+            };
+            crate::passkey::relay::handle(msg, dev, out).await;
+        }
         RelayMsg::SessionStart { .. } => {
             let message = "this link joins a running session — start a new one from the \
                            Computer page"
