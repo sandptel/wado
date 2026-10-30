@@ -47,6 +47,8 @@ abstract class AppCore implements RustOpaqueInterface {
     required String code,
   });
 
+  void rename({required String key, required String name});
+
   bool sendRoom({
     required String id,
     required String json,

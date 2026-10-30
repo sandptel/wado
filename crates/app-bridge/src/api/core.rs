@@ -93,6 +93,11 @@ impl AppCore {
         self.core.open_room(key, room).unwrap_or_default()
     }
 
+    #[frb(sync)]
+    pub fn rename(&self, key: String, name: String) {
+        self.core.rename(&key, &name)
+    }
+
     /// The computer's host state as a room read it (`host_state.state`, JSON).
     #[frb(sync)]
     pub fn note_host(&self, key: String, state_json: String) {

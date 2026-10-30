@@ -68,7 +68,7 @@ class WadoCore
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => -648852133;
+  int get rustContentHash => 1565345170;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -119,6 +119,12 @@ abstract class WadoCoreApi extends BaseApi {
     required String relay,
     required String remoteId,
     required String code,
+  });
+
+  void crateApiCoreAppCoreRename({
+    required AppCore that,
+    required String key,
+    required String name,
   });
 
   bool crateApiCoreAppCoreSendRoom({
@@ -484,6 +490,40 @@ class WadoCoreApiImpl extends WadoCoreApiImplPlatform implements WadoCoreApi {
       );
 
   @override
+  void crateApiCoreAppCoreRename({
+    required AppCore that,
+    required String key,
+    required String name,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAppCore(
+            that,
+            serializer,
+          );
+          sse_encode_String(key, serializer);
+          sse_encode_String(name, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 11)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiCoreAppCoreRenameConstMeta,
+        argValues: [that, key, name],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiCoreAppCoreRenameConstMeta => const TaskConstMeta(
+    debugName: "AppCore_rename",
+    argNames: ["that", "key", "name"],
+  );
+
+  @override
   bool crateApiCoreAppCoreSendRoom({
     required AppCore that,
     required String id,
@@ -503,7 +543,7 @@ class WadoCoreApiImpl extends WadoCoreApiImplPlatform implements WadoCoreApi {
           sse_encode_String(json, serializer);
           sse_encode_bool(urgent, serializer);
           sse_encode_bool(resend, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 11)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 12)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_bool,
@@ -536,7 +576,7 @@ class WadoCoreApiImpl extends WadoCoreApiImplPlatform implements WadoCoreApi {
             serializer,
           );
           sse_encode_u_64(silenceMs, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 12)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 13)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -568,7 +608,7 @@ class WadoCoreApiImpl extends WadoCoreApiImplPlatform implements WadoCoreApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 13,
+            funcId: 14,
             port: port_,
           );
         },
@@ -602,7 +642,7 @@ class WadoCoreApiImpl extends WadoCoreApiImplPlatform implements WadoCoreApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 14,
+            funcId: 15,
             port: port_,
           );
         },
@@ -629,7 +669,7 @@ class WadoCoreApiImpl extends WadoCoreApiImplPlatform implements WadoCoreApi {
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 15)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 16)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_String,
@@ -1077,6 +1117,11 @@ class AppCoreImpl extends RustOpaque implements AppCore {
     remoteId: remoteId,
     code: code,
   );
+
+  void rename({required String key, required String name}) => WadoCore
+      .instance
+      .api
+      .crateApiCoreAppCoreRename(that: this, key: key, name: name);
 
   bool sendRoom({
     required String id,

@@ -259,6 +259,24 @@ impl Core {
         Some(id)
     }
 
+    /// Name a saved computer on this device (an empty name goes back to its Remote ID).
+    pub fn rename(&self, key: &str, name: &str) {
+        {
+            let mut ps = self.inner.profiles.lock().unwrap();
+            let Some(mut p) = ps.get(key).cloned() else {
+                return;
+            };
+            p.name = if name.trim().is_empty() {
+                wado_protocol::relay_wire::display_remote_id(&p.remote_id)
+            } else {
+                name.trim().to_string()
+            };
+            ps.upsert(p);
+            let _ = ps.save();
+        }
+        self.emit_computers();
+    }
+
     /// A room's UI read the computer's host state: refresh the saved name (until the person names
     /// it), OS and desktop, as a watched link's pump does, so cards and logos follow the computer.
     pub fn note_host(&self, key: &str, state_json: &str) {

@@ -6,6 +6,10 @@ import '../widgets/basics.dart';
 import 'add_computer.dart';
 import 'appearance.dart';
 import 'diagnostics.dart';
+import 'display_session.dart';
+import 'sound_devices.dart';
+import 'connection_trust.dart';
+import '../../wado/nav.dart';
 import '../input/hub.dart';
 import '../shell/shell_page.dart';
 import '../files/files_page.dart';
@@ -21,6 +25,9 @@ final _pages = <String, PageDef>{
   'add_computer': PageDef('Add a computer', (_) => const AddComputer()),
   'appearance': PageDef('Appearance', (_) => const Appearance()),
   'diagnostics': PageDef('Diagnostics', (_) => const Diagnostics()),
+  'display_session': PageDef('Display & session', (_) => const DisplaySession()),
+  'sound_devices': PageDef('Sound & devices', (_) => const SoundDevices()),
+  'connection_trust': PageDef('Connection & trust', (_) => ConnectionTrust(computerKey: Nav.I.view.value.computer)),
   'input': PageDef('Virtual input', (_) => const InputHub()),
   'shells': PageDef('Shell', (_) => const ShellPage(), fullBleed: true),
   'files': PageDef('Files', (_) => const FilesPage(), fullBleed: true),
