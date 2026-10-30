@@ -7,6 +7,9 @@
 //! message applied wakes it. Keyboard messages go through one ordered queue, so text typed
 //! by `wtype` can never be overtaken by the Enter pressed after it. Every message is checked
 //! against the gate first; a refusal answers why and closes the pad.
+//!
+//! The gamepad (`game.rs`) lives beside the pad, not in it: it needs no touchpad or keyboard,
+//! and it outlives a closed pad by its grace, on a clock and a timer of its own.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -24,6 +27,7 @@ use wado_platform::Capability;
 use wado_protocol::pad::PadMsg;
 use wado_protocol::relay::RelayMsg;
 
+use super::game::Game;
 use super::sink::Devices;
 use super::state::Pad;
 use super::ticker::{self, Pace};
@@ -57,6 +61,13 @@ struct Inner {
     /// Bumped by every `close`, so an `open` that was still gathering when the pad closed
     /// throws its peer connection away instead of keeping it.
     generation: u64,
+    /// The gamepad, made on first use and kept across closes for its grace.
+    game: Option<Game>,
+    /// The gamepad's clock, from its first use; never reset, so a grace survives a close.
+    game_epoch: Option<Instant>,
+    /// The gamepad's timer, while anything about it is timed.
+    game_task: Option<JoinHandle<()>>,
+    game_wake: Arc<Notify>,
 }
 
 impl Live {
@@ -135,6 +146,12 @@ impl Live {
             super::actions::handle(self, msg, peer);
             return;
         }
+        self.game_heard();
+        // Letting go is never refused.
+        if msg == PadMsg::GameOff {
+            self.game(msg);
+            return;
+        }
         let acting = !matches!(msg, PadMsg::Ping { .. });
         if let Some(why) = super::gate::refused(&peer.gate, &peer.who, approved(peer))
             .or_else(|| super::gate::step_up(&peer.who, acting))
@@ -143,11 +160,18 @@ impl Live {
             self.fail(why);
             return;
         }
+        if matches!(
+            msg,
+            PadMsg::GameOn | PadMsg::Btn { .. } | PadMsg::Axes { .. }
+        ) {
+            self.game(msg);
+            return;
+        }
         let keyboard = matches!(
             msg,
             PadMsg::Key { .. } | PadMsg::Char { .. } | PadMsg::Hold { .. } | PadMsg::Text { .. }
         );
-        if !self.start(&peer.who.name, relayed) {
+        if !self.start(&peer.who.name, &peer.who.key, relayed) {
             return;
         }
         if keyboard {
@@ -185,8 +209,10 @@ impl Live {
         }
     }
 
-    /// Let go of everything, destroy the devices, close the direct link.
+    /// Let go of everything, destroy the devices, close the direct link. The gamepad lets go
+    /// too, and goes after its grace.
     pub fn close(&self) {
+        self.game(PadMsg::GameOff);
         let mut inner = self.lock();
         if let Some(mut pad) = inner.pad.take() {
             pad.release_all();
@@ -208,12 +234,14 @@ impl Live {
 
     /// Make the pad, its devices and its two workers on the first message that passed the gate.
     /// False when the devices cannot be made (the phone has been told why).
-    fn start(&self, device: &str, relayed: bool) -> bool {
+    fn start(&self, device: &str, key: &str, relayed: bool) -> bool {
         let mut inner = self.lock();
         if inner.pad.is_some() {
             return true;
         }
         let mut pad = Pad::new(devices());
+        let key = key.to_string();
+        pad.set_speed(move || speed(&key));
         if let Err(e) = pad.prepare() {
             let message = e.to_string();
             drop(inner);
@@ -275,6 +303,78 @@ impl Live {
         true
     }
 
+    /// One gamepad message, already through the gate. The device is made on first use; its
+    /// reply (the player number, or why it cannot be made) goes back to the phone.
+    fn game(&self, msg: PadMsg) {
+        let reply = {
+            let mut inner = self.lock();
+            let alive = inner.game.as_ref().is_some_and(Game::alive);
+            if msg == PadMsg::GameOff && !alive {
+                return; // nothing to let go of
+            }
+            let now = ticker::ms_since(*inner.game_epoch.get_or_insert_with(Instant::now));
+            // No device yet: look for the platform's again, which may have been fixed since.
+            if !alive {
+                let silence = wado_config::live::current().trackpad.key_silence_ms;
+                inner.game = Some(Game::from_platform(silence));
+            }
+            let reply = inner.game.as_mut().and_then(|g| g.handle(now, msg));
+            self.game_timer(&mut inner);
+            reply
+        };
+        if let Some(reply) = reply {
+            self.answer(reply);
+        }
+    }
+
+    /// Anything arrived: the phone is still there, so held buttons stay held.
+    fn game_heard(&self) {
+        let mut inner = self.lock();
+        let Some(epoch) = inner.game_epoch else {
+            return;
+        };
+        if let Some(game) = inner.game.as_mut() {
+            game.heard(ticker::ms_since(epoch));
+        }
+    }
+
+    /// Make sure the gamepad's timed rules run: a task sleeping until the next one, woken when a
+    /// message moves it. It ends itself when nothing is timed.
+    fn game_timer(&self, inner: &mut Inner) {
+        if inner.game.as_ref().and_then(Game::due).is_none() {
+            return;
+        }
+        if inner.game_task.is_some() {
+            inner.game_wake.notify_one(); // its next deadline may have moved
+            return;
+        }
+        let (live, wake) = (self.clone(), inner.game_wake.clone());
+        let epoch = *inner.game_epoch.get_or_insert_with(Instant::now);
+        inner.game_task = Some(tokio::spawn(async move {
+            loop {
+                let next = {
+                    let mut inner = live.lock();
+                    let now = ticker::ms_since(epoch);
+                    let next = inner.game.as_mut().and_then(|g| {
+                        g.tick(now);
+                        g.due()
+                    });
+                    if next.is_none() {
+                        inner.game_task = None;
+                        return;
+                    }
+                    next
+                };
+                if let Some(ms) = next {
+                    tokio::select! {
+                        () = wake.notified() => {}
+                        () = tokio::time::sleep_until(epoch + std::time::Duration::from_millis(ms)) => {}
+                    }
+                }
+            }
+        }));
+    }
+
     /// Run `f` on the open pad with the current pad-clock time; `None` when there is no pad.
     fn with_pad<T>(&self, f: impl FnOnce(&mut Pad, u64) -> T) -> Option<T> {
         let mut inner = self.lock();
@@ -333,6 +433,15 @@ async fn type_text(text: String) -> Result<(), String> {
         Ok(t) => t.type_text(text).await,
         Err(absent) => Err(absent.why),
     }
+}
+
+/// This phone's pointer speed as the config has it now (`device "<key>" { trackpad { speed } }`).
+fn speed(key: &str) -> f64 {
+    wado_config::live::current()
+        .device
+        .get(key)
+        .and_then(|d| d.trackpad.as_ref())
+        .map_or(1.0, |t| t.speed)
 }
 
 fn approved(peer: &Peer) -> bool {

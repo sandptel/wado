@@ -32,7 +32,10 @@ use std::{
     fs::{File, OpenOptions},
     io::Write,
     os::unix::io::AsRawFd,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
 };
 
 use wado_platform::input::{GamepadEvent, GamepadInjector, InputError, Opener};
@@ -105,6 +108,16 @@ struct UinputUserDev {
     absmin: [i32; 64],
     absfuzz: [i32; 64],
     absflat: [i32; 64],
+}
+
+/// How many of these devices exist right now, in this process — a session's own pad and a
+/// sessionless one are separate controllers, and games number them in the order they appear.
+static LIVE: AtomicUsize = AtomicUsize::new(0);
+
+/// wado's virtual gamepads alive now. Right after a successful open, this is that pad's player
+/// number as a game counts it (the kernel's order of appearance).
+pub fn live_count() -> usize {
+    LIVE.load(Ordering::SeqCst)
 }
 
 /// An open virtual gamepad. Dropping it destroys the kernel device.
@@ -187,6 +200,7 @@ impl Gamepad {
                 std::io::Error::last_os_error()
             ));
         }
+        LIVE.fetch_add(1, Ordering::SeqCst);
         tracing::info!("virtual gamepad created (uinput, xbox360-compatible)");
         Ok(Self { file })
     }
@@ -261,6 +275,7 @@ impl Drop for Gamepad {
     fn drop(&mut self) {
         // Safety: the descriptor is still owned and open here; the file closes right after.
         unsafe { libc::ioctl(self.file.as_raw_fd(), UI_DEV_DESTROY as _) };
+        LIVE.fetch_sub(1, Ordering::SeqCst);
         tracing::info!("virtual gamepad destroyed");
     }
 }
