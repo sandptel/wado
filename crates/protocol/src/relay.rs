@@ -900,6 +900,13 @@ pub enum RelayMsg {
     PasskeyKeepalive,
     /// Client → daemon: where do I stand? Answered with [`RelayMsg::PasskeyState`].
     PasskeyGet,
+    /// Client → daemon: how long an unlock lasts on this device (a name from
+    /// [`crate::passkey::STAYS`]), and whether leaving the app locks it. Only while unlocked.
+    PasskeyStay {
+        stay: String,
+        #[serde(default = "crate::passkey::default_lock_on_leave")]
+        lock_on_leave: bool,
+    },
     /// Daemon → client: where this device stands, after any of the above or a refusal.
     PasskeyState {
         state: crate::passkey::PasskeyState,
@@ -1120,6 +1127,8 @@ mod wire_tests {
             r#"{"type":"passkey_begin","purpose":"unlock"}"#,
             r#"{"type":"passkey_register","client_data":"a","attestation":"b"}"#,
             r#"{"type":"passkey_unlock","cred_id":"a","client_data":"b","auth_data":"c","signature":"d"}"#,
+            r#"{"type":"passkey_stay","stay":"lock","lock_on_leave":false}"#,
+            r#"{"type":"passkey_stay","stay":"1h"}"#,
             r#"{"type":"claude_answer","session":"s","ask":"a1","allow":true}"#,
             r#"{"type":"claude_open","session":"s"}"#,
             r#"{"type":"claude_new","dir":"/home/me/code/wado"}"#,

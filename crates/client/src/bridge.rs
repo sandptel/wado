@@ -204,6 +204,8 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/pad_settings.js"),
     "\n",
+    include_str!("js/pad_why.js"),
+    "\n",
     include_str!("js/pad_ui.js"),
     "\n",
     // After the pad files: it chains the `pad_out` handler `pad_link` registers.

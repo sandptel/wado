@@ -6,7 +6,7 @@
 //!
 //! | file | job |
 //! |---|---|
-//! | [`card`] | Connection & trust → Passkey: add, replace, lock now |
+//! | [`card`] | Connection & trust → Passkey: add, unlock, replace, lock now; how long it stays unlocked |
 //! | [`glyph`] | the lock drawn in two parts, so its shackle can open |
 
 pub mod card;
@@ -102,7 +102,9 @@ pub fn sheet(ui: Ui) -> Element {
             "aria-modal": "true",
             "aria-labelledby": "pktitle",
             "aria-hidden": "{!up}",
-            inert: !up,
+            // Never `inert: bool`: Dioxus writes `inert="false"` for false, and any `inert` at all
+            // makes the sheet click-through — every tap fell to the scrim and cancelled (2026-10-30).
+            inert: (!up).then_some("true"),
             div { class: "grab" }
             div { class: if cheer() { "pkhead open" } else if st.busy { "pkhead busy" } else { "pkhead" },
                 glyph::Lock {}
@@ -143,7 +145,7 @@ pub fn sheet(ui: Ui) -> Element {
                     if fresh { "Later" } else { "Not now" }
                 }
             }
-            p { class: "pkfine", "It locks again after 15 minutes without use, and whenever you leave the app." }
+            p { class: "pkfine", "{card::lasts_after_unlock(&st.state.stay, st.state.lock_on_leave)}" }
         }
     }
 }

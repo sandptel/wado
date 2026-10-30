@@ -73,5 +73,18 @@
 .pkdisc.on { background: color-mix(in oklab, var(--good), transparent 82%); color: var(--good); animation: popin var(--dur) var(--pop); }
 .pkdisc.lock { background: color-mix(in oklab, var(--accent), transparent 84%); color: var(--accent); }
 .pkcard .btn svg { width: 18px; height: 18px; }
+.pkcard .pknote { margin-top: 10px; }
+/* Stay unlocked: the choice, the switch, and — when it is not the default — a quiet word. */
+.pkstay { display: grid; gap: 10px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+.pkstay > b { color: var(--bright); font-size: 14px; }
+.pkstay .seg button { min-height: 44px; }
+.pkstay .switchrow .swtext { display: grid; gap: 2px; flex: 1 1 180px; min-width: 0; }
+.pkstay .switchrow .swtext b { color: var(--bright); font-size: 14px; font-weight: 600; }
+.pkstay .switchrow .swtext small { color: var(--dim); font-size: 12px; }
+/* The switch draws at 52×32; its target is 60×44. */
+.pkstay .sw::before { content: ""; position: absolute; inset: -6px -4px; }
+.pkhint { display: flex; gap: 8px; align-items: flex-start; margin: 0; font-size: 12px; color: var(--text);
+  padding: 8px 10px; border-radius: var(--r2); background: color-mix(in oklab, var(--warn), transparent 90%); }
+.pkhint svg { width: 16px; height: 16px; flex: none; margin-top: 1px; color: var(--warn); }
 
 :root[data-motion="reduced"] .pkhead.busy .shackle { animation: none; }

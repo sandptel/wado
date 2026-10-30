@@ -1262,8 +1262,9 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 }
                 // A new viewer never inherits the last one's trackpad or what it held down.
                 ctx.pad.close();
-                // Nor its passkey unlock: a new link proves itself again.
-                crate::passkey::unlock::lock_all();
+                // Nor its passkey unlock: a new link proves itself again — unless the device chose a
+                // longer one, which is bound to its key, not to a link (`crate::passkey::stay`).
+                crate::passkey::unlock::lock_link();
                 // The audio sink appears for this device, named after it.
                 tokio::spawn(crate::host::viewer(Some(client_name.clone())));
                 ctx.media_sent.clear();
@@ -1403,7 +1404,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 // Files go with the device: no transfer outlives the link that authorised it.
                 close_files(&ctx.files_pc);
                 ctx.pad.close(); // and the trackpad: no key stays held after the device leaves
-                crate::passkey::unlock::lock_all();
+                crate::passkey::unlock::lock_link();
                 if let Some(pc) = dead {
                     tokio::spawn(async move {
                         if let Err(e) = pc.close().await {
@@ -2284,7 +2285,8 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             | RelayMsg::PasskeyUnlock { .. }
             | RelayMsg::PasskeyLock
             | RelayMsg::PasskeyKeepalive
-            | RelayMsg::PasskeyGet) => {
+            | RelayMsg::PasskeyGet
+            | RelayMsg::PasskeyStay { .. }) => {
                 let (key, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
                 let dev = crate::passkey::relay::Device {
                     key: &key,
@@ -2359,7 +2361,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     files_note_task.abort();
     close_files(&ctx.files_pc);
     ctx.pad.close(); // and the trackpad: no key stays held after the device leaves
-    crate::passkey::unlock::lock_all();
+    crate::passkey::unlock::lock_link();
     menu_task.abort();
     ctl_rooms.clear(&ctl);
     write_task.abort();
