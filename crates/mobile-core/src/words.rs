@@ -10,7 +10,10 @@ pub fn sas_words(sas: Vec<u8>) -> Vec<String> {
     for (i, v) in sas.iter().take(4).enumerate() {
         b[i] = *v;
     }
-    let mut out: Vec<String> = envelope::sas_words(b).iter().map(|w| w.to_string()).collect();
+    let mut out: Vec<String> = envelope::sas_words(b)
+        .iter()
+        .map(|w| w.to_string())
+        .collect();
     for w in out.iter_mut().skip(sas.len()) {
         *w = "?".into();
     }

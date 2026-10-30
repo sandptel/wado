@@ -4,11 +4,13 @@
 //! - [`status`] — what is running, read from outside the daemons.
 //! - [`style`] — terminal colour.
 
+pub mod claude;
 pub mod countdown;
 pub mod devices;
 pub mod files;
 pub mod landing;
 pub mod msg;
+pub mod passkey;
 pub mod qr;
 pub mod status;
 pub mod style;
@@ -58,6 +60,9 @@ pub fn dispatch(args: &[String]) -> Run {
         Some("files") => files::run(rest),
         Some("pair" | "qr") => qr::run(rest),
         Some("msg") => msg::run(rest),
+        Some("passkey") => passkey::run(rest),
+        Some("claude") => claude::run(rest),
+        Some("claude-event") => crate::claude::hook_cli::run(),
         Some("validate") => validate::run(rest.first().map(String::as_str)),
         Some(other) => {
             eprintln!("  {} is not a wado command", style::bad(other));

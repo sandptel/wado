@@ -211,6 +211,8 @@ pub fn start(
                 // Daemon-lifetime, not connection-lifetime: notifications arrive whether or not
                 // a viewer is connected at that moment.
                 tokio::spawn(crate::notify::run(app_bus));
+                // "Transfer finished" pushes, from this daemon's own lines of the files log.
+                tokio::spawn(crate::push::transfer::follow());
                 crate::clip::watch::start();
                 crate::clip::sync::start(cmd_tx.clone(), clipboard.clone());
                 if let Err(e) = run(
@@ -614,7 +616,13 @@ async fn run(
 ///
 /// ponytail: reads the trust list per message and output chunk — a few hundred bytes; cache it
 /// if a shell burst ever shows up in a profile.
-fn shell_refusal(ctx: &RelayCtx) -> impl Fn() -> Option<&'static str> + Send + 'static {
+///
+/// Shells also need a fresh passkey unlock (`crate::passkey`, F3). `use_it`: this is the person
+/// acting (opening, typing), which keeps the unlock alive; output streaming out is not.
+fn shell_refusal(
+    ctx: &RelayCtx,
+    use_it: bool,
+) -> impl Fn() -> Option<&'static str> + Send + 'static {
     let viewer = Arc::clone(&ctx.viewer);
     let ok = Arc::clone(&ctx.viewer_ok);
     let gate = ctx.gate.clone();
@@ -623,7 +631,13 @@ fn shell_refusal(ctx: &RelayCtx) -> impl Fn() -> Option<&'static str> + Send + '
             return Some("this device has not been let in yet");
         }
         let key = viewer.lock().unwrap_or_else(|e| e.into_inner()).0.clone();
-        crate::shells::access::refused(&gate, &key)
+        crate::shells::access::refused(&gate, &key).or_else(|| {
+            if use_it {
+                crate::passkey::refused(&key)
+            } else {
+                crate::passkey::refused_quiet(&key)
+            }
+        })
     }
 }
 
@@ -749,6 +763,10 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             ));
         }
     }
+
+    // Registered: "back online" is pushed if the computer was away (`crate::push::online`);
+    // dropping this when the link ends marks when it went.
+    let _online = crate::push::online::registered();
 
     // ── 3. Log forwarding task (per connection) ──────────────────────────────
     let log_task = {
@@ -957,7 +975,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     let shells_task = {
         let mut rx = crate::shells::events();
         let out_tx_s = out_tx.clone();
-        let refusal = shell_refusal(ctx);
+        let refusal = shell_refusal(ctx, false);
         tokio::spawn(async move {
             use crate::shells::Event;
             loop {
@@ -987,6 +1005,19 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     break;
                 }
             }
+        })
+    };
+
+    // Claude's cards, on every change, for a device with the `shells` grant (`crate::claude`).
+    let claude_task = {
+        let (viewer, ok, gate) = (
+            Arc::clone(&ctx.viewer),
+            Arc::clone(&ctx.viewer_ok),
+            ctx.gate.clone(),
+        );
+        crate::claude::relay::follow(out_tx.clone(), move || {
+            let key = viewer.lock().unwrap_or_else(|e| e.into_inner()).0.clone();
+            ok.load(Ordering::SeqCst) && crate::shells::access::refused(&gate, &key).is_none()
         })
     };
 
@@ -1165,6 +1196,8 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     (client_key.clone(), client_name.clone());
                 // A new viewer never inherits the last one's trackpad or what it held down.
                 ctx.pad.close();
+                // Nor its passkey unlock: a new link proves itself again.
+                crate::passkey::unlock::lock_all();
                 // The audio sink appears for this device, named after it.
                 tokio::spawn(crate::host::viewer(Some(client_name.clone())));
                 ctx.media_sent.clear();
@@ -1294,6 +1327,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 // Files go with the device: no transfer outlives the link that authorised it.
                 close_files(&ctx.files_pc);
                 ctx.pad.close(); // and the trackpad: no key stays held after the device leaves
+                crate::passkey::unlock::lock_all();
                 if let Some(pc) = dead {
                     tokio::spawn(async move {
                         if let Err(e) = pc.close().await {
@@ -1815,8 +1849,22 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             | RelayMsg::PtyResize { .. }
             | RelayMsg::PtyClose { .. }
             | RelayMsg::ShellsRequest
-                if let Some(why) = shell_refusal(ctx)() =>
+                if let Some(why) = shell_refusal(ctx, true)() =>
             {
+                if crate::passkey::is_lock(why) {
+                    // The device shows its lock instead of an error.
+                    let key = ctx
+                        .viewer
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .0
+                        .clone();
+                    let state = crate::passkey::relay::state(&Default::default(), &key, "");
+                    send_relay(&out_tx, &RelayMsg::PasskeyState { state })
+                        .await
+                        .ok();
+                    continue;
+                }
                 if matches!(msg, RelayMsg::PtyOpen { .. } | RelayMsg::ShellsRequest) {
                     info!("shells: refused — {why}");
                     send_relay(
@@ -1975,6 +2023,62 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 }
             }
 
+            msg @ (RelayMsg::PasskeyBegin { .. }
+            | RelayMsg::PasskeyRegister { .. }
+            | RelayMsg::PasskeyUnlock { .. }
+            | RelayMsg::PasskeyLock
+            | RelayMsg::PasskeyKeepalive
+            | RelayMsg::PasskeyGet) => {
+                let (key, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                let dev = crate::passkey::relay::Device {
+                    key: &key,
+                    name: &name,
+                    ok: ctx.viewer_ok.load(Ordering::SeqCst),
+                };
+                crate::passkey::relay::handle(msg, dev, &out_tx).await;
+            }
+
+            msg @ (RelayMsg::ClaudeGet
+            | RelayMsg::ClaudeAnswer { .. }
+            | RelayMsg::ClaudeOpen { .. }
+            | RelayMsg::ClaudeNew { .. }
+            | RelayMsg::ClaudeDirsGet { .. }) => {
+                let (key, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                let (ok, gate, out_tx) = (
+                    ctx.viewer_ok.load(Ordering::SeqCst),
+                    ctx.gate.clone(),
+                    out_tx.clone(),
+                );
+                // A task: a new session runs tmux, and a folder listing reads the disk.
+                tokio::spawn(async move {
+                    let dev = crate::claude::relay::Device {
+                        key: &key,
+                        name: &name,
+                        ok,
+                        gate: &gate,
+                    };
+                    crate::claude::relay::handle(msg, dev, &out_tx).await;
+                });
+            }
+
+            msg @ (RelayMsg::PushGet
+            | RelayMsg::PushSubscribe { .. }
+            | RelayMsg::PushKindsSet { .. }
+            | RelayMsg::PushUnsubscribe
+            | RelayMsg::PushTest) => {
+                let (key, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                let (ok, out_tx) = (ctx.viewer_ok.load(Ordering::SeqCst), out_tx.clone());
+                // A task: a test push waits on the push service.
+                tokio::spawn(async move {
+                    let dev = crate::push::relay::Device {
+                        key: &key,
+                        name: &name,
+                        ok,
+                    };
+                    crate::push::relay::handle(msg, dev, &out_tx).await;
+                });
+            }
+
             RelayMsg::Ping => {
                 send_relay(&out_tx, &RelayMsg::Pong).await.ok();
             }
@@ -1992,12 +2096,14 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     windows_task.abort();
     config_task.abort();
     shells_task.abort();
+    claude_task.abort();
     clipboard_task.abort();
     clip_task.abort();
     notify_task.abort();
     files_note_task.abort();
     close_files(&ctx.files_pc);
     ctx.pad.close(); // and the trackpad: no key stays held after the device leaves
+    crate::passkey::unlock::lock_all();
     menu_task.abort();
     ctl_rooms.clear();
     write_task.abort();
@@ -2563,7 +2669,7 @@ async fn decide_join(
     send_relay(&out_tx, &msg).await.ok();
 }
 
-async fn send_relay(tx: &mpsc::Sender<String>, msg: &RelayMsg) -> crate::Result<()> {
+pub(crate) async fn send_relay(tx: &mpsc::Sender<String>, msg: &RelayMsg) -> crate::Result<()> {
     let text = serde_json::to_string(msg)?;
     tx.send(text)
         .await

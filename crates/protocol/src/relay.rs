@@ -756,6 +756,94 @@ pub enum RelayMsg {
         id: String,
     },
 
+    // ── Passkey step-up (see `crate::passkey`) ───────────────────────────────
+    /// Client → daemon: a challenge to `register` a passkey or to `unlock` with it.
+    PasskeyBegin {
+        purpose: String,
+    },
+    /// Daemon → client: sign this. `cred_id` is the passkey on file (unlock), `user_id` the
+    /// opaque handle to make it under (register).
+    PasskeyChallenge {
+        purpose: String,
+        challenge: String,
+        #[serde(default)]
+        cred_id: String,
+        #[serde(default)]
+        user_id: String,
+    },
+    /// Client → daemon: a new passkey — `navigator.credentials.create()`'s response.
+    PasskeyRegister {
+        client_data: String,
+        attestation: String,
+    },
+    /// Client → daemon: an assertion — `navigator.credentials.get()`'s response.
+    PasskeyUnlock {
+        cred_id: String,
+        client_data: String,
+        auth_data: String,
+        signature: String,
+    },
+    /// Client → daemon: lock now (the app went to the background).
+    PasskeyLock,
+    /// Client → daemon: the person is still here; the idle clock restarts.
+    PasskeyKeepalive,
+    /// Client → daemon: where do I stand? Answered with [`RelayMsg::PasskeyState`].
+    PasskeyGet,
+    /// Daemon → client: where this device stands, after any of the above or a refusal.
+    PasskeyState {
+        state: crate::passkey::PasskeyState,
+    },
+
+    // ── Claude Code sessions (see `crate::claude`) ───────────────────────────
+    /// Client → daemon: the cards, please. Answered with [`RelayMsg::ClaudeCards`], which is
+    /// also pushed on every change.
+    ClaudeGet,
+    ClaudeCards {
+        state: crate::claude::ClaudeState,
+    },
+    /// Client → daemon: allow or deny the permission request `ask` of `session`.
+    ClaudeAnswer {
+        session: String,
+        ask: String,
+        allow: bool,
+    },
+    /// Client → daemon: open a shell on `session` — its own, or one attached to its tmux.
+    ClaudeOpen {
+        session: String,
+    },
+    /// Client → daemon: start Claude in the folder `dir`. Answered like `pty_open`.
+    ClaudeNew {
+        dir: String,
+    },
+    /// Client → daemon: the folders in `path` (empty: home), for the new-session picker.
+    ClaudeDirsGet {
+        #[serde(default)]
+        path: String,
+    },
+    ClaudeDirs {
+        dirs: crate::claude::ClaudeDirs,
+    },
+
+    // ── Web Push (see `crate::push`) ─────────────────────────────────────────
+    /// Client → daemon: the VAPID key and this device's settings. Answered with `push_info`.
+    PushGet,
+    PushInfo {
+        info: crate::push::PushInfo,
+    },
+    /// Client → daemon: this device's subscription, and the kinds it wants.
+    PushSubscribe {
+        sub: crate::push::PushSub,
+        kinds: crate::push::PushKinds,
+    },
+    /// Client → daemon: change the kinds only.
+    PushKindsSet {
+        kinds: crate::push::PushKinds,
+    },
+    /// Client → daemon: forget this device's subscription.
+    PushUnsubscribe,
+    /// Client → daemon: send one now, to see it arrive.
+    PushTest,
+
     // ── Keepalive ────────────────────────────────────────────────────────────
     Ping,
     Pong,
@@ -781,6 +869,13 @@ mod wire_tests {
             "session_rejoin",
             "pty_close",
             "host_net_request",
+            "passkey_lock",
+            "passkey_keepalive",
+            "passkey_get",
+            "claude_get",
+            "push_get",
+            "push_unsubscribe",
+            "push_test",
         ] {
             let json = format!(r#"{{"type":"{name}"}}"#);
             assert!(
@@ -847,6 +942,34 @@ mod wire_tests {
         })
         .unwrap();
         assert!(none["targets"].is_null() && none.get("targets").is_some());
+    }
+
+    /// What `js/passkey.js`, `js/claude.js` and `js/push.js` send by hand.
+    #[test]
+    fn f3_messages_parse_as_the_client_sends_them() {
+        for json in [
+            r#"{"type":"passkey_begin","purpose":"unlock"}"#,
+            r#"{"type":"passkey_register","client_data":"a","attestation":"b"}"#,
+            r#"{"type":"passkey_unlock","cred_id":"a","client_data":"b","auth_data":"c","signature":"d"}"#,
+            r#"{"type":"claude_answer","session":"s","ask":"a1","allow":true}"#,
+            r#"{"type":"claude_open","session":"s"}"#,
+            r#"{"type":"claude_new","dir":"/home/me/code/wado"}"#,
+            r#"{"type":"claude_dirs_get"}"#,
+            r#"{"type":"push_subscribe","sub":{"endpoint":"https://p.example/x","p256dh":"k","auth":"a"},"kinds":{}}"#,
+            r#"{"type":"push_kinds_set","kinds":{"claude_done":false}}"#,
+        ] {
+            assert!(serde_json::from_str::<RelayMsg>(json).is_ok(), "{json}");
+        }
+        let RelayMsg::PushKindsSet { kinds } =
+            serde_json::from_str(r#"{"type":"push_kinds_set","kinds":{"claude_done":false}}"#)
+                .unwrap()
+        else {
+            panic!()
+        };
+        assert!(
+            kinds.claude_permission && !kinds.claude_done,
+            "missing kinds default on"
+        );
     }
 
     #[test]

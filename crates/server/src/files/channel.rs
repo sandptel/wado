@@ -237,6 +237,12 @@ async fn dispatch(chan: Arc<Chan>, id: u32, req: FileReq) {
         };
         return chan.fail(id, why).await;
     }
+    // Writing also needs a fresh passkey unlock (F3); reading stays free.
+    if !allowed(&req, "ro") {
+        if let Some(why) = crate::passkey::refused(&chan.who.key) {
+            return chan.fail(id, why).await;
+        }
+    }
     let sc = super::scope();
     // Uploads are answered here, in order, so their bytes cannot arrive before the upload exists.
     if let FileReq::Put {

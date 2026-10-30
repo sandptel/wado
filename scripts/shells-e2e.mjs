@@ -17,6 +17,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deviceFor, secure } from "./lib/e2e-device.mjs";
+import { authenticator, enrolAndUnlock, unlock } from "./lib/e2e-passkey.mjs";
 
 const ROOT = new URL("..", import.meta.url).pathname;
 const BIN = join(ROOT, process.argv[2] || "target/release");
@@ -79,6 +80,10 @@ try {
   console.log("shells");
   const a = new Client("Phone");
   check("joined", !!(await a.wait("join_accepted", 20000)));
+  // Shells need a fresh passkey unlock (F3): this phone adds one, as it would at pairing.
+  const pk = await authenticator();
+  check("a passkey unlocks the shells", !!(await enrolAndUnlock(a.send, (p) => a.waitWhere(p), pk)));
+  a.msgs.length = 0;
   a.send({ type: "shells_request" });
   const first = await a.wait("shells");
   check("no shells yet, ssh hosts listed", first && first.shells.length === 0 && first.hosts.join() === "fakebox", JSON.stringify(first));
@@ -94,6 +99,7 @@ try {
   await sleep(800);
   const b = new Client("Phone");
   check("rejoined", !!(await b.wait("join_accepted", 20000)));
+  check("…and unlocks again on the new link", !!(await unlock(b.send, (p) => b.waitWhere(p), pk)));
   b.send({ type: "shells_request" });
   const back = await b.wait("shells");
   check("the shell survived the drop", back && back.shells.some((s) => s.id === id && s.alive), JSON.stringify(back));

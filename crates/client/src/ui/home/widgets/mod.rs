@@ -13,6 +13,7 @@
 //! reorder, add, remove), `widget_drag.js` is the drag, `widget_touch.js` the trackpad's ring.
 
 pub mod brightness;
+pub mod claude;
 pub mod clipboard;
 pub mod edit;
 pub mod links;

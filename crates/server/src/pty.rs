@@ -38,6 +38,37 @@ pub fn open(
     open_on(crate::platform::get(), cols, rows, host, out)
 }
 
+/// Open a terminal running `argv` — a program and its arguments, never a shell string — in
+/// `cwd` with `env` added: Claude's sessions (`crate::claude::spawn`).
+pub fn open_cmd(
+    cols: u16,
+    rows: u16,
+    argv: &[String],
+    cwd: &std::path::Path,
+    env: &[(String, String)],
+    out: mpsc::Sender<String>,
+) -> Result<Box<dyn PtySession>, String> {
+    if !wado_config::live::current().shells.enabled {
+        return Err(DISABLED.into());
+    }
+    if argv.is_empty() {
+        return Err("nothing to run".into());
+    }
+    let req = PtyRequest {
+        cols,
+        rows,
+        program: Program::Command {
+            argv: argv.to_vec(),
+            env: env.to_vec(),
+        },
+        cwd: Some(cwd.to_path_buf()),
+    };
+    crate::platform::get()
+        .pty()
+        .map_err(|a| a.why)?
+        .spawn(req, out)
+}
+
 /// [`open`], on `p`'s terminals.
 pub fn open_on(
     p: &Platform,

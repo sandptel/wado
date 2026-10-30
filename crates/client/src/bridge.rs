@@ -206,6 +206,14 @@ pub const JS: &str = concat!(
     // After the pad files: it chains the `pad_out` handler `pad_link` registers.
     include_str!("js/actions.js"),
     "\n",
+    // After the files and pad files: it wraps `W.files.req`, `W.padOpen` and `W.pad.onMsg`.
+    include_str!("js/passkey.js"),
+    "\n",
+    // After passkey.js: Allow, opening a session and starting one go through `passkeyThen`.
+    include_str!("js/claude.js"),
+    "\n",
+    include_str!("js/push.js"),
+    "\n",
     include_str!("js/capture.js"),
     "\n",
     include_str!("js/audio.js"),
@@ -649,6 +657,11 @@ pub fn run(ui: Ui) {
                     });
                 }
                 "gesture" => crate::ui::gesture::run(ui, &string("action")),
+                "passkey" => crate::stepup::on_event(ui, &msg),
+                "claude" | "claudeDirs" | "claudeShell" | "claudePicker" => {
+                    crate::claude::on_event(ui, kind, &msg)
+                }
+                "push" => crate::push::on_event(&msg),
                 "shellMods" => {
                     let flag = |k: &str| msg.get(k).and_then(|v| v.as_bool()).unwrap_or(false);
                     live.shell_mods.set((flag("ctrl"), flag("alt")));

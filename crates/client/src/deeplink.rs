@@ -32,6 +32,8 @@ pub enum Go {
     Files,
     Shell,
     Session,
+    /// A Claude notification: its computer's page, at its Claude cards.
+    Claude,
 }
 
 impl Go {
@@ -41,6 +43,7 @@ impl Go {
             "files" => Some(Go::Files),
             "shell" => Some(Go::Shell),
             "session" | "desktop" => Some(Go::Session),
+            "claude" => Some(Go::Claude),
             _ => None,
         }
     }
@@ -51,6 +54,7 @@ impl Go {
             Go::Files => "its files",
             Go::Shell => "a shell",
             Go::Session => "the desktop",
+            Go::Claude => "Claude",
         }
     }
 }
@@ -131,6 +135,10 @@ fn words(why: Why, go: Go, name: &str) -> String {
 const SHOW_SESSION_DOOR: &str = "(() => { const d = document.querySelector('#computer .act.primary'); \
      if (d) { d.scrollIntoView({ block: 'center', behavior: 'smooth' }); d.focus({ preventScroll: true }); } })();";
 
+/// The Claude cards on the computer's page, brought into view.
+const SHOW_CLAUDE: &str = "(() => { const d = document.getElementById('claude'); \
+     if (d) d.scrollIntoView({ block: 'start', behavior: 'smooth' }); })();";
+
 /// Take the shortcut once the saved settings are in, and follow it.
 pub fn follow(ui: Ui) {
     let mut taken = use_signal(|| false);
@@ -186,6 +194,7 @@ pub fn follow(ui: Ui) {
                 Go::Files => relay && d.files,
                 Go::Shell => relay && d.shell,
                 Go::Session => true,
+                Go::Claude => relay && r.may("shells"),
             },
             timed_out: timed_out(),
         };
@@ -199,6 +208,7 @@ pub fn follow(ui: Ui) {
                     Go::Files => bridge::call("window.__wado.filesOpen();".to_string()),
                     Go::Shell => crate::ui::console::open_shells(ui),
                     Go::Session => bridge::call(SHOW_SESSION_DOOR.to_string()),
+                    Go::Claude => bridge::call(SHOW_CLAUDE.to_string()),
                 }
             }
             Next::Home(why) => {
