@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Android goes native — phase 1
+
+- **The client protocol in Rust** (`crates/client-core`): the relay link, the end-to-end envelope,
+  pairing, host state and sessions, written once for the phone app and the desktop app. Tested
+  against the daemon's own handshake and against a release daemon and relay
+  (`scripts/core-e2e.mjs`).
+- **Native home.** Each computer's card shows its OS logo, its name, OS and compositor, honest
+  live link words from its own seatless link, its sessions, and a ▶ for its desktop. Running
+  sessions are listed with their computer. Home no longer needs the web part to show anything.
+- **Native pairing**, by QR or by typed code with the four check words. The app is a new device to
+  each computer: pair it once ("Pair the app" on computers only the web part knows).
+- **On this phone**: Appearance (scheme, accent, corners, motion, text size, interface size),
+  Notifications & background, Diagnostics, About.
+- **The page you were on survives** the app being closed in the background.
+- Computers report `ID_LIKE` (`os_like`), so derivatives get their parent's logo; the sessions list
+  is served on control rooms, so a phone sees what runs without taking the seat.
+
 ## v0.0.4 — `2026-10-30`
 
 The phone becomes the computer's touchpad, keyboard and gamepad; pairing by code only; the

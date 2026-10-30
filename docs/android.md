@@ -34,6 +34,40 @@ MainActivity ── native screens (Compose) ─── Home · Trackpad · Pair 
   bar insets natively (so the page's `env(safe-area-inset-*)` reads 0 there), and while a session
   or the trackpad is up the window goes immersive and the page has the whole screen.
 
+## The client core (native P1)
+
+The app is going fully native (docs/superpowers/plans/2026-10-30-native-android.md). Phase 1 put
+the client protocol in Rust and the home, pairing and "On this phone" in Compose; the WebView
+stays for everything else until its phase lands.
+
+- **`crates/client-core`** (`wado-client-core`, pure Rust, no FFI; the desktop app links it too):
+  the end-to-end envelope (key schedule, seal, client handshake — pinned and signature-checked
+  before anything is sent), this device's identity (Ed25519 seed wrapped by the phone's keystore,
+  a UUID client key), host pins, saved computers, pairing links and typed codes, the relay link
+  (state machine, backoff, the client side of the lane with seal-at-dequeue), feeds (host state,
+  sessions) and `Core` (commands in, coalescing event queue out). Checked against the daemon's own
+  handshake in-process and against a release daemon and relay by `scripts/core-e2e.mjs`.
+- **`crates/mobile-core/src/ffi`**: `WadoCore` over UniFFI; Kotlin pulls `suspend fun nextEvent()`,
+  the core never calls into the JVM. `core/CoreHost.kt` pumps it into `HomeModel`.
+- **Links.** Every computer on home gets its own **seatless control room**
+  (`control=1&strict=1`) while home is in front: live link words, the host state (name, OS logo)
+  and the sessions list (served on control rooms since this phase). The seat is used only for the
+  pairing ceremony, which leaves with `4001` the moment it is let in. A relay without `control` and
+  `room_strict` is never joined ("Relay too old for the app").
+- **A new device.** The WebView's key cannot be exported, so the app's core is a new device to every
+  computer and pairs once (QR or typed code, natively). Until the WebView goes, a computer may know
+  the phone twice. A computer only the web part knows shows "Pair the app"; one only the core knows
+  opens the web part with "Open this once in the web part to pair it there too".
+- **Navigation**: one Navigation 3 back stack, saved, so a resume or process death returns to the
+  same page; predictive back on every pop.
+- **On this phone**: Appearance (scheme, accent, corners, motion, Text size, Interface size —
+  local first), Notifications & background (the former Settings), Diagnostics, About.
+- **OS logos**: `scripts/os-logos.mjs` (Simple Icons 16.36.0, CC0 only; NixOS, Debian, Fedora,
+  Gentoo, Rocky and MX carry other licences there and fall back to `ID_LIKE` or Tux).
+
+Still in the WebView: the computer page, the session, files, shells, the clipboard history, push,
+Claude, widgets and a computer's settings. The native trackpad still rides the page's pad link.
+
 ## The bridge: `window.wadoNative`
 
 Injected with `WebViewCompat.addWebMessageListener` for the app's own origin only, so a page
@@ -84,7 +118,8 @@ null in a browser, and the `native_*.js` files then do nothing). Messages are JS
   its session (`xdg-open`; needs a running session), plain text goes to its clipboard.
 - **Shortcuts**: static Trackpad / Files / Shell (`res/xml/shortcuts.xml`, `wado://go/<door>`)
   on the last used computer, and a dynamic "Desktop on <name>".
-- **QR pairing** (`ui/pair/`): CameraX + ZXing core (Apache-2.0, pure Java; no Google Play
+- **QR pairing** (`ui/pair/`, native since P1 — see above; the paragraph below is how the web part
+  pairs): CameraX + ZXing core (Apache-2.0, pure Java; no Google Play
   services). The code's link (`?relay&id&pair&hk`) is loaded onto the app's origin, where
   `js/storage.js` takes it in exactly as a browser would. "Type a code instead" opens the
   client's own form.
