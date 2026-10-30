@@ -9,8 +9,10 @@
 //!
 //! `trackpad` is that upgrade for the trackpad screen: typed, because it is meant to be read and
 //! edited in the file, `wado tui` and `wado devices` as well as from the phone. `console` is the
-//! same for how a session opens (console or full screen) and the deck's input face, and `size`
-//! for how big it draws the client (text size and interface size).
+//! same for how a session opens (console or full screen) and the deck's input face, `size`
+//! for how big it draws the client (text size and interface size), `gamepad` for its on-screen
+//! gamepad (layouts, what it drives, haptics and hand for all three virtual input devices) and
+//! `keyboard` for the keys above its phone keyboard.
 
 use serde::{Deserialize, Serialize};
 
@@ -25,4 +27,8 @@ pub struct Device {
     pub console: Option<super::DeviceConsole>,
     /// Its text size and interface size.
     pub size: Option<super::DeviceSize>,
+    /// Its on-screen gamepad: what it drives, its layouts, haptics and hand.
+    pub gamepad: Option<super::DeviceGamepad>,
+    /// The keys above its phone keyboard.
+    pub keyboard: Option<super::DeviceKeyboard>,
 }

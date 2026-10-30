@@ -6,7 +6,8 @@
 //! `session.app-cpu-weight` is live while `session.autostart` runs arbitrary commands.
 //!
 //! `device.*` is privileged here, with one exception that needs the requester's key and so lives
-//! in `wado_server::config::link`: a device may set its own `device.<its key>.trackpad.*`.
+//! in `wado_server::config::link`: a device may set its own `device.<its key>.trackpad.*` (and
+//! `console`, `size`, `gamepad`, `keyboard`).
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tier {

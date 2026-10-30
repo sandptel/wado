@@ -36,7 +36,15 @@ pub struct DeviceTrackpad {
     pub gestures: BTreeMap<String, String>,
     /// The keyboard is open when the pad opens.
     pub keyboard: bool,
+    /// Pointer speed, [`SPEED_MIN`]–[`SPEED_MAX`]: the daemon tells the touchpad device the pad is
+    /// this much bigger, so libinput moves the pointer this much further for the same slide.
+    #[serde(deserialize_with = "speed")]
+    pub speed: f64,
 }
+
+/// Pointer speed's range.
+pub const SPEED_MIN: f64 = 0.5;
+pub const SPEED_MAX: f64 = 2.0;
 
 impl Default for DeviceTrackpad {
     fn default() -> Self {
@@ -55,6 +63,7 @@ impl Default for DeviceTrackpad {
             .to_vec(),
             gestures: BTreeMap::new(),
             keyboard: false,
+            speed: 1.0,
         }
     }
 }
@@ -70,7 +79,19 @@ impl From<&DeviceTrackpad> for wado_protocol::TrackpadPrefs {
             quick: t.quick.clone(),
             gestures: t.gestures.clone(),
             keyboard: t.keyboard,
+            speed: t.speed,
         }
+    }
+}
+
+fn speed<'de, D: Deserializer<'de>>(d: D) -> Result<f64, D::Error> {
+    let v = f64::deserialize(d)?;
+    if (SPEED_MIN..=SPEED_MAX).contains(&v) {
+        Ok(v)
+    } else {
+        Err(serde::de::Error::custom(format!(
+            "speed is from {SPEED_MIN} to {SPEED_MAX}, not {v}"
+        )))
     }
 }
 
@@ -166,7 +187,7 @@ mod tests {
             serde_json::json!({
                 "landscape": true, "fullscreen": false, "flip": false, "rail": "keys",
                 "quick": ["workspace-prev", "workspace-next", "fullscreen", "play-pause"],
-                "gestures": {"four-tap": "lock"}, "keyboard": false
+                "gestures": {"four-tap": "lock"}, "keyboard": false, "speed": 1.0
             })
         );
     }
@@ -182,6 +203,22 @@ mod tests {
         assert_eq!(k.quick, ["a", "b"]);
         assert_eq!(k.gestures["edge-left"], "lock");
         assert!(c.device["j"].trackpad.clone().unwrap().quick.is_empty());
+    }
+
+    #[test]
+    fn speed_is_read_and_checked() {
+        let c = crate::kdl::parse(
+            "device \"k\" { trackpad { speed 1.25 } }\ndevice \"j\" { trackpad { speed 2 } }",
+        )
+        .unwrap();
+        assert_eq!(c.device["k"].trackpad.clone().unwrap().speed, 1.25);
+        assert_eq!(c.device["j"].trackpad.clone().unwrap().speed, 2.0);
+        assert_eq!(DeviceTrackpad::default().speed, 1.0);
+        let e =
+            crate::kdl::parse("device \"k\" {\n  trackpad {\n    speed 3.5\n  }\n}").unwrap_err();
+        assert!(e.message.contains("speed"), "{e}");
+        assert_eq!(e.line, 3, "{e}");
+        assert!(crate::kdl::parse("device \"k\" { trackpad { speed 0.2 } }").is_err());
     }
 
     #[test]

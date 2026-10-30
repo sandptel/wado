@@ -51,6 +51,18 @@ pub struct ConfigState {
     /// filled; `None` when the file has no block for it, and the device keeps its own copy.
     #[serde(default)]
     pub size: Option<SizePrefs>,
+    /// This device's gamepad (`device "<key>" { gamepad { … } }`), every field filled; `None`
+    /// when the file has no block for it, and the device keeps its own copy.
+    #[serde(default)]
+    pub gamepad: Option<GamepadPrefs>,
+    /// The keys above this device's keyboard (`device "<key>" { keyboard { … } }`); `None` when
+    /// the file has no block for it.
+    #[serde(default)]
+    pub keyboard: Option<KeyboardPrefs>,
+    /// What this daemon can do that an older one cannot, by name — `pad-gamepad`: the pad link
+    /// carries a gamepad. Empty from a daemon older than the list, which can do none of them.
+    #[serde(default)]
+    pub caps: Vec<String>,
     /// What this device may do here, so a page can say what is missing — and the exact command
     /// that allows it — instead of offering a control the daemon will refuse. `None`: a daemon
     /// from before this was sent; the client then offers everything and lets the daemon say no.
@@ -85,7 +97,7 @@ pub struct DeviceGrants {
 /// One device's trackpad layout, as `wado_config::schema::DeviceTrackpad` types it. The phone
 /// changes a field with `ConfigSet` on `device.<its key>.trackpad.<field>`; `quick` is sent as a
 /// JSON list (`["fullscreen","play-pause"]`).
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TrackpadPrefs {
     pub landscape: bool,
     pub fullscreen: bool,
@@ -98,6 +110,65 @@ pub struct TrackpadPrefs {
     pub gestures: std::collections::BTreeMap<String, String>,
     /// The keyboard opens with the pad.
     pub keyboard: bool,
+    /// Pointer speed, 0.5–2.0: how far the pointer travels for the same slide. Absent from an
+    /// older daemon, which always meant 1.
+    #[serde(default = "one")]
+    pub speed: f64,
+}
+
+fn one() -> f64 {
+    1.0
+}
+
+impl Default for TrackpadPrefs {
+    fn default() -> Self {
+        Self {
+            landscape: false,
+            fullscreen: false,
+            flip: false,
+            rail: String::new(),
+            quick: Vec::new(),
+            gestures: Default::default(),
+            keyboard: false,
+            speed: 1.0,
+        }
+    }
+}
+
+/// One device's gamepad, as `wado_config::schema::DeviceGamepad` types it. The device changes a
+/// field with `ConfigSet` on `device.<its key>.gamepad.<field>`; a saved layout is
+/// `device.<its key>.gamepad.mine.<id>` set to `["name","base","{json}"]`, or to nothing to delete.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GamepadPrefs {
+    /// `pad` (a real controller) or `keys` (keys & mouse, in a session).
+    pub drives: String,
+    /// The layout in a session and on the console's deck: a built-in id or a saved one's.
+    pub layout: String,
+    /// Away from a session: `same`, or a layout id.
+    pub away: String,
+    /// `off`, `light`, `medium` or `strong` — for the touchpad and keyboard too.
+    pub haptics: String,
+    /// `right` or `left` — for the touchpad and keyboard too.
+    pub hand: String,
+    /// The device's own layouts, by id.
+    pub mine: Vec<SavedLayout>,
+}
+
+/// One saved gamepad layout: the built-in it was made from and its changes, as the client's
+/// layout JSON (the daemon does not read inside it).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SavedLayout {
+    pub id: String,
+    pub name: String,
+    pub base: String,
+    pub json: String,
+}
+
+/// The keys above one device's keyboard, as `wado_config::schema::DeviceKeyboard` types it,
+/// in order. Changed with `ConfigSet` on `device.<its key>.keyboard.keys` as a JSON list.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KeyboardPrefs {
+    pub keys: Vec<String>,
 }
 
 /// How one device opens a session, as `wado_config::schema::DeviceConsole` types it. The device
@@ -141,4 +212,42 @@ pub struct PinnedInput {
     pub repeat_rate: Option<i32>,
     pub repeat_delay: Option<i32>,
     pub focus_follows_pointer: Option<bool>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_older_daemon_reads_as_no_caps_no_gamepad_and_speed_one() {
+        let s: ConfigState = serde_json::from_str(
+            r#"{"trackpad":{"landscape":true,"fullscreen":false,"flip":false,"rail":"keys","quick":[],"gestures":{},"keyboard":false}}"#,
+        )
+        .unwrap();
+        assert!(s.caps.is_empty());
+        assert!(s.gamepad.is_none() && s.keyboard.is_none());
+        assert_eq!(s.trackpad.unwrap().speed, 1.0);
+    }
+
+    #[test]
+    fn gamepad_prefs_go_out_as_plain_fields() {
+        let g = GamepadPrefs {
+            drives: "pad".into(),
+            layout: "mine-1".into(),
+            away: "same".into(),
+            haptics: "medium".into(),
+            hand: "right".into(),
+            mine: vec![SavedLayout {
+                id: "mine-1".into(),
+                name: "Couch".into(),
+                base: "racing".into(),
+                json: "{}".into(),
+            }],
+        };
+        assert_eq!(
+            serde_json::to_value(&g).unwrap(),
+            serde_json::json!({"drives":"pad","layout":"mine-1","away":"same","haptics":"medium",
+                "hand":"right","mine":[{"id":"mine-1","name":"Couch","base":"racing","json":"{}"}]})
+        );
+    }
 }
