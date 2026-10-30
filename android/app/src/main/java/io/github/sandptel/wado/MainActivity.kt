@@ -61,6 +61,7 @@ class MainActivity : FragmentActivity(), ClientWebView.Host, AppActions {
     private lateinit var web: ClientWebView
     private lateinit var modes: ScreenModes
     private val authenticator by lazy { Authenticator(this) }
+    private var screenHandlers: Hub.Handlers? = null
     private var hudJob: Job? = null
 
     private var mediaDone: ((Boolean, Boolean) -> Unit)? = null
@@ -107,7 +108,9 @@ class MainActivity : FragmentActivity(), ClientWebView.Host, AppActions {
             }
             override fun orient(lock: String) = modes.orient(lock)
             override fun webauthn(o: JSONObject) = passkey(o)
+            override fun webauthnCancel(id: Int) = authenticator.cancel(id)
         }
+        screenHandlers = Hub.screen
         lifecycleScope.launch {
             Hub.events.collect { (t, o) -> event(t, o) }
         }
@@ -154,6 +157,8 @@ class MainActivity : FragmentActivity(), ClientWebView.Host, AppActions {
 
     override fun onDestroy() {
         if (web.host === this) web.host = null
+        // The page outlives this activity: with no screen, a passkey request is answered at once.
+        if (Hub.screen === screenHandlers) Hub.screen = object : Hub.Handlers {}
         app.webContextFor(null)
         super.onDestroy()
     }
@@ -353,8 +358,7 @@ class MainActivity : FragmentActivity(), ClientWebView.Host, AppActions {
     private fun passkey(o: JSONObject) {
         val id = o.optInt("id")
         val rpId = o.optString("rpId")
-        val challenge = runCatching { Authenticator.dec(o.optString("challenge")) }.getOrNull() ?: return
-        val allow = o.optJSONArray("allow")?.let { a -> (0 until a.length()).map { Authenticator.dec(a.getString(it)) } }.orEmpty()
+        val timeoutMs = o.optLong("timeoutMs", 60_000)
         val reply = { r: Authenticator.Result ->
             Hub.send(BridgeProtocol.WEBAUTHN_RESULT) {
                 put("id", id)
@@ -369,13 +373,19 @@ class MainActivity : FragmentActivity(), ClientWebView.Host, AppActions {
                         put("signature", Authenticator.enc(r.signature))
                     }
                     is Authenticator.Result.Failed -> {
-                        put("ok", false); put("errName", r.name); put("errMessage", r.message)
+                        put("ok", false); put("errName", r.why.name); put("errCode", r.why.code); put("errMessage", r.why.message)
                     }
                 }
             }
         }
-        if (o.optString("op") == "create") authenticator.create(rpId, challenge, reply)
-        else authenticator.get(rpId, challenge, allow, reply)
+        // Answered whatever happens: a request dropped here left the page waiting for ever.
+        val challenge = runCatching { Authenticator.dec(o.optString("challenge")) }.getOrNull()
+            ?: return reply(Authenticator.Result.Failed(io.github.sandptel.wado.passkey.AuthErrors.failed("the request was malformed")))
+        val allow = runCatching {
+            o.optJSONArray("allow")?.let { a -> (0 until a.length()).map { Authenticator.dec(a.getString(it)) } }.orEmpty()
+        }.getOrElse { emptyList() }
+        if (o.optString("op") == "create") authenticator.create(id, rpId, challenge, timeoutMs, reply)
+        else authenticator.get(id, rpId, challenge, allow, timeoutMs, reply)
     }
 
     private fun has(p: String) = ContextCompat.checkSelfPermission(this, p) == PackageManager.PERMISSION_GRANTED
