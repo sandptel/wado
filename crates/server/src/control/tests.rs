@@ -45,6 +45,7 @@ fn rig(g: Gate) -> Rig {
             host_key: Arc::new(HostKey::from_seed(&[7u8; 32])),
             cmd_tx: None,
             relay: tx,
+            hub: None,
         },
         relay,
     }

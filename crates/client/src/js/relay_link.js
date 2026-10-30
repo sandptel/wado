@@ -126,10 +126,15 @@ W.deviceName = (() => {
 const toWsUrl = (relayUrl, id) => {
   const base = String(relayUrl).replace(/^https:\/\//, "wss://").replace(/^http:\/\//, "ws://");
   const norm = String(id).replace(/[\s-]/g, "");
-  const want = instanceFor(norm);
+  // A joined room (`multi.js`): no seat, exactly the daemon running that session (`strict`), or
+  // wait for it — never another one. Sent only to a relay whose caps say it can (`control`,
+  // `room_strict`); an older relay would read `control=1` as an ordinary seat join.
+  const room = W._relayRoom;
+  const want = room ? room.instance : instanceFor(norm);
   return base.replace(/\/+$/, "") + "/join/" + encodeURIComponent(norm) +
     "?client=" + encodeURIComponent(W.clientKey) + "&name=" + encodeURIComponent(W.deviceName) +
-    (want ? "&instance=" + encodeURIComponent(want) : "");
+    (want ? "&instance=" + encodeURIComponent(want) : "") +
+    (room ? "&control=1&strict=1" : "");
 };
 // A pairing code to prove — the QR's, or one typed into the pairing form (`pair.js`).
 const pairCode = () => {
@@ -226,7 +231,7 @@ function openLink() {
   if (!target) return;
   let ws;
   try {
-    ws = new WebSocket(target.wsUrl + (W._relayTakeover ? "&takeover=1" : "") +
+    ws = new WebSocket(target.wsUrl + (W._relayTakeover && !W._relayRoom ? "&takeover=1" : "") +
       // Only "I hold a code": the code itself is proven inside the envelope, never sent.
       (pairCode() ? "&pair=1" : ""));
   } catch (_) {
@@ -301,7 +306,11 @@ function openLink() {
         busy: msg.pool_busy || 0,
         assignment: msg.assignment || "",
       };
-      if (msg.instance_id) W.rememberInstance(String(msg.remote_id || ""), msg.instance_id);
+      // What this relay can do: a joined room needs `control` and `room_strict` (`multi.js`).
+      W.relayCaps = msg.caps || [];
+      emit({ type: "relayCaps", caps: W.relayCaps });
+      // A joined room is someone else's daemon: this device's own stays the one it comes back to.
+      if (msg.instance_id && !W._relayRoom) W.rememberInstance(String(msg.remote_id || ""), msg.instance_id);
       // Same daemon, new boot_id: the process restarted, so the desktop this device left —
       // its windows and running apps — is gone. Said plainly rather than letting an empty
       // desktop look like a bug. Only `boot_id` can tell this from a reconnect.
@@ -325,6 +334,9 @@ function openLink() {
       // somebody, so it is cleared *after* the handler, not before.
       W.e2eBegin(ws, msg.room_id, W._relayTarget ? W._relayTarget.id : "", () => {
         if (W.relayWs !== ws) return;
+        // A joined room says what it is for before anything else: the daemon serves it as a
+        // device joining the session, not as a widget's controls.
+        if (W._relayRoom) W.e2eSend({ type: "room_hello", kind: "view" });
         W.relayUp = true;
         fire("__up");
         W._relayDeniedOccupied = false;

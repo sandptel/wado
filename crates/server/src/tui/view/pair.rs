@@ -167,6 +167,8 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
             2 => (name.to_string(), g.settings),
             3 => (name.to_string(), g.host),
             4 => (name.to_string(), g.input),
+            6 => (name.to_string(), g.join),
+            7 => (name.to_string(), g.takeover),
             _ => (name.to_string(), g.clipboard),
         };
         let mark = if on { theme::ON } else { theme::OFF };

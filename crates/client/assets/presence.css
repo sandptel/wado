@@ -1,0 +1,34 @@
+/* The other devices in a session, over the picture (js/presence.js): a labelled dot per device
+ * where it last pointed, and a chip saying who is here. Chrome floating over the video, so it
+ * carries the float shadow (DESIGN.md) — and never takes a touch: the picture is under it.
+ *
+ * Dots follow 20 samples a second on --spring over a short step, pop in on --pop, dim when idle,
+ * and shrink away when their device leaves. */
+
+#wado-presence { position: fixed; inset: 0; z-index: 12; pointer-events: none; overflow: hidden; }
+.ghost { --hue: var(--accent); position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 6px;
+  translate: -100px -100px; transition: translate 90ms var(--spring), opacity 600ms var(--spring); will-change: translate; }
+.ghost i { width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: var(--hue); flex: none;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--hue), transparent 65%), 0 6px 24px -10px rgb(0 0 0 / .55);
+  scale: 0; transition: scale 420ms var(--pop); }
+.ghost.touch i { width: 22px; height: 22px; margin: -11px 0 0 -11px; background: color-mix(in oklab, var(--hue), transparent 45%); }
+.ghost span { padding: 3px 9px; border-radius: 999px; font: 600 11.5px var(--body); color: var(--on-accent); background: var(--hue);
+  white-space: nowrap; translate: 4px 10px; opacity: 0; scale: .8; transform-origin: 0 0;
+  box-shadow: 0 6px 24px -10px rgb(0 0 0 / .55);
+  transition: opacity var(--dur) var(--spring) 80ms, scale var(--dur-sheet) var(--pop) 80ms; }
+.ghost.in i { scale: 1; }
+.ghost.in span { opacity: 1; scale: 1; }
+.ghost.idle { opacity: .45; }
+.ghost.gone i { scale: .2; transition: scale 220ms cubic-bezier(.3, 0, 1, 1); }
+.ghost.gone { opacity: 0; transition: opacity 180ms cubic-bezier(.3, 0, 1, 1); }
+
+/* Who is here: top right, a status pill (DESIGN.md chips), only while someone else is in. */
+#wado-here { position: fixed; z-index: 64; top: calc(10px + env(safe-area-inset-top)); right: calc(10px + env(safe-area-inset-right));
+  display: inline-flex; align-items: center; gap: 7px; height: 32px; max-width: min(60vw, 320px); padding: 0 12px 0 10px; border-radius: 999px;
+  background: color-mix(in oklab, var(--s1), transparent 12%); color: var(--bright); font-size: 12px; font-weight: 600;
+  box-shadow: 0 6px 24px -10px rgb(0 0 0 / .55); pointer-events: none;
+  opacity: 0; translate: 0 -14px; transition: opacity var(--dur) var(--spring), translate var(--dur-sheet) var(--spring); }
+#wado-here.in { opacity: 1; translate: 0 0; }
+#wado-here .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--good); flex: none; animation: breathe 2s ease-in-out infinite; }
+#wado-here b { font: 700 13px var(--display); font-variant-numeric: tabular-nums; }
+#wado-here span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-weight: 500; }

@@ -28,6 +28,11 @@ pub struct Server {
     pub public_relay: Option<String>,
     /// Where the web client is served; the connect link opens it.
     pub client_url: String,
+    /// Sessions this computer runs at once. Each is its own daemon; "Start new" on a busy one
+    /// starts a sibling daemon up to this many (Decision Log `2026-10-30`).
+    pub max_sessions: u32,
+    /// Devices in one session. The link speed test may lower it, never raise it.
+    pub max_participants: u32,
 }
 
 impl Default for Server {
@@ -41,6 +46,8 @@ impl Default for Server {
             turn: None,
             public_relay: None,
             client_url: "https://sandptel.github.io/wado/".into(),
+            max_sessions: 4,
+            max_participants: 4,
         }
     }
 }

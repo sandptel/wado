@@ -196,6 +196,9 @@ function askForSession() {
 // is deliberate: "ask the daemon for a session" already means "…or tell me about the one that
 // is running", so there is no branch to get wrong.
 function onLinkUp() {
+  // A joined room (`multi.js`) is not this device's seat: what it is for — join, take over,
+  // end — and its own reconnects are that file's.
+  if (W._relayRoom) { if (W.multiUp) W.multiUp(); return; }
   // We are here because a human tapped "use it here": the intent is the desktop that was
   // running on the other device, so ask for that one back, never for a new one.
   if (W._relayTookOver) {
@@ -384,6 +387,9 @@ W.relayOn("session_error", (msg) => {
   // apps. The session is fine; one optional message was not understood.
   if (UNKNOWN_MSG_RE.test(why)) {
     rlog("the daemon did not understand one of our messages (it is older than this client): " + why);
+    // A speed test or a "new session" question it cannot answer: go on without one.
+    if (W.linkTestAbort) W.linkTestAbort();
+    if (W.multiOld) W.multiOld();
     return;
   }
   // The resume case needs its own branch: `sessionOn` deliberately stays true across an outage
@@ -406,6 +412,8 @@ W.relayOn("session_error", (msg) => {
     askForSession();
     return;
   }
+  // A join, take over or end refused on a joined room (`multi.js`) says so and goes home.
+  if (W.multiError && W.multiError(why)) return;
   phase(2, why);
   status("relay: session error — " + why);
   emit({ type: "startFailed" });
@@ -500,6 +508,9 @@ W._relayNegotiate = async (opts = {}) => {
   // "Redundant input": fast unordered copies of discrete events (input_core.js, server::input_order).
   W.fastDC = pc.createDataChannel(FAST_CHANNEL, { ordered: false, maxRetransmits: 0 });
   W.inputSeq = 0;
+  // Where the other devices in this session are pointing (presence.js): the daemon's to write,
+  // unordered and unreliable, never the input channels. An older daemon ignores it.
+  if (!opts.audioOnly && W.presenceChannel) W.presenceChannel(pc);
 
   pc.ontrack = (ev) => {
     if (ev.track && ev.track.kind === "audio") {

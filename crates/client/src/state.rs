@@ -342,6 +342,8 @@ pub struct Live {
     pub sessions: Signal<(String, Vec<wado_protocol::SessionSummary>)>,
     /// A one-line note for a toast — "Screenshot saved", and the like. Each new text shows again.
     pub note: Signal<String>,
+    /// Several devices in one session (`js/multi.js`, Decision Log `2026-10-30`).
+    pub multi: Signal<crate::multi::Multi>,
 
     /// Where the person is outside a session — home, a computer, a settings page. See
     /// [`crate::route`]. Not persisted: a reload starts at home.
@@ -519,6 +521,7 @@ impl Live {
             online: use_signal(Default::default),
             sessions: use_signal(Default::default),
             note: use_signal(String::new),
+            multi: use_signal(Default::default),
             view: use_signal(Default::default),
             go: use_signal(|| None),
             app: use_signal(Default::default),

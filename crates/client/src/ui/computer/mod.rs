@@ -10,6 +10,9 @@
 //! | [`settings_list`] | the four pages about it |
 //! | [`pages`] | those pages |
 //! | [`hops`] | the four connection hops |
+//! | [`sessions`] | Sessions: who is in each, Join / Take over / End, Start new |
+//! | [`session_row`] | one session in it |
+//! | [`linkmeter`] | the link speed test, shown |
 //!
 //! It is reached from its card on home by a shared-element transition (`js/hero_flip.js`): the
 //! card's surface, disc and name grow into the hero's. The page is laid out by Rust; the motion
@@ -20,9 +23,12 @@ pub mod actions;
 pub mod grant;
 pub mod hero;
 pub mod hops;
+pub mod linkmeter;
 pub mod pages;
 pub mod playing;
 pub mod quick;
+pub mod session_row;
+pub mod sessions;
 pub mod settings_list;
 
 use dioxus::prelude::*;
@@ -83,6 +89,7 @@ pub fn render(ui: Ui) -> Element {
                             }
                         }
                         actions::Actions { ui, r: r.clone() }
+                        sessions::Sessions { ui, r: r.clone() }
                         // Claude's cards come over the selected computer's own link.
                         if r.selected && r.may("shells") && !off {
                             section { class: "sx claude o2", style: "--n:2", id: "claude", "aria-label": "Claude",

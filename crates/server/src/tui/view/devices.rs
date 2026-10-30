@@ -8,13 +8,15 @@ use crate::tui::app::{App, Card, OWNER_COL, Target};
 use crate::tui::theme;
 
 /// `(wide label, narrow label)` per column, grants then owner.
-const COLS: [(&str, &str); 7] = [
+const COLS: [(&str, &str); 9] = [
     ("files", "fil"),
     ("shells", "sh"),
     ("settings", "set"),
     ("host", "hst"),
     ("input", "inp"),
     ("clipboard", "clp"),
+    ("join", "jn"),
+    ("takeover", "tko"),
     ("owner", theme::OWNER),
 ];
 const NOW: usize = 13;
@@ -35,7 +37,7 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
         );
         return;
     }
-    let wide = inner.width >= 74;
+    let wide = inner.width >= 94;
     let cw = if wide { 10 } else { 5 };
     let name_w = (inner.width as usize)
         .saturating_sub(NOW + cw * COLS.len() + 1)
@@ -127,6 +129,8 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
                 3 => mark(g.host),
                 4 => mark(g.input),
                 5 => mark(g.clipboard),
+                6 => mark(g.join),
+                7 => mark(g.takeover),
                 _ => (
                     if r.owner { theme::OWNER } else { theme::OFF }.into(),
                     r.owner,

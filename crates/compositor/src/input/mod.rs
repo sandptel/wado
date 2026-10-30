@@ -3,6 +3,7 @@
 //! plumbing they all use. **No on-screen cursor** is ever drawn (a mouse drives a
 //! cursorless `wl_pointer`; touchscreens drive `wl_touch`).
 
+pub mod arbiter;
 pub mod common;
 pub mod gamepad;
 pub mod keyboard;
@@ -10,5 +11,6 @@ pub mod pinch;
 pub mod pointer;
 pub mod relative;
 pub mod remote;
+pub mod tagged;
 pub mod touch;
 pub mod window_drag;

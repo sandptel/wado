@@ -17,6 +17,7 @@ pub mod files;
 pub mod host;
 pub mod link;
 pub mod menu;
+pub mod multi;
 pub mod pad;
 pub mod passkey;
 pub mod push;
@@ -36,6 +37,7 @@ pub use config::{ConfigState, DeviceGrants, HostLimits, PinnedInput, TrackpadPre
 pub use control::{SessionControl, WindowAction, WindowInfo, WindowList};
 pub use host::{HostAction, HostState};
 pub use menu::{MenuItem, MenuSheet};
+pub use multi::{LinkVerdict, Participant, Presence};
 pub use sessions::SessionSummary;
 pub use shells::ShellInfo;
 pub use targets::Target;
@@ -96,7 +98,7 @@ pub const FAST_CHANNEL: &str = "wado-fast";
 /// mechanism for axis/secondary-click) by focusing the surface under the point — still
 /// without drawing a cursor. `WindowDrag` is a compositor-managed window move (it never
 /// reaches the app). See `INPUT_CHALLENGES.md`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "t", rename_all = "snake_case")]
 pub enum InputEvent {
     /// A touch contact. `id` identifies the contact (multi-touch: several may be live at
@@ -236,7 +238,7 @@ pub struct StageTimings {
 
 /// Which pointer button a [`InputEvent::Button`] refers to. The compositor maps these to the
 /// Linux `BTN_*` codes (`Left`=`0x110`, `Middle`=`0x112`, `Right`=`0x111`).
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PointerButton {
     Left,
@@ -245,7 +247,7 @@ pub enum PointerButton {
 }
 
 /// Lifecycle phase of a touch contact (maps to `wl_touch` down / motion / up).
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TouchPhase {
     Down,

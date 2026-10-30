@@ -75,9 +75,10 @@ pub use wado_protocol::StageTimings;
 /// (as an alias over the calloop type) so the server can name and use it without
 /// depending on smithay/calloop itself.
 pub type CommandSender = Sender<CompositorCommand>;
-/// The `Send`able sender for remote [`InputEvent`]s into the calloop loop. A **separate**
-/// channel from commands (input never rides behind control or video — invariant #1).
-pub type InputSender = Sender<InputEvent>;
+/// The `Send`able sender for remote [`InputEvent`]s into the calloop loop, each tagged with the
+/// device it came from (see [`input::arbiter`]). A **separate** channel from commands (input
+/// never rides behind control or video — invariant #1).
+pub use input::tagged::{InputItem, InputSender, Origin, PRIMARY};
 
 /// Channels the server uses to drive the compositor, returned by [`build`]. The server
 /// holds these and nothing else of the compositor — no Smithay type crosses the boundary.
@@ -154,13 +155,26 @@ pub fn build(
     // Separate input channel (touch + keyboard). Same panic guard: a panic while
     // synthesizing input must not abort the process. We do NOT reset the session here —
     // a bad input event shouldn't kill a working stream; we just drop it and log.
-    let (input_tx, input_channel) = channel::<InputEvent>();
+    let (input_tx, input_channel) = channel::<InputItem>();
+    let input_tx = InputSender(input_tx);
     event_loop
         .handle()
         .insert_source(input_channel, move |event, _, state: &mut Wado| {
-            if let ChannelEvent::Msg(ev) = event {
+            if let ChannelEvent::Msg(item) = event {
                 let caught = std::panic::catch_unwind(AssertUnwindSafe(|| {
-                    state.handle_remote_input(ev);
+                    // The arbiter decides what of several devices' input reaches the seat; with
+                    // one device it passes everything through unchanged.
+                    let evs = match item {
+                        InputItem::Event(origin, ev) => state.arbiter.admit(origin, ev),
+                        InputItem::Gone(origin) => state.arbiter.gone(origin),
+                        InputItem::Lead(origin) => {
+                            state.arbiter.set_lead(origin);
+                            Vec::new()
+                        }
+                    };
+                    for ev in evs {
+                        state.handle_remote_input(ev);
+                    }
                 }));
                 if caught.is_err() {
                     tracing::error!("compositor panicked handling an input event — dropped");

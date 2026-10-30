@@ -45,6 +45,8 @@ pub fn missing(g: &Grants, tokens: &[&'static str]) -> Option<&'static str> {
         "clipboard" => !g.clipboard,
         "input" => !g.input,
         "shells" => !g.shells,
+        "join" => !g.join,
+        "takeover" => !g.takeover,
         _ => true,
     })
 }

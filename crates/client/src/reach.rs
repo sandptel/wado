@@ -50,6 +50,8 @@ impl Reach {
                 "clipboard" => g.clipboard,
                 "shells" => g.shells,
                 "settings" => g.settings,
+                "join" => g.join,
+                "takeover" => g.takeover,
                 _ => true,
             },
         }

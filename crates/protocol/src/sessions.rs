@@ -24,4 +24,32 @@ pub struct SessionSummary {
     /// Left running on purpose ("Leave"), so it is kept until someone ends it.
     #[serde(default)]
     pub detached: bool,
+    /// The device it is sized for: it started the session or last took it over. `None` from a
+    /// daemon before multi-client sessions.
+    #[serde(default)]
+    pub lead: Option<String>,
+    /// Every device in it now, the lead first.
+    #[serde(default)]
+    pub participants: Vec<crate::multi::Participant>,
+    /// How many devices it takes. `0`: a daemon from before multi-client sessions — it can be
+    /// resumed or taken over, never joined.
+    #[serde(default)]
+    pub max_participants: u32,
+    /// The shared stream's bitrate now, kbps (the lowest any participant can take, floored).
+    #[serde(default)]
+    pub kbps: u32,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SessionSummary;
+
+    #[test]
+    fn a_file_from_an_older_daemon_still_parses() {
+        let old = r#"{"instance":"1:1","started_ms":5,"width":1080,"height":2400,"fps":60,
+            "apps":["foot"],"viewer":"Pixel","detached":false}"#;
+        let s: SessionSummary = serde_json::from_str(old).unwrap();
+        assert_eq!(s.max_participants, 0, "old daemon: not joinable");
+        assert!(s.participants.is_empty() && s.lead.is_none());
+    }
 }
