@@ -289,11 +289,11 @@ fn begin(store: &Store, key: &str, purpose: &str) -> Result<RelayMsg, &'static s
 }
 
 fn register(store: &Store, key: &str, cd: &str, att: &str) -> Result<(), &'static str> {
-    let c = challenge::take(key, REGISTER).ok_or(STALE)?;
     // Checked again, not only at `begin`: the window may have shut in between.
     if store.get(key).is_some() && unlock::left_in(store, key).is_none() {
         return Err("Unlock with this device's passkey first to replace it.");
     }
+    let c = challenge::take(key, REGISTER, &signed_over(cd)).ok_or(STALE)?;
     let cred = verify::register(cd, att, &c)?;
     store
         .put(key, &cred)
@@ -311,7 +311,7 @@ fn unlock_with(
     ad: &str,
     sig: &str,
 ) -> Result<(), &'static str> {
-    let c = challenge::take(key, UNLOCK).ok_or(STALE)?;
+    let c = challenge::take(key, UNLOCK, &signed_over(cd)).ok_or(STALE)?;
     let cred = store.get(key).ok_or(super::NO_PASSKEY)?;
     let count = verify::assert(&cred, cred_id, cd, ad, sig, &c)?;
     store.set_count(key, count);
@@ -320,6 +320,15 @@ fn unlock_with(
 }
 
 const STALE: &str = "That took too long — try again.";
+
+/// The challenge the browser says the answer was signed over (empty when unreadable, which
+/// matches nothing and reads as stale).
+fn signed_over(cd: &str) -> Vec<u8> {
+    super::verify::b64(cd)
+        .ok()
+        .and_then(|raw| super::client_data::signed_over(&raw))
+        .unwrap_or_default()
+}
 
 #[cfg(test)]
 mod tests {

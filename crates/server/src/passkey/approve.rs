@@ -38,8 +38,9 @@ use super::{Store, now_s, unlock};
 
 /// How long someone at the computer has to answer.
 pub const WAIT: Duration = Duration::from_secs(120);
-/// Requests per device per [`PER`].
-pub const PER_DEVICE: usize = 3;
+/// Requests per device per [`PER`]. Enough for a person who asks, withdraws and asks again a few
+/// times; few enough that a device cannot keep the computer's prompt up.
+pub const PER_DEVICE: usize = 5;
 pub const PER: Duration = Duration::from_secs(10 * 60);
 const POLL: Duration = Duration::from_millis(300);
 
@@ -584,7 +585,16 @@ mod tests {
         assert_eq!(approve_state(&next(&mut rx).await), APPROVE_CANCELLED);
         t.await.unwrap();
 
-        // Three asks in ten minutes: the fourth is refused, and logged as such.
+        // [`PER_DEVICE`] asks in ten minutes (three so far): the one after is refused, and logged.
+        for _ in 3..PER_DEVICE {
+            let (tx, mut rx) = mpsc::channel(8);
+            let (s2, k2) = (store.clone(), key.clone());
+            let t = tokio::spawn(async move { run(&s2, &k2, "Phone", &tx, WAIT).await });
+            assert_eq!(approve_state(&next(&mut rx).await), APPROVE_WAITING);
+            assert!(ap.cancel(&key));
+            assert_eq!(approve_state(&next(&mut rx).await), APPROVE_CANCELLED);
+            t.await.unwrap();
+        }
         let (tx, mut rx) = mpsc::channel(8);
         run(&store, &key, "Phone", &tx, Duration::from_millis(1)).await;
         let m = next(&mut rx).await;

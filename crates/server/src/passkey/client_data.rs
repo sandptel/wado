@@ -35,6 +35,15 @@ pub fn check(raw: &[u8], ty: &str, challenge: &[u8]) -> Result<String, &'static 
     Ok(c.origin)
 }
 
+/// The challenge `raw` says it was signed over, to find which of the device's live ones it
+/// answers. Checked properly by [`check`] afterwards.
+pub fn signed_over(raw: &[u8]) -> Option<Vec<u8>> {
+    let c: Raw = serde_json::from_slice(raw).ok()?;
+    base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(c.challenge.trim_end_matches('='))
+        .ok()
+}
+
 /// The relying-party id for a page at `origin`: its host. `None` for an origin a passkey may
 /// not be made on — anything but HTTPS, except a page on this machine itself.
 pub fn rp_id(origin: &str) -> Option<String> {

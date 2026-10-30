@@ -525,7 +525,7 @@ try {
     check("…and the phone is asked again", await a.until(`${pkState("required")} === true && !${unlocked}`, 6000), await a.pk());
     // Off from the computer, while the phone is locked: the owner's way out.
     const off = wado("passkey", "require", "PhoneA-key", "off");
-    check("`wado passkey require … off` warns", /no longer asked/.test(off) && /Anyone holding it/.test(off), off);
+    check("`wado passkey require … off` warns", /no longer asked/.test(off) && /anyone holding it/i.test(off), off);
     await a.ev(`window.__wado.relaySendMsg({ type: "passkey_get" }); true`);
     check("…the locked phone is open", await a.until(`${pkState("required")} === false && ${unlocked}`, 6000), await a.pk());
     wado("passkey", "require", "PhoneA-key", "on");

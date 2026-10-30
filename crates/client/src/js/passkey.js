@@ -202,8 +202,11 @@
     W.passkeyGo(P.state.registered ? "unlock" : "register");
   };
 
-  W.passkeyLockNow = () => {
-    if (P.state.unlocked) send({ type: "passkey_lock" });
+  W.passkeyLockNow = (why) => {
+    if (P.state.unlocked) {
+      if (W.rlog) W.rlog("passkey: locked here — " + (why || "Lock now"));
+      send({ type: "passkey_lock" });
+    }
     P.state = Object.assign({}, P.state, { unlocked: false, idle_left_s: 0 });
     say();
   };
@@ -355,7 +358,7 @@
     if (document.visibilityState === "visible") { picking = 0; return; }
     if (picking && Date.now() - picking < 120000) return;
     // Unless this device turned "Lock when I leave the app" off (an older daemon never says).
-    if (P.state.unlocked && P.state.required !== false && P.state.lock_on_leave !== false) W.passkeyLockNow();
+    if (P.state.unlocked && P.state.required !== false && P.state.lock_on_leave !== false) W.passkeyLockNow("the app went to the background");
   });
   const touched = () => {
     lastAct = Date.now();
@@ -373,8 +376,7 @@
     if (P.state.required === false) return; // not asked for a passkey: nothing to lock
     const idle = (P.state.idle_s || 900) * 1000;
     if (Date.now() - lastAct > idle) {
-      if (W.rlog) W.rlog("passkey: idle — locked");
-      W.passkeyLockNow();
+      W.passkeyLockNow("idle for " + Math.round(idle / 60000) + " min");
     }
   }, 15000);
 
