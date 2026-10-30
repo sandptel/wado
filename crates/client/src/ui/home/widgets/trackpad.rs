@@ -1,5 +1,7 @@
-//! The Trackpad widget: a touch surface that opens the trackpad for its computer, and that
-//! computer's quick actions (its `trackpad { quick }` list) as chips that run at a tap.
+//! The Virtual input widget (spec §3.1): a touch surface that opens the touchpad for its computer,
+//! three doors — Touchpad, Keyboard, Gamepad — and that computer's quick actions (its
+//! `trackpad { quick }` list) as chips that run at a tap. (Its kind keeps the name `trackpad`, so
+//! a widget list saved before stays valid.)
 //!
 //! The surface blooms a ring from the finger (`js/widget_touch.js`) — the one motion here that
 //! follows a touch rather than a state.
@@ -7,7 +9,10 @@
 use dioxus::prelude::*;
 use wado_protocol::pad::ActionInfo;
 
-use crate::{bridge, ui::widgets::Icon};
+use crate::{
+    bridge,
+    ui::{computer::input::open as input, widgets::Icon},
+};
 
 use super::shell::Ctx;
 
@@ -62,11 +67,30 @@ pub fn Trackpad(cx: Ctx) -> Element {
                 if let Some(i) = crate::route::index_of(ui, &k) {
                     if (ui.set.profile)() != i { crate::profile::select(ui, i); }
                 }
-                bridge::call("window.__wado.padOpen();".to_string());
+                input::open(ui, input::Door::Touchpad);
             },
             Icon { name: "trackpad" }
             span { "Touch to use {name}'s pointer"
                 small { if relayed { "Relayed — plays a little behind your finger" } else { "Opens the trackpad" } }
+            }
+        }
+        div { class: "videoorsw", role: "group", "aria-label": "Use {name} as its",
+            for (door, label, icon) in [(input::Door::Touchpad, "Touchpad", "trackpad"), (input::Door::Keyboard, "Keyboard", "kbd"), (input::Door::Gamepad, "Gamepad", "pad")] {
+                {
+                    let k = pk.clone();
+                    rsx! {
+                        button { key: "{label}", class: "vidoorw",
+                            onclick: move |_| {
+                                if let Some(i) = crate::route::index_of(ui, &k) {
+                                    if (ui.set.profile)() != i { crate::profile::select(ui, i); }
+                                }
+                                input::open(ui, door);
+                            },
+                            Icon { name: icon }
+                            span { "{label}" }
+                        }
+                    }
+                }
             }
         }
         if !chips.is_empty() {
@@ -77,11 +101,7 @@ pub fn Trackpad(cx: Ctx) -> Element {
                         let sel = cx.r.selected;
                         rsx! {
                             button { key: "{a.id}", class: "qchip",
-                                onclick: move |_| bridge::call(if sel {
-                                    format!("window.__wado.actionRun({});", bridge::js(&id))
-                                } else {
-                                    format!("window.__wado.sideDo({}, {{type: 'pad_in', msg: {{k: 'run', id: {}}}}});", bridge::js(&pk), bridge::js(&id))
-                                }),
+                                onclick: move |_| input::run_action(sel, &pk, &id),
                                 Icon { name: chip_icon(&a.icon).to_string() }
                                 "{a.name}"
                             }

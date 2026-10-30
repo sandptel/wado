@@ -265,6 +265,10 @@ mod tests {
     #[test]
     fn parses_each_shortcut() {
         assert_eq!(Go::parse("trackpad"), Some(Go::Trackpad));
+        assert_eq!(Go::parse("touchpad"), Some(Go::Trackpad));
+        assert_eq!(Go::parse("keyboard"), Some(Go::Keyboard));
+        assert_eq!(Go::parse("Gamepad"), Some(Go::Gamepad));
+        assert_eq!(Go::parse("input"), Some(Go::Input));
         assert_eq!(Go::parse("files"), Some(Go::Files));
         assert_eq!(Go::parse("shell"), Some(Go::Shell));
         assert_eq!(Go::parse("session"), Some(Go::Session));

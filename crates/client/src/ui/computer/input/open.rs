@@ -70,6 +70,21 @@ pub fn edit(ui: Ui, state: &str) {
     ));
 }
 
+/// Run one of the computer's quick actions (`Run` → `Ran`): on the selected computer's link, or
+/// through another computer's side link. Every Virtual input chip goes through here, so the shared
+/// pending-action feedback can wrap this one call.
+pub fn run_action(selected: bool, pk: &str, id: &str) {
+    bridge::call(if selected {
+        format!("window.__wado.actionRun({});", bridge::js(&id))
+    } else {
+        format!(
+            "window.__wado.sideDo({}, {{type: 'pad_in', msg: {{k: 'run', id: {}}}}});",
+            bridge::js(&pk),
+            bridge::js(&id)
+        )
+    });
+}
+
 pub fn hub(ui: Ui) {
     route::go(ui, Page::Input);
 }

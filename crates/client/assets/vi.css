@@ -166,3 +166,9 @@
   background: repeating-linear-gradient(90deg, var(--s2) 0 26px, transparent 26px 30px) 0 4px / 100% 18px no-repeat,
     repeating-linear-gradient(90deg, var(--s2) 0 26px, transparent 26px 30px) 14px 26px / 100% 18px no-repeat,
     repeating-linear-gradient(90deg, var(--s2) 0 26px, transparent 26px 30px) 30px 48px / 100% 14px no-repeat; }
+
+/* the home widget's three doors (ui/home/widgets/trackpad.rs) */
+.videoorsw { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+.vidoorw { min-height: 56px; border-radius: var(--r2); background: var(--s2); color: var(--bright); display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 2px; font: 600 .75rem var(--body); padding: 4px; min-width: 0; }
+.vidoorw span { overflow: hidden; text-overflow: ellipsis; max-width: 100%; white-space: nowrap; }
