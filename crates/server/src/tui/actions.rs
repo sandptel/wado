@@ -26,6 +26,34 @@ pub fn passkey_lock(key: &str, name: &str) -> Outcome {
     Ok(format!("locked {name} — it asks for its passkey again"))
 }
 
+/// Ask a device for its passkey again, or stop asking it (`wado passkey require`).
+pub fn passkey_require(key: &str, name: &str, on: bool) -> Outcome {
+    crate::passkey::Store::default()
+        .set_required(key, on)
+        .map_err(|e| e.to_string())?;
+    if on {
+        crate::cli::passkey::lock_everywhere(Some(key));
+        Ok(format!("{name} is asked for its passkey again"))
+    } else {
+        Ok(format!(
+            "{name} is no longer asked for a passkey — P turns it back on"
+        ))
+    }
+}
+
+/// Answer a phone that asked to be let in without its passkey.
+pub fn approve(id: &str, device: &str, yes: bool) -> Outcome {
+    if crate::passkey::approve::Approvals::default().answer(id, yes) {
+        Ok(if yes {
+            format!("{device} is let in — as with its passkey")
+        } else {
+            format!("{device} was turned away")
+        })
+    } else {
+        Err(format!("{device} is no longer waiting"))
+    }
+}
+
 /// A fresh pairing code carrying `grants`, and its link.
 pub fn pair(grants: &Grants) -> Result<crate::cli::qr::Pairing, String> {
     crate::cli::qr::pair_link(None, None, grants)

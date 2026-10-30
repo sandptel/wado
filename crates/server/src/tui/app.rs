@@ -67,6 +67,8 @@ pub enum Target {
     Cell(Card, usize, usize),
     /// The answer to a typed pairing's check words: they match, or not.
     Check(bool),
+    /// The answer to a phone asking to be let in without its passkey.
+    Approve(bool),
     /// The QR code: compact ↔ large.
     Zoom,
 }
@@ -216,6 +218,14 @@ impl App {
                 _ => {}
             }
         }
+        // A phone asks to be let in without its passkey: a and d answer it, before the rest.
+        if !self.snap.approving.is_empty() {
+            match k.code {
+                KeyCode::Char('a') => return self.hit(Target::Approve(true)),
+                KeyCode::Char('d') => return self.hit(Target::Approve(false)),
+                _ => {}
+            }
+        }
         if let Some((key, _)) = self.confirm.take() {
             if k.code == KeyCode::Char('y') {
                 self.done(actions::unpair(&key));
@@ -243,6 +253,13 @@ impl App {
                 if let Some(row) = self.snap.devices.get(self.cursor[1].0) {
                     let (key, name) = (row.device.key.clone(), row.device.name.clone());
                     self.done(actions::passkey_lock(&key, &name));
+                }
+            }
+            KeyCode::Char('P') if self.focus == Card::Devices => {
+                if let Some(row) = self.snap.devices.get(self.cursor[1].0) {
+                    let (key, name) = (row.device.key.clone(), row.device.name.clone());
+                    let on = self.snap.not_required.contains(&key);
+                    self.done(actions::passkey_require(&key, &name, on));
                 }
             }
             KeyCode::Char('z') => self.big_qr = !self.big_qr,
@@ -289,6 +306,12 @@ impl App {
                 self.flip(card, r, c);
             }
             Target::Zoom => self.big_qr = !self.big_qr,
+            Target::Approve(yes) => {
+                if let Some(a) = self.snap.approving.first() {
+                    let (id, device) = (a.id.clone(), a.device.clone());
+                    self.done(actions::approve(&id, &device, yes));
+                }
+            }
             Target::Check(yes) => {
                 if let Some(a) = self.snap.asking.first() {
                     let (typed, device) = (a.typed.clone(), a.device.clone());
