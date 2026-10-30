@@ -670,7 +670,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     let (ws_stream, _) = connect_async(&register_url)
         .await
         .map_err(|e| crate::WadoError::Other(format!("connect: {e}")))?;
-    let (mut ws_sink, mut ws_stream) = ws_stream.split();
+    let (ws_sink, mut ws_stream) = ws_stream.split();
 
     // All outbound relay WS messages go through this channel so multiple tasks
     // can write without fighting over the SplitSink.
@@ -685,6 +685,8 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     let link = Arc::clone(&ctx.link);
     let outbox = crate::lane::Outbox::default();
     let lane = outbox.gauge();
+    // Files with no direct path ride this link too (`crate::files::lane`).
+    let files_lane = crate::files::lane::OnLane::default();
     let ws_sink = Arc::new(tokio::sync::Mutex::new(ws_sink));
     let write_task = tokio::spawn(crate::lane::pump::run(out_rx, outbox, move |text| {
         let frames = link
@@ -1904,6 +1906,20 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 send_relay(&out_tx, &reply).await.ok();
             }
 
+            // No direct path for files: the same requests on the fallback lane (`files::lane`).
+            RelayMsg::FilesIn { text } => {
+                let (key, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                let asker = crate::files::lane::Asker {
+                    who: crate::files::channel::Who { key, name },
+                    gate: &ctx.gate,
+                    ok: ctx.viewer_ok.load(Ordering::SeqCst),
+                    out: &out_tx,
+                    gauge: &lane,
+                };
+                files_lane.request(&text, asker).await;
+            }
+            RelayMsg::FilesChunk { id, b } => files_lane.chunk(id, &b).await,
+
             RelayMsg::SessionLaunch { command } => {
                 // Answered honestly. This used to send `SessionLaunched` unconditionally, so a
                 // launch into a session that does not exist was reported as a success — the
@@ -2379,6 +2395,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     notify_task.abort();
     files_note_task.abort();
     close_files(&ctx.files_pc);
+    files_lane.close();
     ctx.pad.close(); // and the trackpad: no key stays held after the device leaves
     crate::passkey::unlock::lock_all();
     menu_task.abort();

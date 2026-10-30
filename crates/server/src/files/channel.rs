@@ -92,7 +92,7 @@ pub async fn open(
 
 /// One open channel: its device, and its transfers in flight.
 pub struct Chan {
-    dc: Arc<RTCDataChannel>,
+    tx: Tx,
     pub who: Who,
     gate: Gate,
     /// Downloads, by transfer id: set to stop them.
@@ -103,7 +103,35 @@ pub struct Chan {
     credits: Mutex<HashMap<u32, Arc<AtomicU64>>>,
 }
 
+/// Where a channel's answers go: its own data channel, or — with no direct path — the relay
+/// link's fallback lane (`super::lane`).
+enum Tx {
+    Dc(Arc<RTCDataChannel>),
+    Lane(super::lane::LaneTx),
+}
+
 impl Chan {
+    fn new(tx: Tx, who: Who, gate: Gate) -> Self {
+        Self {
+            tx,
+            who,
+            gate,
+            stops: Mutex::new(HashMap::new()),
+            ups: Mutex::new(HashMap::new()),
+            credits: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// A channel over the fallback lane.
+    pub fn on_lane(lane: super::lane::LaneTx, who: Who, gate: Gate) -> Self {
+        Self::new(Tx::Lane(lane), who, gate)
+    }
+
+    /// On the fallback lane, the most one transfer may move ([`super::lane::MAX_BYTES`]).
+    pub fn max_bytes(&self) -> Option<u64> {
+        matches!(self.tx, Tx::Lane(_)).then_some(super::lane::MAX_BYTES)
+    }
+
     pub async fn reply(&self, id: u32, mut v: Value) {
         if let Some(o) = v.as_object_mut() {
             o.insert("id".into(), id.into());
@@ -111,7 +139,12 @@ impl Chan {
                 o.insert("ok".into(), true.into());
             }
         }
-        let _ = self.dc.send_text(v.to_string()).await;
+        match &self.tx {
+            Tx::Dc(dc) => {
+                let _ = dc.send_text(v.to_string()).await;
+            }
+            Tx::Lane(l) => l.text(v.to_string()).await,
+        }
     }
 
     pub async fn fail(&self, id: u32, why: impl Into<String>) {
@@ -121,7 +154,11 @@ impl Chan {
     /// One binary frame for transfer `id`, once the channel has room and the pace allows.
     /// False once the channel is gone.
     pub async fn bytes(&self, id: u32, data: &[u8]) -> bool {
-        while self.dc.buffered_amount().await > HIGH_WATER {
+        let dc = match &self.tx {
+            Tx::Dc(dc) => dc,
+            Tx::Lane(l) => return l.bytes(id, data).await,
+        };
+        while dc.buffered_amount().await > HIGH_WATER {
             if self.closed() {
                 return false;
             }
@@ -131,12 +168,27 @@ impl Chan {
         let mut frame = Vec::with_capacity(4 + data.len());
         frame.extend_from_slice(&id.to_be_bytes());
         frame.extend_from_slice(data);
-        self.dc.send(&Bytes::from(frame)).await.is_ok()
+        dc.send(&Bytes::from(frame)).await.is_ok()
     }
 
     pub fn closed(&self) -> bool {
         use webrtc::data_channel::data_channel_state::RTCDataChannelState;
-        self.dc.ready_state() != RTCDataChannelState::Open
+        match &self.tx {
+            Tx::Dc(dc) => dc.ready_state() != RTCDataChannelState::Open,
+            Tx::Lane(l) => l.closed(),
+        }
+    }
+
+    /// The link this channel rides went away: every transfer on it stops.
+    pub fn stop_all(&self) {
+        for stop in self
+            .stops
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .values()
+        {
+            stop.store(true, Ordering::SeqCst);
+        }
     }
 
     /// A stop flag for a new download.
@@ -170,25 +222,18 @@ impl Chan {
 }
 
 fn serve(dc: Arc<RTCDataChannel>, who: Who, gate: Gate) {
-    let chan = Arc::new(Chan {
-        dc: Arc::clone(&dc),
-        who,
-        gate,
-        stops: Mutex::new(HashMap::new()),
-        ups: Mutex::new(HashMap::new()),
-        credits: Mutex::new(HashMap::new()),
-    });
+    let chan = Arc::new(Chan::new(Tx::Dc(Arc::clone(&dc)), who, gate));
     // Weak in the channel's own callbacks: `Chan` holds the channel, and a strong reference
     // back would keep both alive forever.
     let closing = Arc::downgrade(&chan);
     dc.on_close(Box::new(move || {
         if let Some(c) = closing.upgrade() {
-            for stop in c.stops.lock().unwrap_or_else(|e| e.into_inner()).values() {
-                stop.store(true, Ordering::SeqCst);
-            }
+            c.stop_all();
             info!(device = %c.who.name, "files: channel closed");
             // Drop the message callback, and with it the last strong reference to `Chan`.
-            c.dc.on_message(Box::new(|_| Box::pin(async {})));
+            if let Tx::Dc(dc) = &c.tx {
+                dc.on_message(Box::new(|_| Box::pin(async {})));
+            }
         }
         Box::pin(async {})
     }));
@@ -227,7 +272,7 @@ fn allowed(req: &FileReq, have: &str) -> bool {
     }
 }
 
-async fn dispatch(chan: Arc<Chan>, id: u32, req: FileReq) {
+pub async fn dispatch(chan: Arc<Chan>, id: u32, req: FileReq) {
     let have = chan.access();
     if !allowed(&req, have) {
         let why = if have == "none" {
