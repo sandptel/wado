@@ -22,7 +22,7 @@ pub fn Claude(cx: Ctx) -> Element {
     let Some(st) = CARDS() else {
         return rsx! { div { class: "wnote quiet", Icon { name: "term" } "Asking {name}…" } };
     };
-    if !st.hooks {
+    if !st.hooks && st.sessions.is_empty() {
         return rsx! { div { class: "wnote quiet", Icon { name: "info" } span { "Run " span { class: "mono", "wado claude hooks install" } " on {name} to see Claude here." } } };
     }
     let mut live: Vec<_> = st

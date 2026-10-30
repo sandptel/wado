@@ -26,7 +26,7 @@ pub fn section(ui: Ui) -> Element {
     let cmd = "wado claude hooks install";
     let open = st.sessions.iter().filter(|s| s.state != "ended").count();
     rsx! {
-        if !st.hooks {
+        if !st.hooks && st.sessions.is_empty() {
             div { class: "card clhooks",
                 b { "See Claude here" }
                 p { "Status, questions and Allow / Deny for Claude Code on {name} appear here once its hooks are in. On {name}, run:" }

@@ -145,7 +145,8 @@ try {
   check("unlocking opens the shell it was asked for", await b.until(`window.__wado.passkey.state.unlocked && !!document.querySelector("#console.open")`, 15000));
 
   console.log("trust page");
-  await b.ev(`document.querySelector("#console .iconbtn[aria-label*=Close], #console button[aria-label*=close]")?.click(); true`);
+  await b.ev(`for (const e of document.querySelectorAll("#console .grab, #console [aria-label=\"Close console\"]")) e.click(); true`);
+  await b.until(`!document.querySelector("#console.open")`, 4000);
   const opened = await b.ev(`(() => { const r = [...document.querySelectorAll("#computer .navrow")].find((e) => /Connection/.test(e.textContent)); if (!r) return false; r.click(); return true; })()`);
   check("Connection & trust opens", opened && await b.until(`!!document.querySelector(".pkcard") && !!document.querySelector(".pushcard")`, 8000));
   await sleep(700);
