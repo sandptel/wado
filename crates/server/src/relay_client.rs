@@ -969,16 +969,23 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
         })
     };
 
-    // The session clipboard, whenever an app copies. Only changes are sent — `mark_changed` is
-    // not called, so a viewer that connects is not handed whatever was copied an hour ago.
+    // The viewer asked for every new copy in full (`ClipWatch { live }`) — its "Copy from this
+    // computer automatically". Reset for each new viewer, who asks for itself.
+    let clip_live = Arc::new(AtomicBool::new(false));
+
+    // The session clipboard, whenever an app copies, as text — for a viewer that is not getting
+    // every copy in full already (`clip_task`): the session's own copy and paste, which needs no
+    // grant. Never a secret. Only changes are sent — `mark_changed` is not called, so a viewer
+    // that connects is not handed whatever was copied an hour ago.
     let clipboard_task = {
         let mut rx = ctx.clipboard.clone();
         let out_tx_cb = out_tx.clone();
+        let live = Arc::clone(&clip_live);
         tokio::spawn(async move {
             while rx.changed().await.is_ok() {
                 let clip = rx.borrow_and_update().clone();
                 // Images reach the viewer through the host history (`clip`), not this.
-                if !clip.is_text() {
+                if !clip.is_text() || clip.secret || live.load(Ordering::SeqCst) {
                     continue;
                 }
                 let text = String::from_utf8_lossy(&clip.data).into_owned();
@@ -992,16 +999,23 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
         })
     };
 
-    // The host clipboard's history, again on every change, for a viewer with the grant.
+    // The computer's clipboard for a viewer with the grant: its history again on every change,
+    // and every new copy in full once it asks (`clip_live`).
     let clip_task = {
-        let (viewer, ok, gate) = (
+        let (viewer, ok, gate, live) = (
             Arc::clone(&ctx.viewer),
             Arc::clone(&ctx.viewer_ok),
             ctx.gate.clone(),
+            Arc::clone(&clip_live),
         );
-        crate::clip::serve::follow(out_tx.clone(), move || {
-            let device = viewer.lock().unwrap_or_else(|e| e.into_inner()).0.clone();
-            ok.load(Ordering::SeqCst) && gate.grants(&device).clipboard
+        crate::clip::share::follow(out_tx.clone(), move || {
+            let key = viewer.lock().unwrap_or_else(|e| e.into_inner()).0.clone();
+            crate::clip::share::Listen {
+                granted: ok.load(Ordering::SeqCst) && gate.grants(&key).clipboard,
+                key,
+                watching: true,
+                live: live.load(Ordering::SeqCst),
+            }
         })
     };
 
@@ -1253,6 +1267,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 // The audio sink appears for this device, named after it.
                 tokio::spawn(crate::host::viewer(Some(client_name.clone())));
                 ctx.media_sent.clear();
+                clip_live.store(false, Ordering::SeqCst);
                 ctx.viewer_ok.store(!relay_gates, Ordering::SeqCst);
                 info!(room_id = %room_id, client = %client_addr, device = %client_name, "relay client: peer connected");
                 if relay_gates {
@@ -1894,18 +1909,16 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     let clip = wado_compositor::clipboard::Clip {
                         mime: "text/plain;charset=utf-8".into(),
                         data: text.into_bytes().into(),
+                        secret: false,
                     };
                     // Into the session; and onto the host too for a device that may.
-                    let device = ctx
-                        .viewer
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .0
-                        .clone();
+                    let (device, name) =
+                        ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
                     if ctx.gate.grants(&device).clipboard {
                         let cmd_tx = ctx.cmd_tx.clone();
+                        let from = crate::clip::hub::Origin::Device { key: device, name };
                         tokio::spawn(async move {
-                            let _ = crate::clip::sync::push(&cmd_tx, clip).await;
+                            let _ = crate::clip::sync::push(Some(&cmd_tx), clip, from).await;
                         });
                     } else {
                         let _ = ctx.cmd_tx.send(CompositorCommand::SetClipboard(clip));
@@ -1917,13 +1930,9 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             | RelayMsg::ClipGet { .. }
             | RelayMsg::ClipPush { .. }
             | RelayMsg::ClipPin { .. }
-            | RelayMsg::ClipDelete { .. }) => {
-                let device = ctx
-                    .viewer
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .0
-                    .clone();
+            | RelayMsg::ClipDelete { .. }
+            | RelayMsg::ClipWatch { .. }) => {
+                let (device, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
                 if !ctx.viewer_ok.load(Ordering::SeqCst) {
                     continue;
                 }
@@ -1936,9 +1945,14 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                         .ok();
                     continue;
                 }
+                if let RelayMsg::ClipWatch { live } = msg {
+                    clip_live.store(live, Ordering::SeqCst);
+                    continue;
+                }
                 tokio::spawn(crate::clip::serve::handle(
                     msg,
-                    ctx.cmd_tx.clone(),
+                    Some(ctx.cmd_tx.clone()),
+                    crate::clip::serve::Sender { key: device, name },
                     out_tx.clone(),
                 ));
             }

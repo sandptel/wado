@@ -117,6 +117,9 @@ null in a browser, and the `native_*.js` files then do nothing). Messages are JS
   `EXTRA_IS_SENSITIVE` when the computer says so; the phone's copy goes to the computer when wado
   comes to the front (Android allows no other read), never one marked sensitive (password
   managers mark theirs) and never one wado put there itself. The history view is the client's.
+  The page side is `js/clip_share.js` (the shared clipboard): it hands every computer copy to the
+  app as `clip`, takes the app's `clip` back through `W.clipShare.fromApp`, and keeps the
+  per-computer switches, the hash-based echo check and the `clipboard` grant on top.
 
 ## Build
 

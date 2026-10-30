@@ -392,8 +392,8 @@ session runs; disabled offline). Tapping the card grows it into that computer's 
 shared-element transition (`--dur-hero`): the card surface becomes the r4 hero with the hue wash,
 its disc and name fly to the hero's. The page holds the hero with a three-cell meta strip (Link,
 Computer, Sessions), four big actions (Desktop, Trackpad, Files, Shell; 104px tiles), Now
-playing, Quick (volume, brightness, three vertical toggle tiles) and the four settings rows for
-that computer. Its sub-pages carry an eyebrow with the computer's hue dot and name, so a setting
+playing, Quick (volume, brightness, three vertical toggle tiles), Clipboard (below) and the four
+settings rows for that computer. Its sub-pages carry an eyebrow with the computer's hue dot and name, so a setting
 is never ambiguous about which computer it changes.
 
 ### Link Words
@@ -406,6 +406,22 @@ with that computer's status dot). Media, Volume, Brightness, Clipboard, Trackpad
 phone. Edit mode folds every body to a 64px row with remove, ↑ ↓ and a drag grip; a dragged
 widget lifts (`scale` 1.03 with the Popover shadow — it now floats) and its neighbours make room.
 A widget never hides for a missing grant: it says what is missing.
+
+### Clipboard Surface and Chip
+One component for a computer's clipboard, in full on its page and short in the Clipboard widget.
+Entries are surface-1 cards (r3) with a 38px kind disc (text base0C, link base0E, picture base0A,
+each at 20% over transparent), the text in mono clamped to three lines, and a dim meta line saying
+where and when it was copied. Actions are 44px circles — Copy (accent tint, the one that matters),
+Put back on the computer, Pin, Delete — never hover-only; a tap's glyph pops to a check, a refusal
+shakes once. Pinned is a 1.5px accent border, never a shadow. A copy just made arrives with an
+accent ring that fades (opacity only); a deleted one folds its row away. Above it, this phone's
+two sharing switches for that computer.
+
+Over everything, at the bottom: the clipboard's **voice**, one polite live region. It says what
+sharing did in a pill ("Sent to Laptop") and holds the **chip** a browser asks for when only a tap
+may use the clipboard: a Popover-shadowed r3 bar that rises on the spring, with a small flow glyph
+(computer → phone, or phone → computer) whose accent dot travels the way the copy will go — an
+ambient loop that stops under reduced motion — the words, a solid accent Copy/Send and a close.
 
 ## Do's and Don'ts
 

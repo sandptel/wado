@@ -7,6 +7,7 @@
 //! | [`computer`] | one computer's page, and the pages about it |
 //! | [`subpage`] | a settings page pushed over home or a computer's page |
 //! | [`cc`] | the control centre: hero, quick tiles, settings list, Apply |
+//! | [`clipboard`] | a computer's clipboard surface, and the clipboard's voice over everything |
 //! | [`pages`] | the page list, and the sections the pages are built from |
 //! | [`dock`] | ⋯ ○ ◁ over the picture |
 //! | [`stage`] | the video and everything drawn on it |
@@ -17,6 +18,7 @@
 
 pub mod cc;
 pub mod claude;
+pub mod clipboard;
 pub mod computer;
 pub mod console;
 pub mod dock;

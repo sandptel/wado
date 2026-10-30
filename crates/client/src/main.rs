@@ -163,6 +163,7 @@ fn App() -> Element {
             {ui::computer::render(ui)}
             {ui::subpage::render(ui)}
             {ui::toast::render(ui)}
+            {ui::scoped(ui, "clipdock", ui::clipboard::dock::render)}
             {ui::cc::render(ui)}
             {ui::reconnecting::render(ui)}
             {ui::link_badge::render(ui)}

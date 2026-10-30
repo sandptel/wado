@@ -57,6 +57,35 @@ pub struct ClipHist {
     pub error: String,
 }
 
+/// Where a computer's image entry keeps its picture in `Live::clip_imgs`.
+pub fn clip_img_key(computer: &str, id: &str) -> String {
+    format!("{computer}\n{id}")
+}
+
+/// The one-tap chip `js/clip_share.js` asks for when a browser will not use its clipboard
+/// without a tap: a computer's copy to put on this phone (`copy`), or this phone's to send
+/// (`send`).
+#[derive(Clone, Debug, Default, PartialEq, serde::Deserialize)]
+pub struct ClipChip {
+    pub kind: String,
+    pub key: String,
+    pub name: String,
+    #[serde(default)]
+    pub preview: String,
+    #[serde(default)]
+    pub image: bool,
+    pub id: String,
+}
+
+/// The last thing the clipboard said ("Sent to Laptop"), its tone (`good` · `bad` · `dim`), and
+/// a count that makes the same words said twice a new message.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ClipSaid {
+    pub n: u32,
+    pub text: String,
+    pub tone: String,
+}
+
 /// User choices. Everything here is persisted by [`crate::persist`].
 ///
 /// Grouped in the UI by *when it takes effect* — connection, session (needs a restart), live
@@ -323,11 +352,15 @@ pub struct Live {
     pub shell_mods: Signal<(bool, bool)>,
     /// What apps in the session copied, newest first — see `js/clipboard.js`.
     pub clips: Signal<Vec<String>>,
-    /// The computer's clipboard history, and the image tiles' pictures by entry id.
+    /// The selected computer's clipboard history (`js/cliphost.js`), and the image tiles'
+    /// pictures by [`clip_img_key`] — of every computer, the light links' too.
     pub clip_hist: Signal<ClipHist>,
     pub clip_imgs: Signal<std::collections::HashMap<String, String>>,
-    /// The clipboard rail is out (on a screen too narrow to dock it).
-    pub clip_rail: Signal<bool>,
+    /// Sharing as copies happen (`js/clip_share.js`): this phone's two switches per computer
+    /// (copy from it, send to it), the one-tap chip a browser asked for, and the last thing said.
+    pub clip_prefs: Signal<std::collections::HashMap<String, (bool, bool)>>,
+    pub clip_chip: Signal<Option<ClipChip>>,
+    pub clip_said: Signal<ClipSaid>,
     /// The notification shade, newest first.
     pub notes: Signal<Vec<Note>>,
     /// The stream is being recorded (`js/capture.js`).
@@ -514,7 +547,9 @@ impl Live {
             clips: use_signal(Vec::new),
             clip_hist: use_signal(Default::default),
             clip_imgs: use_signal(Default::default),
-            clip_rail: use_signal(|| false),
+            clip_prefs: use_signal(Default::default),
+            clip_chip: use_signal(|| None),
+            clip_said: use_signal(Default::default),
             notes: use_signal(Vec::new),
             recording: use_signal(|| false),
             hoststate: use_signal(|| None),

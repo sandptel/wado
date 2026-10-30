@@ -52,7 +52,7 @@ impl SeatHandler for Wado {
 
 impl SelectionHandler for Wado {
     /// The bytes of a selection set from outside the session — see [`crate::clipboard`].
-    type SelectionUserData = std::sync::Arc<[u8]>;
+    type SelectionUserData = crate::clipboard::Clip;
 
     fn new_selection(
         &mut self,
@@ -66,12 +66,12 @@ impl SelectionHandler for Wado {
     fn send_selection(
         &mut self,
         _ty: smithay::wayland::selection::SelectionTarget,
-        _mime_type: String,
+        mime_type: String,
         fd: std::os::fd::OwnedFd,
         _seat: Seat<Self>,
         user_data: &Self::SelectionUserData,
     ) {
-        crate::clipboard::serve(fd, user_data);
+        crate::clipboard::serve(fd, &mime_type, user_data);
     }
 }
 

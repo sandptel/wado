@@ -29,15 +29,16 @@ pub const MAX_IMAGE: usize = 16 << 20;
 /// One clipboard value. Empty `data` is nothing copied yet. The platform layer's type, so the
 /// session's clipboard and the desktop's speak the same value.
 pub use wado_platform::clip::Clip;
-use wado_platform::clip::TEXT;
+use wado_platform::clip::{SECRET_HINT, TEXT};
 
 /// Images read out of the session, best first.
 const IMAGE: &[&str] = &["image/png", "image/jpeg", "image/webp", "image/gif"];
 
 impl Wado {
-    /// Make `clip` the session's clipboard.
+    /// Make `clip` the session's clipboard. A secret is offered with the password-manager hint
+    /// too, so a clipboard manager in the session keeps it out of its history.
     pub(crate) fn set_clipboard(&mut self, clip: Clip) {
-        let (offer, cap) = if clip.is_text() {
+        let (mut offer, cap): (Vec<String>, _) = if clip.is_text() {
             (TEXT.iter().map(|s| s.to_string()).collect(), MAX)
         } else {
             (vec![clip.mime.clone()], MAX_IMAGE)
@@ -45,7 +46,10 @@ impl Wado {
         if clip.data.is_empty() || clip.data.len() > cap {
             return;
         }
-        set_data_device_selection(&self.display_handle, &self.seat, offer, clip.data);
+        if clip.secret {
+            offer.push(SECRET_HINT.0.to_string());
+        }
+        set_data_device_selection(&self.display_handle, &self.seat, offer, clip);
     }
 
     /// An app set the clipboard: read it, off the loop thread, and publish it.
@@ -60,6 +64,9 @@ impl Wado {
         let Some(source) = source else { return };
         let offered = source.mime_types();
         tracing::debug!(?offered, "session clipboard changed");
+        // A password manager's copy: still read, so the server knows it and keeps it out of every
+        // history, but marked — it never leaves the session.
+        let secret = wado_platform::clip::is_secret(&offered);
         let Some(mime) = TEXT
             .iter()
             .chain(IMAGE)
@@ -71,10 +78,10 @@ impl Wado {
         // the seat, so a read from inside the callback finds `NoSelection`.
         let mime = mime.to_string();
         self.loop_handle
-            .insert_idle(move |state| state.read_clipboard(mime));
+            .insert_idle(move |state| state.read_clipboard(mime, secret));
     }
 
-    fn read_clipboard(&mut self, mime: String) {
+    fn read_clipboard(&mut self, mime: String, secret: bool) {
         let Ok((mut reader, writer)) = std::io::pipe() else {
             return;
         };
@@ -97,6 +104,7 @@ impl Wado {
                 let _ = tx.send(Clip {
                     mime,
                     data: buf.into(),
+                    secret,
                 });
             }
         });
@@ -104,9 +112,13 @@ impl Wado {
 }
 
 /// An app pasting the selection we set: write it, off the loop thread — a pipe the app is slow
-/// to drain must not stall rendering.
-pub(crate) fn serve(fd: std::os::fd::OwnedFd, data: &Arc<[u8]>) {
-    let data = Arc::clone(data);
+/// to drain must not stall rendering. Asked for the password-manager hint, the hint's value.
+pub(crate) fn serve(fd: std::os::fd::OwnedFd, mime: &str, clip: &Clip) {
+    let data: Arc<[u8]> = if mime == SECRET_HINT.0 {
+        SECRET_HINT.1.into()
+    } else {
+        Arc::clone(&clip.data)
+    };
     std::thread::spawn(move || {
         let _ = std::fs::File::from(fd).write_all(&data);
     });

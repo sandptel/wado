@@ -18,13 +18,16 @@ pub fn Grant(
     what: String,
     /// What this phone may already do there, in words; empty when nothing.
     has: String,
+    /// The card's head.
+    #[props(default = "Quick controls need permission".to_string())]
+    title: String,
 ) -> Element {
     let mut copied = use_signal(|| false);
     let cmd = format!("wado allow {device} {token}");
     let c2 = cmd.clone();
     rsx! {
         div { class: "grant",
-            b { "Quick controls need permission" }
+            b { "{title}" }
             p {
                 if has.is_empty() { "This phone may not control {what} on {computer} yet. " }
                 else { "This phone may use {computer}'s {has}, but not {what}. " }

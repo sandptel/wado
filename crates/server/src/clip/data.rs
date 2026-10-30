@@ -23,6 +23,7 @@ pub fn from_wire(mime: &str, data: &str) -> Result<Clip, String> {
         return Ok(Clip {
             mime: "text/plain;charset=utf-8".into(),
             data: data.as_bytes().into(),
+            secret: false,
         });
     }
     if !mime.starts_with("image/") || mime.contains([';', ' ', '\n']) {
@@ -38,6 +39,7 @@ pub fn from_wire(mime: &str, data: &str) -> Result<Clip, String> {
     Ok(Clip {
         mime: mime.into(),
         data: bytes.into(),
+        secret: false,
     })
 }
 
@@ -76,6 +78,7 @@ mod tests {
         let img = Clip {
             mime: "image/png".into(),
             data: vec![0x89, b'P', b'N', b'G', 1, 2].into(),
+            secret: false,
         };
         assert_eq!(from_wire("image/png", &to_wire(&img)).unwrap(), img);
         let t = from_wire("text/plain", "héllo").unwrap();
