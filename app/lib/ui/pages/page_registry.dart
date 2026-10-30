@@ -8,6 +8,7 @@ import 'appearance.dart';
 import 'diagnostics.dart';
 import '../input/hub.dart';
 import '../shell/shell_page.dart';
+import '../files/files_page.dart';
 
 class PageDef {
   const PageDef(this.title, this.build, {this.fullBleed = false});
@@ -22,6 +23,7 @@ final _pages = <String, PageDef>{
   'diagnostics': PageDef('Diagnostics', (_) => const Diagnostics()),
   'input': PageDef('Virtual input', (_) => const InputHub()),
   'shells': PageDef('Shell', (_) => const ShellPage(), fullBleed: true),
+  'files': PageDef('Files', (_) => const FilesPage(), fullBleed: true),
 };
 
 /// Register a page (each feature module adds its own).
