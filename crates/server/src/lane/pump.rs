@@ -3,15 +3,27 @@
 //! `send` says the link is gone, or the channel closes and everything queued has gone.
 
 use std::future::Future;
+use std::time::Duration;
 
 use tokio::sync::mpsc;
-use tracing::debug;
+use tracing::{debug, warn};
 
 use super::outbox::{Next, Outbox};
+
+/// A socket that has taken no frame for this long is a dead link: the relay has stopped reading
+/// it, and its TCP may not say so for a quarter of an hour. As long as the relay's own silence
+/// timeout, so a live but slow relay is never cut off first by this side.
+pub const WRITE_STALL: Duration = Duration::from_secs(45);
 
 /// `generation`: which device the link serves now (`crate::e2e::link::Link::generation`);
 /// asked before every frame is taken or handed out, so nothing queued for one device is sealed
 /// for the next (`Outbox::set_generation`).
+///
+/// The channel is read **always** — while bulk waits for the budget, and while the socket is
+/// taking a frame — so a producer's send never waits on the lane, and the relay loop sending its
+/// `pong` never waits behind a picture. What bounds the queue is the [`Outbox`]: bulk past its
+/// stop is dropped and said so; urgent frames are small. A write that does not finish in
+/// [`WRITE_STALL`] ends the link.
 pub async fn run<F, Fut, G>(
     mut rx: mpsc::Receiver<String>,
     mut outbox: Outbox,
@@ -24,28 +36,30 @@ pub async fn run<F, Fut, G>(
 {
     let mut open = true;
     let mut seq: u64 = 0;
+    let take = |outbox: &mut Outbox, open: &mut bool, r: Option<String>| match r {
+        Some(t) => {
+            outbox.set_generation(generation());
+            outbox.push(t)
+        }
+        None => *open = false,
+    };
     loop {
         if outbox.is_empty() {
             if !open {
                 return;
             }
-            match rx.recv().await {
-                Some(t) => {
-                    outbox.set_generation(generation());
-                    outbox.push(t)
-                }
-                None => return,
+            let r = rx.recv().await;
+            take(&mut outbox, &mut open, r);
+            if !open {
+                return;
             }
         }
         // Take whatever else is already waiting, so an answer queued behind a burst of output is
         // seen at once. Streaming producers hold themselves back on the gauge; the outbox's own
         // stop is only a safety net for one that does not.
-        while open && outbox.wants_more() {
+        while open {
             match rx.try_recv() {
-                Ok(t) => {
-                    outbox.set_generation(generation());
-                    outbox.push(t)
-                }
+                Ok(t) => take(&mut outbox, &mut open, Some(t)),
                 Err(mpsc::error::TryRecvError::Empty) => break,
                 Err(mpsc::error::TryRecvError::Disconnected) => open = false,
             }
@@ -59,8 +73,24 @@ pub async fn run<F, Fut, G>(
                 let (age, depth) = (outbox.last_age, outbox.depth());
                 let kind = crate::e2e::link::kind(&t).unwrap_or("?").to_owned();
                 let t0 = std::time::Instant::now();
-                if !send(t).await {
-                    return;
+                let write = tokio::time::timeout(WRITE_STALL, send(t));
+                tokio::pin!(write);
+                let sent = loop {
+                    tokio::select! {
+                        biased;
+                        r = &mut write => break r,
+                        r = rx.recv(), if open => take(&mut outbox, &mut open, r),
+                    }
+                };
+                match sent {
+                    Ok(true) => {}
+                    Ok(false) => return,
+                    Err(_) => {
+                        warn!(
+                            "lane: the socket took no {kind} frame for {WRITE_STALL:?} — the link is gone"
+                        );
+                        return;
+                    }
                 }
                 let write = t0.elapsed();
                 crate::slow::report(
@@ -82,10 +112,7 @@ pub async fn run<F, Fut, G>(
                 // While bulk waits for the budget, anything urgent that arrives still goes now.
                 tokio::select! {
                     _ = tokio::time::sleep(d) => {}
-                    r = rx.recv(), if open && outbox.wants_more() => match r {
-                        Some(t) => { outbox.set_generation(generation()); outbox.push(t) },
-                        None => open = false,
-                    },
+                    r = rx.recv(), if open => take(&mut outbox, &mut open, r),
                 }
             }
             Next::Idle => {}
@@ -155,5 +182,66 @@ mod tests {
             "not paced: {span:?}"
         );
         assert_eq!(sent.len(), 21);
+    }
+
+    /// The hang of 2026-10-30 17:30Z (HANDOVER item 0): 31 clipboard pictures (16 MB of
+    /// `clip_data`) queued on the lane, the relay stopped taking the socket's writes, and the
+    /// relay loop — blocked sending its `pong` into a full channel — never read again, so its
+    /// own silence timeout could not fire.
+    #[tokio::test(start_paused = true)]
+    async fn a_stuck_socket_never_stalls_the_reader() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let (out_tx, rx) = mpsc::channel::<String>(128);
+        // A relay socket that takes 64 KB/s for its first megabyte, then stops reading.
+        let taken = Arc::new(AtomicUsize::new(0));
+        let pump = tokio::spawn(run(
+            rx,
+            Outbox::new(Pace::new(1 << 30, 1 << 30)),
+            || 1,
+            move |t| {
+                let before = taken.fetch_add(t.len(), Ordering::SeqCst);
+                async move {
+                    if before >= 1 << 20 {
+                        std::future::pending::<()>().await;
+                    }
+                    tokio::time::sleep(Duration::from_secs_f64(t.len() as f64 / 65_536.0)).await;
+                    true
+                }
+            },
+        ));
+        // Pictures fetched for the Clipboard surface's tiles, each answer from its own task…
+        let picture = format!(
+            r#"{{"type":"clip_data","id":"1","data":"{}"}}"#,
+            "x".repeat(560_000)
+        );
+        for _ in 0..31 {
+            let (tx, p) = (out_tx.clone(), picture.clone());
+            tokio::spawn(async move { tx.send(p).await });
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        // …and the session's small answers behind them.
+        for _ in 0..200 {
+            let tx = out_tx.clone();
+            tokio::spawn(async move { tx.send(r#"{"type":"pad_out","msg":{}}"#.into()).await });
+        }
+        // The relay loop: a ping every 15 s, answered before the next frame is read.
+        for n in 0..4 {
+            tokio::time::sleep(Duration::from_secs(15)).await;
+            let pong = out_tx.send(r#"{"type":"pong"}"#.into());
+            assert!(
+                tokio::time::timeout(Duration::from_secs(1), pong)
+                    .await
+                    .is_ok(),
+                "ping {n}: the reader is stuck behind the lane"
+            );
+        }
+        // A socket that takes nothing for `WRITE_STALL` is a dead link: the writer ends, and the
+        // loop sees its channel close.
+        tokio::time::sleep(WRITE_STALL).await;
+        assert!(
+            pump.is_finished(),
+            "the writer still waits on a dead socket"
+        );
+        assert!(out_tx.is_closed());
     }
 }
