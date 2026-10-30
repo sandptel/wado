@@ -110,7 +110,7 @@ const wado = (...args) => execFileSync(join(BIN, "wado"), args, { env: { ...proc
 start(join(BIN, "wado-relay"), ["--bind", "127.0.0.1:" + PORT]);
 await sleep(400);
 for (const n of ["e2e-files-a", "e2e-files-b"]) {
-  start(join(BIN, "wado"), [], { WADO_RELAY_URL: "ws://127.0.0.1:" + PORT, WADO_REMOTE_ID: RID, WADO_INSTANCE: n, WADO_UDP_SLICE: n.endsWith("a") ? "2" : "3" });
+  start(join(BIN, "wado"), ["daemon"], { WADO_RELAY_URL: "ws://127.0.0.1:" + PORT, WADO_REMOTE_ID: RID, WADO_INSTANCE: n, WADO_UDP_SLICE: n.endsWith("a") ? "2" : "3" });
   await sleep(300);
 }
 start("python3", ["-m", "http.server", String(HTTP), "--bind", "127.0.0.1", "-d", PUB]);
