@@ -1,0 +1,8 @@
+# flutter_rust_bridge codegen (2.13.0; docs/app.md): crates/app-bridge/src/api → app/lib/bridge.
+rust_input: crate::api
+rust_root: crates/app-bridge/
+dart_output: app/lib/bridge/
+dart_entrypoint_class_name: WadoCore
+c_output: null
+web: false
+rust_preamble: ""
