@@ -34,7 +34,7 @@
 .cpage { position: relative; z-index: 1; padding: 0 16px calc(32px + env(safe-area-inset-bottom)); max-width: 520px; margin: 0 auto; }
 .cgrid { display: flex; flex-direction: column; gap: 12px; }
 .cgrid .col { display: contents; }
-.o1 { order: 1; } .o2 { order: 2; } .o3 { order: 3; } .o4 { order: 4; } .o5 { order: 5; }
+.o1 { order: 1; } .o2 { order: 2; } .o3 { order: 3; } .o4 { order: 4; } .o5 { order: 5; } .o6 { order: 6; }
 .sx { display: grid; gap: 8px; min-width: 0; }
 .sx > .sect:first-child { margin-top: 4px; }
 .cpage .sect { margin: 8px 4px -2px; min-height: 28px; }

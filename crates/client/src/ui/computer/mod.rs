@@ -6,6 +6,7 @@
 //! | [`actions`] | Desktop · Trackpad · Files · Shell |
 //! | [`playing`] | Now playing |
 //! | [`quick`] | volume, brightness, keep awake, Wi-Fi, Bluetooth |
+//! | [`clips`] | its clipboard: the Clipboard surface and this phone's sharing switches |
 //! | [`grant`] | the card that says which grant is missing and how to allow it |
 //! | [`settings_list`] | the four pages about it |
 //! | [`pages`] | those pages |
@@ -17,6 +18,7 @@
 //! the finger from the first frame.
 
 pub mod actions;
+pub mod clips;
 pub mod grant;
 pub mod hero;
 pub mod hops;
@@ -103,6 +105,10 @@ pub fn render(ui: Ui) -> Element {
                                     Some(h) => rsx! { quick::Quick { ui, pk: pk.clone(), name: name.clone(), h, r: r.clone() } },
                                     None => rsx! { div { class: "npempty", Icon { name: "sliders" } "Its controls show once it answers." } },
                                 }
+                            }
+                            section { id: "clipsec", class: "sx o6 clipsec", style: "--n:5", "aria-labelledby": "clipsec-h",
+                                div { class: "sect", span { id: "clipsec-h", "Clipboard" } }
+                                clips::Clips { ui, pk: pk.clone(), name: name.clone(), r: r.clone() }
                             }
                         }
                     }

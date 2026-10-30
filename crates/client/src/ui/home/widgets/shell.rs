@@ -64,9 +64,9 @@ pub fn Card(ui: Ui, w: Widget, k: usize, n: usize, editing: bool) -> Element {
                     Icon { name: kind.icon() }
                 }
                 span { class: "wname",
-                    // The Clipboard widget's title opens the full clipboard rail.
+                    // The Clipboard widget's title opens the whole clipboard, on its computer's page.
                     if kind == WidgetKind::Clipboard && !editing {
-                        button { class: "wtitle linky", onclick: move |_| clipboard::open_rail(ui, &pk2), "{kind.label()}" }
+                        button { class: "wtitle linky", "aria-label": "All of {name}'s clipboard", onclick: move |_| clipboard::open_section(ui, &pk2), "{kind.label()}" }
                     } else {
                         span { class: "wtitle", "{kind.label()}" }
                     }
