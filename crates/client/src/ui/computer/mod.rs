@@ -3,7 +3,8 @@
 //! | file | job |
 //! |---|---|
 //! | [`hero`] | its name, what it runs, the Link / Computer / Sessions strip, the hop bar |
-//! | [`actions`] | Desktop · Trackpad · Files · Shell |
+//! | [`actions`] | Desktop · Virtual input · Files · Shell |
+//! | [`input`] | Virtual input: its tile, hub and the Touchpad, Keyboard and Gamepad pages |
 //! | [`playing`] | Now playing |
 //! | [`quick`] | volume, brightness, keep awake, Wi-Fi, Bluetooth |
 //! | [`clips`] | its clipboard: the Clipboard surface and this phone's sharing switches |
@@ -25,6 +26,7 @@ pub mod clips;
 pub mod grant;
 pub mod hero;
 pub mod hops;
+pub mod input;
 pub mod linkmeter;
 pub mod pages;
 pub mod playing;

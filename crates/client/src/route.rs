@@ -33,6 +33,10 @@ impl View {
     /// Where Back goes.
     pub fn back(&self) -> View {
         match self {
+            // The three Virtual input pages sit under its hub.
+            View::Sub(Some(k), p) if p.parent() == Page::Input => {
+                View::Sub(Some(k.clone()), Page::Input)
+            }
             View::Sub(Some(k), _) => View::Computer(k.clone()),
             _ => View::Home,
         }
@@ -99,6 +103,14 @@ mod tests {
             View::Computer(k.clone())
         );
         assert_eq!(View::Computer(k.clone()).back(), View::Home);
+        assert_eq!(
+            View::Sub(Some(k.clone()), Page::InputGamepad).back(),
+            View::Sub(Some(k.clone()), Page::Input)
+        );
+        assert_eq!(
+            View::Sub(Some(k.clone()), Page::Input).back(),
+            View::Computer(k.clone())
+        );
         assert_eq!(View::Sub(None, Page::Appearance).back(), View::Home);
         assert_eq!(
             View::Sub(Some(k.clone()), Page::DisplaySession).computer(),

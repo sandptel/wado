@@ -1,24 +1,18 @@
-//! The on-screen gamepad's settings, pushed to `js/gamepad.js`. Its page is `pages::gamepad`.
+//! The in-session gamepad's one switch, pushed to `js/gamepad.js`: drawn over the picture or not.
+//! Everything else about it — its layout, what it drives, how it feels — is this device's
+//! `gamepad { }` on the computer (`js/gpad/prefs.js`), changed on the Gamepad settings page
+//! (`ui/computer/input/gamepad.rs`) and in the editor.
+//!
+//! The old `pad_mode` / `pad_scale` / `pad_opacity` / `pad_inset_*` settings are read once by the
+//! layout migration (`js/gpad/prefs.js`) and otherwise left alone.
 
 use crate::{bridge, state::Ui};
 
-/// Push the whole pad config to the bridge.
-///
-/// The whole config, never one field: `js/gamepad.js` keeps a single object and re-applies it
-/// wholesale, so a partial update is the one way the panel and the overlay could disagree.
-/// Also called from [`crate::bridge::run`] after a reload, for the same reason
-/// [`crate::ui::live::apply`] is — restoring the signals does not move the browser.
+/// Push the switch to the bridge. Also called from [`crate::bridge::run`] after a reload, for the
+/// same reason [`crate::ui::live::apply`] is — restoring the signals does not move the browser.
 pub fn apply(ui: Ui) {
-    let s = ui.set;
     bridge::call(format!(
-        "window.__wado.setPadEdit({});\
-         window.__wado.setGamepad({{on:{},mode:{},scale:{},opacity:{},insetX:{},insetY:{}}});",
-        (ui.live.pad_edit)(),
-        (s.pad_on)(),
-        bridge::js(&(s.pad_mode)()),
-        (s.pad_scale)(),
-        (s.pad_opacity)(),
-        (s.pad_inset_x)(),
-        (s.pad_inset_y)(),
+        "window.__wado.setGamepad({{on:{}}});",
+        (ui.set.pad_on)()
     ));
 }

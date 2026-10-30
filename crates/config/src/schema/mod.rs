@@ -42,7 +42,7 @@ pub use server::{Server, Turn};
 pub use session::Session;
 pub use shells::Shells;
 pub use stream::Stream;
-pub use trackpad::Trackpad;
+pub use trackpad::{Trackpad, TrackpadDelay};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields, rename_all = "kebab-case")]

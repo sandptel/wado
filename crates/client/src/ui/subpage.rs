@@ -23,7 +23,9 @@ pub fn render(ui: Ui) -> Element {
         Some(i) => (ui.set.profiles.read()[i].display(), crate::profile::hue(i)),
         None => (crate::profile::current_name(ui), "0D"),
     };
-    let back_to = if pk.is_some() {
+    let back_to = if page.parent() == crate::ui::pages::Page::Input {
+        "Back to Virtual input".to_string()
+    } else if pk.is_some() {
         format!("Back to {name}")
     } else {
         "Back to home".to_string()
@@ -45,7 +47,9 @@ pub fn render(ui: Ui) -> Element {
                     }
                     div { class: "pt",
                         if pk.is_some() {
-                            span { class: "eyebrow", i {} "{name}" }
+                            span { class: "eyebrow", i {}
+                                if page.parent() == crate::ui::pages::Page::Input { "{name} · Virtual input" } else { "{name}" }
+                            }
                         }
                         h3 { "{page.title()}" }
                     }

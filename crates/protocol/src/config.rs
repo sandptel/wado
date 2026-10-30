@@ -63,6 +63,10 @@ pub struct ConfigState {
     /// carries a gamepad. Empty from a daemon older than the list, which can do none of them.
     #[serde(default)]
     pub caps: Vec<String>,
+    /// The computer's own `trackpad { }` switches, which hold for every device's touchpad,
+    /// keyboard and gamepad (the hub's "Virtual input on …" card). `None` from an older daemon.
+    #[serde(default)]
+    pub input_host: Option<InputHost>,
     /// What this device may do here, so a page can say what is missing — and the exact command
     /// that allows it — instead of offering a control the daemon will refuse. `None`: a daemon
     /// from before this was sent; the client then offers everything and lets the daemon say no.
@@ -191,6 +195,17 @@ pub struct SizePrefs {
     pub follow: bool,
     /// `compact`, `cozy`, `comfortable` or `large`.
     pub interface: String,
+}
+
+/// `trackpad { enabled; smoothing; rate-hz; delay }` as the hub shows them. `enabled` gates the
+/// touchpad, the keyboard and the gamepad together (it keeps its name — resolved Q5).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InputHost {
+    pub enabled: bool,
+    pub smoothing: bool,
+    pub rate_hz: u32,
+    /// `adaptive` or `fixed`.
+    pub delay: String,
 }
 
 fn yes() -> bool {

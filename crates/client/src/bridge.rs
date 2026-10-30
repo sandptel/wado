@@ -213,6 +213,8 @@ pub const JS: &str = concat!(
     // Settings after `config.js` (it chains `config_state`), orientation before touch.
     include_str!("js/pad_prefs.js"),
     "\n",
+    include_str!("js/kb_prefs.js"),
+    "\n",
     include_str!("js/pad_orient.js"),
     "\n",
     include_str!("js/pad_touch.js"),
@@ -268,6 +270,8 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/gpad/send_pad.js"),
     "\n",
+    include_str!("js/gpad/why.js"),
+    "\n",
     include_str!("js/gpad/prefs.js"),
     "\n",
     include_str!("js/gpad/screen.js"),
@@ -282,6 +286,17 @@ pub const JS: &str = concat!(
     "\n",
     // The in-session overlay, on the same model.
     include_str!("js/gamepad.js"),
+    "\n",
+    // The Virtual input pages' live previews and the hub's miniatures (ui/computer/input/).
+    include_str!("js/input_preview/mount.js"),
+    "\n",
+    include_str!("js/input_preview/touchpad.js"),
+    "\n",
+    include_str!("js/input_preview/keyboard.js"),
+    "\n",
+    include_str!("js/input_preview/gamepad.js"),
+    "\n",
+    include_str!("js/input_preview/hub.js"),
     "\n",
     // After the pad files: it chains the `pad_out` handler `pad_link` registers.
     include_str!("js/actions.js"),
@@ -613,6 +628,12 @@ pub fn run(ui: Ui) {
                     if d != *live.decoder.peek() {
                         live.decoder.set(d);
                     }
+                }
+                "gpadPrefs" | "kbPrefs" | "padPrefs" => {
+                    crate::ui::computer::input::prefs::on_event(kind, &msg);
+                }
+                "gpadSettings" => {
+                    crate::route::go(ui, crate::ui::pages::Page::InputGamepad);
                 }
                 "hostConfig" => {
                     let state: wado_protocol::ConfigState = msg

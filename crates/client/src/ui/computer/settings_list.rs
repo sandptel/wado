@@ -1,5 +1,5 @@
 //! "This computer": the four places to change the selected computer, each subtitled with what is
-//! set there now — three pages, and the trackpad's own settings sheet. On its page, and inside
+//! set there now — four pages, Virtual input with three of its own. On its page, and inside
 //! the control centre during a session.
 
 use dioxus::prelude::*;
@@ -25,18 +25,10 @@ pub fn render(ui: Ui) -> Element {
         (s.fps)(),
         q
     );
-    let pad = (live.host)()
-        .trackpad
-        .map(|t| {
-            let way = if t.landscape { "Landscape" } else { "Upright" };
-            let rail = match t.rail.as_str() {
-                "keys" => "keys beside the pad",
-                "actions" => "quick actions beside the pad",
-                _ => "no rail",
-            };
-            format!("{way} · {rail} · {} quick actions", t.quick.len())
-        })
-        .unwrap_or_else(|| "Layout, quick actions, gestures".into());
+    let gp = crate::ui::computer::input::prefs::GAMEPAD
+        .read()
+        .away_name();
+    let pad = format!("Touchpad · Keyboard · Gamepad ({gp})");
     let hs = (live.hoststate)();
     let sound = match &hs {
         Some(h) => {
@@ -87,9 +79,7 @@ pub fn render(ui: Ui) -> Element {
     rsx! {
         div { class: "list",
             NavRow { icon: "monitor", hue: "0D", title: "Display & session", sub: display, onopen: move |_| go(Page::DisplaySession) }
-            // The trackpad's own settings sheet, the same one its ⚙ opens.
-            NavRow { icon: "trackpad", hue: "0C", title: "Trackpad", sub: pad,
-                onopen: move |_| crate::bridge::call("window.__wado.padSettings.openHere();".to_string()) }
+            NavRow { icon: "phone", hue: "0C", title: "Virtual input", sub: pad, onopen: move |_| go(Page::Input) }
             NavRow { icon: "sound", hue: "0E", title: "Sound & devices", sub: sound, onopen: move |_| go(Page::SoundDevices) }
             NavRow { icon: "net", hue: "09", title: "Connection & trust", sub: conn, onopen: move |_| go(Page::ConnectionTrust) }
         }

@@ -13,6 +13,10 @@
 //                               computer's page (its Trackpad row). One implementation, two
 //                               doors: it lives in a screen-wide host of its own until the pad
 //                               opens, and goes back inside the pad when it does.
+//   W.padSettings.openHere(from, only)  only: "quick" — just that section (the Virtual input hub's
+//                               Quick actions row: one list for the rail, widget, console and hub)
+//   W.padSettings.renderInto(el, which)  one section ("gestures" | "quick") drawn into a page —
+//                               the Touchpad settings page (ui/computer/input/touchpad.rs)
 //   W.padSettings.close()       through history when open() pushed an entry, so Back closes it too
 //   W.padSettings.hide()        close now (js/pad_ui.js calls it on popstate)
 //   W.padSettings.isOpen()
@@ -33,6 +37,7 @@
   let err = null;
   let back = null;
   let shown = false;
+  let only = "";
   // The pad's root (the first door), and the screen-wide host the second door opens in.
   let padRoot = null;
   let hostEl = null;
@@ -226,8 +231,9 @@
       section("Keyboard",
         switchRow("Keyboard opens with the pad", "", p.keyboard, (v) => set("keyboard", v))),
     ];
-    secs.forEach((s, i) => s.style.setProperty("--i", String(i)));
-    body.replaceChildren(...secs);
+    const keep = only === "quick" ? [secs[2]] : secs;
+    keep.forEach((s, i) => s.style.setProperty("--i", String(i)));
+    body.replaceChildren(...keep);
     body.scrollTop = scroll;
     if (focusKey) {
       const again = body.querySelector(`[data-key="${focusKey}"]`) ||
@@ -278,6 +284,7 @@
 
   S.open = (from) => {
     if (!sheet || shown) return;
+    if (padRoot && !padRoot.hidden) only = "";
     rehome();
     shown = true;
     back = from || null;
@@ -297,8 +304,16 @@
     if (x && x.focus) x.focus({ preventScroll: true });
   };
 
-  S.openHere = (from) => {
+  S.renderInto = (el, which) => {
+    const p = W.padPrefs.get();
+    el.replaceChildren(which === "quick" ? quickSection(p) : gestureSection(p));
+  };
+
+  S.openHere = (from, part) => {
     if (!sheet) S.mount(host());
+    only = part || "";
+    const h = sheet.querySelector("#tps-head");
+    if (h) h.textContent = only === "quick" ? "Quick actions" : "Trackpad settings";
     // With the pad closed nothing has asked for the actions over its link: ask on the relay.
     if (!W.padActions.list.length && !W.padActions.denied) {
       if (W.pad && W.pad.state !== "off") W.padActions.refresh();

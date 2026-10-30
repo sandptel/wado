@@ -54,6 +54,16 @@ pub fn state_for(key: &str, gate: &Gate) -> ConfigState {
             .and_then(|d| d.keyboard.as_ref())
             .map(Into::into),
         caps: CAPS.iter().map(|c| c.to_string()).collect(),
+        input_host: Some(wado_protocol::InputHost {
+            enabled: cfg.trackpad.enabled,
+            smoothing: cfg.trackpad.smoothing,
+            rate_hz: cfg.trackpad.rate_hz,
+            delay: match cfg.trackpad.delay {
+                wado_config::schema::TrackpadDelay::Adaptive => "adaptive",
+                wado_config::schema::TrackpadDelay::Fixed => "fixed",
+            }
+            .into(),
+        }),
         // "May change privileged settings" — the owner, or a device granted `settings`.
         owner: gate.grants(key).settings,
         grants: grants_for(key, gate),

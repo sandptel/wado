@@ -1,0 +1,168 @@
+/* Virtual input (ui/computer/input/): the Computer page tile, the hub, the Touchpad / Keyboard /
+ * Gamepad settings pages and their live previews (js/input_preview/). Inside pages and sheets,
+ * so it is zoomed with the interface size (size.css): type in rem, targets ≥ 44 px. The gamepad
+ * controls themselves are gpad.css. */
+
+/* ── the tile: a group — heading → hub, three one-tap doors (D4) ─────────────────────────── */
+.act.vi { padding: 0; gap: 0; align-content: stretch; grid-template-rows: 1fr auto; }
+.act.vi .vihead { display: grid; align-content: space-between; gap: 14px; padding: 12px 14px 8px; text-align: left; color: var(--bright);
+  border-radius: var(--r3) var(--r3) 0 0; min-height: 0; }
+.act.vi .vihead:active { scale: 1; background: var(--s3); }
+.act.vi .vidoors { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 0 8px 8px; }
+.vidoor { min-height: 44px; border-radius: var(--r2); background: var(--s3); display: grid; place-items: center; color: var(--bright); }
+.vidoor:hover:not(:disabled) { background: color-mix(in oklab, var(--accent), var(--s3) 70%); }
+.vidoor svg { width: 20px; height: 20px; }
+.vidoorname { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* ── the hub ──────────────────────────────────────────────────────────────────────────── */
+.vihub, .vipage { display: flex; flex-direction: column; gap: 12px; }
+.vihub > *, .vipage > * { min-width: 0; }
+.vilead { margin: 0 4px; color: var(--dim); font-size: .875rem; line-height: 1.5; }
+.vigrant { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; border-radius: var(--r3); padding: 12px 14px;
+  background: color-mix(in oklab, var(--good), var(--s1) 88%); }
+.vigrant.warn { background: color-mix(in oklab, var(--base0A), var(--s1) 88%); }
+.vigdot { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; flex: none;
+  background: color-mix(in oklab, var(--good), transparent 78%); color: var(--good); }
+.vigrant.warn .vigdot { background: color-mix(in oklab, var(--base0A), transparent 78%); color: var(--base0A); }
+.vigtext { flex: 1 1 12rem; min-width: 0; }
+.vigtext b { display: block; color: var(--bright); font-weight: 600; }
+.vigtext small { display: block; color: var(--dim); font-size: .75rem; line-height: 1.45; overflow-wrap: anywhere; }
+.vigact { min-height: 44px; flex: none; }
+.videvs { display: grid; gap: 10px; }
+.videv { position: relative; background: var(--s1); border-radius: var(--r3); overflow: hidden; display: flex; flex-direction: column; }
+.vistage { position: relative; display: block; height: 120px; margin: 8px 8px 0; border-radius: var(--r2); background: var(--s0); overflow: hidden; }
+.vistage:disabled { opacity: .55; }
+.vimini { position: absolute; inset: 0; }
+.virow { display: flex; align-items: center; gap: 10px; padding: 10px 12px 12px 14px; flex-wrap: wrap; }
+.viwords { flex: 1 1 9rem; min-width: 0; }
+.viwords b { display: block; font: 700 1rem/1.2 var(--display); color: var(--bright); letter-spacing: -.01em; }
+.viwords small { display: block; color: var(--dim); font-size: .78rem; overflow-wrap: anywhere; }
+.vitune { width: 44px; height: 44px; background: var(--s2); color: var(--bright); flex: none; }
+.viopenpill { min-height: 44px; padding: 0 18px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-weight: 700; flex: none; }
+.viopenpill:disabled { opacity: .4; }
+.vinote { margin: 0 4px; color: var(--dim); font-size: .78rem; line-height: 1.5; }
+.vicard { gap: 10px; }
+.vicap { display: block; color: var(--dim); font-size: .75rem; line-height: 1.5; overflow-wrap: anywhere; }
+.vihost { background: color-mix(in oklab, var(--base0E), var(--s1) 92%); }
+@media (min-width: 720px) {
+  .videvs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .videv .virow { align-items: stretch; }
+  .videv .viwords { flex-basis: 100%; }
+  .videv .viopenpill { flex: 1; }
+}
+
+/* the hub's miniatures (js/input_preview/hub.js) */
+.vimpad { position: absolute; left: 16px; top: 14px; bottom: 14px; width: 50%; border-radius: 14px; background: var(--s1); border: 1px solid var(--line); }
+.vimscr { position: absolute; right: 16px; top: 14px; width: 40%; bottom: 14px; border-radius: 10px; background: var(--s2); }
+.vimptr { position: absolute; left: 76%; top: 46%; width: 0; height: 0; border-left: 7px solid transparent; border-right: 7px solid transparent;
+  border-bottom: 14px solid var(--bright); rotate: -28deg; }
+.vimfing { position: absolute; left: 22%; top: 62%; width: 26px; height: 26px; margin: -13px; border-radius: 50%; border: 2px solid var(--accent);
+  background: color-mix(in oklab, var(--accent), transparent 82%); }
+.vimini[data-vi="mini-keyboard"] { display: grid; grid-template-rows: 30px auto auto; gap: 6px; padding: 12px 14px; align-content: start; }
+.vimtext { border-radius: 10px; background: var(--s1); display: flex; align-items: center; padding: 0 10px; font: 600 .75rem var(--mono); color: var(--bright);
+  white-space: nowrap; overflow: hidden; }
+.vicaret { width: 2px; height: 15px; background: var(--accent); margin-left: 2px; animation: viblink 1s steps(2) infinite; flex: none; }
+@keyframes viblink { 50% { opacity: 0; } }
+.vimrow { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 5px; }
+.vimrow span { border-radius: 6px; background: var(--s2); display: grid; place-items: center; font: 600 .625rem var(--mono); color: var(--dim); min-height: 22px;
+  overflow: hidden; }
+
+/* ── the settings pages ───────────────────────────────────────────────────────────────── */
+.vihead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.viopen { min-height: 44px; gap: 8px; padding: 0 18px; }
+.vipreview { position: sticky; top: calc(56px + env(safe-area-inset-top)); z-index: 1; border-radius: var(--r3); background: var(--s1); padding: 10px; }
+.vipreview .vicap { display: flex; align-items: center; justify-content: space-between; gap: 8px; font: 600 .6875rem var(--body); letter-spacing: .08em;
+  text-transform: uppercase; color: var(--dim); padding: 0 4px 8px; }
+.videmo { font: 600 .6875rem var(--mono); letter-spacing: 0; text-transform: none; color: var(--accent); text-align: right; min-width: 0; overflow-wrap: anywhere; }
+.visection { display: flex; flex-direction: column; gap: 12px; }
+.visetting { display: grid; gap: 6px; }
+.viinfo { display: flex; gap: 10px; align-items: flex-start; margin: 0; color: var(--dim); font-size: .78rem; line-height: 1.55; }
+.viinfo svg { color: var(--accent); flex: none; margin-top: 1px; }
+.vimore { justify-self: start; min-height: 44px; color: var(--accent); font-weight: 600; font-size: .78rem; padding: 0 2px; }
+.videtail { margin: 0; color: var(--dim); font-size: .78rem; line-height: 1.55; overflow-wrap: anywhere; }
+.virow2 { display: flex; gap: 8px; flex-wrap: wrap; }
+.virow2 .btn { flex: 1 1 8rem; gap: 8px; }
+
+/* how you hold it: pictures of themselves; the phone glyph turns on the spring */
+.vichoice2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.vichoice { border-radius: var(--r2); background: var(--s0); min-height: 96px; padding: 10px; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 8px; color: var(--dim); border: 1.5px solid transparent; font-weight: 600; font-size: .8125rem; }
+.vichoice[aria-checked="true"] { border-color: var(--accent); color: var(--bright); background: color-mix(in oklab, var(--accent), var(--s0) 90%); }
+.viph { width: 34px; height: 58px; border-radius: 7px; border: 2px solid currentColor; position: relative; transition: rotate var(--dur-sheet) var(--spring); }
+.viph.side { rotate: 90deg; }
+.viph::after { content: ""; position: absolute; left: 3px; top: 3px; bottom: 3px; width: 7px; border-radius: 2px; background: currentColor; opacity: .5; }
+
+/* the gesture pickers, drawn by pad_settings.js into the page */
+.vigest .tps-sec { display: grid; gap: 6px; }
+.vigest .tps-label, .vigest .tps-note { display: none; }
+.vigest .tps-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; min-height: 48px; }
+.vigest .tps-title { color: var(--bright); font-weight: 600; font-size: .875rem; flex: 1 1 10rem; }
+.vigest .tps-pick { min-height: 44px; border-radius: var(--r1); background: var(--s0); color: var(--bright); border: 1px solid var(--line); padding: 0 10px;
+  font: inherit; font-size: max(1rem, 16px / var(--z, 1)); max-width: 100%; }
+
+/* keys above the keyboard */
+.vikeypick { display: flex; flex-wrap: wrap; gap: 8px; }
+.vikey { min-height: 44px; min-width: 44px; padding: 0 12px; border-radius: var(--r2); background: var(--s0); color: var(--dim); font-size: .8125rem;
+  font-weight: 600; border: 1.5px solid var(--line); }
+.vikey[aria-pressed="true"] { background: color-mix(in oklab, var(--accent), var(--s0) 82%); color: var(--bright); border-color: var(--accent); }
+.vimodexp { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.vimodexp > div { background: var(--s0); border-radius: var(--r2); padding: 10px 6px; text-align: center; font-size: .75rem; color: var(--dim);
+  display: grid; justify-items: center; gap: 6px; }
+.vimodexp span { display: inline-grid; place-items: center; min-width: 56px; height: 36px; border-radius: var(--r1); background: var(--s2); color: var(--bright);
+  font-size: .75rem; font-weight: 600; padding: 0 6px; }
+/* The Morphing Toggle Rule: off r1 → latched r2 → held a pill with an inset ring. */
+.vimodexp span.latched { background: var(--accent); color: var(--on-accent); border-radius: var(--r2); }
+.vimodexp span.locked { background: var(--accent); color: var(--on-accent); border-radius: 999px; box-shadow: inset 0 0 0 2px var(--on-accent); }
+
+/* the gamepad page: preview and carousels */
+.vigpv { position: relative; height: 190px; border-radius: var(--r2); background: var(--s0); overflow: hidden; touch-action: none; }
+.vicarousel { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 2px 2px 4px; margin: 0 -2px; scrollbar-width: none;
+  overscroll-behavior-x: contain; }
+.vicarousel .gpvcard { flex: none; width: 140px; scroll-snap-align: start; }
+.vicarousel .gpvthumb { height: 72px; }
+.vipage .gpvcard { background: var(--s1); }
+.vipage .gpvthumb { background: var(--s0); }
+
+/* ── the touchpad preview (js/input_preview/touchpad.js) ──────────────────────────────── */
+.vitpv { position: relative; height: 176px; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 10px; }
+.vitphone { position: relative; border-radius: 18px; background: var(--s0); border: 1px solid var(--line); overflow: hidden; display: flex; }
+.vitrail { width: 46px; flex: none; display: grid; gap: 4px; padding: 6px; align-content: center; border-right: 1px solid var(--line); }
+.vitrail span { height: 20px; border-radius: 6px; background: var(--s2); font: 600 .53rem var(--mono); color: var(--dim); display: grid; place-items: center;
+  overflow: hidden; white-space: nowrap; }
+.vitrail[data-rail="actions"] span { background: color-mix(in oklab, var(--accent), transparent 80%); color: var(--accent); }
+.vitrail[data-rail="none"] { display: none; }
+.vitsurf { position: relative; flex: 1; }
+.vitphone.upright { width: 58%; justify-self: center; flex-direction: column-reverse; }
+.vitphone.upright .vitrail { width: auto; display: flex; height: 30px; border-right: 0; border-top: 1px solid var(--line); }
+.vitphone.upright .vitrail span { flex: 1; }
+.vitscr { position: relative; border-radius: 12px; background: var(--s2); overflow: hidden; border: 6px solid var(--s3); }
+.vitws { position: absolute; inset: 0; }
+.vitwin { position: absolute; inset: 14% 10% 26% 12%; border-radius: 6px; background: var(--s1); }
+.vitwin i { display: block; height: 5px; border-radius: 3px; background: var(--s3); margin: 7px 8px; }
+.vittoast { position: absolute; left: 50%; bottom: 8px; translate: -50% 0; font: 600 .656rem var(--body); background: var(--s0); color: var(--bright);
+  border-radius: 999px; padding: 4px 9px; white-space: nowrap; opacity: 0; max-width: 92%; overflow: hidden; text-overflow: ellipsis; }
+.viptr { position: absolute; left: 0; top: 0; width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent;
+  border-bottom: 13px solid var(--bright); rotate: -28deg; }
+.vifing { position: absolute; left: 0; top: 0; width: 24px; height: 24px; margin: -12px; border-radius: 50%; border: 2px solid var(--accent);
+  background: color-mix(in oklab, var(--accent), transparent 80%); opacity: 0; }
+.viring { position: absolute; left: 0; top: 0; width: 28px; height: 28px; margin: -14px; border-radius: 50%; border: 2px solid var(--accent); opacity: 0; }
+
+/* ── the keyboard preview (js/input_preview/keyboard.js) ───────────────────────────────── */
+.vikpv { display: grid; gap: 8px; }
+.vikline { min-height: 44px; border-radius: var(--r1); background: var(--s0); border: 1px solid var(--line); display: flex; align-items: center; padding: 0 12px;
+  font-size: 1rem; color: var(--bright); overflow: hidden; white-space: nowrap; }
+.vikline .vicaret { height: 20px; }
+.viksent { position: relative; height: 24px; }
+.viksent span { position: absolute; left: 0; top: 0; font: 600 .6875rem var(--mono); color: var(--good); background: color-mix(in oklab, var(--good), transparent 86%);
+  padding: 4px 9px; border-radius: 999px; opacity: 0; white-space: nowrap; }
+.vikmods, .vikkeys { display: flex; gap: 6px; overflow: hidden; }
+.vikmods span, .vikkeys span { min-width: 44px; height: 40px; border-radius: var(--r1); background: var(--s2); color: var(--bright); font: 600 .78rem var(--mono);
+  display: grid; place-items: center; padding: 0 8px; flex: none; }
+.vikmods span { flex: 1 1 0; min-width: 0; }
+.vikmods span.latched { background: var(--accent); color: var(--on-accent); border-radius: var(--r2); }
+.vikkeys span.enter { animation: vikeyin var(--dur-sheet) var(--pop) both; }
+@keyframes vikeyin { from { scale: .6; opacity: 0; } }
+.vikphone { height: 64px; border-radius: var(--r1); opacity: .6;
+  background: repeating-linear-gradient(90deg, var(--s2) 0 26px, transparent 26px 30px) 0 4px / 100% 18px no-repeat,
+    repeating-linear-gradient(90deg, var(--s2) 0 26px, transparent 26px 30px) 14px 26px / 100% 18px no-repeat,
+    repeating-linear-gradient(90deg, var(--s2) 0 26px, transparent 26px 30px) 30px 48px / 100% 14px no-repeat; }

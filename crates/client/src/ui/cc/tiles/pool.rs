@@ -180,7 +180,7 @@ pub static ALL: &[Tile] = &[
             s.pad_on.set(!(s.pad_on)());
             gamepad::apply(ui);
         }),
-        page: Some(Page::Gamepad),
+        page: Some(Page::InputGamepad),
         needs_session: true,
     },
     Tile {

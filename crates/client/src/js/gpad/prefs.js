@@ -53,7 +53,15 @@
   P.get = () => JSON.parse(JSON.stringify(cur));
   P.onChange = (fn) => changeFns.push(fn);
   P.onReject = (fn) => rejectFns.push(fn);
-  const emit = () => { for (const fn of changeFns) { try { fn(P.get()); } catch (_) {} } };
+  // Every change: the page's listeners, then Rust (`ui/computer/input/prefs.rs`).
+  const changed = () => {
+    for (const fn of changeFns) { try { fn(P.get()); } catch (_) {} }
+    P.tell();
+  };
+  P.tell = () => {
+    const L = P.layoutOf(P.idFor("away"));
+    if (typeof emit === "function") emit({ type: "gpadPrefs", prefs: P.get(), list: P.list(), stick: L.stick, dead: L.dead });
+  };
   const own = (k) => `device.${W.clientKey}.gamepad.${k}`;
   const wire = (k, v) => { if (W.clientKey && W.configSet) W.configSet(own(k), v); else pushPending = true; };
   const mineWire = (m) => wire("mine." + m.id, m ? JSON.stringify([m.name, m.base, m.json]) : "");
@@ -64,7 +72,7 @@
     if (next[field] === cur[field]) return;
     cur = next;
     writeMirror();
-    emit();
+    changed();
     wire(field, cur[field]);
   };
 
@@ -94,7 +102,7 @@
     const i = cur.mine.findIndex((x) => x.id === m.id);
     if (i >= 0) cur.mine[i] = m; else cur.mine.push(m);
     writeMirror();
-    emit();
+    changed();
     mineWire(m);
   }
 
@@ -132,7 +140,7 @@
     if (cur.layout === id) cur.layout = V.DEFAULT;
     if (cur.away === id) cur.away = V.SAME;
     writeMirror();
-    emit();
+    changed();
     wire("mine." + id, "");
     wire("layout", cur.layout);
     wire("away", cur.away);
@@ -188,9 +196,10 @@
     if (JSON.stringify(next) === JSON.stringify(cur)) return;
     cur = next;
     writeMirror();
-    emit();
+    changed();
   }
   P.migrate();
+  setTimeout(P.tell, 0);
   if (W.hostConfig) adopt(W.hostConfig.gamepad);
   if (W.relayOn) {
     const prev = W._relayHandlers.config_state;

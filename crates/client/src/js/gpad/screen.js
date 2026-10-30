@@ -44,7 +44,7 @@
       </div>
       <section class="gpstatus" aria-label="What the computer sees">
         <h3 class="gpsname"></h3><p class="gpsub"></p>
-        <div class="gpsees"><small>Sees</small><span class="gprd"></span></div>
+        <div class="gpsees"><small class="gpseesw">Sees</small><span class="gprd"></span></div>
         <p class="gpaxes mono" aria-hidden="true">L 0.00 0.00 · R 0.00 0.00</p>
       </section>
       <div class="gpebar" role="toolbar" aria-label="Edit the layout">
@@ -180,6 +180,7 @@
     const name = G.name || "the computer";
     el.name.textContent = name;
     el.sname.textContent = name;
+    root.querySelector(".gpseesw").textContent = G.name ? `${G.name} sees` : "Sees";
     const way = s === "direct" ? "Direct" : s === "relayed" ? "Relayed" : "Connecting…";
     const rtt = s !== "off" && W.pad.rtt != null ? ` ${W.pad.rtt} ms` : "";
     el.sub.textContent = G.S.where === "session"
@@ -204,7 +205,7 @@
     if (G.ctl) G.ctl.releaseAll();
     W.gpadInput.releaseAll(el.pa);
     root.classList.add("refused");
-    W.padWhyShow(el.err, message, retry, "gamepad");
+    W.gpadWhyShow(el.err, message, retry);
   }
   function retry() {
     if (!root || root.hidden) return;
@@ -248,7 +249,7 @@
     if (where === "away") {
       if (tooOld()) {
         root.classList.add("refused");
-        W.padWhyShow(el.err, "older daemon: no gamepad away from a session", null, "gamepad");
+        W.gpadTooOld(el.err);
       } else startLink();
     }
     const st = opts.state || "play";
@@ -256,6 +257,7 @@
     if (st === "comfort") W.gpadComfort.toggle(true);
     W.gpadMotion.assemble(el.pa._gp, G.o());
     if (st === "picker") setTimeout(() => W.gpadPicker.open(), 60);
+    else if (st === "play" && where === "away") setTimeout(() => { if (!root.hidden) W.gpadComfort.offerCloser(); }, 700);
     if (W.wake) W.wake.acquire();
   }
 

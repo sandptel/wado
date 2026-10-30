@@ -8,7 +8,7 @@
 // `device.<W.clientKey>.trackpad.<field>` — booleans as true/false, `quick` as a JSON list
 // (`[]` is none), and each gesture its own key `…trackpad.gestures.<name>` (empty turns it off).
 //
-//   W.padPrefs.get()                      → {landscape, fullscreen, flip, rail, quick, gestures, keyboard}
+//   W.padPrefs.get()                      → {landscape, fullscreen, flip, rail, quick, gestures, keyboard, speed}
 //   W.padPrefs.set(field, value)          one field; `gestures` goes through setGesture
 //   W.padPrefs.setGesture(name, id | "")
 //   W.padPrefs.onChange(fn)               fn(prefs), after any change, local or the daemon's
@@ -28,6 +28,8 @@
     quick: ["workspace-prev", "workspace-next", "fullscreen", "play-pause"],
     gestures: {},
     keyboard: false,
+    // Pointer speed, 0.5–2×: the daemon tells libinput the pad is this much bigger (T17).
+    speed: 1,
   };
   const changeFns = [];
   const rejectFns = [];
@@ -41,6 +43,7 @@
       if (typeof src[k] === "boolean") out[k] = src[k];
     }
     if (P.RAILS.includes(src.rail)) out.rail = src.rail;
+    if (typeof src.speed === "number" && isFinite(src.speed)) out.speed = Math.round(Math.min(2, Math.max(0.5, src.speed)) * 100) / 100;
     if (Array.isArray(src.quick)) out.quick = src.quick.map((s) => String(s).trim()).filter(Boolean);
     if (src.gestures && typeof src.gestures === "object") {
       for (const g of P.GESTURES) {
@@ -58,12 +61,17 @@
   P.get = () => ({ ...cur, quick: [...cur.quick], gestures: { ...cur.gestures } });
   P.onChange = (fn) => changeFns.push(fn);
   P.onReject = (fn) => rejectFns.push(fn);
-  const emit = () => { const p = P.get(); for (const fn of changeFns) { try { fn(p); } catch (_) {} } };
+  // Every change: the pad's listeners, then Rust (`ui/computer/input/prefs.rs`).
+  const changed = () => {
+    const p = P.get();
+    for (const fn of changeFns) { try { fn(p); } catch (_) {} }
+    if (typeof emit === "function") emit({ type: "padPrefs", prefs: p });
+  };
 
   const own = (field) => `device.${W.clientKey}.trackpad.${field}`;
   function save(field, wire) {
     writeMirror();
-    emit();
+    changed();
     // Private mode has no device key: the setting lives in this browser only.
     if (W.clientKey && W.configSet) W.configSet(own(field), wire);
   }
@@ -93,9 +101,10 @@
     if (JSON.stringify(next) === JSON.stringify(cur)) return;
     cur = next;
     writeMirror();
-    emit();
+    changed();
   }
   adopt(W.hostConfig && W.hostConfig.trackpad);
+  setTimeout(() => { if (typeof emit === "function") emit({ type: "padPrefs", prefs: P.get() }); }, 0);
   if (W.relayOn) {
     const prevState = W._relayHandlers.config_state;
     W.relayOn("config_state", (m) => { if (prevState) prevState(m); adopt(m && m.state && m.state.trackpad); });
