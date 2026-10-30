@@ -21,8 +21,25 @@ struct Stored {
     client_key: String,
 }
 
+/// 16 random bytes as a v4 UUID: `xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx`.
+fn uuid(mut b: [u8; 16]) -> String {
+    b[6] = (b[6] & 0x0f) | 0x40;
+    b[8] = (b[8] & 0x3f) | 0x80;
+    let h: String = b.iter().map(|x| format!("{x:02x}")).collect();
+    format!(
+        "{}-{}-{}-{}-{}",
+        &h[0..8],
+        &h[8..12],
+        &h[12..16],
+        &h[16..20],
+        &h[20..32]
+    )
+}
+
 pub struct Identity {
-    /// Random 16 bytes, base64url: the seat the relay holds and the line on the trust list.
+    /// A random UUID (v4 form, as the browser's `crypto.randomUUID()`): the seat the relay holds
+    /// and the line on the trust list. The relay keeps only `[A-Za-z0-9-]` of it (`join.rs`), so
+    /// base64url would lose its `_` there and break the handshake's transcript.
     pub client_key: String,
     /// The raw 32-byte public key the computer pins this device by.
     pub pub_raw: [u8; 32],
@@ -46,7 +63,7 @@ impl Identity {
         rng.fill(&mut ck).map_err(|_| "rng")?;
         let s = Stored {
             seed: B64.encode(seed),
-            client_key: B64.encode(ck),
+            client_key: uuid(ck),
         };
         let plain = serde_json::to_vec(&s).map_err(|e| e.to_string())?;
         let sealed = sb.wrap(plain)?;
@@ -79,7 +96,7 @@ impl Identity {
         let rng = SystemRandom::new();
         rng.fill(&mut seed).expect("rng");
         rng.fill(&mut ck).expect("rng");
-        Self::from_parts(&seed, B64.encode(ck)).expect("a fresh seed")
+        Self::from_parts(&seed, uuid(ck)).expect("a fresh seed")
     }
 }
 
@@ -96,7 +113,11 @@ mod tests {
         assert_eq!(a.client_key, b.client_key);
         assert_eq!(a.pub_raw, b.pub_raw);
         assert_eq!(a.sign(b"x"), b.sign(b"x"));
-        assert_eq!(a.client_key.len(), 22, "16 bytes, base64url");
+        assert_eq!(a.client_key.len(), 36, "a UUID");
+        assert!(a
+            .client_key
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() || c == '-'));
         let _ = std::fs::remove_dir_all(d);
     }
 

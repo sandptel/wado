@@ -149,6 +149,7 @@ async fn with_socket(
                 },
             });
         };
+
         match classify(&text) {
             Frame::Wire(WireMsg::Ping) => {
                 let _ = t.send(r#"{"type":"pong"}"#.into()).await;
@@ -191,7 +192,13 @@ async fn with_socket(
                             emit(PairStep::WaitingForComputer);
                         }
                     }
-                    Err(HsError::PinMismatch | HsError::BadSignature) => {
+                    Err(HsError::BadSignature) => {
+                        return failed(
+                            "The computer's handshake signature doesn't check out — something \
+                             between you may be standing in for it. Pair again from the computer.",
+                        );
+                    }
+                    Err(HsError::PinMismatch) => {
                         return failed(
                             "This isn't the computer that showed the code — something between you \
                              may be standing in for it. Pair again from the computer's screen.",

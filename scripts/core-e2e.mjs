@@ -11,8 +11,8 @@
 //
 // Kills only processes it started, by pid.
 
-import { spawn, spawnSync, execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync } from "node:fs";
+import { spawn, execFileSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -60,17 +60,22 @@ let code = 1;
 try {
   const relay = start(join(BIN, "wado-relay"), ["--bind", "127.0.0.1:" + PORT]);
   await sleep(400);
-  const d = start(join(BIN, "wado"), ["daemon"], { WADO_RELAY_URL: RELAY, WADO_REMOTE_ID: RID, WADO_INSTANCE: "1", RUST_LOG: "info" });
+  const d = start(join(BIN, "wado"), ["daemon"], { WADO_RELAY_URL: RELAY, WADO_REMOTE_ID: RID, WADO_INSTANCE: "1", RUST_LOG: "info,wado=debug" });
   if (!(await waitFor(d, /registered — Remote ID/))) throw new Error("the daemon did not register:\n" + d.out.slice(-800) + relay.out.slice(-400));
   const link = mint();
   const link2 = mint();
+  const link3 = mint();
+  const link4 = mint();
   console.log("minted:", link.replace(/pair=[^&]+/, "pair=…"));
-  const r = spawnSync("cargo", ["test", "-p", "wado-client-core", "--test", "live", "--", "--ignored", "--nocapture", "--test-threads=1"], {
+  // Not spawnSync: the daemon's and relay's pipes must keep draining while the tests run.
+  const t = spawn("cargo", ["test", "-p", "wado-client-core", "--test", "live", "--", "--ignored", "--nocapture", "--test-threads=1"], {
     cwd: ROOT, stdio: "inherit",
-    env: { ...process.env, WADO_E2E_LINK: link, WADO_E2E_LINK2: link2, WADO_E2E_CFG: CFG },
+    env: { ...process.env, WADO_E2E_LINK: link, WADO_E2E_LINK2: link2, WADO_E2E_LINK3: link3, WADO_E2E_LINK4: link4, WADO_E2E_CFG: CFG },
   });
-  code = r.status ?? 1;
-  if (code !== 0) console.log("daemon log tail:\n" + d.out.slice(-2000));
+  code = await new Promise((r) => t.on("exit", (c) => r(c ?? 1)));
+  writeFileSync(join(T, "daemon.log"), d.out);
+  writeFileSync(join(T, "relay.log"), relay.out);
+  if (code !== 0) console.log(`logs: ${T}/daemon.log, ${T}/relay.log`);
 } catch (e) {
   console.error(e.message || e);
 } finally {
