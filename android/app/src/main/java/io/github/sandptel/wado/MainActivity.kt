@@ -96,6 +96,9 @@ class MainActivity : FragmentActivity(), ClientWebView.Host, AppActions {
         val fresh = !app.hasWeb
         web = app.web(if (fresh) firstQuery(intent) else "")
         web.host = this
+        // A font size change recreates this activity but not the WebView (it outlives activities),
+        // so the page hears the new scale here.
+        Hub.fontScale(resources.configuration.fontScale)
         Hub.screen = object : Hub.Handlers {
             override fun haptic(kind: String) = Haptics.perform(window.decorView, kind)
             override fun active(on: Boolean) {

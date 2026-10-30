@@ -39,7 +39,7 @@ MainActivity ── native screens (Compose) ─── Home · Trackpad · Pair 
 Injected with `WebViewCompat.addWebMessageListener` for the app's own origin only, so a page
 navigated elsewhere never gets it. The page feature-detects it (`js/native.js`: `W.native` is
 null in a browser, and the `native_*.js` files then do nothing). Messages are JSON with a `t`.
-`window.wadoNativeInfo` = `{platform, version, sdk}` is set before the page runs.
+`window.wadoNativeInfo` = `{platform, version, sdk, notifications, fontScale}` is set before the page runs.
 
 | `t` | direction | fields | what |
 |---|---|---|---|
@@ -57,6 +57,7 @@ null in a browser, and the `native_*.js` files then do nothing). Messages are JS
 | `back` | app → page | — | system Back with no page history left; the page answers `exit` at its home |
 | `share` | app → page | `key, files[{url,name,mime,size}], links[], text` | "Send to computer"; answered by `shareDone {ok, why}` |
 | `media` / `volume` | app → page | `op[, ms]` / `volume` | lock-screen / Bluetooth controls, volume keys |
+| `fontScale` | app → page | `scale` (1.0 = default) | the phone's font size, at load and on change. The WebView's own textZoom is pinned at 100; Appearance → Text size → "Follow phone" applies the scale through the page's type scale (`js/ui_size.js`, `js/native_size.js`) |
 
 ## What the native side adds
 

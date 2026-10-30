@@ -69,6 +69,11 @@ class ClientWebView(context: Context) {
             displayZoomControls = false
             useWideViewPort = true
             loadWithOverviewMode = false
+            // Left to itself the WebView multiplies every font by the phone's font scale, on top of
+            // a layout drawn for 100% — text then overflows its boxes. The page applies the scale
+            // itself, through its own type scale, when Appearance says "Follow phone"
+            // (js/ui_size.js): it is handed over in wadoNativeInfo and the `fontScale` message.
+            textZoom = 100
             userAgentString = "$userAgentString wado-android/${BuildConfig.VERSION_NAME}"
         }
         // Passkeys: no Digital Asset Links file can vouch for this origin, so the system's passkey
@@ -83,6 +88,7 @@ class ClientWebView(context: Context) {
                     Build.VERSION.SDK_INT,
                     // As the Notification API names it (js/push.js); read when the page loads.
                     if (androidx.core.app.NotificationManagerCompat.from(view.context).areNotificationsEnabled()) "granted" else "denied",
+                    view.resources.configuration.fontScale,
                 ),
                 origins,
             )
@@ -113,6 +119,9 @@ class ClientWebView(context: Context) {
 
         override fun onPageStarted(v: WebView, url: String?, favicon: android.graphics.Bitmap?) {
             Hub.pageGone()
+            // The document-start script's scale is the one from when this view was made; the
+            // page is told the current one as soon as it speaks.
+            Hub.fontScale(v.resources.configuration.fontScale)
         }
     }
 

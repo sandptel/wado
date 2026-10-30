@@ -108,6 +108,9 @@ object Hub {
         _pageReady.value = false
     }
 
+    /** The phone's font scale, for the page's "Follow phone" text size. */
+    fun fontScale(scale: Float) = send(BridgeProtocol.FONT_SCALE) { put("scale", scale.toDouble()) }
+
     /** Send a message to the page, from any thread. */
     fun send(t: String, build: JSONObject.() -> Unit = {}) {
         val msg = BridgeProtocol.message(t, build)
