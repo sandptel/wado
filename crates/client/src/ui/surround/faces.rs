@@ -40,17 +40,56 @@ pub fn switcher(ui: Ui, active: Face) -> Element {
     }
 }
 
-/// The cockpit rail's face button: the active face's icon, and the way back to the console.
+/// The cockpit rail's face button: the active face's icon, and the way back to the console. A
+/// long-press (or right-click) lists the faces instead, and last "Virtual input settings" for
+/// this computer (virtual-input spec §3.4).
 pub fn rail_button(ui: Ui) -> Element {
+    rsx! { RailFace { ui } }
+}
+
+#[component]
+fn RailFace(ui: Ui) -> Element {
     let face = (ui.live.stage)().face();
+    let touch = (ui.live.stage)().form.touch();
+    let mut open = use_signal(|| false);
     rsx! {
-        button {
-            class: "barbtn railface",
-            "data-only": "cockpit",
-            "data-arrange": "console",
-            title: "{face.label()} — back to the console",
-            "aria-label": "{face.label()}: back to the console to change it",
-            Icon { name: face.icon() }
+        div { class: "railfacew", "data-only": "cockpit",
+            button {
+                class: "barbtn railface",
+                "data-arrange": "console",
+                title: "{face.label()} — back to the console; hold for the faces",
+                "aria-label": "{face.label()}: back to the console to change it",
+                "aria-haspopup": "menu",
+                "aria-expanded": "{open()}",
+                oncontextmenu: move |e| { e.prevent_default(); open.toggle(); },
+                Icon { name: face.icon() }
+            }
+            if open() {
+                div { class: "railfacepop", role: "menu", "aria-label": "Input",
+                    for f in Face::ALL.into_iter().filter(|f| touch || *f != Face::Pad) {
+                        button {
+                            key: "{f.id()}",
+                            role: "menuitemradio",
+                            "aria-checked": "{f == face}",
+                            class: if f == face { "on" } else { "" },
+                            onclick: move |_| { choose(f); open.set(false); },
+                            Icon { name: f.icon() }
+                            "{f.label()}"
+                        }
+                    }
+                    button {
+                        role: "menuitem",
+                        onclick: move |_| {
+                            open.set(false);
+                            let mut cc = ui.live.cc_open;
+                            cc.set(true);
+                            crate::route::go(ui, crate::ui::pages::Page::Input);
+                        },
+                        Icon { name: "sliders" }
+                        "Virtual input settings"
+                    }
+                }
+            }
         }
     }
 }

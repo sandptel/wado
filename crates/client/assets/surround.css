@@ -212,3 +212,12 @@
  * the picture's bottom edge, so it never covers the deck under the thumbs. Reachable in both. */
 :root[data-arr="console"] #clipdock.insession { bottom: auto; top: calc(var(--c-pic-y) + var(--c-pic-h) - 56px);
   left: calc(var(--c-pic-x) + var(--c-pic-w) / 2); width: min(440px, calc(var(--c-pic-w) - 16px)); }
+
+/* The cockpit rail's face button and its long-press list (ui/surround/faces.rs). */
+.railfacew { position: relative; display: contents; }
+.railfacepop { position: absolute; right: calc(100% + 10px); top: 50%; translate: 0 -50%; z-index: 30; width: 220px; display: grid; gap: 4px; padding: 6px;
+  background: var(--s1); border-radius: var(--r3); box-shadow: 0 18px 50px -20px #000a; animation: railpop var(--dur) var(--pop) both; }
+.railfacepop button { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 10px; border-radius: var(--r2); color: var(--bright);
+  font-weight: 600; font-size: .8125rem; text-align: left; }
+.railfacepop button.on { background: color-mix(in oklab, var(--accent), transparent 80%); color: var(--accent); }
+@keyframes railpop { from { opacity: 0; scale: .94; } }
