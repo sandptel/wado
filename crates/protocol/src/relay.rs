@@ -825,6 +825,23 @@ pub enum RelayMsg {
         op: String,
         path: String,
     },
+    /// Client → server, when the files peer connection cannot be had (no direct path): one
+    /// request of the files wire ([`crate::files::FileFrame`] as JSON text), on the **fallback
+    /// lane** instead (Decision Log 2026-10-27: listings and files ≤ 1 MB ride it; thumbnails,
+    /// archives, playback and bigger transfers wait for a direct path, and say so).
+    FilesIn {
+        text: String,
+    },
+    /// Server → client: one answer on the lane, exactly the JSON the files channel would carry.
+    FilesOut {
+        text: String,
+    },
+    /// Either way, on the lane: one transfer chunk — `id` is the transfer, `b` its bytes in
+    /// standard padded base64 (the browser's `btoa`).
+    FilesChunk {
+        id: u32,
+        b: String,
+    },
 
     // ── Trackpad mode: its own peer connection (see `crate::pad`) ─────────────
     // Post-handshake, forwarded by the relay unread — no mirror in `relay_wire.rs`.
