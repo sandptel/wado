@@ -183,10 +183,12 @@
     const s = getComputedStyle(el);
     return s.visibility !== "hidden" && +s.opacity > 0.05;
   };
-  const onScreen = (a) => controls(a).some(visible);
+  const onScreen = (a) => a.spec.inplace === false || controls(a).some(visible);
 
   function paint(a) {
-    const els = controls(a);
+    // `inplace: false`: the control has its own working state (the trackpad's actions); only
+    // the voice, the long wait and the outcome are this file's.
+    const els = a.spec.inplace === false ? [] : controls(a);
     for (const el of els) dress(el, a);
     // Controls that went (a page changed, a list re-rendered) are let go.
     for (const el of a.dressed) if (!els.includes(el)) undress(el);
@@ -402,17 +404,21 @@
     if (q) for (const kv of q.split("&")) {
       const [k, v] = kv.split("=");
       const got = msg && msg[k];
-      // An answer without an ack is from a daemon that answers in order: FIFO takes it.
-      if (k === "ack" && !got) continue;
+      // An answer without an ack is from a daemon that answers in order: FIFO takes it. Once
+      // the daemon has echoed one, an answer without one is someone else's (a poll's).
+      if (k === "ack" && !got && !W.daemonAcks) continue;
       if (String(got) !== v) return false;
     }
     return true;
   }
   const consumes = (m, type, msg) => Array.isArray(m) ? m.some((x) => typeof x === "string" && match(x, type, msg)) : typeof m === "string";
 
+  // Returns "fail" when the message was an action's refusal: the caller need not treat it as
+  // anything more (a `session_error` that refused a launch is not the session failing).
   P.wire = (type, msg) => {
     if (msg && msg.ack > 0) W.daemonAcks = true;
-    if (!acts.size) return;
+    if (!acts.size) return "";
+    let result = "";
     const open = [...acts.values()].filter((a) => !isEnd(a.stage)).sort((x, y) => x.n - y.n);
     let used = { ok: false, fail: false, accept: false };
     for (const a of open) {
@@ -420,7 +426,7 @@
       if (s.fail && !(used.fail && consumes(s.fail, type, msg))) {
         const r = match(s.fail, type, msg);
         if (r) {
-          if (consumes(s.fail, type, msg)) used.fail = true;
+          if (consumes(s.fail, type, msg)) { used.fail = true; result = "fail"; }
           P.fail(a.id, typeof r === "string" ? r : (msg && (msg.message || msg.error)) || "");
           continue;
         }
@@ -434,7 +440,22 @@
         if (r) { if (consumes(s.accept, type, msg)) used.accept = true; P.accept(a.id); }
       }
     }
+    return result;
   };
+
+  // The link dropped (ask_clock.js says what was in flight, by kind): an action waiting on an
+  // answer from the computer will not get one on that link. Said now, not at the timeout.
+  // Chained once the whole bridge has loaded: ask_clock.js defines it after this file.
+  setTimeout(() => {
+    const dropped = W.askDropped;
+    W.askDropped = () => {
+      if (dropped) dropped();
+      for (const a of [...acts.values()]) {
+        if (isEnd(a.stage) || a.spec.survivesDrop) continue;
+        P.fail(a.id, `The connection to ${waitFor(a)} dropped before it answered.`);
+      }
+    };
+  }, 0);
 
   const cap = (s) => String(s).charAt(0).toUpperCase() + String(s).slice(1);
 
