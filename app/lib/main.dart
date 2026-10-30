@@ -5,6 +5,8 @@ import 'core/core_host.dart';
 import 'ui/theme/look.dart';
 import 'wado/e2e.dart';
 import 'wado/host.dart';
+import 'wado/pad.dart';
+import 'wado/shells.dart';
 import 'wado/session.dart';
 import 'wado/relay_link.dart';
 import 'wado/settings.dart';
@@ -19,6 +21,8 @@ Future<void> main() async {
     // The protocol modules register for their messages once.
     Session.I;
     Host.I;
+    Shells.I;
+    Pad.I;
     final sel = Settings.I.s('selected');
     if (sel.isNotEmpty && CoreHost.I.computer(sel) != null) RelayLink.I.dial(sel);
     e2eHooks();
