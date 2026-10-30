@@ -584,27 +584,15 @@ W._relayNegotiate = async (opts = {}) => {
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
 
-  // Wait for ICE gathering before sending (non-trickle, consistent with server) — but only
-  // so long. "complete" needs every configured STUN server to answer or time out, and a
-  // phone that had both a host and a srflx candidate within 40 ms was still not complete
-  // 14 s later, so the handshake timeout fired and the offer was never sent at all.
-  // The candidates that matter arrive first; send what we have and let the rest go.
-  await new Promise((resolve) => {
-    if (pc.iceGatheringState === "complete") return resolve();
-    const done = () => {
-      clearTimeout(cap);
-      pc.removeEventListener("icegatheringstatechange", check);
-      resolve();
-    };
-    const check = () => { if (pc.iceGatheringState === "complete") done(); };
-    const cap = setTimeout(() => {
-      rlog("ICE gathering still " + pc.iceGatheringState + " after 3 s — sending what we have");
-      done();
-    }, 3000);
-    pc.addEventListener("icegatheringstatechange", check);
-  });
+  // Send the offer once it has what a connection needs, not once gathering is complete — that
+  // wait was ~3 s of every reconnect (js/ice_gather.js has the measurement). "complete" needs
+  // every STUN server to answer or time out; a phone with a host and a srflx candidate in 40 ms
+  // was once still not complete 14 s later. Later candidates trickle (`ice_candidate`).
+  const g = await W.iceGather(pc);
+  W.iceTrickle(pc, (candidate) => { if (W.pc === pc) W.relaySendMsg({ type: "ice_candidate", candidate }); });
 
-  rlog("sending offer — " + (pc.localDescription.sdp.match(/a=candidate:/g) || []).length + " candidates");
+  rlog("sending offer — " + (pc.localDescription.sdp.match(/a=candidate:/g) || []).length +
+    " candidates after " + g.ms + " ms (" + g.why + ")");
   if (!W.relaySendMsg({ type: "sdp_offer", sdp: JSON.stringify(pc.localDescription) })) {
     throw new Error("the relay link went away before the offer could be sent");
   }

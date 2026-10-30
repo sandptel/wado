@@ -44,6 +44,9 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/latency.js"),
     "\n",
+    // Before `relay.js`, whose negotiation waits on it, and the pad's and the files' links.
+    include_str!("js/ice_gather.js"),
+    "\n",
     include_str!("js/webrtc.js"),
     "\n",
     // Before `relay.js`: that file calls `W.relayOn(...)` at load to register its handlers, and
