@@ -20,6 +20,9 @@
   background: var(--s1); border-radius: var(--r4); }
 .cplate.deckplate { left: var(--c-deck-x); top: var(--c-deck-y); width: var(--c-deck-w); height: var(--c-deck-h);
   background: var(--s1); border-radius: var(--r3); }
+/* The picture's own slot is stage black, never themed (the Untouchable Picture Rule). */
+.cplate.screen { left: var(--c-pic-x); top: var(--c-pic-y); width: var(--c-pic-w); height: var(--c-pic-h);
+  background: #000; border-radius: 16px; }
 :root[data-arr="console"] .cground { opacity: 1; transition: opacity calc(var(--dur-stage-out) * .55) var(--spring); }
 :root[data-arr="console"] .cplate { opacity: 1; transition: opacity calc(var(--dur-stage-out) * .7) var(--spring) calc(var(--dur-stage-out) * .3); }
 :root[data-arr="console"] .cplate.deckplate { opacity: var(--c-deck-o); }
@@ -204,7 +207,9 @@
 /* A landscape band is shared with the workspaces: the people chip keeps to its own corner. */
 :root[data-arr="console"][data-form="land"] #wado-here, :root[data-arr="console"][data-form="port"] #wado-here { max-width: 132px; }
 
-/* A band deck (portrait) is too short for the overlay's stacked corners: the crosses sit at the
+/* The gamepad seam (ui/surround/deck/gamepad.rs): the box above is the whole contract. These
+ * cluster overrides only fit today's overlay into it, and go when the gamepad lays itself out.
+ * A band deck (portrait) is too short for the overlay's stacked corners: the crosses sit at the
  * sides, the shoulders and Select · Guide · Start between them, and the sticks fold away (they
  * fold into the crosses in the prototype too). A column deck (landscape) keeps the corners, with
  * the centre buttons in the band under the picture rather than on it. */

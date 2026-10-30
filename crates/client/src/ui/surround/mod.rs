@@ -43,6 +43,8 @@ pub struct Stage {
     pub out_h: f64,
     /// `device { console { face } }`: `auto`, `pad`, `keys`, `quick` or `gamepad`.
     pub face_pref: String,
+    /// `device { console { open } }`: `console` or `full`.
+    pub open_pref: String,
 }
 
 impl Stage {
@@ -88,7 +90,10 @@ pub fn on_event(ui: Ui, kind: &str, msg: &serde_json::Value) {
             next.out_h = num("vh");
         }
         "arrangement" => next.cockpit = text("arr") == "cockpit",
-        "consolePrefs" => next.face_pref = text("face"),
+        "consolePrefs" => {
+            next.face_pref = text("face");
+            next.open_pref = text("open");
+        }
         _ => return,
     }
     if next != stage() {
@@ -177,5 +182,7 @@ pub fn backdrop(ui: Ui) -> Element {
         div { class: "cground", "aria-hidden": "true" }
         div { class: "cplate bezel", "aria-hidden": "true" }
         div { class: "cplate deckplate", "aria-hidden": "true" }
+        // Stage black where the picture lands, whatever the theme, before a frame has decoded.
+        div { class: "cplate screen", "aria-hidden": "true" }
     }
 }

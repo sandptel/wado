@@ -11,6 +11,8 @@
 //   W.stageFit.apply(L)        Rust's layout: {w, h, form, face, ws, nav, faces, deck, vars}
 //   W.stageFit.layout          the last one applied
 //   W.stageFit.next(ms)        a promise for the next layout applied (or the timeout)
+//   W.stageFit.slot(name)      one slot as {x, y, w, h, shown} in CSS px, or null — the seam an
+//                              input face lays itself out from (the gamepad's box is `pad`)
 
 (() => {
   const F = (W.stageFit = { layout: null });
@@ -85,6 +87,13 @@
     document.querySelectorAll("[data-only]").forEach((el) => {
       el.toggleAttribute("inert", !!arr && el.dataset.only !== arr);
     });
+  };
+
+  F.slot = (k) => {
+    const v = (F.layout && F.layout.vars) || {};
+    const n = (s) => parseFloat(v[`--c-${k}-${s}`]);
+    if (!(`--c-${k}-y` in v)) return null;
+    return { x: n("x"), y: n("y"), w: n("w"), h: n("h"), shown: v[`--c-${k}-o`] !== "0" };
   };
 
   F.next = (ms) => new Promise((resolve) => {
