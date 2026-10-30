@@ -76,6 +76,22 @@ Each item has what you'd see, the evidence, where to start, and a suggested appr
 - **Regression test:** `lane::pump::tests::a_stuck_socket_never_stalls_the_reader`. It fails on
   the old pump with "the reader is stuck behind the lane".
 
+### 0a. Small replies wait behind clipboard thumbnails on the lane (seen live 2026-10-31 21:21Z)
+- **You see:** "the computer didn't answer" (shells list, host state) while the Clipboard screen is
+  open over the relay.
+- **Evidence:** 31 `clip_data` frames, about 6 MB of bulk, queued on the 64 KB/s lane. Waits grew to
+  41 s (`slow: lane clip_data #272 took 40940 ms`), and `ask: shells_request / host_get still
+  unanswered after 5 s` meanwhile. Hosts and shells share the bulk class, which drains first in,
+  first out.
+- **Fix:**
+  - The daemon sends clipboard *thumbnails* downscaled (about 128 px WebP, a few KB) and the full
+    picture only on demand.
+  - The client fetches thumbnails only for visible tiles, a few at a time.
+  - The lane gets a lowest "trickle" class for clipboard data, so host state, shells and file
+    lists always go first.
+- **Start at:** `crates/server/src/lane/outbox.rs` (classes), `crates/server/src/clip/serve.rs`
+  (`ClipGet`), the client's `W.clipThumb` (`js/clipboard.js` / `cliphost.js`).
+
 ### 0b. Parallel use for every feature (decided 2026-10-30 — see Decision Log)
 - **Goal:** all approved devices use Files, Clipboard, Shells, Claude, widgets, sessions (join and
   co-control) and their own gamepad at the same time. Only the host Touchpad and Keyboard are
