@@ -18,6 +18,7 @@ mod lane;
 mod link;
 mod multi;
 mod native;
+mod pending;
 mod persist;
 mod profile;
 mod push;
@@ -59,6 +60,7 @@ fn App() -> Element {
     };
 
     bridge::run(ui);
+    pending::use_name(ui);
     // A shortcut from the app icon (`?go=`), followed on the last used computer.
     deeplink::follow(ui);
 
@@ -162,6 +164,8 @@ fn App() -> Element {
         document::Stylesheet { href: asset!("/assets/app.css") }
         document::Stylesheet { href: asset!("/assets/passkey.css") }
         document::Stylesheet { href: asset!("/assets/claude.css") }
+        // Every action's pressed / working / long / outcome states (`js/pending.js`).
+        document::Stylesheet { href: asset!("/assets/pending.css") }
         // Last: the interface size's zoom and the touch-target floor override the others.
         document::Stylesheet { href: asset!("/assets/size.css") }
 

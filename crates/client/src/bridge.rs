@@ -23,6 +23,10 @@ use crate::{
 pub const JS: &str = concat!(
     include_str!("js/core.js"),
     "\n",
+    // Right after `core`: every action anywhere below may start a pending action, and every
+    // message from the computer is offered to it (`relay_link.js`'s `fire`).
+    include_str!("js/pending.js"),
+    "\n",
     // Before `storage.js`, whose connect link rewrites the address: the shortcut's `?go=` is
     // taken out first.
     include_str!("js/deeplink.js"),
@@ -423,6 +427,8 @@ pub fn run(ui: Ui) {
 
             match kind {
                 "status" => live.status.set(text()),
+                // Try again / Cancel on an action whose code is Rust (`pending.rs`).
+                "pendingRetry" | "pendingCancel" => crate::pending::on_event(kind, &string("id")),
                 // The Android app (`js/native.js`): its home opened a computer, or Back ran out.
                 "nativeGo" => crate::native::go(ui, &string("key"), &string("go")),
                 "nativeBack" => crate::native::back(ui),

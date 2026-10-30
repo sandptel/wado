@@ -1,0 +1,99 @@
+/* Every action shows its state (js/pending.js; DESIGN.md "Action feedback"). Four stages:
+ *   pressed  `data-press`, set at pointerdown on any control — `:active` comes late or never on a
+ *            touchscreen, so this is what the finger sees inside 100 ms
+ *   working  `data-pstate="work"`: the control's own content steps back and a ring (and, on a
+ *            control wide enough, its label — "Closing…") takes its place, in its own ink
+ *   long     `data-pstate="long"`: the same, and a card says what it is waiting for
+ *   outcome  "ok": the ring morphs into a check on --pop; "fail" / "silent": one shake and a bad
+ *            hairline, while the card says why and offers Try again
+ * Colour only from base16 tokens. Motion is transform/opacity; the ring's spin is a clock
+ * (linear), the one named exception to the two curves. */
+
+/* ── pressed ──────────────────────────────────────────────────────────────────────────────── */
+[data-press]:not(:disabled):not([aria-disabled="true"]) { scale: .96; }
+.tile[data-press], .tpact[data-press] { scale: .97; }
+
+/* ── working and long: progress in place ─────────────────────────────────────────────────── */
+[data-prel] { position: relative; }
+[data-pstate="work"], [data-pstate="long"], [data-pstate="accepted"], [data-pstate="ok"] {
+  color: transparent !important; cursor: progress; }
+[data-pstate="work"] > :not(.pnd), [data-pstate="long"] > :not(.pnd),
+[data-pstate="accepted"] > :not(.pnd), [data-pstate="ok"] > :not(.pnd) {
+  opacity: 0 !important; transition: opacity 120ms cubic-bezier(.3, 0, 1, 1); }
+.pnd { position: absolute; inset: 0; z-index: 1; display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 0 10px; pointer-events: none; border-radius: inherit; white-space: nowrap; overflow: hidden;
+  font: 600 .8125rem var(--body); letter-spacing: 0; text-transform: none;
+  animation: pndin var(--dur) var(--spring) both; }
+.pnd-t { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+@keyframes pndin { from { opacity: 0; scale: .9; } }
+
+.pnd-ring { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 2.4;
+  stroke-linecap: round; stroke-dasharray: 38 100; animation: pndspin 900ms linear infinite; }
+[data-pstate="long"] .pnd-ring { stroke-dasharray: 14 100; animation-duration: 1400ms; }
+@keyframes pndspin { to { rotate: 1turn; } }
+
+/* The check: the ring's place, popped in. */
+.pnd-ok { display: grid; place-items: center; animation: pndok 320ms var(--pop) both; }
+.pnd-ok svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round;
+  stroke-dasharray: 24; stroke-dashoffset: 24; animation: pnddraw 260ms var(--spring) 60ms forwards; }
+@keyframes pndok { from { scale: .5; opacity: 0; } }
+@keyframes pnddraw { to { stroke-dashoffset: 0; } }
+
+/* ── outcome: refused, or no answer ──────────────────────────────────────────────────────── */
+[data-pstate="fail"], [data-pstate="silent"] {
+  outline: 1.5px solid color-mix(in oklab, var(--bad), transparent 30%); outline-offset: -1.5px;
+  animation: pndshake 320ms var(--spring); }
+@keyframes pndshake { 20% { translate: -4px 0; } 45% { translate: 4px 0; } 70% { translate: -2px 0; } }
+
+/* ── the cards: what is being waited for, what went wrong, what happened off-screen ──────── */
+#pending-cards { position: fixed; z-index: 71; left: 50%; translate: -50% 0; width: min(440px, calc(100vw - 24px));
+  bottom: calc(24px + env(safe-area-inset-bottom)); display: flex; flex-direction: column-reverse; gap: 8px;
+  pointer-events: none; }
+/* Over a session: above the cockpit's dock; in the console, on the picture's bottom edge, so it
+ * never covers the deck under the thumbs (as the clipboard's voice does). */
+:root[data-arr="cockpit"] #pending-cards { bottom: calc(84px + env(safe-area-inset-bottom)); }
+:root[data-arr="console"] #pending-cards { left: calc(var(--c-pic-x) + var(--c-pic-w) / 2);
+  width: min(440px, calc(var(--c-pic-w) - 16px)); bottom: calc(100dvh - var(--c-pic-y) - var(--c-pic-h) + 10px); }
+.pcard { pointer-events: auto; display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 4px 4px 4px 14px;
+  border-radius: var(--r3); background: var(--s2); color: var(--bright); border: 1px solid var(--line);
+  box-shadow: 0 18px 50px -20px rgb(0 0 0 / .67);
+  animation: pcardin var(--dur-sheet) var(--spring) both; }
+.pcard.out { animation: pcardout 180ms cubic-bezier(.3, 0, 1, 1) both; }
+@keyframes pcardin { from { opacity: 0; translate: 0 12px; scale: .96; } }
+@keyframes pcardout { to { opacity: 0; translate: 0 6px; } }
+.pcard[data-tone="bad"] { border-color: color-mix(in oklab, var(--bad), transparent 55%);
+  background: color-mix(in oklab, var(--s2), var(--bad) 10%); }
+.pcg { width: 22px; height: 22px; flex: none; display: grid; place-items: center; color: var(--accent); }
+.pcard[data-tone="ok"] .pcg { color: var(--good); animation: pndok 320ms var(--pop) both; }
+.pcard[data-tone="bad"] .pcg { color: var(--bad); }
+.pcg .pnd-ring { width: 20px; height: 20px; }
+.pct { flex: 1; min-width: 0; font-size: .875rem; line-height: 1.35; padding: 8px 0; overflow-wrap: anywhere; }
+.pcb { flex: none; min-height: 44px; padding: 0 14px; border-radius: var(--r2); font-weight: 600; font-size: .8125rem;
+  color: var(--bright); background: var(--s3); }
+.pcb.primary { background: var(--accent); color: var(--on-accent); }
+.pcx { flex: none; width: 44px; height: 44px; border-radius: 999px; color: var(--dim); display: grid; place-items: center; }
+.pcx svg { width: 18px; height: 18px; }
+/* A narrow phone: the buttons go under the words. */
+@media (max-width: 380px) {
+  .pcard { flex-wrap: wrap; padding: 8px 6px 6px 14px; }
+  .pct { flex-basis: calc(100% - 80px); }
+  .pcb { flex: 1; }
+}
+
+/* ── motion modes ─────────────────────────────────────────────────────────────────────────── */
+/* Reduced: nothing spins or shakes; the ring breathes in place, the check simply appears. */
+:root[data-motion="reduced"] .pnd-ring { animation: pndbreathe 1.6s ease-in-out infinite; stroke-dasharray: none; opacity: .9; }
+:root[data-motion="reduced"] [data-pstate="fail"], :root[data-motion="reduced"] [data-pstate="silent"] { animation: none; }
+:root[data-motion="reduced"] .pnd-ok svg { stroke-dashoffset: 0; animation: none; }
+:root[data-motion="reduced"] .pcard { animation-name: pcardfade; }
+@keyframes pcardfade { from { opacity: 0; } }
+@keyframes pndbreathe { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="full"]) .pnd-ring { animation: pndbreathe 1.6s ease-in-out infinite; stroke-dasharray: none; }
+  :root:not([data-motion="full"]) [data-pstate="fail"], :root:not([data-motion="full"]) [data-pstate="silent"] { animation: none; }
+  :root:not([data-motion="full"]) .pnd-ok svg { stroke-dashoffset: 0; animation: none; }
+  :root:not([data-motion="full"]) .pcard { animation-name: pcardfade; }
+}
+/* Off: still states only. The ring is a still arc, the check is drawn. */
+:root[data-motion="off"] .pnd-ring { stroke-dasharray: 38 100; }
+:root[data-motion="off"] .pnd-ok svg { stroke-dashoffset: 0; }

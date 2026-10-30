@@ -191,6 +191,8 @@
       if (W.clipShare) W.clipShare.linkUp(l.key);
       return;
     }
+    // Another computer's answers settle its actions too (a Quick toggle on its page).
+    if (W.pending) W.pending.wire(m.type, m);
     switch (m.type) {
       case "host_state": {
         const st = m.state || null;
