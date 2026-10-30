@@ -58,6 +58,9 @@
     share: "M18 8a3 3 0 1 0 0-6a3 3 0 1 0 0 6zM6 15a3 3 0 1 0 0-6a3 3 0 1 0 0 6zM18 22a3 3 0 1 0 0-6a3 3 0 1 0 0 6zM8.6 13.5l6.8 4M15.4 6.5l-6.8 4",
     camera: "M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3zM12 10a3 3 0 1 0 0 6a3 3 0 1 0 0-6z",
     eye: "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6z",
+    info: "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM12 11v6M12 7.5h.01",
+    wrap: "M3 6h18M3 12h15a3 3 0 0 1 0 6h-4M16 16l-2 2 2 2M3 18h7",
+    font: "M4 20l6-16h2l6 16M7 14h8",
   };
   F.icon = (name) =>
     `<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="${P[name] || P.file}"/></svg>`;
@@ -73,6 +76,7 @@
     ["doc", "--base0D", "txt md doc docx odt rtf tex org log nfo"],
     ["code", "--base0A", "rs js mjs ts tsx jsx py go c h cc cpp hpp java kt rb php sh fish zsh bash lua nix toml yaml yml json kdl xml html css scss sql swift zig hs ml"],
     ["app", "--base0F", "exe msi apk appimage dmg flatpakref bin run"],
+    ["font", "--base0E", "ttf otf woff woff2"],
   ];
   const BY_EXT = {};
   for (const [icon, hue, exts] of FAM) for (const e of exts.split(" ")) BY_EXT[e] = { icon, hue: `var(${hue})` };

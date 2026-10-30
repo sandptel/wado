@@ -33,6 +33,21 @@
     return a;
   };
   const stop = () => { for (const a of running) { try { a.cancel(); } catch (_) {} } running = []; };
+  // A page coming back from under another is hidden by CSS (`covered`, `under`) until Rust drops
+  // that class after the motion: its animation holds it visible to the end (`fill: forwards`),
+  // and is let go only once the class is gone — never left filling, or it would beat every
+  // later state of the page (gone, under, covered) and the page would show through them.
+  const back = (el, kf, o, cls) => {
+    if (!el) return null;
+    const a = A(el, kf.map((k) => ({ ...k, visibility: "visible" })), { ...o, fill: "forwards" });
+    let n = 90;
+    const t = () => {
+      if (!el.isConnected || !el.classList.contains(cls) || n-- <= 0) { try { a.cancel(); } catch (_) {} }
+      else requestAnimationFrame(t);
+    };
+    a.finished.then(() => requestAnimationFrame(t), () => {});
+    return a;
+  };
   const buzz = (ms) => { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (_) {} };
   // Rust renders, then this runs: wait the few frames until the element is there.
   const waitFor = (sel, n = 30) => new Promise((ok) => {
@@ -111,7 +126,8 @@
     // Scrolled: the hero is no longer near its card, so flying it there would cross the screen.
     if (lv === 1 || c.scrollTop > 40 || !onScreen(cr)) {
       const a = A(c, [{ opacity: 1 }, { opacity: 0 }], { duration: lv === 1 ? 120 : 260, easing: SPRING, fill: "forwards" });
-      if (lv === 2) A(home(), [{ scale: 0.96, opacity: 0 }, { scale: 1, opacity: 1 }], { duration: 380, easing: SPRING });
+      if (lv === 2) back(home(), [{ scale: 0.96, opacity: 0 }, { scale: 1, opacity: 1 }], { duration: 380, easing: SPRING }, "covered");
+      else back(home(), [{ opacity: 0 }, { opacity: 1 }], { duration: 120, easing: SPRING }, "covered");
       a.finished.then(done, done);
       return;
     }
@@ -129,7 +145,7 @@
     c.querySelectorAll(".hsub, .hmeta, .explain, .hops, .connerr, .cgrid .sx:not(.hero2), .cbar").forEach((e) =>
       A(e, [{ opacity: 1 }, { opacity: 0 }], { duration: 160, easing: ACCEL, fill: "forwards" }));
     A(c.querySelector(".cground"), [{ opacity: 1 }, { opacity: 0 }], { duration: 300, delay: 80, fill: "forwards" });
-    A(home(), [{ scale: 0.94, opacity: 0 }, { scale: 1, opacity: 1 }], { duration: HERO_OUT, easing: SPRING });
+    back(home(), [{ scale: 0.94, opacity: 0 }, { scale: 1, opacity: 1 }], { duration: HERO_OUT, easing: SPRING }, "covered");
     setTimeout(done, HERO_OUT);
   };
 
@@ -138,9 +154,14 @@
     const s = document.getElementById("sub");
     const lv = level();
     if (!s || lv === 0) return done();
-    // The page under it comes back on its own CSS transition once Rust drops `under`.
+    // The page under it drifts back in as this one slides away, so what the slide uncovers is
+    // that page — never the one under *it*, and never nothing.
+    const under = document.querySelector("#computer.under, #landing.under");
+    const t = lv === 1 ? 120 : 340;
+    back(under, lv === 1 ? [{ opacity: 0 }, { opacity: 1 }] : [{ translate: "-24% 0", opacity: 0 }, { translate: "0 0", opacity: 1 }],
+      { duration: t, easing: SPRING }, "under");
     const a = s.animate(lv === 1 ? [{ opacity: 1 }, { opacity: 0 }] : [{ translate: "0 0" }, { translate: "100% 0" }],
-      { duration: lv === 1 ? 120 : 340, easing: SPRING, fill: "forwards" });
+      { duration: t, easing: SPRING, fill: "forwards" });
     a.finished.then(done, done);
   };
 })();

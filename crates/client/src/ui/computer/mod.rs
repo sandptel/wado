@@ -69,6 +69,7 @@ pub fn render(ui: Ui) -> Element {
             class: "{class}",
             style: "--hue:var(--base{hue})",
             "aria-hidden": "{session || under}",
+            inert: crate::ui::widgets::inert(session || under),
             "aria-label": "{name}",
             div { class: "cground" }
             header { class: "cbar",

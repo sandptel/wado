@@ -30,6 +30,10 @@
   --accent: var(--base0D);
   --on-accent: var(--base00);
   --good: var(--base0B); --warn: var(--base09); --bad: var(--base08);
+  /* Stage Black: behind the video and the file viewer only, whatever the theme (DESIGN.md, the
+   * Untouchable Picture Rule). Undefined, `var(--stage)` was transparent and the viewer showed
+   * the file manager through itself. */
+  --stage: #000;
 
   /* Radius scale. `data-radius` on <html> picks sharp / round / pill (Appearance page). */
   --r1: 10px; --r2: 16px; --r3: 22px; --r4: 28px;

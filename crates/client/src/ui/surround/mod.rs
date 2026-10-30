@@ -179,10 +179,10 @@ pub fn backdrop(ui: Ui) -> Element {
         return rsx! {};
     }
     rsx! {
-        div { class: "cground", "aria-hidden": "true" }
+        div { class: "sground", "aria-hidden": "true" }
         div { class: "cplate bezel", "aria-hidden": "true" }
         div { class: "cplate deckplate", "aria-hidden": "true" }
         // Stage black where the picture lands, whatever the theme, before a frame has decoded.
-        div { class: "cplate screen", "aria-hidden": "true" }
+        div { class: "cplate pic", "aria-hidden": "true" }
     }
 }

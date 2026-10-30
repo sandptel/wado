@@ -21,17 +21,19 @@ pub fn render(ui: Ui) -> Element {
     let on = (ui.live.session_on)();
     let view = (ui.live.view)();
     // Covered by a computer's page (which runs its own motion over home) or by a pushed page.
+    // Either way it is hidden once that motion has run (CSS), and inert at once: a page under
+    // another is never painted through it, tapped or focused.
     let under = matches!(view, View::Sub(None, _));
     let covered = view != View::Home;
-    let state = match (on, under) {
-        (true, _) => "gone",
-        (_, true) => "under",
+    let class = match (on, under, covered) {
+        (true, ..) => "gone",
+        (_, true, _) => "under",
+        (_, _, true) => "covered",
         _ => "",
     };
-    let class = state;
 
     rsx! {
-        section { id: "landing", class: "{class}", "aria-hidden": "{on || covered}",
+        section { id: "landing", class: "{class}", "aria-hidden": "{on || covered}", inert: crate::ui::widgets::inert(on || covered),
             div { class: "wordmark", "wado" span { "." } }
             p { class: "tag", "Your computers, at this screen's own resolution." }
             // iOS Safari only, once: how to install, since it never offers to.

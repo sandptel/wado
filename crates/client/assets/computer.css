@@ -15,8 +15,15 @@
 #computer .cground::before { content: ""; position: absolute; inset: 0;
   background: radial-gradient(80% 36% at 30% 0%, color-mix(in oklab, var(--hue), transparent 86%), transparent 70%); }
 #sub { z-index: 42; background: var(--s0); animation: push var(--dur-sheet) var(--spring) both; }
-/* What a pushed page covers drifts left and fades — the control centre's own push, full screen. */
-#computer.under, #landing.under { translate: -24% 0; opacity: 0; pointer-events: none; }
+/* What a pushed page covers drifts left and fades — the control centre's own push, full screen —
+ * and is hidden once it has: a page under another is never painted through it. Rust makes it
+ * inert at once, so it never takes a tap or focus on the way out. Coming back is immediate. */
+#computer.under, #landing.under { translate: -24% 0; opacity: 0; pointer-events: none; visibility: hidden;
+  transition: translate var(--dur-sheet) var(--spring), opacity var(--dur) var(--ease), visibility 0s linear var(--dur-sheet); }
+/* Home under a computer's page: the card grows into the page over it (js/hero_flip.js runs that
+ * motion, and brings home back on the way out), then home is hidden. */
+#landing.covered { opacity: 0; pointer-events: none; visibility: hidden;
+  transition: opacity 360ms var(--spring), visibility 0s linear var(--dur-hero); }
 #landing { transition: opacity 500ms var(--ease), scale 600ms var(--spring), translate var(--dur-sheet) var(--spring), visibility 0s; }
 #computer.gone, #sub.gone { opacity: 0; pointer-events: none; visibility: hidden; transition: opacity 400ms var(--ease), visibility 0s linear 400ms; }
 

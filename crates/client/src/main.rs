@@ -154,6 +154,7 @@ fn App() -> Element {
         document::Stylesheet { href: asset!("/assets/stage.css") }
         document::Stylesheet { href: asset!("/assets/gamepad.css") }
         document::Stylesheet { href: asset!("/assets/files.css") }
+        document::Stylesheet { href: asset!("/assets/viewer.css") }
         document::Stylesheet { href: asset!("/assets/link.css") }
         document::Stylesheet { href: asset!("/assets/lane.css") }
         document::Stylesheet { href: asset!("/assets/pad.css") }

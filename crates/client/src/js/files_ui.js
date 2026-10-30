@@ -14,7 +14,7 @@
 //
 // This file owns `#wado-files` outright — Dioxus only calls `filesOpen()` — because a progress
 // bar that ticks sixty times a second must not re-render the whole app. Transfers, dialogs and
-// the pill are js/files_panels.js; the wire is js/files_link.js; the viewer js/files_view.js.
+// the pill are js/files_panels.js; the wire is js/files_link.js; the viewer js/viewer/.
 
 (() => {
   const F = W.files;

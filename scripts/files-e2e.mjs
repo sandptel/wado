@@ -13,7 +13,8 @@
 //   audit       every operation is in files.log
 //   revoke      `wado files grant <device> none` applies to an open channel's next request
 //   ui          the window opens in both layouts and lists the folder, no script errors
-//   viewer      images, a gallery, text/JSON, audio; HTML shown as source and never run
+//   viewer      images, a gallery, text/JSON, audio; HTML shown as source and never run; a zip's
+//               listing from its index (`entries`)
 //   streaming   MP4 played directly and MKV converted, as they arrive; seek; captions from a file
 //               beside it and from inside it; audio tracks; VLC keys; photo zoom; video
 //               thumbnails; ffmpeg runs at nice 19 and stops when the player closes
@@ -76,6 +77,7 @@ execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi
 writeFileSync(join(HOME, "Pictures/zbig.jpg"), withExif(readFileSync(join(HOME, "Pictures/zbig.jpg"))));
 writeFileSync(join(HOME, "Pictures/page.html"), "<script>window.__pwned = 1</script><b>hi</b>");
 writeFileSync(join(HOME, "Pictures/notes.json"), '{"a":1,"b":[2,3]}');
+execFileSync("python3", ["-c", "import zipfile,sys; z=zipfile.ZipFile(sys.argv[1],'w'); z.writestr('docs/',''); z.writestr('docs/a.txt','hello'); z.writestr('b.bin', b'x'*3000); z.comment=b'made by files-e2e'; z.close()", join(HOME, "Downloads/bundle.zip")]);
 // One second of a 440 Hz tone, 8 kHz mono 16-bit WAV.
 writeFileSync(join(HOME, "Pictures/tone.wav"), (() => {
   const n = 8000, b = Buffer.alloc(44 + n * 2);
@@ -377,6 +379,10 @@ try {
   check("viewer: audio plays", await laptop.until(`(document.querySelector(".fview audio") || {}).duration > 0.9`), await laptop.ev(`document.querySelector(".fvtitle b")?.textContent`));
   await laptop.ev(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); true`);
   check("viewer: Esc closes it", await laptop.until(`!document.querySelector(".fview")`));
+  const zl = await laptop.req("entries", { path: H("Downloads/bundle.zip") });
+  check("viewer: a zip's listing comes from its index", zl.total === 3 && !zl.more && zl.entries.some((x) => x.name === "docs/" && x.dir) && zl.entries.some((x) => x.name === "b.bin" && x.size === 3000), JSON.stringify(zl).slice(0, 200));
+  const nz = await laptop.req("entries", { path: H("Pictures/notes.json") });
+  check("viewer: what is not a zip is refused, not listed", /not a zip/.test(nz.err || ""), JSON.stringify(nz));
   // streaming
   const V = (n) => H("Videos/" + n);
   const pmkv = await laptop.req("probe", { path: V("other.mkv") });
@@ -469,8 +475,8 @@ try {
   await sleep(400);
   const fit = await phone.ev(`(() => { const s = document.querySelector(".fview .fvstage").getBoundingClientRect(), z = document.querySelector(".fview .fvzoom").getBoundingClientRect();
     return { stage: [s.width, s.height], layer: [z.width, z.height], vw: innerWidth }; })()`);
-  check("phone photo: the picture takes its own shape, full width", Math.abs(fit.layer[0] - fit.vw) < 2 && Math.abs(fit.layer[1] - fit.vw * 0.75) < 3, JSON.stringify(fit));
-  check("phone photo: below it, zoom and next/previous, a filmstrip, the details", await phone.until(`!!document.querySelector(".fview .fvtools") && document.querySelectorAll(".fview .fvthumb").length >= 3
+  check("phone photo: the picture fills the space between the header and the footer", Math.abs(fit.layer[0] - fit.stage[0]) < 2 && Math.abs(fit.layer[1] - fit.stage[1]) < 2 && Math.abs(fit.layer[0] - fit.vw) < 2, JSON.stringify(fit));
+  check("phone photo: the zoom in the footer, the size in the details", await phone.until(`!!document.querySelector(".fview .fvfoot .fvtools")
     && (document.querySelector(".fview .fvmeta")?.textContent || "").includes("4000 × 3000")`, 8000));
   check("phone photo: what the camera recorded", await phone.until(`(() => { const t = document.querySelector(".fview .fvmeta")?.textContent || ""; return t.includes("Google Pixel 8") && t.includes("ƒ/1.7") && t.includes("1/250 s") && t.includes("ISO 160") && t.includes("48.85820"); })()`, 8000),
     await phone.ev(`document.querySelector(".fview .fvmeta")?.textContent`));
@@ -479,7 +485,7 @@ try {
   await phone.ev(`document.querySelector(".fview .fvpctbtn").click(); true`);
   check("phone photo: …and the percentage fits it back", await phone.until(`document.querySelector(".fview .fvpct").textContent === "Fit"`, 3000));
   await phone.shot("files-phone-photo.png");
-  const centre = await phone.ev(`(() => { const b = document.querySelector(".fview .fvphoto").getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`);
+  const centre = await phone.ev(`(() => { const b = document.querySelector(".fview .fvstage").getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`);
   const touchTap = async () => { await phone.cdp("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [centre] }); await phone.cdp("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] }); };
   await touchTap(); await sleep(90); await touchTap();
   await sleep(900);

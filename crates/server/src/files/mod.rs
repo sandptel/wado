@@ -7,6 +7,7 @@
 //! | [`list`] | a folder's entries |
 //! | [`find`] | search by name or kind, bounded |
 //! | [`send`], [`zip`] | downloads: a file from an offset, a folder as a STORE zip |
+//! | [`entries`] | what a zip holds, from its index, for the viewer |
 //! | [`recv`] | uploads: `.wado-part`, hash check, rename |
 //! | [`ops`], [`trash`] | new folder, rename, move, copy; delete to the freedesktop Trash |
 //! | [`media`] | video and audio: probe, stream as fragmented MP4 (remux or transcode), subtitles |
@@ -19,6 +20,7 @@
 
 pub mod audit;
 pub mod channel;
+pub mod entries;
 pub mod find;
 pub mod lane;
 pub mod list;

@@ -264,6 +264,7 @@ fn allowed(req: &FileReq, have: &str) -> bool {
         | Zip { .. }
         | Quick
         | Thumb { .. }
+        | Entries { .. }
         | Probe { .. }
         | Stream { .. }
         | Credit { .. }
@@ -377,6 +378,10 @@ pub async fn dispatch(chan: Arc<Chan>, id: u32, req: FileReq) {
             Quick => chan.reply(id, super::quick::quick(&sc)).await,
             Thumb { path } => match super::thumb::thumb(&sc, &path).await {
                 Ok(b64) => chan.reply(id, json!({ "png": b64 })).await,
+                Err(e) => chan.fail(id, e).await,
+            },
+            Entries { path } => match super::entries::entries(&sc, &path) {
+                Ok(v) => chan.reply(id, v).await,
                 Err(e) => chan.fail(id, e).await,
             },
             Devices => {
