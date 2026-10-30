@@ -234,8 +234,11 @@ pub async fn handle(hub: &Arc<Hub>, room: &ViewRoom, who: &Who, text: &str, cx: 
                 return send(out, &RelayMsg::SessionError { message }).await;
             }
             let peer = format!("{} (joined)", who.name);
-            match pc::answer(hub, origin, &sdp, &room.slot, peer).await {
-                Ok(sdp) => send(out, &RelayMsg::SdpAnswer { sdp }).await,
+            match pc::answer(hub, origin, &sdp, &room.slot, peer, Some(out.clone())).await {
+                Ok((sdp, trickle)) => {
+                    send(out, &RelayMsg::SdpAnswer { sdp }).await;
+                    trickle.answered();
+                }
                 Err(e) => {
                     let message = format!("WebRTC setup failed: {e}");
                     send(out, &RelayMsg::SessionError { message }).await;

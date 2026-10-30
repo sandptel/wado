@@ -2472,8 +2472,17 @@ async fn handle_sdp_offer(
         pc: Arc::clone(&ctx.active_pc),
         generation: Arc::clone(&ctx.generation),
     };
-    let answer = crate::viewers::pc::answer(&ctx.hub, origin, &offer_json, &slot, peer).await?;
+    let (answer, trickle) = crate::viewers::pc::answer(
+        &ctx.hub,
+        origin,
+        &offer_json,
+        &slot,
+        peer,
+        Some(out_tx.clone()),
+    )
+    .await?;
     send_relay(&out_tx, &RelayMsg::SdpAnswer { sdp: answer }).await?;
+    trickle.answered();
     Ok(())
 }
 
