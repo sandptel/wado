@@ -583,6 +583,8 @@ async fn run(
     }
 
     // ── Reconnect loop ──────────────────────────────────────────────────────
+    // The link's health, for `wado relay status`, the TUI and the relay-down push.
+    crate::relay_watch::state::start(&ctx.relay_url);
     let mut backoff = BACKOFF_INITIAL;
     let mut first_attempt = true;
     loop {
@@ -614,6 +616,7 @@ async fn run(
             }
             // Err = we never got as far as a successful registration.
             Err(e) => {
+                crate::relay_watch::state::failed(&e.to_string());
                 if first_attempt {
                     warn!("relay client: cannot reach relay ({e}) — retrying in {backoff:?}");
                 } else {
@@ -705,6 +708,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     // daemon's verdict on a join nor pings it, so neither may be assumed.
     let relay_gates: bool;
     let relay_pings: bool;
+    let relay_caps: Vec<String>;
     let display_name = std::env::var("HOSTNAME").ok();
     send_relay(
         &out_tx,
@@ -733,6 +737,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             }) => {
                 relay_gates = caps.iter().any(|c| c == "gate");
                 relay_pings = caps.iter().any(|c| c == "ping");
+                relay_caps = caps.clone();
                 // Tell the relay whether a session runs here, on every change, so a device
                 // without a daemon of its own is handed an idle one. Ends with the link: its
                 // sends fail once the write task's receiver is gone.
@@ -794,8 +799,10 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     }
 
     // Registered: "back online" is pushed if the computer was away (`crate::push::online`);
-    // dropping this when the link ends marks when it went.
+    // dropping this when the link ends marks when it went. Then the relay's own health
+    // (`crate::relay_watch`) — after, because "back online" defers to its "relay is back".
     let _online = crate::push::online::registered();
+    let _relay_up = crate::relay_watch::state::registered(&relay_caps);
 
     // ── 3. Log forwarding task (per connection) ──────────────────────────────
     let log_task = {
