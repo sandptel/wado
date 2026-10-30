@@ -34,6 +34,12 @@ tokio = { version = "1", features = ["sync"] }
 
 [dependencies.smithay]
 git = "https://github.com/Smithay/smithay.git"
+# Pinned explicitly (CLAUDE.md: "Smithay tracks a git revision, pinned in the lockfile
+# only") so a `cargo update` — or any tool that regenerates the lockfile — cannot silently
+# move it. Upstream `main` breaks API regularly; this revision is the one actually built
+# and tested. Keep this in lockstep with the `source = "git+...#<rev>"` line in Cargo.lock
+# (and the Nix flake's `outputHashes."smithay-0.7.0"`) whenever it is deliberately bumped.
+rev = "85f83ab61711e725aa1f3481df4f4dc5370e925b"
 default-features = false
 features = [
     "renderer_gl",
