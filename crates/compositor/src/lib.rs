@@ -38,6 +38,7 @@ pub mod handlers;
 pub mod headless;
 pub mod hit;
 pub mod input;
+pub mod launch_clock;
 pub mod pacing;
 pub mod placement;
 pub mod proc;
