@@ -23,7 +23,14 @@ pub fn render(ui: Ui) -> Element {
         Some(i) => (ui.set.profiles.read()[i].display(), crate::profile::hue(i)),
         None => (crate::profile::current_name(ui), "0D"),
     };
-    let back_to = if pk.is_some() {
+    let eyebrow = if page.parent() == crate::ui::pages::Page::Input {
+        format!("{name} · Virtual input")
+    } else {
+        name.clone()
+    };
+    let back_to = if page.parent() == crate::ui::pages::Page::Input {
+        "Back to Virtual input".to_string()
+    } else if pk.is_some() {
         format!("Back to {name}")
     } else {
         "Back to home".to_string()
@@ -45,10 +52,11 @@ pub fn render(ui: Ui) -> Element {
                     }
                     div { class: "pt",
                         if pk.is_some() {
-                            span { class: "eyebrow", i {} "{name}" }
+                            span { class: "eyebrow", title: "{eyebrow}", i {} "{eyebrow}" }
                         }
                         h3 { "{page.title()}" }
                     }
+                    crate::ui::computer::input::PageOpen { ui, page }
                 }
                 {pages::render(ui, page)}
             }

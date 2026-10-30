@@ -22,6 +22,9 @@ use super::ticker::Pace;
 
 pub struct Pad {
     sink: Devices,
+    /// The phone's pad size, exactly as it said — the device's declared size is the truth, so
+    /// libinput's millimetre thresholds stay true. Pointer speed is the compositor's
+    /// (`crate::platform::linux::hypr_device`), never a scaled size.
     size: Option<(u16, u16)>,
     last_seq: Option<u32>,
     /// Any finger down, as last sent to the sink.
@@ -126,6 +129,13 @@ impl Pad {
             | PadMsg::ActionList { .. }
             | PadMsg::Run { .. }
             | PadMsg::Ran { .. } => Ok(()),
+            // The gamepad is its own device (`game.rs`), answered before the pad; `Game` is
+            // daemon → phone only.
+            PadMsg::GameOn
+            | PadMsg::GameOff
+            | PadMsg::Btn { .. }
+            | PadMsg::Axes { .. }
+            | PadMsg::Game { .. } => Ok(()),
         };
         result.err().map(reply)
     }
@@ -323,6 +333,21 @@ mod tests {
                 Call::Touch((800, 390), vec![(0, 2, 2)]),
             ]
         );
+    }
+
+    /// The declared size is the phone's own, whatever its pointer speed: scaling it would scale
+    /// libinput's mm thresholds too, and taps would fail at 2× (research `touchpad-feel` §3.2).
+    #[test]
+    fn the_device_is_told_the_phones_real_size() {
+        let rec = Rec::default();
+        let cfg = wado_config::schema::Trackpad {
+            smoothing: false,
+            ..Default::default()
+        };
+        let mut p = Pad::with_config(rec.devices(), &cfg);
+        p.handle(0, PadMsg::Size { w: 400, h: 200 }, false);
+        p.handle(1, frame(1, vec![(0, 9, 9)]), false);
+        assert_eq!(rec.calls()[0], Call::Touch((400, 200), vec![(0, 9, 9)]));
     }
 
     #[test]

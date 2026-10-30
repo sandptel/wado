@@ -14,7 +14,19 @@
   const CLOSE = W.padIcon("x");
   const KEYBOARD = W.padIcon("kbd");
   const MODS = [["super", "Super"], ["ctrl", "Ctrl"], ["alt", "Alt"], ["shift", "Shift"]];
-  const KEYS = [["esc", "Esc"], ["tab", "Tab"], ["left", "←"], ["up", "↑"], ["down", "↓"], ["right", "→"]];
+  // The keys after the modifiers are this phone's own choice (`W.kbPrefs`, Keyboard settings).
+  const SAY = { esc: "Escape", tab: "Tab", left: "left arrow", up: "up arrow", down: "down arrow", right: "right arrow", pageup: "Page up", pagedown: "Page down", delete: "Delete" };
+  function keyRow() {
+    for (const b of el.row.querySelectorAll("[data-key]")) b.remove();
+    for (const k of W.kbPrefs.get().keys) {
+      const b = document.createElement("button");
+      b.className = "tpkey";
+      b.dataset.key = k;
+      b.setAttribute("aria-label", SAY[k] || W.kbPrefs.label(k));
+      b.textContent = W.kbPrefs.label(k);
+      el.row.appendChild(b);
+    }
+  }
   const WHY = {
     direct: "Touches go straight to the computer over your network.",
     relayed: "No direct path to the computer — touches go through wado's relay, so expect some delay.",
@@ -49,7 +61,6 @@
         <div class="tprow" role="toolbar" aria-label="Modifiers and keys">
           ${MODS.map(([k, l]) => `<button class="tpkey" data-mod="${k}" aria-pressed="false">${l}</button>`).join("")}
           <span class="tpsep" aria-hidden="true"></span>
-          ${KEYS.map(([k, l]) => `<button class="tpkey" data-key="${k}" aria-label="${k === "esc" ? "Escape" : k === "tab" ? "Tab" : k + " arrow"}">${l}</button>`).join("")}
         </div>
         <textarea class="tptext" rows="1" autocapitalize="sentences" autocomplete="off" autocorrect="on"
           spellcheck="false" enterkeyhint="enter" aria-label="Type on the computer"
@@ -72,6 +83,8 @@
       if (e.target.closest("button, code") || el.err.dataset.cause !== "other") return;
       el.err.hidden = true;
     };
+    keyRow();
+    W.kbPrefs.onChange(keyRow);
     el.kb.onclick = () => keyboard(el.keys.hidden);
     el.row.onclick = (e) => {
       const b = e.target.closest("button");
@@ -205,7 +218,10 @@
     else el.text.blur();
   }
 
-  W.padOpen = () => {
+  // `opts.keyboard`: the Keyboard door — the same screen with the keyboard up, whatever the
+  // touchpad's own "open with the keyboard" preference says (spec §3.1). `passkey.js` wraps this
+  // with no arguments, so the door may also say it through `W.padOpenKeyboard`, read once.
+  W.padOpen = (opts) => {
     mount();
     if (!root.hidden) return;
     root.hidden = false;
@@ -217,7 +233,10 @@
     const p = W.padPrefs.get();
     opening = true; // the open animation covers the first layout
     orient(p);
-    W.padOrient.update({ typing: p.keyboard });
+    const asked = opts && opts.keyboard != null ? opts.keyboard : W.padOpenKeyboard;
+    W.padOpenKeyboard = undefined;
+    const kb = asked != null ? !!asked : p.keyboard;
+    W.padOrient.update({ typing: kb });
     W.padOrient.attach(root);
     W.pad.start();
     W.padActions.refresh();
@@ -229,7 +248,7 @@
     W.padCoach.attach(el.area);
     W.padKeys.attach(el.text, el.row);
     paintPill();
-    if (p.keyboard) keyboard(true);
+    if (kb) keyboard(true);
     opening = false;
     if (W.wake) W.wake.acquire();
   };

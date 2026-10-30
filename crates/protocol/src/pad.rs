@@ -83,6 +83,36 @@ pub enum PadMsg {
         #[serde(default)]
         message: String,
     },
+    /// Phone → daemon, keys channel: the Gamepad screen opened — make the controller (or keep
+    /// the one still there from a moment ago). Answered by [`PadMsg::Game`].
+    GameOn,
+    /// Phone → daemon, keys channel: the Gamepad screen closed. Everything is let go now; the
+    /// controller itself stays a while, so a game does not see it unplugged and plugged back.
+    GameOff,
+    /// Phone → daemon, keys channel: one gamepad button, by evdev code — `BTN_A` 0x130 …
+    /// `BTN_THUMBR` 0x13e, the digital triggers `BTN_TL2` / `BTN_TR2` (0x138 / 0x139, written
+    /// as `ABS_Z` / `ABS_RZ`), and the d-pad's `BTN_DPAD_UP` … `RIGHT` (0x220–0x223, written as
+    /// the hat). An unknown code is ignored.
+    Btn { code: u16, down: bool },
+    /// Phone → daemon, touch channel: every axis at once, newest wins — `[lx, ly, rx, ry, lt,
+    /// rt]`, sticks −32768..=32767, triggers 0..=255. Re-sent every 100 ms while any is off
+    /// centre; silence centres them.
+    Axes { seq: u32, a: [i32; 6] },
+    /// Daemon → phone: the controller exists. `player` is its order among wado's controllers on
+    /// this computer (a session's own pad and this one), counted from 1 — what games number by.
+    Game { player: u8 },
+}
+
+/// The gamepad buttons [`PadMsg::Btn`] carries that are not plain `BTN_*` buttons of the device.
+pub mod btn {
+    /// Digital triggers, written as the trigger axes at full travel.
+    pub const TL2: u16 = 0x138;
+    pub const TR2: u16 = 0x139;
+    /// The d-pad's four directions, written as the hat.
+    pub const DPAD_UP: u16 = 0x220;
+    pub const DPAD_DOWN: u16 = 0x221;
+    pub const DPAD_LEFT: u16 = 0x222;
+    pub const DPAD_RIGHT: u16 = 0x223;
 }
 
 /// One action the phone may offer: `workspace-next`, "Next workspace", group `Workspace`, and
@@ -192,6 +222,66 @@ mod tests {
         assert!(!newer(0, 0));
         assert!(newer(2, u32::MAX - 1));
         assert!(!newer(u32::MAX - 1, 2));
+    }
+
+    #[test]
+    fn gamepad_messages_round_trip_tagged_k() {
+        let cases = [
+            (PadMsg::GameOn, r#"{"k":"game_on"}"#),
+            (PadMsg::GameOff, r#"{"k":"game_off"}"#),
+            (
+                PadMsg::Btn {
+                    code: 304,
+                    down: true,
+                },
+                r#"{"k":"btn","code":304,"down":true}"#,
+            ),
+            (
+                PadMsg::Axes {
+                    seq: 3,
+                    a: [-32768, 32767, 0, 5, 0, 255],
+                },
+                r#"{"k":"axes","seq":3,"a":[-32768,32767,0,5,0,255]}"#,
+            ),
+            (PadMsg::Game { player: 2 }, r#"{"k":"game","player":2}"#),
+        ];
+        for (m, s) in cases {
+            assert_eq!(serde_json::to_string(&m).unwrap(), s);
+            assert_eq!(serde_json::from_str::<PadMsg>(s).unwrap(), m);
+        }
+        assert!(
+            serde_json::from_str::<PadMsg>(r#"{"k":"axes","seq":1,"a":[0,0,0]}"#).is_err(),
+            "the axes are always all six"
+        );
+    }
+
+    #[test]
+    fn gamepad_messages_ride_the_relay_unread() {
+        for msg in [
+            PadMsg::GameOn,
+            PadMsg::Btn {
+                code: btn::DPAD_UP,
+                down: false,
+            },
+            PadMsg::Axes {
+                seq: 9,
+                a: [1, 2, 3, 4, 5, 6],
+            },
+        ] {
+            let r = crate::relay::RelayMsg::PadIn { msg: msg.clone() };
+            let s = serde_json::to_string(&r).unwrap();
+            assert!(s.starts_with(r#"{"type":"pad_in""#), "{s}");
+            match serde_json::from_str::<crate::relay::RelayMsg>(&s).unwrap() {
+                crate::relay::RelayMsg::PadIn { msg: back } => assert_eq!(back, msg),
+                other => panic!("{other:?}"),
+            }
+        }
+        let out = crate::relay::RelayMsg::PadOut {
+            msg: PadMsg::Game { player: 1 },
+        };
+        assert!(serde_json::to_string(&out)
+            .unwrap()
+            .starts_with(r#"{"type":"pad_out""#));
     }
 
     #[test]

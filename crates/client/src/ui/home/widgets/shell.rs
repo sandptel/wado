@@ -135,7 +135,7 @@ fn body(cx: Ctx, away: bool, _hue: &str) -> Element {
     if !r.may(need.token()) {
         let what = match (cx.w.kind, need) {
             (_, Need::Clipboard) => format!("see {name}'s clipboard"),
-            (_, Need::Input) => format!("use {name} as a trackpad"),
+            (_, Need::Input) => format!("use {name}'s touchpad, keyboard or gamepad"),
             (_, Need::Shells) => format!("see Claude on {name}"),
             (WidgetKind::Media, _) => format!("control {name}'s media"),
             (WidgetKind::Brightness, _) => format!("set {name}'s brightness"),

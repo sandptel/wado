@@ -36,6 +36,7 @@ pub mod bluetoothctl;
 pub mod cliphist;
 pub mod cmd;
 pub mod grim;
+pub mod hypr_device;
 pub mod hyprland;
 pub mod inhibit;
 pub mod keyboard;

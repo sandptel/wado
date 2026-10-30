@@ -3,6 +3,13 @@
 //! want different things; the phone writes these through `ConfigSet`, and a device may change
 //! its own without the settings grant (`wado_server::config::link`).
 //!
+//! The feel — pointer speed, scroll speed, natural scrolling, tapping, dragging — is libinput's
+//! and the compositor's, not the phone's: the daemon applies these to *this* touchpad device on
+//! the computer (Hyprland: `wado_server::platform::linux::hypr_device`), and the pad's declared
+//! size stays the truth so libinput's millimetre thresholds stay true
+//! (`docs/superpowers/research/2026-10-30-touchpad-feel.md` §3–§5). `click-bar`, `palm`, `marks`
+//! and `gesture-distance` are the phone's own.
+//!
 //! Action ids (`quick`, `gestures`) are not checked here: the daemon's action library decides
 //! what exists on this computer, and the phone skips an id it was not offered.
 
@@ -36,7 +43,43 @@ pub struct DeviceTrackpad {
     pub gestures: BTreeMap<String, String>,
     /// The keyboard is open when the pad opens.
     pub keyboard: bool,
+    /// Pointer speed, [`SPEED_MIN`]–[`SPEED_MAX`]× — libinput's speed for this device, set by
+    /// the compositor (never by scaling the pad's declared size).
+    #[serde(deserialize_with = "speed")]
+    pub speed: f64,
+    /// Two-finger scroll speed, [`SCROLL_MIN`]–[`SCROLL_MAX`]× (the compositor's scroll factor).
+    #[serde(deserialize_with = "scroll_speed")]
+    pub scroll_speed: f64,
+    /// Natural scrolling; absent leaves the computer's own touchpad setting.
+    pub natural: Option<bool>,
+    /// Tap to click.
+    pub tap: bool,
+    /// Tap, then drag.
+    pub tap_drag: bool,
+    /// One of [`DRAG_LOCKS`]: whether a drag survives lifting the finger, and for how long.
+    #[serde(deserialize_with = "drag_lock")]
+    pub drag_lock: String,
+    /// The phone draws a press bar to click with, for a computer with tapping off.
+    pub click_bar: bool,
+    /// The phone marks resting thumbs and large contacts as palms.
+    pub palm: bool,
+    /// The phone draws a mark under each finger.
+    pub marks: bool,
+    /// One of [`GESTURE_DISTANCES`]: how far or long wado's own phone gestures must go.
+    #[serde(deserialize_with = "gesture_distance")]
+    pub gesture_distance: String,
 }
+
+/// Pointer speed's range.
+pub const SPEED_MIN: f64 = 0.5;
+pub const SPEED_MAX: f64 = 2.0;
+/// Scroll speed's range.
+pub const SCROLL_MIN: f64 = 0.25;
+pub const SCROLL_MAX: f64 = 2.0;
+/// Drag lock: off, a short timeout after lifting, or until the next tap (libinput's 0 / 1 / 2).
+pub const DRAG_LOCKS: &[&str] = &["off", "briefly", "until-tap"];
+/// wado's own phone gestures: edge-in 28 / 40 / 56 px, two-finger hold 450 / 600 / 800 ms.
+pub const GESTURE_DISTANCES: &[&str] = &["short", "medium", "long"];
 
 impl Default for DeviceTrackpad {
     fn default() -> Self {
@@ -55,6 +98,16 @@ impl Default for DeviceTrackpad {
             .to_vec(),
             gestures: BTreeMap::new(),
             keyboard: false,
+            speed: 1.0,
+            scroll_speed: 1.0,
+            natural: None,
+            tap: true,
+            tap_drag: true,
+            drag_lock: "off".into(),
+            click_bar: false,
+            palm: true,
+            marks: true,
+            gesture_distance: "medium".into(),
         }
     }
 }
@@ -70,8 +123,57 @@ impl From<&DeviceTrackpad> for wado_protocol::TrackpadPrefs {
             quick: t.quick.clone(),
             gestures: t.gestures.clone(),
             keyboard: t.keyboard,
+            speed: t.speed,
+            scroll_speed: t.scroll_speed,
+            natural: t.natural,
+            tap: t.tap,
+            tap_drag: t.tap_drag,
+            drag_lock: t.drag_lock.clone(),
+            click_bar: t.click_bar,
+            palm: t.palm,
+            marks: t.marks,
+            gesture_distance: t.gesture_distance.clone(),
         }
     }
+}
+
+fn ranged<'de, D: Deserializer<'de>>(d: D, what: &str, lo: f64, hi: f64) -> Result<f64, D::Error> {
+    let v = f64::deserialize(d)?;
+    if (lo..=hi).contains(&v) {
+        Ok(v)
+    } else {
+        Err(serde::de::Error::custom(format!(
+            "{what} is from {lo} to {hi}, not {v}"
+        )))
+    }
+}
+
+fn speed<'de, D: Deserializer<'de>>(d: D) -> Result<f64, D::Error> {
+    ranged(d, "speed", SPEED_MIN, SPEED_MAX)
+}
+
+fn scroll_speed<'de, D: Deserializer<'de>>(d: D) -> Result<f64, D::Error> {
+    ranged(d, "scroll-speed", SCROLL_MIN, SCROLL_MAX)
+}
+
+fn one_of<'de, D: Deserializer<'de>>(d: D, what: &str, list: &[&str]) -> Result<String, D::Error> {
+    let s = String::deserialize(d)?;
+    if list.contains(&s.as_str()) {
+        Ok(s)
+    } else {
+        Err(serde::de::Error::custom(format!(
+            "{what} is one of {}, not \"{s}\"",
+            list.join(", ")
+        )))
+    }
+}
+
+fn drag_lock<'de, D: Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    one_of(d, "drag-lock", DRAG_LOCKS)
+}
+
+fn gesture_distance<'de, D: Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    one_of(d, "gesture-distance", GESTURE_DISTANCES)
 }
 
 fn rail<'de, D: Deserializer<'de>>(d: D) -> Result<String, D::Error> {
@@ -166,7 +268,10 @@ mod tests {
             serde_json::json!({
                 "landscape": true, "fullscreen": false, "flip": false, "rail": "keys",
                 "quick": ["workspace-prev", "workspace-next", "fullscreen", "play-pause"],
-                "gestures": {"four-tap": "lock"}, "keyboard": false
+                "gestures": {"four-tap": "lock"}, "keyboard": false, "speed": 1.0,
+                "scroll_speed": 1.0, "natural": null, "tap": true, "tap_drag": true,
+                "drag_lock": "off", "click_bar": false, "palm": true, "marks": true,
+                "gesture_distance": "medium"
             })
         );
     }
@@ -182,6 +287,67 @@ mod tests {
         assert_eq!(k.quick, ["a", "b"]);
         assert_eq!(k.gestures["edge-left"], "lock");
         assert!(c.device["j"].trackpad.clone().unwrap().quick.is_empty());
+    }
+
+    #[test]
+    fn speed_is_read_and_checked() {
+        let c = crate::kdl::parse(
+            "device \"k\" { trackpad { speed 1.25 } }\ndevice \"j\" { trackpad { speed 2 } }",
+        )
+        .unwrap();
+        assert_eq!(c.device["k"].trackpad.clone().unwrap().speed, 1.25);
+        assert_eq!(c.device["j"].trackpad.clone().unwrap().speed, 2.0);
+        assert_eq!(DeviceTrackpad::default().speed, 1.0);
+        let e =
+            crate::kdl::parse("device \"k\" {\n  trackpad {\n    speed 3.5\n  }\n}").unwrap_err();
+        assert!(e.message.contains("speed"), "{e}");
+        assert_eq!(e.line, 3, "{e}");
+        assert!(crate::kdl::parse("device \"k\" { trackpad { speed 0.2 } }").is_err());
+    }
+
+    #[test]
+    fn the_feel_is_read_with_its_defaults() {
+        let d = DeviceTrackpad::default();
+        assert_eq!(
+            (d.scroll_speed, d.natural, d.tap, d.tap_drag),
+            (1.0, None, true, true)
+        );
+        assert_eq!(
+            (d.drag_lock.as_str(), d.gesture_distance.as_str()),
+            ("off", "medium")
+        );
+        assert!(!d.click_bar && d.palm && d.marks);
+        let c = crate::kdl::parse(
+            r#"device "k" { trackpad { scroll-speed 0.5; natural #true; tap #false; tap-drag #false
+               drag-lock "until-tap"; click-bar #true; palm #false; marks #false; gesture-distance "long" } }"#,
+        )
+        .unwrap();
+        let t = c.device["k"].trackpad.clone().unwrap();
+        assert_eq!(
+            (t.scroll_speed, t.natural, t.tap, t.tap_drag),
+            (0.5, Some(true), false, false)
+        );
+        assert_eq!(
+            (t.drag_lock.as_str(), t.gesture_distance.as_str()),
+            ("until-tap", "long")
+        );
+        assert!(t.click_bar && !t.palm && !t.marks);
+    }
+
+    #[test]
+    fn a_feel_value_out_of_range_is_an_error_with_its_line() {
+        let e = crate::kdl::parse("device \"k\" {\n  trackpad {\n    scroll-speed 3\n  }\n}")
+            .unwrap_err();
+        assert!(e.message.contains("scroll-speed"), "{e}");
+        assert_eq!(e.line, 3, "{e}");
+        for bad in [
+            r#"device "k" { trackpad { scroll-speed 0.1 } }"#,
+            r#"device "k" { trackpad { drag-lock "forever" } }"#,
+            r#"device "k" { trackpad { gesture-distance "far" } }"#,
+            r#"device "k" { trackpad { natural "yes" } }"#,
+        ] {
+            assert!(crate::kdl::parse(bad).is_err(), "{bad}");
+        }
     }
 
     #[test]

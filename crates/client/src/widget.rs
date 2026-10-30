@@ -58,7 +58,7 @@ impl WidgetKind {
             WidgetKind::Volume => "Volume",
             WidgetKind::Brightness => "Brightness",
             WidgetKind::Clipboard => "Clipboard",
-            WidgetKind::Trackpad => "Trackpad",
+            WidgetKind::Trackpad => "Virtual input",
             WidgetKind::Claude => "Claude",
         }
     }

@@ -119,10 +119,6 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/osk.js"),
     "\n",
-    // After `input_core`, which defines `W.sendInput`, and after `osk` only for readability —
-    // the pad registers nothing at load, it is built on the first `setGamepad`.
-    include_str!("js/gamepad.js"),
-    "\n",
     include_str!("js/refresh.js"),
     "\n",
     include_str!("js/overlay.js"),
@@ -220,6 +216,8 @@ pub const JS: &str = concat!(
     // Settings after `config.js` (it chains `config_state`), orientation before touch.
     include_str!("js/pad_prefs.js"),
     "\n",
+    include_str!("js/kb_prefs.js"),
+    "\n",
     include_str!("js/pad_orient.js"),
     "\n",
     include_str!("js/pad_touch.js"),
@@ -250,6 +248,58 @@ pub const JS: &str = concat!(
     include_str!("js/pad_why.js"),
     "\n",
     include_str!("js/pad_ui.js"),
+    "\n",
+    // The gamepad (docs/superpowers/specs/2026-10-30-virtual-input-design.md): one layout model and
+    // one renderer for the screen with no session, the editor, the in-session overlay and the
+    // console deck. After the pad files (it rides `W.pad` and reuses `W.padWhyShow`) and
+    // `config.js` (its prefs chain `config_state`); `screen` before the editor modules that use it.
+    include_str!("js/gpad/variants.js"),
+    "\n",
+    include_str!("js/gpad/model.js"),
+    "\n",
+    include_str!("js/gpad/place.js"),
+    "\n",
+    include_str!("js/gpad/render.js"),
+    "\n",
+    include_str!("js/gpad/thumb.js"),
+    "\n",
+    include_str!("js/gpad/controller.js"),
+    "\n",
+    include_str!("js/gpad/motion.js"),
+    "\n",
+    include_str!("js/gpad/input.js"),
+    "\n",
+    include_str!("js/gpad/send_session.js"),
+    "\n",
+    include_str!("js/gpad/send_pad.js"),
+    "\n",
+    include_str!("js/gpad/why.js"),
+    "\n",
+    include_str!("js/gpad/prefs.js"),
+    "\n",
+    include_str!("js/gpad/screen.js"),
+    "\n",
+    include_str!("js/gpad/edit.js"),
+    "\n",
+    include_str!("js/gpad/inspector.js"),
+    "\n",
+    include_str!("js/gpad/picker.js"),
+    "\n",
+    include_str!("js/gpad/comfort.js"),
+    "\n",
+    // The in-session overlay, on the same model.
+    include_str!("js/gamepad.js"),
+    "\n",
+    // The Virtual input pages' live previews and the hub's miniatures (ui/computer/input/).
+    include_str!("js/input_preview/mount.js"),
+    "\n",
+    include_str!("js/input_preview/touchpad.js"),
+    "\n",
+    include_str!("js/input_preview/keyboard.js"),
+    "\n",
+    include_str!("js/input_preview/gamepad.js"),
+    "\n",
+    include_str!("js/input_preview/hub.js"),
     "\n",
     // After the pad files: it chains the `pad_out` handler `pad_link` registers.
     include_str!("js/actions.js"),
@@ -585,6 +635,12 @@ pub fn run(ui: Ui) {
                     if d != *live.decoder.peek() {
                         live.decoder.set(d);
                     }
+                }
+                "gpadPrefs" | "kbPrefs" | "padPrefs" => {
+                    crate::ui::computer::input::prefs::on_event(kind, &msg);
+                }
+                "gpadSettings" => {
+                    crate::route::go(ui, crate::ui::pages::Page::InputGamepad);
                 }
                 "hostConfig" => {
                     let state: wado_protocol::ConfigState = msg
