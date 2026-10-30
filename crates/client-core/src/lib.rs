@@ -7,6 +7,8 @@
 
 pub mod e2e;
 pub mod identity;
+pub mod os_logo;
 pub mod pins;
+pub mod profiles;
 pub mod secret;
 pub mod store;

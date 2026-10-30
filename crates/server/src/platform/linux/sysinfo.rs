@@ -14,6 +14,7 @@ struct Fixed {
     hostname: String,
     os: String,
     os_id: String,
+    os_like: Vec<String>,
     kernel: String,
     cpu: String,
     cores: u32,
@@ -26,17 +27,28 @@ fn read(path: &str) -> String {
     std::fs::read_to_string(path).unwrap_or_default()
 }
 
+/// One os-release field, unquoted; empty when absent.
+fn release_field(release: &str, k: &str) -> String {
+    release
+        .lines()
+        .find_map(|l| l.strip_prefix(&format!("{k}=")))
+        .map(|v| v.trim_matches(|c| c == '"' || c == '\'').to_string())
+        .unwrap_or_default()
+}
+
+/// os-release `ID_LIKE`: space-separated, in order.
+fn id_like(release: &str) -> Vec<String> {
+    release_field(release, "ID_LIKE")
+        .split_whitespace()
+        .map(str::to_string)
+        .collect()
+}
+
 fn fixed() -> &'static Fixed {
     static F: OnceLock<Fixed> = OnceLock::new();
     F.get_or_init(|| {
         let release = read("/etc/os-release");
-        let field = |k: &str| {
-            release
-                .lines()
-                .find_map(|l| l.strip_prefix(&format!("{k}=")))
-                .map(|v| v.trim_matches('"').to_string())
-                .unwrap_or_default()
-        };
+        let field = |k: &str| release_field(&release, k);
         let cpuinfo = read("/proc/cpuinfo");
         let cpu = cpuinfo
             .lines()
@@ -60,6 +72,7 @@ fn fixed() -> &'static Fixed {
                 field("PRETTY_NAME")
             },
             os_id: field("ID"),
+            os_like: id_like(&release),
             kernel: read("/proc/sys/kernel/osrelease").trim().to_string(),
             cpu,
             cores,
@@ -127,6 +140,7 @@ fn now() -> SysInfo {
         hostname: f.hostname.clone(),
         os: f.os.clone(),
         os_id: f.os_id.clone(),
+        os_like: f.os_like.clone(),
         kernel: f.kernel.clone(),
         uptime_s,
         cpu: f.cpu.clone(),
@@ -153,5 +167,20 @@ impl ProcSysInfo {
 impl SysInfoSource for ProcSysInfo {
     fn now(&self) -> SysInfo {
         now()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn id_like_is_read() {
+        let release = "NAME=\"CachyOS Linux\"\nID=cachyos\nID_LIKE=\"arch archlinux\"\n";
+        assert_eq!(release_field(release, "ID"), "cachyos");
+        assert_eq!(id_like(release), vec!["arch", "archlinux"]);
+        // Unquoted, single; and absent.
+        assert_eq!(id_like("ID=pop\nID_LIKE=ubuntu\n"), vec!["ubuntu"]);
+        assert!(id_like("ID=arch\n").is_empty());
     }
 }
