@@ -4,7 +4,7 @@
 
 **Goal:** Replace the WebView client inside the Android app with a fully native Jetpack Compose app. The app is driven by one Rust client core that the F8 desktop app also links. The web client stays for browsers and iOS.
 
-> **2026-10-31 — framework changed to Flutter (Dart) for Android, iOS, iPadOS, macOS and Linux.** The Compose tasks below are superseded and will be rewritten for Flutter (`flutter_rust_bridge` to `client-core`, `flutter_webrtc`, jnigen for Android APIs). The phases, product decisions and Rust core still hold.
+> **2026-10-31 — framework changed to Flutter.** Part A below stays the product design. Part B (the Compose tasks) is superseded by `2026-10-31-flutter-app.md`, except each phase's daemon and core tasks, which that plan reuses as they are.
 
 **Architecture:** A new pure-Rust crate `crates/client-core` holds the client protocol:
 - the relay link
