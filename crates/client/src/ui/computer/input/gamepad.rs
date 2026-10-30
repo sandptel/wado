@@ -47,7 +47,7 @@ pub fn render(ui: Ui) -> Element {
         div { class: "vipage",
             div { class: "vipreview",
                 div { class: "vicap", span { "Try it · press anything" } span { class: "videmo mono", "data-vi-demo": "gamepad", "—" } }
-                div { class: "vigpv", "data-vi": "gamepad", role: "application", "aria-label": "A preview of the gamepad. Presses here go nowhere." }
+                div { class: "vigpv", "data-vi": "gamepad", "aria-hidden": "true" }
             }
             div { class: "sect", span { if away_own { "Layout in a session" } else { "Layout" } } }
             div { class: "vicarousel", "data-vi": "gp-layouts", "data-where": "session", role: "radiogroup", "aria-label": "Layout" }

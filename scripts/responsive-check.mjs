@@ -159,6 +159,31 @@ const VIEWS = [
     await js(`window.__wado.passkey.state.unlocked = true; window.__wado.padOpen(); true`);
     return until("!!document.getElementById('wado-trackpad') && !document.getElementById('wado-trackpad').hidden", 4000);
   } },
+  // Virtual input (docs/superpowers/specs/2026-10-30-virtual-input-design.md): the hub, its three
+  // pages, and the gamepad screen — playing and in its editor.
+  ...[["hub", null], ["touchpad", "Touchpad"], ["keyboard", "Keyboard"], ["gamepad", "Gamepad"]].map(([v, page]) => ({
+    name: "virtual input: " + v, root: "#sub", open: async () => {
+      await computer();
+      await fx({ type: "hostConfig", state: { grants: GRANTS, caps: ["pad-gamepad", "pad-hypr"] } });
+      await sleep(300);
+      const ok = await js(`(() => { const b = document.querySelector("#computer .vihead"); if (b) b.click(); return !!b; })()`);
+      if (!ok || !(await until("!!document.querySelector('#sub .vihub')", 4000))) return false;
+      if (!page) return true;
+      await sleep(600);
+      await js(`document.querySelector(${JSON.stringify(`[aria-label="${page} settings"]`)}).click(); true`);
+      return until("!!document.querySelector('#sub .vipage')", 4000);
+    },
+  })),
+  ...["play", "edit"].map((state) => ({
+    name: "gamepad: " + state, root: "#wado-gpad", open: async () => {
+      await computer();
+      await fx({ type: "hostConfig", state: { grants: GRANTS, caps: ["pad-gamepad"] } });
+      await js(`(() => { const W = window.__wado; W.pad.start = () => {}; W.pad.stop = () => {}; W.pad.send = () => true;
+        if (W.passkey) W.passkey.state.unlocked = true; W.gpadOpen({ where: "away", state: ${JSON.stringify(state)}, name: "bushido" }); return true; })()`);
+      if (state === "edit") await js(`window.__wado.gpadEdit.select("a"); true`);
+      return until("!!document.getElementById('wado-gpad') && !document.getElementById('wado-gpad').hidden", 4000);
+    },
+  })),
   { name: "console", root: "#stage", open: async () => {
     await load("?fixture");
     await fx({ type: "sessionOn" }, { type: "windows", workspace: 1, windows: [

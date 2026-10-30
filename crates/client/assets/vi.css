@@ -172,3 +172,11 @@
 .vidoorw { min-height: 56px; border-radius: var(--r2); background: var(--s2); color: var(--bright); display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 2px; font: 600 .75rem var(--body); padding: 4px; min-width: 0; }
 .vidoorw span { overflow: hidden; text-overflow: ellipsis; max-width: 100%; white-space: nowrap; }
+
+/* 44 px on the glass at every interface size (size.css's rule, for this page's own controls). */
+@media (pointer: coarse) {
+  html .vikey, html .vimore, html .viopenpill, html .vidoor, html .vidoorw, html .spage .phead .viopen, html .vichoice, html .vigact {
+    min-height: max(44px, var(--tap)); }
+  html .vitune { width: max(44px, var(--tap)); height: max(44px, var(--tap)); }
+  html .vikey { min-width: max(44px, var(--tap)); }
+}

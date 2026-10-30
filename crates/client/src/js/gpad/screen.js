@@ -135,6 +135,7 @@
     W.gpadRender(el.pa, G.S.L, { o, k: 1, live: true, w: el.pa.clientWidth, h: el.pa.clientHeight });
     el.ename.innerHTML = "";
     el.ename.textContent = G.S.L.name;
+    el.ename.title = G.S.L.name;
     if (M.dirty(G.S.L)) { const s = document.createElement("small"); s.textContent = " · edited"; el.ename.appendChild(s); }
     const r = G.paRect();
     el.grid.style.cssText = `--gx:${r.width / 40}px;--gy:${r.height / 20}px;left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px`;

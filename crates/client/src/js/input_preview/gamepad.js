@@ -19,7 +19,9 @@
     const k = W.gpadPlace.thumbK("l", w, h);
     const place = W.gpadPlace.all(L, "l", k, w, W.gpadVariants.REF.l[1] * k);
     for (const r of place.values()) r.y += (h - W.gpadVariants.REF.l[1] * k) / 2;
-    W.gpadRender(el, L, { o: "l", k, live: true, place });
+    // A picture you can press: the presses go nowhere, so it is not a control to a screen reader
+    // (the page's own settings are), and its thumbnail-size buttons are not targets.
+    W.gpadRender(el, L, { o: "l", k, live: false, place });
     if (first) W.gpadMotion.morph(el, first, ghosts);
   }
 

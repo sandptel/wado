@@ -103,8 +103,11 @@
       const q = e.getBoundingClientRect();
       l = Math.min(l, q.left); t = Math.min(t, q.top); r = Math.max(r, q.right); b = Math.max(b, q.bottom);
     }
-    const pad = 8;
-    el.selbox.style.cssText = `left:${l - pr.left - pad}px;top:${t - pr.top - pad}px;width:${r - l + pad * 2}px;height:${b - t + pad * 2}px`;
+    // The box and its corner dot stay on the screen: the dot's 44 px target reaches 22 px out.
+    const pad = 8, dot = 22;
+    const x0 = Math.max(-10 + pad, l - pr.left - pad), y0 = Math.max(-10 + pad, t - pr.top - pad);
+    const x1 = Math.min(pr.width + 10 - dot, r - pr.left + pad), y1 = Math.min(pr.height + 10 - dot, b - pr.top + pad);
+    el.selbox.style.cssText = `left:${x0}px;top:${y0}px;width:${x1 - x0}px;height:${y1 - y0}px`;
     const c = S.L.controls.find((x) => x.id === S.sel);
     const [w, h] = P.size(c, G.o(), 1);
     el.size.textContent = `${(c[G.o()][2] || 1).toFixed(2)}× · ${Math.round(Math.min(w, h))} px`;

@@ -47,7 +47,7 @@ pub fn render(ui: Ui) -> Element {
                     }
                     div { class: "pt",
                         if pk.is_some() {
-                            span { class: "eyebrow", i {}
+                            span { class: "eyebrow", title: "{name}", i {}
                                 if page.parent() == crate::ui::pages::Page::Input { "{name} · Virtual input" } else { "{name}" }
                             }
                         }
