@@ -17,10 +17,12 @@
 //! - [`ram`] — wado's own history, in memory.
 //! - [`share`] — following the clipboard for one link: new copies and the history.
 //! - [`data`] — bytes ⇄ the wire's text or `data:` URI.
+//! - [`held`] — what stays off the relay's lane: a copy over 1 MB.
 //! - [`serve`] — answering a device's clipboard messages.
 
 pub mod data;
 pub mod env;
+pub mod held;
 pub mod hub;
 pub mod ram;
 pub mod serve;

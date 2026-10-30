@@ -1023,6 +1023,10 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 if !clip.is_text() || clip.secret || live.load(Ordering::SeqCst) {
                     continue;
                 }
+                // Nor does text bigger than the lane carries (`crate::clip::held`).
+                if crate::clip::held::held(&clip, "", "").is_some() {
+                    continue;
+                }
                 let text = String::from_utf8_lossy(&clip.data).into_owned();
                 if send_relay(&out_tx_cb, &RelayMsg::Clipboard { text })
                     .await

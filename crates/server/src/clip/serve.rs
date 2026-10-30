@@ -76,11 +76,11 @@ pub async fn handle(
                 Err("that copy was a password — it is not shared".to_string())
             }
             Ok(clip) => {
-                let msg = RelayMsg::ClipData {
+                let msg = super::held::held(&clip, &id, "").unwrap_or_else(|| RelayMsg::ClipData {
                     id,
                     mime: clip.mime.clone(),
                     data: super::data::to_wire(&clip),
-                };
+                });
                 send(&out, &msg).await;
                 Ok(false)
             }
