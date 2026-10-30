@@ -159,17 +159,30 @@ class Session {
     return ch(g.r, a.r) + ch(g.g, a.g) + ch(g.b, a.b);
   }
 
-  /// res/device.rs `default_value`: the device's own aspect at 720p.
-  static String defaultRes(int sw, int sh) {
+  /// res/device.rs `options`: the device's own aspect at each target that fits the screen.
+  static List<String> resOptions(int sw, int sh) {
     (int, int) scaled(int t) {
       if (sw == 0 || sh == 0) return (t, t);
       final (w, h) = sw <= sh ? (t, (sh * t / sw).round()) : ((sw * t / sh).round(), t);
       return (w.clamp(16, 1 << 30) & ~1, h.clamp(16, 1 << 30) & ~1);
     }
 
-    final (w, h) = scaled(720);
-    if (w <= sw && h <= sh) return '${w}x$h';
-    return '${sw & ~1}x${sh & ~1}';
+    final out = <String>[];
+    for (final t in const [1440, 1080, 900, 720, 540]) {
+      final (w, h) = scaled(t);
+      if (w > sw.clamp(16, 1 << 30) || h > sh.clamp(16, 1 << 30)) continue;
+      if (!out.contains('${w}x$h')) out.add('${w}x$h');
+    }
+    if (out.isEmpty) out.add('${sw.clamp(16, 1 << 30) & ~1}x${sh.clamp(16, 1 << 30) & ~1}');
+    return out;
+  }
+
+  /// res/device.rs `default_value`: the 720p option, else the first that fits.
+  static String defaultRes(int sw, int sh) {
+    if (sw <= 0 || sh <= 0) return '1280x720';
+    final opts = resOptions(sw, sh);
+    final (w, h) = sw <= sh ? (720, (sh * 720 / sw).round() & ~1) : ((sw * 720 / sh).round() & ~1, 720);
+    return opts.contains('${w}x$h') ? '${w}x$h' : opts.first;
   }
 
   /// res/scale.rs `default_scale`.

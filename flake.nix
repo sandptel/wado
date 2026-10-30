@@ -244,6 +244,9 @@
                 includeSystemImages = emulator;
                 systemImageTypes = [ "google_apis" ];
                 abiVersions = [ "x86_64" ];
+                # The Flutter app's `jni` plugin builds native code with the SDK's CMake.
+                includeCmake = withFlutter;
+                cmakeVersions = [ "3.22.1" ];
               };
               ndkVersion = "29.0.14206865";
               sdk = composed.androidsdk;
