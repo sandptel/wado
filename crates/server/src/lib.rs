@@ -21,6 +21,7 @@ pub mod host;
 pub mod ice;
 pub mod input_order;
 pub mod instance;
+pub mod lane;
 pub mod links;
 pub mod linktest;
 pub mod menu_sheet;

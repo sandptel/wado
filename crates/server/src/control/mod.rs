@@ -274,42 +274,52 @@ impl Rooms {
     }
 }
 
-/// A room's one writer: seals in order, wraps each frame for the relay, and ends the link when
-/// told to — after everything before the close has gone.
+/// A room's one writer: orders and paces its frames on the lane (`crate::lane` — a control link
+/// is held to the same budget as a seat, and a joined device's SDP answer never waits behind its
+/// widgets' state), seals them in that order, wraps each for the relay, and ends the link when
+/// told to — after everything queued before the close has gone.
 async fn writer(
     room_id: String,
     link: Arc<Mutex<Link>>,
-    mut rx: mpsc::Receiver<String>,
+    rx: mpsc::Receiver<String>,
     relay: mpsc::Sender<String>,
     rooms: Rooms,
 ) {
-    while let Some(text) = rx.recv().await {
-        if text == CLOSE {
-            rooms.close(&room_id);
-            send(
-                &relay,
-                &RelayMsg::CtlClose {
-                    room_id: room_id.clone(),
-                    reason: String::new(),
-                },
-            )
-            .await;
-            return;
-        }
-        let frames = link
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .outbound(text);
-        for text in frames {
-            let wrapped = RelayMsg::Ctl {
-                room_id: room_id.clone(),
-                text,
-            };
-            if !send(&relay, &wrapped).await {
-                return;
+    crate::lane::pump::run(rx, crate::lane::Outbox::default(), move |text| {
+        let (room_id, relay, rooms) = (room_id.clone(), relay.clone(), rooms.clone());
+        let frames = if text == CLOSE {
+            Vec::new()
+        } else {
+            link.lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .outbound(text.clone())
+        };
+        async move {
+            if text == CLOSE {
+                rooms.close(&room_id);
+                send(
+                    &relay,
+                    &RelayMsg::CtlClose {
+                        room_id,
+                        reason: String::new(),
+                    },
+                )
+                .await;
+                return false;
             }
+            for text in frames {
+                let wrapped = RelayMsg::Ctl {
+                    room_id: room_id.clone(),
+                    text,
+                };
+                if !send(&relay, &wrapped).await {
+                    return false;
+                }
+            }
+            true
         }
-    }
+    })
+    .await;
 }
 
 async fn send(tx: &mpsc::Sender<String>, msg: &RelayMsg) -> bool {

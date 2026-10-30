@@ -674,22 +674,31 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     //
     // This writer is also the envelope's one sealing point (`crate::e2e::link`): a frame for the
     // device leaves sealed, in counter order, or is held until the handshake finishes.
+    //
+    // And it is the lane's pacer (`crate::lane`): signalling first and at once, everything bulk
+    // held under the relay's 64 KB/s cap — ordered *before* sealing, so the counters stay in order.
     ctx.link.lock().unwrap_or_else(|e| e.into_inner()).clear();
-    let (out_tx, mut out_rx) = mpsc::channel::<String>(128);
+    let (out_tx, out_rx) = mpsc::channel::<String>(128);
     let link = Arc::clone(&ctx.link);
-    let write_task = tokio::spawn(async move {
-        while let Some(text) = out_rx.recv().await {
-            let frames = link
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .outbound(text);
+    let outbox = crate::lane::Outbox::default();
+    let lane = outbox.gauge();
+    let ws_sink = Arc::new(tokio::sync::Mutex::new(ws_sink));
+    let write_task = tokio::spawn(crate::lane::pump::run(out_rx, outbox, move |text| {
+        let frames = link
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .outbound(text);
+        let ws_sink = Arc::clone(&ws_sink);
+        async move {
+            let mut sink = ws_sink.lock().await;
             for f in frames {
-                if ws_sink.send(WsMsg::Text(f)).await.is_err() {
-                    return;
+                if sink.send(WsMsg::Text(f)).await.is_err() {
+                    return false;
                 }
             }
+            true
         }
-    });
+    }));
 
     // ── 2. Register ──────────────────────────────────────────────────────────
     // What this relay can do, from its `registered`. An older relay neither waits for this
@@ -1025,9 +1034,14 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
         let mut rx = crate::shells::events();
         let out_tx_s = out_tx.clone();
         let refusal = shell_refusal(ctx, false);
+        let lane = lane.clone();
         tokio::spawn(async move {
             use crate::shells::Event;
             loop {
+                // A big dump waits for the lane (`crate::lane::gauge`) rather than queueing
+                // minutes of output behind a 64 KB/s link; what overflows meanwhile is the lag
+                // below, said in-band.
+                lane.room().await;
                 let ev = rx.recv().await;
                 if ev.is_ok() && refusal().is_some() {
                     continue;
