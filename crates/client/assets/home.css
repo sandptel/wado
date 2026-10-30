@@ -15,7 +15,7 @@
 .ctext { min-width: 0; display: grid; gap: 1px; }
 .cname { font: 700 1.0625rem/1.15 var(--display); color: var(--bright); letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   transform-origin: 0 0; justify-self: start; max-width: 100%; }
-.cos { font: .7188rem var(--mono); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cos { font: .7188rem var(--mono); color: var(--dim); overflow-wrap: anywhere; }
 .cline { display: flex; align-items: center; gap: 6px; font-size: .75rem; color: var(--dim); margin-top: 3px; white-space: nowrap; min-width: 0; }
 /* ▶: an accent tint; solid with the accent glow while a session runs there (rejoin is the likely
  * wish); grey on a computer that is not there. */

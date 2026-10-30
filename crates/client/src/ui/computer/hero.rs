@@ -171,7 +171,7 @@ pub fn Hero(ui: Ui, pk: String, r: Reach) -> Element {
             div { class: "hrow",
                 span { class: "disc", style: "--hue:var(--base{hue})", Icon { name: icon } }
                 div { class: "htext",
-                    h1 { class: "hname", "{name}" }
+                    h1 { class: "hname", title: "{name}", "{name}" }
                     div { class: "hsub", "{os}" }
                 }
             }

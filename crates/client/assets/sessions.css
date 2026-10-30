@@ -7,10 +7,10 @@
  * competes with video decode. Reduced motion and data-motion are base.css's. */
 
 .sessions2 .sect .sectcount { padding: 1px 8px; border-radius: 999px; background: var(--s2); color: var(--bright); font-size: .6875rem; }
-.srows { display: grid; gap: 8px; }
+.srows { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 
 /* ── a session ───────────────────────────────────────────────────────────────────────── */
-.srow { position: relative; display: grid; gap: 12px; padding: 14px; border-radius: var(--r3); background: var(--s1); border: 1px solid var(--line);
+.srow { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 14px; border-radius: var(--r3); background: var(--s1); border: 1px solid var(--line);
   animation: srise var(--dur-hero) var(--spring) backwards; animation-delay: calc(var(--i, 0) * 90ms + 60ms); }
 @keyframes srise { from { opacity: 0; translate: 0 22px; scale: .985; } }
 /* Someone is in it: the active-session border (good), and a slow wash that says it is alive. */
@@ -21,7 +21,7 @@
 @keyframes swash { 50% { opacity: .35; } }
 .srow > * { position: relative; }
 
-.srowhead { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.srowhead { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; }
 .srowtext { flex: 1; min-width: 0; display: grid; gap: 2px; }
 .srowtext b { font: 600 .9375rem var(--body); color: var(--bright); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .srowtext small { font-size: .6875rem; color: var(--dim); }
@@ -36,9 +36,10 @@
 
 /* ── who is in it: a chip per device ─────────────────────────────────────────────────── */
 .devchips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.devchip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .devchip { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px 0 10px; border-radius: 999px;
   background: color-mix(in oklab, var(--hue), var(--s1) 84%); color: var(--bright); font-size: .7812rem; font-weight: 600;
-  transform-origin: 16px 50%;
+  transform-origin: 16px 50%; max-width: 100%; min-width: 0;
   animation: chipin 460ms var(--pop) backwards; animation-delay: calc(var(--i, 0) * 90ms + var(--k, 0) * 70ms + 260ms); }
 @keyframes chipin { from { opacity: 0; scale: .4; translate: -6px 0; } }
 .devchip .hdot { width: 10px; height: 10px; border-radius: 50%; background: var(--hue); flex: none;
@@ -53,8 +54,8 @@
 .swhy svg { width: 16px; height: 16px; flex: none; margin-top: 1px; }
 
 /* ── what it may do ──────────────────────────────────────────────────────────────────── */
-.sacts { display: flex; gap: 8px; }
-.sacts .btn { width: auto; flex: 1 1 0; min-width: 0; padding: 0 10px; white-space: nowrap; }
+.sacts { display: flex; flex-wrap: wrap; gap: 8px; }
+.sacts .btn { width: auto; flex: 1 1 auto; min-width: 0; padding: 0 10px; white-space: nowrap; }
 .sacts .btn.danger { flex: 0 0 auto; padding: 0 14px; }
 .sacts .btn svg { width: 18px; height: 18px; }
 .sconfirm { animation: srise var(--dur-sheet) var(--spring) both; }
@@ -75,11 +76,11 @@
 .snew small { margin-left: auto; color: color-mix(in oklab, var(--bright), transparent 40%); font-size: .6875rem; }
 
 /* ── the link test ───────────────────────────────────────────────────────────────────── */
-.lmeter { --tone: var(--dim); display: grid; gap: 10px; padding: 14px; border-radius: var(--r3); background: var(--s1);
+.lmeter { --tone: var(--dim); display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 14px; border-radius: var(--r3); background: var(--s1);
   animation: srise var(--dur-hero) var(--spring) backwards 220ms; }
 .lmeter.tone-ok { --tone: var(--good); } .lmeter.tone-warn { --tone: var(--base0A); } .lmeter.tone-bad { --tone: var(--bad); }
 .lmeter.tone-run { --tone: var(--accent); }
-.lmhead { display: flex; align-items: center; gap: 10px; }
+.lmhead { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 .lmkey { font-size: .625rem; letter-spacing: .08em; text-transform: uppercase; font-weight: 600; color: var(--dim); }
 .lmverdict { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 999px; font-size: .75rem; font-weight: 600;
   color: var(--tone); background: color-mix(in oklab, var(--tone), transparent 86%);

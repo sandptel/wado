@@ -133,7 +133,7 @@
   color: var(--hue); background: color-mix(in oklab, var(--hue), transparent 84%); }
 .navtext { min-width: 0; }
 .navtext b { display: block; font-weight: 600; color: var(--bright); }
-.navtext small { display: block; font-size: .75rem; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.navtext small { display: block; font-size: .75rem; color: var(--dim); overflow-wrap: anywhere; }
 
 .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
@@ -354,7 +354,7 @@ details.card > summary { cursor: pointer; font-weight: 600; color: var(--bright)
 .fetchtext { min-width: 0; display: grid; gap: 1px; align-content: start; }
 .fetchhead { color: var(--accent); font-weight: 700; }
 .fetchrule { color: var(--dim); overflow: hidden; }
-.fetchrow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fetchrow { overflow-wrap: anywhere; }
 .fetchrow span { color: var(--accent); font-weight: 700; }
 .fetchblocks { display: flex; margin-top: 6px; }
 .fetchblocks i { width: 16px; height: 12px; }

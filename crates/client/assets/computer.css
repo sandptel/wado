@@ -35,7 +35,7 @@
 .cgrid { display: flex; flex-direction: column; gap: 12px; }
 .cgrid .col { display: contents; }
 .o1 { order: 1; } .o2 { order: 2; } .o3 { order: 3; } .o4 { order: 4; } .o5 { order: 5; } .o6 { order: 6; }
-.sx { display: grid; gap: 8px; min-width: 0; }
+.sx { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; min-width: 0; }
 .sx > .sect:first-child { margin-top: 4px; }
 .cpage .sect { margin: 8px 4px -2px; min-height: 28px; }
 
@@ -49,10 +49,10 @@
 .hrow .disc { width: 64px; height: 64px; transform-origin: 0 0; }
 .hrow .disc svg { width: 28px; height: 28px; }
 .htext { min-width: 0; }
-.hname { margin: 0; font: 700 1.875rem/1.05 var(--display); letter-spacing: -.025em; color: var(--bright); transform-origin: 0 0;
+.hname { margin: 0; font: 700 1.875rem/1.12 var(--display); letter-spacing: -.025em; color: var(--bright); transform-origin: 0 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.hsub { font: .75rem var(--mono); color: var(--dim); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.hmeta { display: grid; grid-template-columns: 1.25fr 1fr .8fr; gap: 8px; }
+.hsub { font: .75rem var(--mono); color: var(--dim); margin-top: 4px; overflow-wrap: anywhere; }
+.hmeta { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 5.5rem), 1fr)); gap: 8px; }
 .hcell { background: color-mix(in oklab, var(--s0), transparent 35%); border-radius: var(--r2); padding: 9px 10px 8px; min-width: 0;
   text-align: left; display: grid; gap: 2px; align-content: start; }
 button.hcell:disabled { opacity: 1; cursor: default; }
@@ -60,7 +60,7 @@ button.hcell:active:not(:disabled) { scale: .97; }
 .hcell .k { font-size: .625rem; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); font-weight: 600; }
 .hcell .v { font: 600 1.0625rem/1.15 var(--display); color: var(--bright); white-space: nowrap; display: flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
 .hcell .v small { font: 500 .6875rem var(--body); color: var(--dim); }
-.hcell .s { font-size: .7188rem; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hcell .s { font-size: .7188rem; color: var(--dim); overflow-wrap: anywhere; }
 .hcell.tone-ok .v { color: var(--good); } .hcell.tone-warn .v { color: var(--base0A); } .hcell.tone-bad .v { color: var(--bad); }
 .explain { margin-top: -16px; display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--dur-sheet) var(--spring), margin var(--dur-sheet) var(--spring); }
 .explain.open { grid-template-rows: 1fr; margin-top: -6px; }
@@ -72,8 +72,8 @@ button.hcell:active:not(:disabled) { scale: .97; }
 .hero2 .connerr { margin-top: -8px; }
 
 /* ── link words: a tone dot that moves only while something is alive ──────────────────── */
-.lstate { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--tone); --tone: var(--dim); white-space: nowrap; min-width: 0; }
-.lstate > span { overflow: hidden; text-overflow: ellipsis; }
+.lstate { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--tone); --tone: var(--dim); min-width: 0; }
+.lstate > span { overflow-wrap: anywhere; }
 .lstate.ok { --tone: var(--good); } .lstate.warn { --tone: var(--base0A); } .lstate.bad { --tone: var(--bad); }
 .ldot { position: relative; width: 8px; height: 8px; border-radius: 50%; background: var(--tone); flex: none; }
 .ldot::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--tone); opacity: 0; }
@@ -87,14 +87,15 @@ button.hcell:active:not(:disabled) { scale: .97; }
 @keyframes roll { from { translate: 0 60%; opacity: 0; } }
 
 /* ── big actions ──────────────────────────────────────────────────────────────────────── */
-.acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.acts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 8.5rem), 1fr)); gap: 8px; }
+.act > * { min-width: 0; }
 .act { position: relative; display: grid; align-content: space-between; gap: 14px; min-height: 104px; padding: 12px 14px 14px; border-radius: var(--r3);
   background: var(--s2); text-align: left; overflow: hidden; }
 .act .aic { width: 42px; height: 42px; border-radius: var(--r2); display: grid; place-items: center; background: var(--s3); color: var(--bright);
   transition: translate 220ms var(--pop), border-radius 360ms var(--spring); }
 .act:active:not(:disabled) .aic { translate: 0 2px; transition-duration: var(--dur-press); }
 .act b { display: block; font: 700 1.0625rem/1.1 var(--display); color: var(--bright); letter-spacing: -.01em; }
-.act small { display: block; font-size: .75rem; color: var(--dim); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.act small { display: block; font-size: .75rem; color: var(--dim); margin-top: 2px; overflow-wrap: anywhere; }
 .act.primary { background: var(--accent); color: var(--on-accent); box-shadow: 0 10px 30px color-mix(in oklab, var(--accent), transparent 72%); }
 .act.primary b, .act.primary small { color: var(--on-accent); }
 .act.primary small { opacity: .8; }
@@ -160,7 +161,7 @@ button.hcell:active:not(:disabled) { scale: .97; }
 .qt .ic { width: 40px; height: 40px; border-radius: var(--r2); display: grid; place-items: center; background: var(--s3); color: var(--bright);
   transition: background var(--dur) var(--ease), border-radius 360ms var(--spring), color var(--dur) var(--ease); }
 .qt b { display: block; font-size: .8125rem; font-weight: 600; color: var(--bright); }
-.qt small { display: block; font-size: .7188rem; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.qt small { display: block; font-size: .7188rem; color: var(--dim); overflow-wrap: anywhere; max-width: 100%; }
 .qt .qtl { min-width: 0; max-width: 100%; }
 /* The Morphing Toggle Rule: on, it fills with the accent, its corners grow by 8px and the icon
  * well turns into a circle; the icon dips and pops back. */
