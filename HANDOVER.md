@@ -173,7 +173,7 @@ Timings on the computer side are fine: session stop 9–94 ms, start 87 ms to ac
 - Haptics on thresholds: `native_feel.js`, `Haptics.kt`.
 - Measure first: research §8, `libinput record`, a constant-speed scripted stroke.
 
-### 6. Native Android app (decided, not planned)
+### 6. Native Android app — Jetpack Compose (framework decided 2026-10-30, plan not written)
 - **Decision** (Decision Log `2026-10-30`): the app goes fully native and the WebView is removed.
   The web client stays for browsers and iOS.
 - The protocol moves into the Rust core (`crates/mobile-core`): relay link, E2E, pairing,
