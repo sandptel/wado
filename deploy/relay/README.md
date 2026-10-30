@@ -45,6 +45,12 @@ sudo systemctl enable --now wado-relay
 Update later: `git pull && cargo build --release -p wado-relay`, reinstall, `systemctl restart
 wado-relay`. Daemons redial within ~5 s.
 
+After the update, `scripts/relay-health.sh https://relay.<domain>` should show a `lane` cap
+(64 KB/s per seat, 2 MiB burst). The F4 release adds two caps, both additive: `lane` (the
+fallback lane's cap is enforced here) and `idle_seat` (a refusal for a held seat says who holds
+it and whether anything runs there). Older daemons and clients ignore both; current daemons
+already pace themselves under the cap, so they work the same against an older relay.
+
 ## 5. TLS
 
 Put `deploy/relay/Caddyfile` at `/etc/caddy/Caddyfile` with `relay.example.com` replaced, then
