@@ -329,3 +329,64 @@ travel.
    one device-wide `open` preference.
 3. **Pinch on the picture in console mode** to zoom the console's scale toward 1:1 around the
    fingers? This would need gesture arbitration with apps' own pinch, so it is deferred.
+
+## 13. Build notes (`2026-10-30`, F5)
+
+What was built, and the calls made while building it that this spec did not settle. Each is
+reviewable; none changes an invariant.
+
+**Shape.** `ui/surround/layout.rs` computes the console (T1, unit-tested); `js/stage_fit.js`
+writes it as CSS variables (`--c-<slot>-x|r|y|w|h|o`) and `assets/surround.css` places the
+controls from them. The cockpit is today's CSS, untouched. `data-arr` on the root is the one
+switch, flipped by `js/stage_morph.js`, which snapshots every control, flips it, and flies each
+one back (FLIP on `translate`/`scale`, the picture on `transform`). Plates fade by CSS.
+
+1. **Same nodes, placed by CSS rather than by per-button slots.** The dock's groups, the rail's
+   buttons, the workspace bar, the link badge and the people chip are positioned in the console by
+   `position: fixed` at their slot; FLIP measures leaves, so every button still flies on its own.
+   The prototype's per-button slots for the dock (and its plates being born from members' bounds)
+   are simplified: plates fade in place.
+2. **Every face drives the session, not the computer's own desktop.** The trackpad modules
+   (`pad_touch`, `pad_pointer`, `pad_gestures`) send to the daemon's *virtual touchpad on the
+   host* (`W.pad`, the `input` grant) — a different screen from the picture. So the deck's
+   Touchpad is `js/deck_pad.js`: relative motion on the session's own input channel
+   (`pointer_motion`, `button`, `scroll` at a client-tracked pointer), and a pointer dot drawn over
+   the picture, since the compositor draws none. Keys (`js/deck_keys.js`) are session key events,
+   with the trackpad's latching. The look (`.tpkey`, `.tptype`, `.tpact`) is reused.
+3. **Quick actions are session actions plus the computer's player.** `trackpad { quick }` is a
+   list of *host* actions run through the pad link; in a session, "next workspace" there would
+   switch the host's workspaces. The face holds Previous / Next workspace (the session's) and
+   Play / pause plus `.npmini` (the computer's media player, `HostAction::Media`, `host` grant —
+   said in words when missing). One list, three doors is not met; revisit with the Virtual input
+   work.
+4. **Maximise is one button, "Maximise or restore".** `WindowInfo` does not say whether a window
+   is maximised, so the icon cannot morph (S13). Adding `maximized` to `WindowInfo` is the fix.
+5. **The people chip is F6's** (`js/presence.js`, "N here · names"), placed in the band; no avatar
+   stack and no people card. The ghost dots refit when the picture lands (`W.presenceRefit`).
+6. **The cockpit rail's face button is its own node** (`.railface`), not the console's face
+   button moved; folds (window strip into the dock icon, faces into the active face) are fades.
+7. **Gamepad face = a seam.** The pad's box is the `pad` slot (`W.stageFit.slot("pad")`), and
+   `surround.css` re-anchors today's clusters for a band (sticks fold away, as in the prototype)
+   or a column deck. Choosing the face turns the on-screen pad on, and leaving it turns it off.
+   No gamepad settings or visuals were added; the revamp plugs into the slot.
+8. **`face` has an `auto` value** (the default) in `device { console { } }`, since the daemon
+   cannot know the pointer: Touchpad on touch, Quick on a desktop.
+9. **The control centre's Full screen tile** is the same toggle in a session (it was browser
+   fullscreen only); outside one it is unchanged.
+10. **Targets.** Workspace and rail buttons grow to 44px in the console only; the cockpit keeps its
+    denser dock. The link pill stays DESIGN's 32px status target.
+11. **The debug readout (`#stagebar`) rides the picture's corner** in the console.
+
+**Not done / not verified.** The decode-drop and fps measurement in both arrangements needs the
+Pixel and was not taken (§8): no claim is made about the cost of a scaled `<video>`. Contrast was
+checked by eye on default-dark and catppuccin-latte only, not computed across three schemes.
+Keyboard and screen-reader passes were not run beyond focus surviving the toggle and `inert` on
+hidden controls (checked by `scripts/console-check.mjs`). The prototype's anticipation and wave
+stagger are in; corner caps are not (the radius switches with the arrangement).
+
+**Decision Log entry to add to `WADO_PLAN.md`** (untracked here): `2026-10-30` — **Pocket Console
+built (F5).** Sessions open as a console by default; Full screen morphs to the cockpit and asks for
+browser fullscreen. Scale, never resize: the console is a transform on the video. The deck's faces
+drive the session's input channel, not the host's virtual touchpad. Device prefs gain
+`device { console { open face } }`, self-settable like `trackpad`. The `fullscreen` host action
+displays as "Window full screen".
