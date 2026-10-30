@@ -589,7 +589,10 @@ mod tests {
         let Some(Action::Dial(u)) = a.iter().find(|x| matches!(x, Action::Dial(_))) else {
             panic!("{a:?}")
         };
-        assert!(u.ends_with("&takeover=1") && !u.contains("control=1"), "{u}");
+        assert!(
+            u.ends_with("&takeover=1") && !u.contains("control=1"),
+            "{u}"
+        );
         step(&mut l, 1, Input::Opened);
         step(&mut l, 2, Input::Closed);
         let a = step(&mut l, 99_999, Input::Timer(Timer::Retry));
@@ -606,13 +609,17 @@ mod tests {
         step(&mut l, 1, Input::Opened);
         let a = step(&mut l, 2, accepted(&[]));
         assert!(matches!(l.state(), LinkState::Securing), "{a:?}");
-        assert!(a.iter().any(|x| matches!(x, Action::Relay(t) if t.contains("join_accepted"))));
+        assert!(a
+            .iter()
+            .any(|x| matches!(x, Action::Relay(t) if t.contains("join_accepted"))));
         let a = step(
             &mut l,
             3,
             Input::Frame(r#"{"type":"taken_over","by":"Laptop"}"#.into()),
         );
-        assert!(a.iter().any(|x| matches!(x, Action::Relay(t) if t.contains("taken_over"))));
+        assert!(a
+            .iter()
+            .any(|x| matches!(x, Action::Relay(t) if t.contains("taken_over"))));
         assert_eq!(l.state(), &LinkState::TakenOver);
         assert!(step(&mut l, 9_999_999, Input::Timer(Timer::Retry)).is_empty());
     }

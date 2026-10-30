@@ -119,18 +119,44 @@ impl LinkView {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CoreEvent {
-    Computers { list: Vec<ComputerView> },
-    Link { key: String, view: LinkView },
-    Host { key: String, view: HostView },
-    Sessions { key: String, rows: Vec<SessionRow> },
-    Pair { op: u64, step: PairStep },
-    Answer { op: u64, outcome: Outcome },
+    Computers {
+        list: Vec<ComputerView>,
+    },
+    Link {
+        key: String,
+        view: LinkView,
+    },
+    Host {
+        key: String,
+        view: HostView,
+    },
+    Sessions {
+        key: String,
+        rows: Vec<SessionRow>,
+    },
+    Pair {
+        op: u64,
+        step: PairStep,
+    },
+    Answer {
+        op: u64,
+        outcome: Outcome,
+    },
     /// A room the UI opened (`Core::open_room`): its link state.
-    RoomState { id: String, view: LinkView },
+    RoomState {
+        id: String,
+        view: LinkView,
+    },
     /// A room's opened message, plaintext JSON, in arrival order.
-    RoomMsg { id: String, json: String },
+    RoomMsg {
+        id: String,
+        json: String,
+    },
     /// A relay frame the room's UI reads itself, in arrival order.
-    RoomRelay { id: String, json: String },
+    RoomRelay {
+        id: String,
+        json: String,
+    },
 }
 
 impl CoreEvent {
