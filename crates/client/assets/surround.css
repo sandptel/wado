@@ -192,12 +192,11 @@
 .npmini .ctl { grid-column: 1 / -1; display: flex; justify-content: space-around; }
 .npmini .ctl button { width: 44px; height: 36px; border-radius: 999px; color: var(--bright); }
 
-/* Gamepad: the deck is the pad's box; its own anchors place the clusters (js/gamepad.js). */
+/* Gamepad: the deck is the pad's box; js/gamepad.js packs the session's layout into it by side
+ * (W.gpadPlace.deck) — left groups left, right groups right, the middle row between. */
 .dgp { display: none; }
 :root[data-arr="console"][data-face="gamepad"] #wado-pad {
-  position: fixed; inset: auto; left: var(--c-pad-x); top: var(--c-pad-y); width: var(--c-pad-w); height: var(--c-pad-h);
-  opacity: 1; --pad-u0: calc(min(24px, var(--c-pad-h) / 7) * var(--pad-scale, 1));
-  --ix: 8px; --iy: 6px; --it: 8px; }
+  position: fixed; inset: auto; left: var(--c-pad-x); top: var(--c-pad-y); width: var(--c-pad-w); height: var(--c-pad-h); }
 
 /* Targets: 44 px everywhere in the console (spec §7); the cockpit keeps its denser dock. */
 :root[data-arr="console"] #wado-bar .wsnum, :root[data-arr="console"] #wado-bar .wsapp { min-width: 44px; width: 44px; height: 44px; }
@@ -208,23 +207,6 @@
   left: calc(var(--c-pic-x) + var(--c-pic-w) - 8px); translate: -100% 0; max-width: calc(var(--c-pic-w) - 16px); }
 /* A landscape band is shared with the workspaces: the people chip keeps to its own corner. */
 :root[data-arr="console"][data-form="land"] #wado-here, :root[data-arr="console"][data-form="port"] #wado-here { max-width: 132px; }
-
-/* The gamepad seam (ui/surround/deck/gamepad.rs): the box above is the whole contract. These
- * cluster overrides only fit today's overlay into it, and go when the gamepad lays itself out.
- * A band deck (portrait) is too short for the overlay's stacked corners: the crosses sit at the
- * sides, the shoulders and Select · Guide · Start between them, and the sticks fold away (they
- * fold into the crosses in the prototype too). A column deck (landscape) keeps the corners, with
- * the centre buttons in the band under the picture rather than on it. */
-:root[data-arr="console"][data-face="gamepad"][data-cdeck="row"] #wado-pad {
-  --cross-y: calc(50% - 0.65 * var(--pad-u)); --cross-x: calc(var(--ix) + 2.2 * var(--pad-u)); }
-:root[data-arr="console"][data-face="gamepad"][data-cdeck="row"] #wado-pad .padstick { display: none; }
-:root[data-arr="console"][data-face="gamepad"][data-cdeck="row"] #wado-pad [data-id="l1"],
-:root[data-arr="console"][data-face="gamepad"][data-cdeck="row"] #wado-pad [data-id="l2"] { left: calc(50% - 2.55 * var(--pad-u)); }
-:root[data-arr="console"][data-face="gamepad"][data-cdeck="row"] #wado-pad [data-id="r1"],
-:root[data-arr="console"][data-face="gamepad"][data-cdeck="row"] #wado-pad [data-id="r2"] { right: auto; left: calc(50% + 0.15 * var(--pad-u)); }
-:root[data-arr="console"][data-face="gamepad"] #wado-pad .pill { top: auto; bottom: var(--iy); }
-:root[data-arr="console"][data-face="gamepad"][data-cdeck="col"] #wado-pad {
-  --pad-u0: calc(min(24px, var(--c-deck-w) / 4.7) * var(--pad-scale, 1)); --ix: 0px; }
 
 /* The clipboard's voice (F10, #clipdock): above the dock in the cockpit; in the console it rides
  * the picture's bottom edge, so it never covers the deck under the thumbs. Reachable in both. */

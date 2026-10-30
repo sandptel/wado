@@ -5,13 +5,25 @@
 // the exact command to allow it with a Copy button, how to turn the trackpad on, how to give the
 // computer /dev/uinput — or, on a computer wado cannot drive yet, says so. Never a blank pad.
 //
-//   W.padWhy(message)            → { cause, title, body, cmds: [..], alt, act } (pure; tested)
-//   W.padWhyShow(el, message, retry)   fill `el` with that card; `retry` reopens the pad
+//   W.padWhy(message, noun?)     → { cause, title, body, cmds: [..], alt, act } (pure; tested)
+//   W.padWhyShow(el, message, retry, noun?)   fill `el` with that card; `retry` reopens the pad
+//
+// `noun` is "trackpad" (the default) or "gamepad": the gamepad rides the same link, gate and
+// passkey (spec D3), so its refusals are these, said about a controller.
 
 (() => {
   // Each cause: how the daemon's words start or what they contain, and what to tell the person.
-  W.padWhy = (message) => {
+  W.padWhy = (message, noun) => {
     const m = String(message || "");
+    if (noun === "gamepad") return game(W.padWhy(m));
+    if (/^older daemon/.test(m)) {
+      return {
+        cause: "old",
+        title: "This computer's wado is too old for the gamepad away from a session",
+        body: "Update wado on the computer, or use the gamepad inside a session.",
+        cmds: [],
+      };
+    }
     const grab = (re) => (m.match(re) || [])[1] || "";
     if (W.passkeyIsLock && W.passkeyIsLock(m)) {
       const none = /^This needs a passkey/.test(m);
@@ -69,6 +81,20 @@
     return { cause: "other", title: "The trackpad stopped", body: m, cmds: [] };
   };
 
+  // The same card, about a controller rather than a trackpad.
+  function game(w) {
+    const say = (t) => t && t.replace(/the trackpad and keyboard/g, "the gamepad").replace(/the trackpad and typing/g, "The gamepad, trackpad and typing")
+      .replace(/The trackpad and typing/g, "The gamepad, trackpad and typing").replace(/trackpad/g, "gamepad");
+    const out = { ...w, title: say(w.title), body: say(w.body) };
+    if (w.cause === "uinput") {
+      out.title = "The computer can't make a controller yet";
+      out.body = "wado makes a real controller through /dev/uinput, and this computer doesn't let it open that. On the computer, run these once:";
+    }
+    if (w.cause === "off") out.body = "Its config has trackpad { enabled #false }, which turns off the touchpad, keyboard and gamepad. To turn them on, run on the computer:";
+    if (w.cause === "unsupported") out.body = "wado can only make a controller on Linux for now. The gamepad inside a session still works where the session does.";
+    return out;
+  }
+
   const copyText = async (text) => {
     try { await navigator.clipboard.writeText(text); return true; } catch (_) {}
     try {
@@ -92,8 +118,8 @@
     return n;
   };
 
-  W.padWhyShow = (el, message, retry) => {
-    const w = W.padWhy(message);
+  W.padWhyShow = (el, message, retry, noun) => {
+    const w = W.padWhy(message, noun);
     // The same refusal again (the relayed ping and the direct offer both hear it): leave the card
     // be. Drawn anew, the button under a finger is swapped mid-tap and the tap is lost.
     if (!el.hidden && el.dataset.msg === String(message || "")) return w;
@@ -123,7 +149,7 @@
       b.type = "button";
       b.onclick = () => W.passkeyFor("pad", retry);
       el.appendChild(b);
-    } else if (w.cause !== "unsupported") {
+    } else if (w.cause !== "unsupported" && w.cause !== "old" && retry) {
       const b = node("button", "btn tpact", "Try again");
       b.type = "button";
       b.onclick = () => retry && retry();
