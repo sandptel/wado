@@ -20,11 +20,12 @@ use wado_protocol::relay_wire::{
     display_remote_id, normalize_remote_id, WireMsg, LEAVE_CLOSE_CODE, WIRE_VERSION,
 };
 
+use crate::lane::Lane;
 use crate::registry::Instance;
 use crate::room::{Claim, Want};
 use crate::signaling::{
-    caps, head, is_pong, occupied_reason, peer_ip, send_deny, send_wire, AbortOnDrop, WsTx,
-    KEEPALIVE, SILENCE,
+    caps, head, is_pong, is_relay_ping, occupied_reason, peer_ip, send_deny, send_wire,
+    AbortOnDrop, WsTx, KEEPALIVE, SILENCE,
 };
 use crate::AppState;
 
@@ -413,8 +414,14 @@ async fn join_loop(socket: WebSocket, remote_id: String, j: Joiner, peer: String
         }
     }));
     let rid_fwd = rid.clone();
+    // The lane's cap, each way (`crate::lane`). The relay's own pings are not the seat's traffic.
+    let mut down = Lane::new(format!("{label} ← its computer"));
+    let mut up = Lane::new(format!("{label} → its computer"));
     let mut fwd = AbortOnDrop(tokio::spawn(async move {
         while let Some(text) = client_inbox_rx.recv().await {
+            if !is_relay_ping(&text) {
+                down.admit(text.len()).await;
+            }
             if ws_tx.send(Message::Text(text)).await.is_err() {
                 debug!(remote_id = %rid_fwd, "client fwd task: ws write failed");
                 break;
@@ -460,6 +467,7 @@ async fn join_loop(socket: WebSocket, remote_id: String, j: Joiner, peer: String
                     continue;
                 }
                 debug!(remote_id = %rid, client = %peer, "client msg: {}", head(&text));
+                up.admit(text.len()).await;
                 if server_inbox_tx.send(text.to_string()).await.is_err() {
                     info!(remote_id = %rid, "server inbox closed — ending room");
                     break;

@@ -10,7 +10,8 @@
 //! - `WS /join/:server_id`    — client join + post-handshake message forwarding.
 //!   Query: `instance`, `client`, `name`, `takeover`, `control` — all optional; see
 //!   `join::JoinQuery`. `control=1` is a seatless control-only link (`controls`).
-//! - `GET /health`            — JSON health check `{ servers, rooms }`.
+//! - `GET /health`            — JSON health check `{ status, servers, rooms, version, uptime_s,
+//!   lane, caps }` — what an uptime monitor reads.
 
 use std::net::SocketAddr;
 
@@ -28,6 +29,7 @@ mod controls;
 mod error;
 mod join;
 mod join_control;
+mod lane;
 mod panic_log;
 mod ratelimit;
 mod register;
@@ -48,6 +50,8 @@ pub struct AppState {
     pub controls: controls::ControlStore,
     pub config: RelayConfig,
     pub limiter: ratelimit::JoinLimiter,
+    /// For `/health`'s uptime.
+    pub started: std::time::Instant,
 }
 
 #[tokio::main]
@@ -73,6 +77,7 @@ async fn main() -> anyhow::Result<()> {
             cfg.join_burst,
             std::time::Duration::from_secs(cfg.join_refill_secs),
         ),
+        started: std::time::Instant::now(),
     };
 
     let app = Router::new()
@@ -114,11 +119,18 @@ async fn online(
     )
 }
 
+/// What an uptime monitor reads (`deploy/relay/uptime.md`, `scripts/relay-health.sh`): `status`
+/// is the one field a monitor needs; the rest says which relay answered and what it enforces.
 async fn health(State(state): State<AppState>) -> Json<serde_json::Value> {
     Json(json!({
         "status": "ok",
         "servers": state.registry.count(),
         "rooms": state.rooms.count(),
         "controls": state.controls.count(),
+        "version": env!("CARGO_PKG_VERSION"),
+        "git": env!("WADO_GIT"),
+        "uptime_s": state.started.elapsed().as_secs(),
+        "lane": { "bytes_per_sec": lane::LANE_BYTES_PER_SEC, "burst": lane::LANE_BURST_BYTES },
+        "caps": signaling::caps(),
     }))
 }
