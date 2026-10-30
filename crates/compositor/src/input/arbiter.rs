@@ -58,6 +58,8 @@ pub struct Arbiter {
     buttons: HashMap<(Origin, u8), (PointerButton, f64, f64)>,
     gesture: Option<(Origin, Gesture)>,
     last: Option<Origin>,
+    /// Devices whose input has reached the seat, for the log.
+    seen: std::collections::HashSet<Origin>,
     /// Events dropped by a lease, for the log.
     pub dropped: u64,
 }
@@ -231,6 +233,12 @@ impl Arbiter {
             | InputEvent::GamepadButton { .. }
             | InputEvent::GamepadAxis { .. } => vec![ev],
         };
+        if self.seen.insert(origin) {
+            tracing::debug!(
+                origin,
+                "arbiter: first input from a device reached the seat"
+            );
+        }
         self.last = Some(origin);
         out
     }
@@ -338,6 +346,7 @@ impl Arbiter {
                 });
             }
         }
+        self.seen.remove(&origin);
         if self.last == Some(origin) {
             self.last = None;
         }

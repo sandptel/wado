@@ -260,8 +260,11 @@ pub async fn handle(hub: &Arc<Hub>, room: &ViewRoom, who: &Who, text: &str, cx: 
         }
         // Anyone in it may end it for everyone (the user's decision).
         RelayMsg::SessionStop => {
-            if !member() {
-                let message = "only someone in this session can end it".to_string();
+            // Anyone in it; from outside it, only a device that could take it over anyway.
+            if !member() && !hub.gate.grants(&who.key).takeover {
+                let message = "only someone in this session can end it — or a device with the \
+                               takeover grant"
+                    .to_string();
                 return send(out, &RelayMsg::SessionError { message }).await;
             }
             info!(device = %who.name, "joined room: ended the session for everyone");
