@@ -12,8 +12,11 @@
 /// What the relay allows each seat, each way, in bytes per second.
 pub const LANE_BYTES_PER_SEC: u32 = 64 * 1024;
 /// How far ahead of the rate a seat may run at the relay: a session's start (its apps list,
-/// host state, answer) goes at once.
-pub const LANE_BURST_BYTES: u32 = 256 * 1024;
+/// host state, answer) goes at once — and so does F6's speed test (`js/linktest.js`, 384 KB of
+/// filler, ~530 KB once sealed), which must measure the path, not this cap: held to 64 KB/s it
+/// would read 0.5 Mbps and refuse every join (`FLOOR_KBPS` is 1.5 Mbps). A burst is no TURN:
+/// past it, the long-run rate is still 64 KB/s.
+pub const LANE_BURST_BYTES: u32 = 768 * 1024;
 
 /// What the daemon allows itself on the lane — under the relay's numbers, so the small frames it
 /// lets jump the queue (an SDP answer, a session verb) still fit inside the relay's budget.

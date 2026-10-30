@@ -73,7 +73,7 @@ pub const SILENCE: Duration = Duration::from_secs(45);
 /// - `room_strict`: `strict=1` (with `control=1` and `instance=`) reaches exactly that daemon, or
 ///   parks until it is back — never another daemon of the pool.
 /// - `lane`: what this relay forwards for a seat or a control link is paced to the fallback
-///   lane's cap, 64 KB/s each way after a 256 KB burst (`crate::lane`). Frames wait; none is
+///   lane's cap, 64 KB/s each way after a 768 KB burst (`crate::lane`). Frames wait; none is
 ///   dropped. `/health` says the numbers.
 pub const CAPS: &[&str] = &[
     "park",

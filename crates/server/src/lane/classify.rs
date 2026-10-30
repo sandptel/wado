@@ -21,7 +21,9 @@ pub enum Class {
     Spare,
 }
 
-/// For the relay itself, or wrapped for a control room (already paced there).
+/// For the relay itself, or wrapped for a control room (already paced there) — and the speed
+/// test (`crate::linktest`), which measures the path and must not measure this pacer instead: it
+/// is a bounded burst the relay's own burst is sized to carry (`LANE_BURST_BYTES`).
 const FREE: &[&str] = &[
     "register",
     "pong",
@@ -31,6 +33,8 @@ const FREE: &[&str] = &[
     "occupancy",
     "ctl",
     "ctl_close",
+    "link_test_chunk",
+    "link_test_done",
 ];
 
 /// What waits its turn. Everything not named here or above is urgent: a new message type is
@@ -38,8 +42,6 @@ const FREE: &[&str] = &[
 const BULK: &[&str] = &[
     "pty_output",
     "pty_exit",
-    "link_test_chunk",
-    "link_test_done",
     "files_out",
     "files_chunk",
     "clip_data",

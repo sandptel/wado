@@ -25,10 +25,10 @@
 // Kills only what it started, by pid.
 
 import { spawn, execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync } from "node:fs";
-import { createServer } from "node:http";
+import { mkdtempSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { bundlePage, pairPage } from "./lib/bundle-page.mjs";
 
 const ROOT = new URL("..", import.meta.url).pathname;
 const BIN = join(ROOT, process.env.WADO_BIN || "target/release");
@@ -63,68 +63,6 @@ async function waitFor(p, re, ms = 20000) {
   const t0 = Date.now();
   while (Date.now() - t0 < ms) { if (re.test(p.out)) return true; await sleep(100); }
   return false;
-}
-
-// ── The client bundle, as bridge.rs assembles it ─────────────────────────────
-// Each js/ file becomes its own classic script (they share one global lexical scope, as they do
-// inside the one eval), so a file that throws at load is reported by name instead of silently
-// taking every later file with it. Literal pieces between includes are kept with their neighbours.
-function bundle() {
-  const src = readFileSync(join(ROOT, "crates/client/src/bridge.rs"), "utf8");
-  const body = src.slice(src.indexOf("pub const JS: &str = concat!("), src.indexOf(");\n", src.indexOf("pub const JS")));
-  const unesc = (s) => s.replace(/\\(.)/g, (_, c) => (c === "n" ? "\n" : c));
-  const parts = [];
-  let inline = "";
-  for (const m of body.matchAll(/include_str!\("([^"]+)"\)|"((?:[^"\\]|\\.)*)"/g)) {
-    if (m[1] && m[1].startsWith("js/") && m[1].endsWith(".js")) {
-      if (inline.trim()) parts.push({ name: "inline", code: inline });
-      inline = "";
-      let code = readFileSync(join(ROOT, "crates/client/src", m[1]), "utf8");
-      // The eval is an async function body; a classic script cannot await at top level.
-      if (m[1] === "js/lifecycle.js") code = code.replace(/\nawait new Promise\(\(\) => \{\}\);\s*$/, "\n");
-      parts.push({ name: m[1], code });
-    } else if (m[1]) inline += readFileSync(join(ROOT, "crates/client/src", m[1]), "utf8");
-    else inline += unesc(m[2]);
-  }
-  if (inline.trim()) parts.push({ name: "inline", code: inline });
-  return parts;
-}
-
-const PARTS = bundle();
-const PAGE = `<!doctype html><html><body>
-<video id="wado-video" muted autoplay playsinline></video>
-<script>
-  window.__ev = []; window.__errs = [];
-  window.dioxus = { send: (m) => window.__ev.push([performance.now(), m]) };
-  window.addEventListener("error", (e) => window.__errs.push((e.filename || "") + ": " + e.message));
-</script>
-${PARTS.map((_, i) => `<script src="/b/${i}.js"></script>`).join("\n")}
-</body></html>`;
-const http = createServer((req, res) => {
-  const m = /^\/b\/(\d+)\.js$/.exec(req.url);
-  if (m) { res.writeHead(200, { "content-type": "text/javascript" }); return res.end(PARTS[+m[1]].code); }
-  res.writeHead(200, { "content-type": "text/html" });
-  res.end(PAGE);
-});
-
-// ── Chrome over CDP ──────────────────────────────────────────────────────────
-class Page {
-  constructor() { this.id = 0; this.pend = new Map(); }
-  async open() {
-    start("google-chrome-stable", ["--headless=new", "--remote-debugging-port=" + CDP, "--user-data-dir=" + join(T, "chrome"),
-      "--autoplay-policy=no-user-gesture-required", "--no-first-run", "about:blank"]);
-    let list;
-    for (let i = 0; i < 60 && !list; i++) { await sleep(200); try { list = await (await fetch(`http://127.0.0.1:${CDP}/json/list`)).json(); } catch {} }
-    this.ws = new WebSocket(list.find((t) => t.type === "page").webSocketDebuggerUrl);
-    await new Promise((r) => (this.ws.onopen = r));
-    this.ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.id && this.pend.has(m.id)) { this.pend.get(m.id)(m); this.pend.delete(m.id); } };
-  }
-  cdp(method, params = {}) { return new Promise((r) => { const i = ++this.id; this.pend.set(i, r); this.ws.send(JSON.stringify({ id: i, method, params })); }); }
-  async ev(expr) {
-    const r = await this.cdp("Runtime.evaluate", { expression: expr, returnByValue: true, awaitPromise: true });
-    if (r.result?.exceptionDetails) throw new Error(JSON.stringify(r.result.exceptionDetails).slice(0, 400));
-    return r.result?.result?.value;
-  }
 }
 
 // In the page: when did the current peer connection decode its first frame?
@@ -164,8 +102,8 @@ const stats = (xs) => {
 };
 
 let failures = 0;
+let page = null;
 try {
-  await new Promise((r) => http.listen(HTTP, "127.0.0.1", r));
   start(join(BIN, "wado-relay"), ["--bind", "127.0.0.1:" + PORT]);
   await sleep(400);
   const d = start(join(BIN, "wado"), ["daemon"], { WADO_RELAY_URL: `ws://127.0.0.1:${PORT}`, WADO_REMOTE_ID: RID, WADO_INSTANCE: "1", WADO_UDP_SLICE: "14" });
@@ -174,20 +112,12 @@ try {
     .toString().replace(/\x1b\[[0-9;]*m/g, "");
   const q = new URLSearchParams(qr.match(/open: \S+\?(\S+)/)[1]);
 
-  const page = new Page();
-  await page.open();
-  await page.cdp("Page.navigate", { url: `http://127.0.0.1:${HTTP}/` });
-  await sleep(1500);
-  const errs = await page.ev("window.__errs");
+  page = await bundlePage({ dir: T, cdpPort: CDP, httpPort: HTTP, start });
+  const errs = await page.errors();
   if (errs.length) console.log("  (bundle load errors, not fatal unless they are in the link files)\n    " + errs.join("\n    "));
-  await page.ev(`(() => {
-    localStorage.setItem("wado.pair", ${JSON.stringify(q.get("pair"))});
-    localStorage.setItem("wado.hostpins", JSON.stringify({ ${JSON.stringify(RID)}: { pin: ${JSON.stringify(q.get("hk"))}, from: "qr" } }));
-    const W = window.__wado;
-    window.__rlog = [];
-    const r = W.rlog; W.rlog = (l) => { window.__rlog.push([performance.now(), l]); return r(l); };
-    return true;
-  })()`);
+  await pairPage(page, RID, { pair: q.get("pair"), hk: q.get("hk") });
+  await page.ev(`(() => { const W = window.__wado; window.__rlog = [];
+    const r = W.rlog; W.rlog = (l) => { window.__rlog.push([performance.now(), l]); return r(l); }; return true; })()`);
   await page.ev(WATCH);
 
   // ── cold start ──
@@ -240,7 +170,7 @@ try {
   failures++;
   console.log("FAIL " + (e.stack || e));
 } finally {
+  if (page) page.close();
   cleanup();
-  http.close();
 }
 process.exit(failures ? 1 : 0);

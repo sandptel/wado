@@ -15,7 +15,7 @@ unreachable — not your computer". You should hear first. Three layers, cheapes
 ```sh
 curl -s https://<relay>/health
 {"status":"ok","servers":2,"rooms":1,"controls":0,"version":"0.0.3","git":"abc1234",
- "uptime_s":86400,"lane":{"bytes_per_sec":65536,"burst":262144},"caps":[…]}
+ "uptime_s":86400,"lane":{"bytes_per_sec":65536,"burst":786432},"caps":[…]}
 ```
 
 `status` is the one field a monitor needs. `lane` says the fallback lane's cap is enforced (a relay
