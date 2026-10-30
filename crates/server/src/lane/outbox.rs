@@ -6,16 +6,18 @@
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
+use tracing::warn;
 use wado_protocol::lane::Pace;
 
 use super::classify::{Class, class};
 use super::gauge::Gauge;
 
 /// A safety stop, not the working limit: streaming producers hold themselves to
-/// [`super::gauge::ROOM_BYTES`]. Past this the outbox takes no more until it drains, and whatever
-/// is behind in the channel — urgent or not — waits (the daemon loop then blocks on its send).
-/// Only a producer that ignores the gauge gets here; a device leaving empties it
-/// ([`Outbox::set_generation`]), so stale bulk never piles up across reconnects.
+/// [`super::gauge::ROOM_BYTES`]. Past this a new bulk frame is dropped, and said so — never held
+/// in the channel, where it would hold everything behind it, urgent or not, and the relay loop
+/// sending its `pong` with them (the hang of 2026-10-30). Only a producer that ignores the gauge
+/// gets here; a device leaving empties it ([`Outbox::set_generation`]), so stale bulk never piles
+/// up across reconnects.
 pub const BACKLOG_BYTES: usize = 16 << 20;
 
 /// What the next frame is, now.
@@ -35,6 +37,8 @@ pub struct Outbox {
     epoch: Instant,
     /// Spare frames dropped since the last report.
     pub dropped: u64,
+    /// Bulk frames dropped because [`BACKLOG_BYTES`] already waited.
+    pub shed: u64,
     gauge: Gauge,
     /// The link generation (`crate::e2e::link::Link::generation`) what is queued belongs to.
     generation: u64,
@@ -63,6 +67,7 @@ impl Outbox {
             pace,
             epoch: Instant::now(),
             dropped: 0,
+            shed: 0,
             gauge: Gauge::default(),
             generation: 0,
             last_age: Duration::ZERO,
@@ -103,6 +108,15 @@ impl Outbox {
         match class(&text) {
             Class::Free => self.urgent.push_back((text, false, Instant::now())),
             Class::Urgent => self.urgent.push_back((text, true, Instant::now())),
+            Class::Bulk if self.bulk_bytes >= BACKLOG_BYTES => {
+                warn!(
+                    "lane: {} ({} KB) dropped — {} MB of bulk already waits on the lane",
+                    crate::e2e::link::kind(&text).unwrap_or("?"),
+                    text.len() / 1024,
+                    self.bulk_bytes >> 20
+                );
+                self.shed += 1;
+            }
             Class::Bulk => self.queue_bulk(text),
             // A log line is worth a lane that is idle, never one that is busy.
             Class::Spare => {
@@ -113,11 +127,6 @@ impl Outbox {
                 }
             }
         }
-    }
-
-    /// May the caller pull another frame off its channel?
-    pub fn wants_more(&self) -> bool {
-        self.bulk_bytes < BACKLOG_BYTES
     }
 
     pub fn is_empty(&self) -> bool {
@@ -236,9 +245,15 @@ mod tests {
         assert!(g.queued() > 100 && g.queued() < 200, "only bulk counts");
         while o.next() != Next::Idle {}
         assert_eq!(g.queued(), 0);
-        while o.wants_more() {
+        while o.bulk_bytes < BACKLOG_BYTES {
             o.push(f("pty_output", 64 * 1024));
         }
-        assert!(o.bulk_bytes >= BACKLOG_BYTES && g.busy());
+        assert!(g.busy());
+        // Past the stop, bulk is dropped rather than held; an answer still gets in.
+        let full = o.bulk_bytes;
+        o.push(f("clip_data", 1 << 20));
+        o.push(f("sdp_answer", 10));
+        assert_eq!((o.bulk_bytes, o.shed), (full, 1));
+        assert!(matches!(o.next(), Next::Send(t) if t.contains("sdp_answer")));
     }
 }

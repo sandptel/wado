@@ -12,6 +12,9 @@
 
 const clipFull = {};  // id -> { mime, data }
 const clipWait = {};  // id -> [resolve]
+// id -> why it stays on the computer: too big for the relay's lane (`clip_held`, server::clip::held).
+const clipHeld = {};
+const heldError = (why) => Object.assign(new Error(why), { held: true });
 
 W.relayOn("clip_history", (m) => emit({
   type: "clipHistory", available: !!m.available, entries: m.entries || [], error: m.error || "",
@@ -27,6 +30,14 @@ W.relayOn("clip_error", (m) => {
   emit({ type: "clipError", text: m.message || "" });
 });
 W.relayOn("clip_now", (m) => W.clipShare.now(W.clipShare.mainKey(), m));
+W.relayOn("clip_held", (m) => {
+  if (m.id) {
+    clipHeld[m.id] = m.message || "";
+    (clipWait[m.id] || []).forEach((f) => f(null));
+    delete clipWait[m.id];
+  }
+  W.clipShare.held(W.clipShare.mainKey(), m);
+});
 W.relayOn("clip_pushed", (m) => W.clipShare.pushed(W.clipShare.mainKey(), m));
 
 {
@@ -42,20 +53,21 @@ W.relayOn("clip_pushed", (m) => W.clipShare.pushed(W.clipShare.mainKey(), m));
 const clipSend = (msg) => { if (W.relayUp && W.relaySendMsg) W.relaySendMsg(msg); };
 W.clipList = () => clipSend({ type: "clip_list" });
 W.clipPin = (id, on) => clipSend({ type: "clip_pin", id, on: !!on });
-W.clipDelete = (id) => { delete clipFull[id]; clipSend({ type: "clip_delete", id }); };
+W.clipDelete = (id) => { delete clipFull[id]; delete clipHeld[id]; clipSend({ type: "clip_delete", id }); };
 
 const clipFetch = (id) => {
   if (clipFull[id]) return Promise.resolve(clipFull[id]);
+  if (id in clipHeld) return Promise.reject(heldError(clipHeld[id]));
   return new Promise((resolve, reject) => {
     const first = !clipWait[id];
-    (clipWait[id] = clipWait[id] || []).push(resolve);
+    (clipWait[id] = clipWait[id] || []).push((c) => c ? resolve(c) : reject(heldError(clipHeld[id])));
     if (first) clipSend({ type: "clip_get", id });
     setTimeout(() => reject(new Error("the computer did not answer")), 8000);
   });
 };
 
 // An image tile came into view: fetch its picture once.
-W.clipThumb = (id) => { if (!clipFull[id] && !clipWait[id]) clipFetch(id).catch(() => {}); };
+W.clipThumb = (id) => { if (!clipFull[id] && !clipWait[id] && !(id in clipHeld)) clipFetch(id).catch(() => {}); };
 // Entry `id` in full ({ mime, data }), for sending it back to the computer.
 W.clipFetchEntry = (id) => clipFetch(id);
 
@@ -69,10 +81,12 @@ const asPng = async (blob) => {
   return new Promise((res) => c.toBlob(res, "image/png"));
 };
 
-// Inside a tap: entry `id` onto this device's clipboard; `done(ok)` says whether it took.
+// Inside a tap: entry `id` onto this device's clipboard; `done(ok, why)` says whether it took,
+// and `why` when it stays on the computer.
 W.clipCopy = (id, kind, done) => {
   const image = kind === "image";
   const fin = done || (() => {});
+  if (id in clipHeld) return fin(false, clipHeld[id]);
   if (!navigator.clipboard || !window.ClipboardItem) return fin(false);
   const blob = clipFetch(id).then(async (c) => image
     ? asPng(await (await fetch(c.data)).blob())

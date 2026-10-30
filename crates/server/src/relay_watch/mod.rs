@@ -9,6 +9,7 @@
 //! | [`record`] | the link as a file per daemon, and reading them back |
 //! | [`state`] | the link as it happens, and the heartbeat |
 //! | [`push`] | "wado's relay is unreachable — not your computer", and "back" |
+//! | [`stuck`] | the relay loop's own watchdog: still reading, or stuck |
 //!
 //! The outside view — is the relay up for anyone — is the uptime check's
 //! (`deploy/relay/uptime.md`, `scripts/relay-health.sh`).
@@ -16,3 +17,4 @@
 pub mod push;
 pub mod record;
 pub mod state;
+pub mod stuck;

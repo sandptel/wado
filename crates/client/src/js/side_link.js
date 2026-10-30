@@ -214,6 +214,14 @@
         delete l.clipWait[m.id];
         break;
       case "clip_now": if (W.clipShare) W.clipShare.now(l.key, m); break;
+      case "clip_held":
+        if (m.id) {
+          l.clipHeld[m.id] = m.message || "";
+          (l.clipWait[m.id] || []).forEach((f) => f(null));
+          delete l.clipWait[m.id];
+        }
+        if (W.clipShare) W.clipShare.held(l.key, m);
+        break;
       case "clip_pushed": if (W.clipShare) W.clipShare.pushed(l.key, m); break;
       case "clip_error": if (W.clipShare) W.clipShare.error(l.key, m); break;
       case "pad_out":
@@ -261,7 +269,7 @@
         continue;
       }
       const nl = { key, relay: w.relay, id: w.id, wants: w.wants, state: "", ws: null, chan: null, e2e: "", backoff: 0,
-        pics: {}, clipFull: {}, clipWait: {}, retry: 0, poll: 0, dead: false, refused: false };
+        pics: {}, clipFull: {}, clipWait: {}, clipHeld: {}, retry: 0, poll: 0, dead: false, refused: false };
       links.set(key, nl);
       dial(nl);
     }
@@ -275,20 +283,23 @@
     const l = links.get(key);
     if (!l) return Promise.reject(new Error("no link"));
     if (l.clipFull[id]) return Promise.resolve(l.clipFull[id]);
+    const held = () => Object.assign(new Error(l.clipHeld[id]), { held: true });
+    if (id in l.clipHeld) return Promise.reject(held());
     return new Promise((ok, no) => {
       const first = !l.clipWait[id];
-      (l.clipWait[id] = l.clipWait[id] || []).push(ok);
+      (l.clipWait[id] = l.clipWait[id] || []).push((c) => c ? ok(c) : no(held()));
       if (first) send(l, { type: "clip_get", id });
       setTimeout(() => no(new Error("no answer")), 8000);
     });
   };
-  W.sideClipThumb = (key, id) => { const l = links.get(key); if (l && !l.clipFull[id] && !l.clipWait[id]) W.sideClipFetch(key, id).catch(() => {}); };
+  W.sideClipThumb = (key, id) => { const l = links.get(key); if (l && !l.clipFull[id] && !l.clipWait[id] && !(id in l.clipHeld)) W.sideClipFetch(key, id).catch(() => {}); };
 
   // Inside a tap, as cliphost.js does for the selected computer: the write is the tap's, however
-  // long the fetch takes. `done(ok)` says whether it took.
+  // long the fetch takes. `done(ok, why)` says whether it took, and `why` when it stays there.
   W.sideClipCopy = (key, id, kind, done) => {
     const fin = done || (() => {});
     if (!links.get(key) || !navigator.clipboard || !window.ClipboardItem) return fin(false);
+    if (id in links.get(key).clipHeld) return fin(false, links.get(key).clipHeld[id]);
     const image = kind === "image";
     const blob = W.sideClipFetch(key, id).then(async (c) => image ? await (await fetch(c.data)).blob() : new Blob([c.data], { type: "text/plain" }));
     navigator.clipboard.write([new ClipboardItem({ [image ? "image/png" : "text/plain"]: blob })])

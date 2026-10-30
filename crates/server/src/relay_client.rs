@@ -56,6 +56,10 @@ const BACKOFF_MAX: Duration = Duration::from_secs(5);
 /// even if TCP has not noticed — behind a tunnel it may never notice.
 const RELAY_SILENCE: Duration = Duration::from_secs(45);
 
+/// The watchdog (`crate::relay_watch::stuck`) gives a quiet loop this much past
+/// [`RELAY_SILENCE`], so a loop that is only waiting on a silent relay says so itself first.
+const STUCK_GRACE: Duration = Duration::from_secs(5);
+
 /// Everything a relay connection needs; lives across reconnects.
 struct RelayCtx {
     api: Arc<API>,
@@ -1019,6 +1023,10 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 if !clip.is_text() || clip.secret || live.load(Ordering::SeqCst) {
                     continue;
                 }
+                // Nor does text bigger than the lane carries (`crate::clip::held`).
+                if crate::clip::held::held(&clip, "", "").is_some() {
+                    continue;
+                }
                 let text = String::from_utf8_lossy(&clip.data).into_owned();
                 if send_relay(&out_tx_cb, &RelayMsg::Clipboard { text })
                     .await
@@ -1151,1324 +1159,1381 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     // ── 4. Main message loop ─────────────────────────────────────────────────
     // Every frame is handled in turn, and an arm that awaits holds every frame behind it: each
     // one is timed (`crate::slow`), so a "didn't answer" on the device names its stage here.
+    //
+    // And the loop is watched from outside (`crate::relay_watch::stuck`): an arm that never
+    // returns keeps the silence check below from ever running, so a task of its own notices the
+    // loop has stopped reading, and the loop is dropped where it stands.
     let mut seq: u64 = 0;
-    loop {
-        let frame = if relay_pings {
-            match tokio::time::timeout(RELAY_SILENCE, ws_stream.next()).await {
-                Ok(f) => f,
-                Err(_) => {
-                    warn!(
-                        "relay client: nothing from the relay for {RELAY_SILENCE:?} — reconnecting"
-                    );
+    let reads = crate::relay_watch::stuck::Reads::default();
+    if relay_pings {
+        reads.arm();
+    }
+    let stuck = crate::relay_watch::stuck::Stuck::default();
+    let _watch = crate::relay_watch::stuck::watch(
+        reads.clone(),
+        RELAY_SILENCE + STUCK_GRACE,
+        Arc::clone(&stuck),
+    );
+    let serve = async {
+        loop {
+            // The writer (`crate::lane::pump`) ends when the socket stops taking frames: then the
+            // link is dead whatever the read side says.
+            let next = async {
+                if relay_pings {
+                    tokio::time::timeout(RELAY_SILENCE, ws_stream.next())
+                        .await
+                        .ok()
+                } else {
+                    Some(ws_stream.next().await)
+                }
+            };
+            let frame = tokio::select! {
+                f = next => match f {
+                    Some(f) => f,
+                    None => {
+                        warn!(
+                            "relay client: nothing from the relay for {RELAY_SILENCE:?} — reconnecting"
+                        );
+                        break;
+                    }
+                },
+                () = out_tx.closed() => {
+                    warn!("relay client: the relay stopped taking what this computer sends — reconnecting");
                     break;
                 }
-            }
-        } else {
-            ws_stream.next().await
-        };
-        let Some(frame) = frame else { break };
-        let text = match frame {
-            Ok(WsMsg::Text(t)) => t,
-            Ok(WsMsg::Ping(_)) | Ok(WsMsg::Pong(_)) => continue,
-            Ok(WsMsg::Close(_)) => break,
-            Ok(_) => continue,
-            Err(e) => {
-                warn!("relay client: WS error: {e}");
-                break;
-            }
-        };
-
-        // A control-only link's frame: its own room, its own envelope, never the seat's. Taken
-        // before the liveness bump below, so a widget polling never keeps an abandoned session
-        // alive.
-        seq += 1;
-        if text.starts_with(r#"{"type":"ctl"#) {
-            let _span = crate::slow::Span::new("relay handler", "ctl", seq);
-            match serde_json::from_str::<RelayMsg>(&text) {
-                Ok(RelayMsg::CtlOpen {
-                    room_id,
-                    client_key,
-                    client_name,
-                    ..
-                }) => ctl_rooms.open(&ctl, room_id, client_key, client_name).await,
-                Ok(RelayMsg::Ctl { room_id, text }) => ctl_rooms.frame(&ctl, &room_id, &text).await,
-                Ok(RelayMsg::CtlClose { room_id, .. }) => ctl_rooms.close(&room_id),
-                _ => warn!("relay client: an unreadable control-link frame — dropped"),
-            }
-            continue;
-        }
-
-        // Liveness for `viewer_watchdog`. Bumped on every frame, including ones we do not
-        // understand — the point is that the relay link is carrying traffic, not what it says.
-        //
-        // The relay's own pings are excluded, and must stay excluded: since `2026-10-02` the
-        // relay pings this daemon every 15 s, and counting those would keep `silent_ms` near
-        // zero forever — the watchdog would never reap anything. Verified live 2026-09-19,
-        // before pings: an abandoned session was reaped at exactly `VIEWER_GRACE`.
-        if text.trim() != r#"{"type":"ping"}"# {
-            ctx.last_relay_msg.store(now_ms(), Ordering::Relaxed);
-        }
-
-        // The envelope: the relay's own frames pass, the device's arrive sealed and are opened,
-        // and nothing else from the device side is acted on. See `crate::e2e`.
-        let sorted = ctx
-            .link
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .inbound(&text);
-        let text = match sorted {
-            Inbound::Relay => text,
-            Inbound::Msg(m) => m,
-            Inbound::Hello { v, eph } => {
-                let _span = crate::slow::Span::new("relay handler", "e2e_hello", seq);
-                let reply = ctx.link.lock().unwrap_or_else(|e| e.into_inner()).hello(
-                    &ctx.host_key,
-                    v,
-                    &eph,
-                );
-                if let Some(m) = reply {
-                    out_tx.send(serde_json::to_string(&m)?).await.ok();
+            };
+            reads.touch();
+            let Some(frame) = frame else { break };
+            let text = match frame {
+                Ok(WsMsg::Text(t)) => t,
+                Ok(WsMsg::Ping(_)) | Ok(WsMsg::Pong(_)) => continue,
+                Ok(WsMsg::Close(_)) => break,
+                Ok(_) => continue,
+                Err(e) => {
+                    warn!("relay client: WS error: {e}");
+                    break;
                 }
-                continue;
-            }
-            Inbound::Finish {
-                dev_pk,
-                sig,
-                pair_mac,
-                typed_mac,
-            } => {
-                let _span = crate::slow::Span::new("relay handler", "e2e_finish", seq);
-                e2e_finish(ctx, &out_tx, &dev_pk, &sig, &pair_mac, &typed_mac).await;
-                continue;
-            }
-            Inbound::Drop(why) => {
-                let kind = crate::e2e::link::kind(&text).unwrap_or("?");
-                warn!("e2e: dropped a frame from the relay link ({kind}) — {why}");
-                continue;
-            }
-        };
+            };
 
-        let _span = crate::slow::Span::new(
-            "relay handler",
-            crate::e2e::link::kind(&text).unwrap_or("?"),
-            seq,
-        );
-        let msg = match serde_json::from_str::<RelayMsg>(&text) {
-            Ok(m) => m,
-            Err(e) => {
-                // Answered, not just logged. A dropped message leaves the sender waiting out a
-                // timeout with no way to tell "the daemon rejected this" from "the daemon is
-                // wedged" — which cost a debugging cycle here on 2026-09-13, when a probe sent
-                // the wrong shape for `Quality` and simply hung.
-                warn!("relay client: bad JSON from relay: {e}");
-                send_relay(
-                    &out_tx,
-                    &RelayMsg::SessionError {
-                        ack: 0,
-                        message: format!("this daemon could not understand that message: {e}"),
-                    },
-                )
-                .await
-                .ok();
-                continue;
-            }
-        };
-
-        match msg {
-            RelayMsg::PeerConnected {
-                room_id,
-                client_addr,
-                client_key,
-                client_name,
-                pair,
-            } => {
-                // Remembered, not just logged: every WebRTC line below is tagged with it.
-                let short: String = room_id.chars().take(8).collect();
-                *ctx.peer.lock().unwrap_or_else(|e| e.into_inner()) =
-                    format!("{client_addr} room={short}");
-                *ctx.room.lock().unwrap_or_else(|e| e.into_inner()) = room_id.clone();
-                ctx.link
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .reset(&room_id, &client_key);
-                *ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()) =
-                    (client_key.clone(), client_name.clone());
-                // The seat's viewer is a participant like a joined room's: a fresh origin, so the
-                // last one's held input, place and dot go with it.
-                {
-                    let origin = ctx.hub.origin();
-                    let old = ctx.seat_origin.swap(origin, Ordering::SeqCst);
-                    if old != 0 {
-                        ctx.hub.detach(old);
-                    }
-                    ctx.hub.attach(
-                        origin,
-                        &client_key,
-                        &client_name,
-                        out_tx.clone(),
-                        Some(room_id.clone()),
-                    );
-                }
-                // A new viewer never inherits the last one's trackpad or what it held down.
-                ctx.pad.close();
-                // Nor its passkey unlock: a new link proves itself again — unless the device chose a
-                // longer one, which is bound to its key, not to a link (`crate::passkey::stay`).
-                crate::passkey::unlock::lock_link();
-                // The audio sink appears for this device, named after it.
-                tokio::spawn(crate::host::viewer(Some(client_name.clone())));
-                ctx.media_sent.clear();
-                clip_live.store(false, Ordering::SeqCst);
-                ctx.viewer_ok.store(!relay_gates, Ordering::SeqCst);
-                info!(room_id = %room_id, client = %client_addr, device = %client_name, "relay client: peer connected");
-                if relay_gates {
-                    let pre_approved = ctx
-                        .approved
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .remove(&room_id);
-                    if pre_approved {
-                        ctx.viewer_ok.store(true, Ordering::SeqCst);
-                        send_relay(&out_tx, &RelayMsg::PeerAccept { room_id })
-                            .await
-                            .ok();
-                    } else {
-                        let room_now = Arc::clone(&ctx.room);
-                        let ok = Arc::clone(&ctx.viewer_ok);
-                        let rid_now = room_id.clone();
-                        tokio::spawn(decide_join(
-                            ctx.gate.clone(),
-                            out_tx.clone(),
-                            Join {
-                                room_id,
-                                key: client_key,
-                                name: client_name,
-                                addr: client_addr,
-                                pair,
-                            },
-                            false,
-                            move |_| {
-                                // Only if it is still the viewer here — it may have left.
-                                if *room_now.lock().unwrap_or_else(|e| e.into_inner()) == rid_now {
-                                    ok.store(true, Ordering::SeqCst);
-                                }
-                            },
-                        ));
-                    }
-                }
-            }
-
-            RelayMsg::PeerCheck {
-                room_id,
-                client_addr,
-                client_key,
-                client_name,
-                pair,
-            } => {
-                // A device asking to take the seat from the viewer here. Decided exactly like a
-                // join, but without touching `room` — the current viewer is still the current
-                // viewer until the relay says otherwise.
-                info!(room_id = %room_id, device = %client_name, "relay client: takeover check");
-                let approved = Arc::clone(&ctx.approved);
-                tokio::spawn(decide_join(
-                    ctx.gate.clone(),
-                    out_tx.clone(),
-                    Join {
+            // A control-only link's frame: its own room, its own envelope, never the seat's. Taken
+            // before the liveness bump below, so a widget polling never keeps an abandoned session
+            // alive.
+            seq += 1;
+            if text.starts_with(r#"{"type":"ctl"#) {
+                let _span = crate::slow::Span::new("relay handler", "ctl", seq);
+                match serde_json::from_str::<RelayMsg>(&text) {
+                    Ok(RelayMsg::CtlOpen {
                         room_id,
-                        key: client_key,
-                        name: client_name,
-                        addr: client_addr,
-                        pair,
-                    },
-                    true,
-                    move |room_id| {
-                        approved
-                            .lock()
-                            .unwrap_or_else(|e| e.into_inner())
-                            .insert(room_id.to_string());
-                    },
-                ));
-            }
-
-            RelayMsg::ApproveAnswer { .. } => {
-                // From a client older than pairing-only (`2026-10-27`): no device approves
-                // another any more.
-                warn!("relay client: an approval answer — remote approval is gone; ignored");
-            }
-
-            RelayMsg::PeerDisconnected { room_id } => {
-                // A check-approved room that never connected.
-                ctx.approved
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .remove(&room_id);
-                {
-                    let mut room = ctx.room.lock().unwrap_or_else(|e| e.into_inner());
-                    if *room != room_id {
-                        info!(room_id = %room_id, "relay client: departure of a viewer already replaced — ignored");
-                        continue;
+                        client_key,
+                        client_name,
+                        ..
+                    }) => ctl_rooms.open(&ctl, room_id, client_key, client_name).await,
+                    Ok(RelayMsg::Ctl { room_id, text }) => {
+                        ctl_rooms.frame(&ctl, &room_id, &text).await
                     }
-                    room.clear();
+                    Ok(RelayMsg::CtlClose { room_id, .. }) => ctl_rooms.close(&room_id),
+                    _ => warn!("relay client: an unreadable control-link frame — dropped"),
                 }
-                ctx.link.lock().unwrap_or_else(|e| e.into_inner()).clear();
-                crate::links::clear(&ctx.remote_id);
-                ctx.viewer_ok.store(false, Ordering::SeqCst);
-                // Nobody back within 30 s and no session to keep playing into it: the sink goes,
-                // so the computer's mixer shows no output for a device that is not there.
-                {
-                    let room = Arc::clone(&ctx.room);
-                    let started = Arc::clone(&ctx.session_started);
-                    tokio::spawn(async move {
-                        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
-                        let empty = room.lock().unwrap_or_else(|e| e.into_inner()).is_empty();
-                        if empty && !started.load(Ordering::SeqCst) {
-                            crate::host::viewer(None).await;
-                        }
-                    });
-                }
-                // Deliberately *not* a teardown. See `RelayMsg::PeerDisconnected`: the relay used
-                // to synthesize a `SessionStop` here, which made every dropped socket cost the
-                // viewer their windows and their applications. The session stays up and
-                // `viewer_watchdog` is left to decide, which is the only place that decision
-                // belongs — it is the one thing here with a clock.
-                //
-                // The peer connection *is* closed, because it is certainly dead and webrtc-rs
-                // releases its ICE sockets only on `close().await`, never on `Drop` (I14). Left
-                // open, each abandoned viewer holds four of the 101 pinned UDP ports until the
-                // next offer happens to replace it.
-                //
-                // Out of the session, too: what it held is released and the others are told. The
-                // session's attached state is everyone's (`crate::viewers`), so a joined device
-                // still watching keeps it rendering.
-                let origin = ctx.seat_origin.swap(0, Ordering::SeqCst);
-                if origin != 0 {
-                    ctx.hub.detach(origin);
-                } else {
-                    let _ = ctx.cmd_tx.send(CompositorCommand::ViewerAttached(false));
-                }
-                let dead = ctx
-                    .active_pc
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .take();
-                // Files go with the device: no transfer outlives the link that authorised it.
-                close_files(&ctx.files_pc);
-                ctx.pad.close(); // and the trackpad: no key stays held after the device leaves
-                crate::passkey::unlock::lock_link();
-                if let Some(pc) = dead {
-                    tokio::spawn(async move {
-                        if let Err(e) = pc.close().await {
-                            warn!("relay client: closing a departed viewer's peer connection: {e}");
-                        }
-                    });
-                }
-                // Nothing to keep the seat for: no session, or one left running (resumable by any
-                // device from the list). Holding it anyway is how one phone's closed tabs filled
-                // the whole pool and every other device was refused (2026-10-03).
-                if !ctx.session_started.load(Ordering::SeqCst)
-                    || ctx.detached.load(Ordering::SeqCst)
-                {
-                    send_relay(
-                        &out_tx,
-                        &RelayMsg::SeatHold {
-                            room_id: room_id.clone(),
-                            hold_ms: 0,
-                        },
-                    )
-                    .await
-                    .ok();
-                    info!(room_id = %room_id, "relay client: viewer disconnected — no session to hold, seat freed");
+                continue;
+            }
+
+            // Liveness for `viewer_watchdog`. Bumped on every frame, including ones we do not
+            // understand — the point is that the relay link is carrying traffic, not what it says.
+            //
+            // The relay's own pings are excluded, and must stay excluded: since `2026-10-02` the
+            // relay pings this daemon every 15 s, and counting those would keep `silent_ms` near
+            // zero forever — the watchdog would never reap anything. Verified live 2026-09-19,
+            // before pings: an abandoned session was reaped at exactly `VIEWER_GRACE`.
+            if text.trim() != r#"{"type":"ping"}"# {
+                ctx.last_relay_msg.store(now_ms(), Ordering::Relaxed);
+            }
+
+            // The envelope: the relay's own frames pass, the device's arrive sealed and are opened,
+            // and nothing else from the device side is acted on. See `crate::e2e`.
+            let sorted = ctx
+                .link
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .inbound(&text);
+            let text = match sorted {
+                Inbound::Relay => text,
+                Inbound::Msg(m) => m,
+                Inbound::Hello { v, eph } => {
+                    let _span = crate::slow::Span::new("relay handler", "e2e_hello", seq);
+                    let reply = ctx.link.lock().unwrap_or_else(|e| e.into_inner()).hello(
+                        &ctx.host_key,
+                        v,
+                        &eph,
+                    );
+                    if let Some(m) = reply {
+                        out_tx.send(serde_json::to_string(&m)?).await.ok();
+                    }
                     continue;
                 }
-                info!(
-                    room_id = %room_id,
-                    "relay client: viewer disconnected — session kept, {VIEWER_GRACE:?} of grace \
-                     starts from the last moment it was connected"
-                );
-            }
+                Inbound::Finish {
+                    dev_pk,
+                    sig,
+                    pair_mac,
+                    typed_mac,
+                } => {
+                    let _span = crate::slow::Span::new("relay handler", "e2e_finish", seq);
+                    e2e_finish(ctx, &out_tx, &dev_pk, &sig, &pair_mac, &typed_mac).await;
+                    continue;
+                }
+                Inbound::Drop(why) => {
+                    let kind = crate::e2e::link::kind(&text).unwrap_or("?");
+                    warn!("e2e: dropped a frame from the relay link ({kind}) — {why}");
+                    continue;
+                }
+            };
 
-            RelayMsg::SessionStart { config } => {
-                // Said on arrival, so a start's stages can be read off the log: this, then
-                // `compositor session active`, the offer, `viewer connected via WebRTC`.
-                info!(
-                    seq,
-                    "relay client: session_start received — {}x{}@{}",
-                    config.width,
-                    config.height,
-                    config.fps
-                );
-                ctx.hub.audio_low.send_if_modified(|v| {
-                    std::mem::replace(v, config.low_latency_audio) != config.low_latency_audio
-                });
-                if let Err(why) = config.validate() {
-                    warn!("relay client: refusing an invalid session config: {why}");
+            let _span = crate::slow::Span::new(
+                "relay handler",
+                crate::e2e::link::kind(&text).unwrap_or("?"),
+                seq,
+            );
+            let msg = match serde_json::from_str::<RelayMsg>(&text) {
+                Ok(m) => m,
+                Err(e) => {
+                    // Answered, not just logged. A dropped message leaves the sender waiting out a
+                    // timeout with no way to tell "the daemon rejected this" from "the daemon is
+                    // wedged" — which cost a debugging cycle here on 2026-09-13, when a probe sent
+                    // the wrong shape for `Quality` and simply hung.
+                    warn!("relay client: bad JSON from relay: {e}");
                     send_relay(
                         &out_tx,
                         &RelayMsg::SessionError {
                             ack: 0,
-                            message: format!("that configuration cannot work: {why}"),
+                            message: format!("this daemon could not understand that message: {e}"),
                         },
                     )
                     .await
                     .ok();
                     continue;
                 }
-                // A session already running is not an error, it is a choice. Telling the viewer
-                // "a session is already active" and closing the socket — which is what this did —
-                // left a reconnecting phone with a session it could see in the logs and no way to
-                // reach. See `RelayMsg::SessionAlive`.
-                if let Some(info) = live_session(ctx).await {
-                    info!("relay client: a session is already running — offering rejoin or drop");
-                    send_relay(&out_tx, &RelayMsg::SessionAlive { info })
+            };
+
+            match msg {
+                RelayMsg::PeerConnected {
+                    room_id,
+                    client_addr,
+                    client_key,
+                    client_name,
+                    pair,
+                } => {
+                    // Remembered, not just logged: every WebRTC line below is tagged with it.
+                    let short: String = room_id.chars().take(8).collect();
+                    *ctx.peer.lock().unwrap_or_else(|e| e.into_inner()) =
+                        format!("{client_addr} room={short}");
+                    *ctx.room.lock().unwrap_or_else(|e| e.into_inner()) = room_id.clone();
+                    ctx.link
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .reset(&room_id, &client_key);
+                    *ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()) =
+                        (client_key.clone(), client_name.clone());
+                    // The seat's viewer is a participant like a joined room's: a fresh origin, so the
+                    // last one's held input, place and dot go with it.
+                    {
+                        let origin = ctx.hub.origin();
+                        let old = ctx.seat_origin.swap(origin, Ordering::SeqCst);
+                        if old != 0 {
+                            ctx.hub.detach(old);
+                        }
+                        ctx.hub.attach(
+                            origin,
+                            &client_key,
+                            &client_name,
+                            out_tx.clone(),
+                            Some(room_id.clone()),
+                        );
+                    }
+                    // A new viewer never inherits the last one's trackpad or what it held down.
+                    ctx.pad.close();
+                    // Nor its passkey unlock: a new link proves itself again — unless the device chose a
+                    // longer one, which is bound to its key, not to a link (`crate::passkey::stay`).
+                    crate::passkey::unlock::lock_link();
+                    // The audio sink appears for this device, named after it.
+                    tokio::spawn(crate::host::viewer(Some(client_name.clone())));
+                    ctx.media_sent.clear();
+                    clip_live.store(false, Ordering::SeqCst);
+                    ctx.viewer_ok.store(!relay_gates, Ordering::SeqCst);
+                    info!(room_id = %room_id, client = %client_addr, device = %client_name, "relay client: peer connected");
+                    if relay_gates {
+                        let pre_approved = ctx
+                            .approved
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .remove(&room_id);
+                        if pre_approved {
+                            ctx.viewer_ok.store(true, Ordering::SeqCst);
+                            send_relay(&out_tx, &RelayMsg::PeerAccept { room_id })
+                                .await
+                                .ok();
+                        } else {
+                            let room_now = Arc::clone(&ctx.room);
+                            let ok = Arc::clone(&ctx.viewer_ok);
+                            let rid_now = room_id.clone();
+                            tokio::spawn(decide_join(
+                                ctx.gate.clone(),
+                                out_tx.clone(),
+                                Join {
+                                    room_id,
+                                    key: client_key,
+                                    name: client_name,
+                                    addr: client_addr,
+                                    pair,
+                                },
+                                false,
+                                move |_| {
+                                    // Only if it is still the viewer here — it may have left.
+                                    if *room_now.lock().unwrap_or_else(|e| e.into_inner())
+                                        == rid_now
+                                    {
+                                        ok.store(true, Ordering::SeqCst);
+                                    }
+                                },
+                            ));
+                        }
+                    }
+                }
+
+                RelayMsg::PeerCheck {
+                    room_id,
+                    client_addr,
+                    client_key,
+                    client_name,
+                    pair,
+                } => {
+                    // A device asking to take the seat from the viewer here. Decided exactly like a
+                    // join, but without touching `room` — the current viewer is still the current
+                    // viewer until the relay says otherwise.
+                    info!(room_id = %room_id, device = %client_name, "relay client: takeover check");
+                    let approved = Arc::clone(&ctx.approved);
+                    tokio::spawn(decide_join(
+                        ctx.gate.clone(),
+                        out_tx.clone(),
+                        Join {
+                            room_id,
+                            key: client_key,
+                            name: client_name,
+                            addr: client_addr,
+                            pair,
+                        },
+                        true,
+                        move |room_id| {
+                            approved
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner())
+                                .insert(room_id.to_string());
+                        },
+                    ));
+                }
+
+                RelayMsg::ApproveAnswer { .. } => {
+                    // From a client older than pairing-only (`2026-10-27`): no device approves
+                    // another any more.
+                    warn!("relay client: an approval answer — remote approval is gone; ignored");
+                }
+
+                RelayMsg::PeerDisconnected { room_id } => {
+                    // A check-approved room that never connected.
+                    ctx.approved
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .remove(&room_id);
+                    {
+                        let mut room = ctx.room.lock().unwrap_or_else(|e| e.into_inner());
+                        if *room != room_id {
+                            info!(room_id = %room_id, "relay client: departure of a viewer already replaced — ignored");
+                            continue;
+                        }
+                        room.clear();
+                    }
+                    ctx.link.lock().unwrap_or_else(|e| e.into_inner()).clear();
+                    crate::links::clear(&ctx.remote_id);
+                    ctx.viewer_ok.store(false, Ordering::SeqCst);
+                    // Nobody back within 30 s and no session to keep playing into it: the sink goes,
+                    // so the computer's mixer shows no output for a device that is not there.
+                    {
+                        let room = Arc::clone(&ctx.room);
+                        let started = Arc::clone(&ctx.session_started);
+                        tokio::spawn(async move {
+                            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                            let empty = room.lock().unwrap_or_else(|e| e.into_inner()).is_empty();
+                            if empty && !started.load(Ordering::SeqCst) {
+                                crate::host::viewer(None).await;
+                            }
+                        });
+                    }
+                    // Deliberately *not* a teardown. See `RelayMsg::PeerDisconnected`: the relay used
+                    // to synthesize a `SessionStop` here, which made every dropped socket cost the
+                    // viewer their windows and their applications. The session stays up and
+                    // `viewer_watchdog` is left to decide, which is the only place that decision
+                    // belongs — it is the one thing here with a clock.
+                    //
+                    // The peer connection *is* closed, because it is certainly dead and webrtc-rs
+                    // releases its ICE sockets only on `close().await`, never on `Drop` (I14). Left
+                    // open, each abandoned viewer holds four of the 101 pinned UDP ports until the
+                    // next offer happens to replace it.
+                    //
+                    // Out of the session, too: what it held is released and the others are told. The
+                    // session's attached state is everyone's (`crate::viewers`), so a joined device
+                    // still watching keeps it rendering.
+                    let origin = ctx.seat_origin.swap(0, Ordering::SeqCst);
+                    if origin != 0 {
+                        ctx.hub.detach(origin);
+                    } else {
+                        let _ = ctx.cmd_tx.send(CompositorCommand::ViewerAttached(false));
+                    }
+                    let dead = ctx
+                        .active_pc
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .take();
+                    // Files go with the device: no transfer outlives the link that authorised it.
+                    close_files(&ctx.files_pc);
+                    ctx.pad.close(); // and the trackpad: no key stays held after the device leaves
+                    crate::passkey::unlock::lock_link();
+                    if let Some(pc) = dead {
+                        tokio::spawn(async move {
+                            if let Err(e) = pc.close().await {
+                                warn!(
+                                    "relay client: closing a departed viewer's peer connection: {e}"
+                                );
+                            }
+                        });
+                    }
+                    // Nothing to keep the seat for: no session, or one left running (resumable by any
+                    // device from the list). Holding it anyway is how one phone's closed tabs filled
+                    // the whole pool and every other device was refused (2026-10-03).
+                    if !ctx.session_started.load(Ordering::SeqCst)
+                        || ctx.detached.load(Ordering::SeqCst)
+                    {
+                        send_relay(
+                            &out_tx,
+                            &RelayMsg::SeatHold {
+                                room_id: room_id.clone(),
+                                hold_ms: 0,
+                            },
+                        )
                         .await
                         .ok();
-                    continue;
+                        info!(room_id = %room_id, "relay client: viewer disconnected — no session to hold, seat freed");
+                        continue;
+                    }
+                    info!(
+                        room_id = %room_id,
+                        "relay client: viewer disconnected — session kept, {VIEWER_GRACE:?} of grace \
+                         starts from the last moment it was connected"
+                    );
                 }
-                // The speed test's say (the user's decision): a new session that would not work
-                // — no memory, the computer flat out, every session it runs already running — is
-                // refused, plainly. Its last test if it ran one, else the computer alone.
-                {
+
+                RelayMsg::SessionStart { config } => {
+                    // Said on arrival, so a start's stages can be read off the log: this, then
+                    // `compositor session active`, the offer, `viewer connected via WebRTC`.
+                    info!(
+                        seq,
+                        "relay client: session_start received — {}x{}@{}",
+                        config.width,
+                        config.height,
+                        config.fps
+                    );
+                    ctx.hub.audio_low.send_if_modified(|v| {
+                        std::mem::replace(v, config.low_latency_audio) != config.low_latency_audio
+                    });
+                    if let Err(why) = config.validate() {
+                        warn!("relay client: refusing an invalid session config: {why}");
+                        send_relay(
+                            &out_tx,
+                            &RelayMsg::SessionError {
+                                ack: 0,
+                                message: format!("that configuration cannot work: {why}"),
+                            },
+                        )
+                        .await
+                        .ok();
+                        continue;
+                    }
+                    // A session already running is not an error, it is a choice. Telling the viewer
+                    // "a session is already active" and closing the socket — which is what this did —
+                    // left a reconnecting phone with a session it could see in the logs and no way to
+                    // reach. See `RelayMsg::SessionAlive`.
+                    if let Some(info) = live_session(ctx).await {
+                        info!(
+                            "relay client: a session is already running — offering rejoin or drop"
+                        );
+                        send_relay(&out_tx, &RelayMsg::SessionAlive { info })
+                            .await
+                            .ok();
+                        continue;
+                    }
+                    // The speed test's say (the user's decision): a new session that would not work
+                    // — no memory, the computer flat out, every session it runs already running — is
+                    // refused, plainly. Its last test if it ran one, else the computer alone.
+                    {
+                        let key = ctx
+                            .viewer
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .0
+                            .clone();
+                        let v = ctx
+                            .hub
+                            .verdict(&key, crate::linktest::verdict::Intent::Start)
+                            .unwrap_or_else(|| {
+                                crate::viewers::room::verdict(&ctx.hub, &key, 0, 0, "start")
+                            });
+                        if v.refused() {
+                            let why = v.reasons.first().cloned().unwrap_or_default();
+                            warn!("relay client: refusing a new session — {why}");
+                            send_relay(
+                                &out_tx,
+                                &RelayMsg::SessionError {
+                                    ack: 0,
+                                    message: format!("a new session would not work here: {why}"),
+                                },
+                            )
+                            .await
+                            .ok();
+                            continue;
+                        }
+                    }
+                    ctx.session_started.store(true, Ordering::SeqCst);
+                    ctx.detached.store(false, Ordering::SeqCst);
+                    ctx.session_since.store(now_ms(), Ordering::Relaxed);
+                    *ctx.session_shape.lock().unwrap_or_else(|e| e.into_inner()) =
+                        (config.width, config.height, config.fps);
+                    // The grace period starts now: a viewer that asked for a session but never
+                    // completes ICE must still be reaped, and it has never been connected.
+                    ctx.last_connected.store(now_ms(), Ordering::Relaxed);
+                    let (reply_tx, reply_rx) = oneshot::channel();
+                    let started_cfg = config.clone();
+                    if ctx
+                        .cmd_tx
+                        .send(CompositorCommand::Start {
+                            config,
+                            reply: reply_tx,
+                        })
+                        .is_err()
+                    {
+                        send_relay(
+                            &out_tx,
+                            &RelayMsg::SessionError {
+                                ack: 0,
+                                message: "compositor unavailable".into(),
+                            },
+                        )
+                        .await
+                        .ok();
+                        continue;
+                    }
+                    match tokio::time::timeout(Duration::from_secs(5), reply_rx).await {
+                        Ok(Ok(Ok(info))) => {
+                            // The seat's viewer started it: it leads, alone.
+                            ctx.hub
+                                .start(ctx.seat_origin.load(Ordering::SeqCst), &started_cfg);
+                            ctx.hub.note_session(&info, true);
+                            send_relay(&out_tx, &RelayMsg::SessionStarted { info })
+                                .await
+                                .ok();
+                        }
+                        Ok(Ok(Err(msg))) => {
+                            send_relay(
+                                &out_tx,
+                                &RelayMsg::SessionError {
+                                    ack: 0,
+                                    message: msg,
+                                },
+                            )
+                            .await
+                            .ok();
+                        }
+                        Ok(Err(_)) => {
+                            send_relay(
+                                &out_tx,
+                                &RelayMsg::SessionError {
+                                    ack: 0,
+                                    message: "compositor dropped reply".into(),
+                                },
+                            )
+                            .await
+                            .ok();
+                        }
+                        Err(_) => {
+                            send_relay(
+                                &out_tx,
+                                &RelayMsg::SessionError {
+                                    ack: 0,
+                                    message: "session start timed out".into(),
+                                },
+                            )
+                            .await
+                            .ok();
+                        }
+                    }
+                }
+
+                RelayMsg::SessionRejoin => {
+                    match live_session(ctx).await {
+                        Some(info) => {
+                            // A rejoin is a join: it displaces nobody. The seat's own resume, so no
+                            // grant asked — but a full session is full.
+                            if let Err(message) =
+                                ctx.hub.join(ctx.seat_origin.load(Ordering::SeqCst), false)
+                            {
+                                send_relay(&out_tx, &RelayMsg::SessionError { ack: 0, message })
+                                    .await
+                                    .ok();
+                                continue;
+                            }
+                            ctx.session_started.store(true, Ordering::SeqCst);
+                            ctx.detached.store(false, Ordering::SeqCst);
+                            ctx.last_connected.store(now_ms(), Ordering::Relaxed);
+                            // The per-viewer reset (strain, shed divisor, congestion window) and the
+                            // keyframe used to be sent from here by hand. They belong to
+                            // `ViewerAttached`, which the peer-connection handler sends when this
+                            // viewer's media path actually comes up — the rejoin message itself only
+                            // means the button was pressed.
+                            info!("relay client: viewer rejoined the running session");
+                            send_relay(&out_tx, &RelayMsg::SessionStarted { info })
+                                .await
+                                .ok();
+                        }
+                        None => {
+                            // The window between being offered the choice and taking it is real: the
+                            // viewer watchdog stops idle sessions, so the thing being joined can be
+                            // gone by the time the button is pressed.
+                            send_relay(
+                                &out_tx,
+                                &RelayMsg::SessionError {
+                                    ack: 0,
+                                    message: "the session ended before you could rejoin it".into(),
+                                },
+                            )
+                            .await
+                            .ok();
+                        }
+                    }
+                }
+
+                RelayMsg::SessionReconfigure { config } => {
+                    // Same guard as `SessionStart`, from the same `SessionConfig::validate` — the
+                    // two verbs take the same struct from the same untrusted socket, and a check on
+                    // one of them is a check the other silently does not have.
+                    if let Err(why) = config.validate() {
+                        warn!("relay client: refusing an invalid reconfigure: {why}");
+                        send_relay(
+                            &out_tx,
+                            &RelayMsg::SessionError {
+                                ack: 0,
+                                message: format!("that configuration cannot work: {why}"),
+                            },
+                        )
+                        .await
+                        .ok();
+                        continue;
+                    }
+                    // The lead's reshapes the session; anyone else's is only the bitrate it can
+                    // take — the output stays the lead's size (`crate::viewers`).
+                    let origin = ctx.seat_origin.load(Ordering::SeqCst);
+                    let lead = ctx.hub.is_lead(origin);
+                    let Some(config) = ctx.hub.reconfigure(origin, &config) else {
+                        let msg = match live_session(&ctx).await {
+                            Some(info) => RelayMsg::SessionReconfigured { info },
+                            None => RelayMsg::SessionError {
+                                ack: 0,
+                                message: "there is no session to change".into(),
+                            },
+                        };
+                        send_relay(&out_tx, &msg).await.ok();
+                        continue;
+                    };
+                    if lead {
+                        ctx.hub.audio_low.send_if_modified(|v| {
+                            std::mem::replace(v, config.low_latency_audio)
+                                != config.low_latency_audio
+                        });
+                        *ctx.session_shape.lock().unwrap_or_else(|e| e.into_inner()) =
+                            (config.width, config.height, config.fps);
+                    }
+                    // No `session_started` reply and no renegotiation — see
+                    // `RelayMsg::SessionReconfigure`. The viewer keeps the peer connection it has;
+                    // the picture changes shape at the forced IDR.
+                    let (reply_tx, reply_rx) = oneshot::channel();
+                    if ctx
+                        .cmd_tx
+                        .send(CompositorCommand::Reconfigure {
+                            config,
+                            reply: reply_tx,
+                        })
+                        .is_err()
+                    {
+                        send_relay(
+                            &out_tx,
+                            &RelayMsg::SessionError {
+                                ack: 0,
+                                message: "compositor unavailable".into(),
+                            },
+                        )
+                        .await
+                        .ok();
+                        continue;
+                    }
+                    // The same bound every other compositor round-trip here uses: rebuilding an
+                    // encoder can fail slowly, and a wedged render loop must not hold the relay
+                    // socket waiting for an answer that is not coming.
+                    match tokio::time::timeout(Duration::from_secs(5), reply_rx).await {
+                        Ok(Ok(Ok(info))) => {
+                            ctx.hub.note_session(&info, lead);
+                            send_relay(&out_tx, &RelayMsg::SessionReconfigured { info })
+                                .await
+                                .ok();
+                        }
+                        Ok(Ok(Err(msg))) => {
+                            send_relay(
+                                &out_tx,
+                                &RelayMsg::SessionError {
+                                    ack: 0,
+                                    message: msg,
+                                },
+                            )
+                            .await
+                            .ok();
+                        }
+                        Ok(Err(_)) => {
+                            send_relay(
+                                &out_tx,
+                                &RelayMsg::SessionError {
+                                    ack: 0,
+                                    message: "compositor dropped reply".into(),
+                                },
+                            )
+                            .await
+                            .ok();
+                        }
+                        Err(_) => {
+                            send_relay(
+                                &out_tx,
+                                &RelayMsg::SessionError {
+                                    ack: 0,
+                                    message: "reconfigure timed out".into(),
+                                },
+                            )
+                            .await
+                            .ok();
+                        }
+                    }
+                }
+
+                RelayMsg::SessionStop { ack } => {
+                    // Logged on receipt, not just on the watchdog's own reap: this is the only other
+                    // path to `CompositorCommand::Stop` in relay mode, and until now neither side
+                    // logged anything for it — a stop here and a stop from the grace expiring
+                    // were indistinguishable in the log, which cost real time chasing an unexplained
+                    // teardown on 2026-09-13 that turned out to be unprovable either way.
+                    info!("relay client: session_stop received from the viewer — tearing down");
+                    // Anyone may end it for everyone (the user's decision); the others are told who.
+                    ctx.hub.end(Some(ctx.seat_origin.load(Ordering::SeqCst)));
+                    ctx.session_started.store(false, Ordering::SeqCst);
+                    let _ = ctx.cmd_tx.send(CompositorCommand::Stop);
+                    send_relay(&out_tx, &RelayMsg::SessionStopped { ack })
+                        .await
+                        .ok();
+                }
+
+                RelayMsg::ViewerVisible { visible } => {
+                    ctx.hub
+                        .visible(ctx.seat_origin.load(Ordering::SeqCst), visible);
+                }
+
+                RelayMsg::ViewerStrain { strained } => {
+                    // To the compositor through the hub: with several viewers, any one strained
+                    // sheds for the stream. No rate limiting: the client sends this only when its
+                    // settled verdict changes, and the render loop reads it once per decision window.
+                    ctx.hub
+                        .strain(ctx.seat_origin.load(Ordering::SeqCst), strained);
+                }
+
+                // ── Several devices in one session (`crate::viewers`) ──
+                RelayMsg::RoomHello { .. } => {}
+                RelayMsg::LinkTest { bytes } => crate::linktest::send(out_tx.clone(), bytes),
+                RelayMsg::LinkReport {
+                    down_kbps,
+                    rtt_ms,
+                    intent,
+                } => {
                     let key = ctx
                         .viewer
                         .lock()
                         .unwrap_or_else(|e| e.into_inner())
                         .0
                         .clone();
-                    let v = ctx
-                        .hub
-                        .verdict(&key, crate::linktest::verdict::Intent::Start)
-                        .unwrap_or_else(|| {
-                            crate::viewers::room::verdict(&ctx.hub, &key, 0, 0, "start")
-                        });
-                    if v.refused() {
-                        let why = v.reasons.first().cloned().unwrap_or_default();
-                        warn!("relay client: refusing a new session — {why}");
-                        send_relay(
-                            &out_tx,
-                            &RelayMsg::SessionError {
-                                ack: 0,
-                                message: format!("a new session would not work here: {why}"),
-                            },
-                        )
+                    let verdict =
+                        crate::viewers::room::verdict(&ctx.hub, &key, down_kbps, rtt_ms, &intent);
+                    send_relay(&out_tx, &RelayMsg::LinkVerdict { verdict })
                         .await
                         .ok();
-                        continue;
-                    }
                 }
-                ctx.session_started.store(true, Ordering::SeqCst);
-                ctx.detached.store(false, Ordering::SeqCst);
-                ctx.session_since.store(now_ms(), Ordering::Relaxed);
-                *ctx.session_shape.lock().unwrap_or_else(|e| e.into_inner()) =
-                    (config.width, config.height, config.fps);
-                // The grace period starts now: a viewer that asked for a session but never
-                // completes ICE must still be reaped, and it has never been connected.
-                ctx.last_connected.store(now_ms(), Ordering::Relaxed);
-                let (reply_tx, reply_rx) = oneshot::channel();
-                let started_cfg = config.clone();
-                if ctx
-                    .cmd_tx
-                    .send(CompositorCommand::Start {
-                        config,
-                        reply: reply_tx,
-                    })
-                    .is_err()
-                {
-                    send_relay(
-                        &out_tx,
-                        &RelayMsg::SessionError {
-                            ack: 0,
-                            message: "compositor unavailable".into(),
-                        },
-                    )
-                    .await
-                    .ok();
-                    continue;
-                }
-                match tokio::time::timeout(Duration::from_secs(5), reply_rx).await {
-                    Ok(Ok(Ok(info))) => {
-                        // The seat's viewer started it: it leads, alone.
-                        ctx.hub
-                            .start(ctx.seat_origin.load(Ordering::SeqCst), &started_cfg);
-                        ctx.hub.note_session(&info, true);
-                        send_relay(&out_tx, &RelayMsg::SessionStarted { info })
-                            .await
-                            .ok();
-                    }
-                    Ok(Ok(Err(msg))) => {
-                        send_relay(
-                            &out_tx,
-                            &RelayMsg::SessionError {
-                                ack: 0,
-                                message: msg,
+                RelayMsg::DeskRequest => {
+                    let (out_tx, remote_id, busy) = (
+                        out_tx.clone(),
+                        ctx.remote_id.clone(),
+                        ctx.session_started.load(Ordering::SeqCst),
+                    );
+                    tokio::spawn(async move {
+                        let rid = wado_protocol::relay::normalize_remote_id(&remote_id);
+                        let msg = match crate::desks::request(&remote_id, busy).await {
+                            crate::desks::Desk::Go(k) => RelayMsg::SessionElsewhere {
+                                instance: format!("{rid}:{k}"),
                             },
-                        )
-                        .await
-                        .ok();
-                    }
-                    Ok(Err(_)) => {
-                        send_relay(
-                            &out_tx,
-                            &RelayMsg::SessionError {
-                                ack: 0,
-                                message: "compositor dropped reply".into(),
+                            crate::desks::Desk::Full { running, max } => RelayMsg::DesksFull {
+                                running,
+                                max,
+                                message: format!(
+                                    "all {max} sessions this computer runs are in use — end one, or \
+                                 join one"
+                                ),
                             },
-                        )
-                        .await
-                        .ok();
-                    }
-                    Err(_) => {
-                        send_relay(
-                            &out_tx,
-                            &RelayMsg::SessionError {
-                                ack: 0,
-                                message: "session start timed out".into(),
-                            },
-                        )
-                        .await
-                        .ok();
-                    }
+                            crate::desks::Desk::Failed(message) => {
+                                RelayMsg::SessionError { ack: 0, message }
+                            }
+                        };
+                        send_relay(&out_tx, &msg).await.ok();
+                    });
                 }
-            }
-
-            RelayMsg::SessionRejoin => {
-                match live_session(ctx).await {
-                    Some(info) => {
-                        // A rejoin is a join: it displaces nobody. The seat's own resume, so no
-                        // grant asked — but a full session is full.
-                        if let Err(message) =
-                            ctx.hub.join(ctx.seat_origin.load(Ordering::SeqCst), false)
-                        {
-                            send_relay(&out_tx, &RelayMsg::SessionError { ack: 0, message })
-                                .await
-                                .ok();
-                            continue;
-                        }
-                        ctx.session_started.store(true, Ordering::SeqCst);
-                        ctx.detached.store(false, Ordering::SeqCst);
-                        ctx.last_connected.store(now_ms(), Ordering::Relaxed);
-                        // The per-viewer reset (strain, shed divisor, congestion window) and the
-                        // keyframe used to be sent from here by hand. They belong to
-                        // `ViewerAttached`, which the peer-connection handler sends when this
-                        // viewer's media path actually comes up — the rejoin message itself only
-                        // means the button was pressed.
-                        info!("relay client: viewer rejoined the running session");
-                        send_relay(&out_tx, &RelayMsg::SessionStarted { info })
-                            .await
-                            .ok();
-                    }
-                    None => {
-                        // The window between being offered the choice and taking it is real: the
-                        // viewer watchdog stops idle sessions, so the thing being joined can be
-                        // gone by the time the button is pressed.
-                        send_relay(
-                            &out_tx,
-                            &RelayMsg::SessionError {
-                                ack: 0,
-                                message: "the session ended before you could rejoin it".into(),
-                            },
-                        )
-                        .await
-                        .ok();
-                    }
-                }
-            }
-
-            RelayMsg::SessionReconfigure { config } => {
-                // Same guard as `SessionStart`, from the same `SessionConfig::validate` — the
-                // two verbs take the same struct from the same untrusted socket, and a check on
-                // one of them is a check the other silently does not have.
-                if let Err(why) = config.validate() {
-                    warn!("relay client: refusing an invalid reconfigure: {why}");
-                    send_relay(
-                        &out_tx,
-                        &RelayMsg::SessionError {
-                            ack: 0,
-                            message: format!("that configuration cannot work: {why}"),
-                        },
-                    )
-                    .await
-                    .ok();
-                    continue;
-                }
-                // The lead's reshapes the session; anyone else's is only the bitrate it can
-                // take — the output stays the lead's size (`crate::viewers`).
-                let origin = ctx.seat_origin.load(Ordering::SeqCst);
-                let lead = ctx.hub.is_lead(origin);
-                let Some(config) = ctx.hub.reconfigure(origin, &config) else {
+                RelayMsg::SessionJoin => {
                     let msg = match live_session(&ctx).await {
-                        Some(info) => RelayMsg::SessionReconfigured { info },
                         None => RelayMsg::SessionError {
                             ack: 0,
-                            message: "there is no session to change".into(),
+                            message: "that session has ended".into(),
                         },
+                        Some(info) => {
+                            match ctx.hub.join(ctx.seat_origin.load(Ordering::SeqCst), true) {
+                                Ok(()) => {
+                                    ctx.detached.store(false, Ordering::SeqCst);
+                                    RelayMsg::SessionStarted { info }
+                                }
+                                Err(message) => RelayMsg::SessionError { ack: 0, message },
+                            }
+                        }
                     };
                     send_relay(&out_tx, &msg).await.ok();
-                    continue;
-                };
-                if lead {
-                    ctx.hub.audio_low.send_if_modified(|v| {
-                        std::mem::replace(v, config.low_latency_audio) != config.low_latency_audio
+                }
+                RelayMsg::SessionTakeover { config } => {
+                    let origin = ctx.seat_origin.load(Ordering::SeqCst);
+                    let taken = match config.validate() {
+                        Err(why) => Err(format!("that configuration cannot work: {why}")),
+                        Ok(()) if live_session(&ctx).await.is_none() => {
+                            Err("that session has ended".to_string())
+                        }
+                        Ok(()) => ctx.hub.takeover(origin, &config),
+                    };
+                    let msg = match taken {
+                        Err(message) => RelayMsg::SessionError { ack: 0, message },
+                        Ok(cfg) => {
+                            ctx.detached.store(false, Ordering::SeqCst);
+                            *ctx.session_shape.lock().unwrap_or_else(|e| e.into_inner()) =
+                                (cfg.width, cfg.height, cfg.fps);
+                            match crate::viewers::room::reconfigure(&ctx.cmd_tx, cfg).await {
+                                Ok(info) => {
+                                    ctx.hub.note_session(&info, true);
+                                    RelayMsg::SessionStarted { info }
+                                }
+                                Err(message) => RelayMsg::SessionError { ack: 0, message },
+                            }
+                        }
+                    };
+                    send_relay(&out_tx, &msg).await.ok();
+                }
+
+                RelayMsg::PadOffer { sdp } => {
+                    // Spawned: gathering takes up to `GATHER_WAIT`, and relayed touches arriving
+                    // meanwhile must not wait behind it.
+                    let (pad, api, peer, out_tx) = (
+                        ctx.pad.clone(),
+                        Arc::clone(&ctx.api),
+                        pad_peer(ctx),
+                        out_tx.clone(),
+                    );
+                    tokio::spawn(async move {
+                        let reply = match pad.open(&api, &sdp, peer, out_tx.clone()).await {
+                            Ok(sdp) => RelayMsg::PadAnswer {
+                                sdp,
+                                err: String::new(),
+                            },
+                            Err(err) => {
+                                info!("pad: direct link refused — {err}");
+                                RelayMsg::PadAnswer {
+                                    sdp: String::new(),
+                                    err,
+                                }
+                            }
+                        };
+                        send_relay(&out_tx, &reply).await.ok();
                     });
-                    *ctx.session_shape.lock().unwrap_or_else(|e| e.into_inner()) =
-                        (config.width, config.height, config.fps);
                 }
-                // No `session_started` reply and no renegotiation — see
-                // `RelayMsg::SessionReconfigure`. The viewer keeps the peer connection it has;
-                // the picture changes shape at the forced IDR.
-                let (reply_tx, reply_rx) = oneshot::channel();
-                if ctx
-                    .cmd_tx
-                    .send(CompositorCommand::Reconfigure {
-                        config,
-                        reply: reply_tx,
-                    })
-                    .is_err()
-                {
-                    send_relay(
-                        &out_tx,
-                        &RelayMsg::SessionError {
-                            ack: 0,
-                            message: "compositor unavailable".into(),
-                        },
-                    )
-                    .await
-                    .ok();
-                    continue;
+
+                RelayMsg::PadIn { msg } => {
+                    ctx.pad.relayed(msg, &pad_peer(ctx), &out_tx);
                 }
-                // The same bound every other compositor round-trip here uses: rebuilding an
-                // encoder can fail slowly, and a wedged render loop must not hold the relay
-                // socket waiting for an answer that is not coming.
-                match tokio::time::timeout(Duration::from_secs(5), reply_rx).await {
-                    Ok(Ok(Ok(info))) => {
-                        ctx.hub.note_session(&info, lead);
-                        send_relay(&out_tx, &RelayMsg::SessionReconfigured { info })
-                            .await
-                            .ok();
-                    }
-                    Ok(Ok(Err(msg))) => {
-                        send_relay(
-                            &out_tx,
-                            &RelayMsg::SessionError {
-                                ack: 0,
-                                message: msg,
-                            },
-                        )
-                        .await
-                        .ok();
-                    }
-                    Ok(Err(_)) => {
-                        send_relay(
-                            &out_tx,
-                            &RelayMsg::SessionError {
-                                ack: 0,
-                                message: "compositor dropped reply".into(),
-                            },
-                        )
-                        .await
-                        .ok();
-                    }
-                    Err(_) => {
-                        send_relay(
-                            &out_tx,
-                            &RelayMsg::SessionError {
-                                ack: 0,
-                                message: "reconfigure timed out".into(),
-                            },
-                        )
-                        .await
-                        .ok();
-                    }
-                }
-            }
 
-            RelayMsg::SessionStop { ack } => {
-                // Logged on receipt, not just on the watchdog's own reap: this is the only other
-                // path to `CompositorCommand::Stop` in relay mode, and until now neither side
-                // logged anything for it — a stop here and a stop from the grace expiring
-                // were indistinguishable in the log, which cost real time chasing an unexplained
-                // teardown on 2026-09-13 that turned out to be unprovable either way.
-                info!("relay client: session_stop received from the viewer — tearing down");
-                // Anyone may end it for everyone (the user's decision); the others are told who.
-                ctx.hub.end(Some(ctx.seat_origin.load(Ordering::SeqCst)));
-                ctx.session_started.store(false, Ordering::SeqCst);
-                let _ = ctx.cmd_tx.send(CompositorCommand::Stop);
-                send_relay(&out_tx, &RelayMsg::SessionStopped { ack })
-                    .await
-                    .ok();
-            }
-
-            RelayMsg::ViewerVisible { visible } => {
-                ctx.hub
-                    .visible(ctx.seat_origin.load(Ordering::SeqCst), visible);
-            }
-
-            RelayMsg::ViewerStrain { strained } => {
-                // To the compositor through the hub: with several viewers, any one strained
-                // sheds for the stream. No rate limiting: the client sends this only when its
-                // settled verdict changes, and the render loop reads it once per decision window.
-                ctx.hub
-                    .strain(ctx.seat_origin.load(Ordering::SeqCst), strained);
-            }
-
-            // ── Several devices in one session (`crate::viewers`) ──
-            RelayMsg::RoomHello { .. } => {}
-            RelayMsg::LinkTest { bytes } => crate::linktest::send(out_tx.clone(), bytes),
-            RelayMsg::LinkReport {
-                down_kbps,
-                rtt_ms,
-                intent,
-            } => {
-                let key = ctx
-                    .viewer
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .0
-                    .clone();
-                let verdict =
-                    crate::viewers::room::verdict(&ctx.hub, &key, down_kbps, rtt_ms, &intent);
-                send_relay(&out_tx, &RelayMsg::LinkVerdict { verdict })
-                    .await
-                    .ok();
-            }
-            RelayMsg::DeskRequest => {
-                let (out_tx, remote_id, busy) = (
-                    out_tx.clone(),
-                    ctx.remote_id.clone(),
-                    ctx.session_started.load(Ordering::SeqCst),
-                );
-                tokio::spawn(async move {
-                    let rid = wado_protocol::relay::normalize_remote_id(&remote_id);
-                    let msg = match crate::desks::request(&remote_id, busy).await {
-                        crate::desks::Desk::Go(k) => RelayMsg::SessionElsewhere {
-                            instance: format!("{rid}:{k}"),
-                        },
-                        crate::desks::Desk::Full { running, max } => RelayMsg::DesksFull {
-                            running,
-                            max,
-                            message: format!(
-                                "all {max} sessions this computer runs are in use — end one, or \
-                                 join one"
-                            ),
-                        },
-                        crate::desks::Desk::Failed(message) => {
-                            RelayMsg::SessionError { ack: 0, message }
-                        }
+                RelayMsg::FilesOffer { sdp } => {
+                    let (key, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                    let who = crate::files::channel::Who { key, name };
+                    let refused = if ctx.viewer_ok.load(Ordering::SeqCst) {
+                        crate::files::channel::refused(&ctx.gate, &who)
+                    } else {
+                        Some("this device has not been let in yet".into())
                     };
-                    send_relay(&out_tx, &msg).await.ok();
-                });
-            }
-            RelayMsg::SessionJoin => {
-                let msg = match live_session(&ctx).await {
-                    None => RelayMsg::SessionError {
-                        ack: 0,
-                        message: "that session has ended".into(),
-                    },
-                    Some(info) => {
-                        match ctx.hub.join(ctx.seat_origin.load(Ordering::SeqCst), true) {
-                            Ok(()) => {
-                                ctx.detached.store(false, Ordering::SeqCst);
-                                RelayMsg::SessionStarted { info }
-                            }
-                            Err(message) => RelayMsg::SessionError { ack: 0, message },
-                        }
-                    }
-                };
-                send_relay(&out_tx, &msg).await.ok();
-            }
-            RelayMsg::SessionTakeover { config } => {
-                let origin = ctx.seat_origin.load(Ordering::SeqCst);
-                let taken = match config.validate() {
-                    Err(why) => Err(format!("that configuration cannot work: {why}")),
-                    Ok(()) if live_session(&ctx).await.is_none() => {
-                        Err("that session has ended".to_string())
-                    }
-                    Ok(()) => ctx.hub.takeover(origin, &config),
-                };
-                let msg = match taken {
-                    Err(message) => RelayMsg::SessionError { ack: 0, message },
-                    Ok(cfg) => {
-                        ctx.detached.store(false, Ordering::SeqCst);
-                        *ctx.session_shape.lock().unwrap_or_else(|e| e.into_inner()) =
-                            (cfg.width, cfg.height, cfg.fps);
-                        match crate::viewers::room::reconfigure(&ctx.cmd_tx, cfg).await {
-                            Ok(info) => {
-                                ctx.hub.note_session(&info, true);
-                                RelayMsg::SessionStarted { info }
-                            }
-                            Err(message) => RelayMsg::SessionError { ack: 0, message },
-                        }
-                    }
-                };
-                send_relay(&out_tx, &msg).await.ok();
-            }
-
-            RelayMsg::PadOffer { sdp } => {
-                // Spawned: gathering takes up to `GATHER_WAIT`, and relayed touches arriving
-                // meanwhile must not wait behind it.
-                let (pad, api, peer, out_tx) = (
-                    ctx.pad.clone(),
-                    Arc::clone(&ctx.api),
-                    pad_peer(ctx),
-                    out_tx.clone(),
-                );
-                tokio::spawn(async move {
-                    let reply = match pad.open(&api, &sdp, peer, out_tx.clone()).await {
-                        Ok(sdp) => RelayMsg::PadAnswer {
-                            sdp,
-                            err: String::new(),
-                        },
-                        Err(err) => {
-                            info!("pad: direct link refused — {err}");
-                            RelayMsg::PadAnswer {
+                    let reply = match refused {
+                        Some(err) => {
+                            info!(device = %who.name, "files: refused — {err}");
+                            RelayMsg::FilesAnswer {
                                 sdp: String::new(),
                                 err,
                             }
                         }
+                        None => {
+                            match crate::files::channel::open(&ctx.api, &sdp, who, ctx.gate.clone())
+                                .await
+                            {
+                                Ok((pc, sdp)) => {
+                                    close_files(&ctx.files_pc);
+                                    *ctx.files_pc.lock().unwrap_or_else(|e| e.into_inner()) =
+                                        Some(pc);
+                                    RelayMsg::FilesAnswer {
+                                        sdp,
+                                        err: String::new(),
+                                    }
+                                }
+                                Err(e) => RelayMsg::FilesAnswer {
+                                    sdp: String::new(),
+                                    err: e.to_string(),
+                                },
+                            }
+                        }
                     };
                     send_relay(&out_tx, &reply).await.ok();
-                });
-            }
-
-            RelayMsg::PadIn { msg } => {
-                ctx.pad.relayed(msg, &pad_peer(ctx), &out_tx);
-            }
-
-            RelayMsg::FilesOffer { sdp } => {
-                let (key, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
-                let who = crate::files::channel::Who { key, name };
-                let refused = if ctx.viewer_ok.load(Ordering::SeqCst) {
-                    crate::files::channel::refused(&ctx.gate, &who)
-                } else {
-                    Some("this device has not been let in yet".into())
-                };
-                let reply = match refused {
-                    Some(err) => {
-                        info!(device = %who.name, "files: refused — {err}");
-                        RelayMsg::FilesAnswer {
-                            sdp: String::new(),
-                            err,
-                        }
-                    }
-                    None => {
-                        match crate::files::channel::open(&ctx.api, &sdp, who, ctx.gate.clone())
-                            .await
-                        {
-                            Ok((pc, sdp)) => {
-                                close_files(&ctx.files_pc);
-                                *ctx.files_pc.lock().unwrap_or_else(|e| e.into_inner()) = Some(pc);
-                                RelayMsg::FilesAnswer {
-                                    sdp,
-                                    err: String::new(),
-                                }
-                            }
-                            Err(e) => RelayMsg::FilesAnswer {
-                                sdp: String::new(),
-                                err: e.to_string(),
-                            },
-                        }
-                    }
-                };
-                send_relay(&out_tx, &reply).await.ok();
-            }
-
-            // No direct path for files: the same requests on the fallback lane (`files::lane`).
-            RelayMsg::FilesIn { text } => {
-                let (key, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
-                let asker = crate::files::lane::Asker {
-                    who: crate::files::channel::Who { key, name },
-                    gate: &ctx.gate,
-                    ok: ctx.viewer_ok.load(Ordering::SeqCst),
-                    out: &out_tx,
-                    gauge: &lane,
-                };
-                files_lane.request(&text, asker).await;
-            }
-            RelayMsg::FilesChunk { id, b } => files_lane.chunk(id, &b).await,
-
-            RelayMsg::SessionLaunch { ack, command } => {
-                // Said on arrival: `launched session application`, then `window shown — N ms
-                // after launch` (or `exited without showing a window`) follow it.
-                info!(seq, command, "relay client: session_launch received");
-                // Answered honestly. This used to send `SessionLaunched` unconditionally, so a
-                // launch into a session that does not exist was reported as a success — the
-                // compositor logged `launch ignored — no active session` and the viewer was told
-                // the application was starting. It then waited for a window that was never
-                // coming, with the only evidence in a log it cannot see.
-                if live_session(ctx).await.is_none() {
-                    send_relay(
-                        &out_tx,
-                        &RelayMsg::SessionError {
-                            ack,
-                            message: "there is no session to launch into — start one first".into(),
-                        },
-                    )
-                    .await
-                    .ok();
-                    continue;
                 }
-                let _ = ctx.cmd_tx.send(CompositorCommand::Launch { command });
-                send_relay(&out_tx, &RelayMsg::SessionLaunched { ack })
-                    .await
-                    .ok();
-            }
 
-            RelayMsg::ClipboardSet { ack, text } => {
-                if ctx.viewer_ok.load(Ordering::SeqCst) {
-                    let clip = wado_compositor::clipboard::Clip {
-                        mime: "text/plain;charset=utf-8".into(),
-                        data: text.into_bytes().into(),
-                        secret: false,
+                // No direct path for files: the same requests on the fallback lane (`files::lane`).
+                RelayMsg::FilesIn { text } => {
+                    let (key, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                    let asker = crate::files::lane::Asker {
+                        who: crate::files::channel::Who { key, name },
+                        gate: &ctx.gate,
+                        ok: ctx.viewer_ok.load(Ordering::SeqCst),
+                        out: &out_tx,
+                        gauge: &lane,
                     };
-                    // Into the session; and onto the host too for a device that may.
-                    let (device, name) =
-                        ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
-                    if ctx.gate.grants(&device).clipboard {
-                        let cmd_tx = ctx.cmd_tx.clone();
-                        let from = crate::clip::hub::Origin::Device { key: device, name };
-                        tokio::spawn(async move {
-                            let _ = crate::clip::sync::push(Some(&cmd_tx), clip, from).await;
-                        });
-                    } else {
-                        let _ = ctx.cmd_tx.send(CompositorCommand::SetClipboard(clip));
+                    files_lane.request(&text, asker).await;
+                }
+                RelayMsg::FilesChunk { id, b } => files_lane.chunk(id, &b).await,
+
+                RelayMsg::SessionLaunch { ack, command } => {
+                    // Said on arrival: `launched session application`, then `window shown — N ms
+                    // after launch` (or `exited without showing a window`) follow it.
+                    info!(seq, command, "relay client: session_launch received");
+                    // Answered honestly. This used to send `SessionLaunched` unconditionally, so a
+                    // launch into a session that does not exist was reported as a success — the
+                    // compositor logged `launch ignored — no active session` and the viewer was told
+                    // the application was starting. It then waited for a window that was never
+                    // coming, with the only evidence in a log it cannot see.
+                    if live_session(ctx).await.is_none() {
+                        send_relay(
+                            &out_tx,
+                            &RelayMsg::SessionError {
+                                ack,
+                                message: "there is no session to launch into — start one first"
+                                    .into(),
+                            },
+                        )
+                        .await
+                        .ok();
+                        continue;
                     }
-                    send_relay(&out_tx, &RelayMsg::ClipboardSent { ack })
+                    let _ = ctx.cmd_tx.send(CompositorCommand::Launch { command });
+                    send_relay(&out_tx, &RelayMsg::SessionLaunched { ack })
                         .await
                         .ok();
                 }
-            }
 
-            msg @ (RelayMsg::ClipList
-            | RelayMsg::ClipGet { .. }
-            | RelayMsg::ClipPush { .. }
-            | RelayMsg::ClipPin { .. }
-            | RelayMsg::ClipDelete { .. }
-            | RelayMsg::ClipWatch { .. }) => {
-                let (device, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
-                if !ctx.viewer_ok.load(Ordering::SeqCst) {
-                    continue;
-                }
-                if !ctx.gate.grants(&device).clipboard {
-                    let message = "this device may not use the computer's clipboard — on the \
-                                   computer: wado allow <device> clipboard"
-                        .to_string();
-                    send_relay(&out_tx, &RelayMsg::ClipError { message })
-                        .await
-                        .ok();
-                    continue;
-                }
-                if let RelayMsg::ClipWatch { live } = msg {
-                    clip_live.store(live, Ordering::SeqCst);
-                    continue;
-                }
-                tokio::spawn(crate::clip::serve::handle(
-                    msg,
-                    Some(ctx.cmd_tx.clone()),
-                    crate::clip::serve::Sender { key: device, name },
-                    out_tx.clone(),
-                ));
-            }
-
-            RelayMsg::SessionsRequest => {
-                let sessions = crate::sessions::list();
-                send_relay(&out_tx, &RelayMsg::Sessions { sessions })
-                    .await
-                    .ok();
-            }
-
-            RelayMsg::SessionDetach { ack } => {
-                // Left on purpose: the media path goes, the session stays — and is kept past the
-                // no-viewer grace, until someone ends it from a home page.
-                // With others still in it, it simply goes on for them.
-                if ctx.session_started.load(Ordering::SeqCst) {
-                    let origin = ctx.seat_origin.load(Ordering::SeqCst);
-                    let member = ctx.hub.is_member(origin);
-                    let empty = ctx.hub.leave(origin);
-                    if empty {
-                        ctx.detached.store(true, Ordering::SeqCst);
-                        if !member {
-                            let _ = ctx.cmd_tx.send(CompositorCommand::ViewerAttached(false));
+                RelayMsg::ClipboardSet { ack, text } => {
+                    if ctx.viewer_ok.load(Ordering::SeqCst) {
+                        let clip = wado_compositor::clipboard::Clip {
+                            mime: "text/plain;charset=utf-8".into(),
+                            data: text.into_bytes().into(),
+                            secret: false,
+                        };
+                        // Into the session; and onto the host too for a device that may.
+                        let (device, name) =
+                            ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                        if ctx.gate.grants(&device).clipboard {
+                            let cmd_tx = ctx.cmd_tx.clone();
+                            let from = crate::clip::hub::Origin::Device { key: device, name };
+                            tokio::spawn(async move {
+                                let _ = crate::clip::sync::push(Some(&cmd_tx), clip, from).await;
+                            });
+                        } else {
+                            let _ = ctx.cmd_tx.send(CompositorCommand::SetClipboard(clip));
                         }
-                        info!("relay client: viewer left; the session is kept running until ended");
-                    } else {
-                        info!("relay client: viewer left; the others in the session carry on");
-                    }
-                }
-                // Answered, so "Leave running" can say it is done rather than assume it.
-                send_relay(&out_tx, &RelayMsg::SessionDetached { ack })
-                    .await
-                    .ok();
-            }
-
-            RelayMsg::HostGet { ack } => {
-                let out_tx = out_tx.clone();
-                let sent = Arc::clone(&ctx.media_sent);
-                tokio::spawn(async move {
-                    let mut state = crate::host::state().await;
-                    sent.trim(&mut state);
-                    send_relay(&out_tx, &RelayMsg::HostState { ack, state })
-                        .await
-                        .ok();
-                });
-            }
-
-            RelayMsg::HostDo { ack, action } => {
-                let device = ctx
-                    .viewer
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .0
-                    .clone();
-                let allowed = if !ctx.viewer_ok.load(Ordering::SeqCst) {
-                    Err("this device has not been approved yet".to_string())
-                } else if action.is_network() && !ctx.gate.grants(&device).settings {
-                    Err("Wi-Fi needs the settings grant — on the computer: wado allow <device> settings".to_string())
-                } else if !ctx.gate.grants(&device).host {
-                    Err("this device may not control the computer — on the computer: wado allow <device> host".to_string())
-                } else {
-                    Ok(())
-                };
-                let out_tx = out_tx.clone();
-                let sent = Arc::clone(&ctx.media_sent);
-                tokio::spawn(async move {
-                    info!(device, ?action, "host action");
-                    if let Err(message) = match allowed {
-                        Ok(()) => crate::host::act(action).await,
-                        Err(e) => Err(e),
-                    } {
-                        warn!("host action failed: {message}");
-                        send_relay(&out_tx, &RelayMsg::HostError { ack, message })
+                        send_relay(&out_tx, &RelayMsg::ClipboardSent { ack })
                             .await
                             .ok();
                     }
-                    // A moment for the change to land before reading it back.
-                    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-                    let mut state = crate::host::state().await;
-                    sent.trim(&mut state);
-                    send_relay(&out_tx, &RelayMsg::HostState { ack, state })
+                }
+
+                msg @ (RelayMsg::ClipList
+                | RelayMsg::ClipGet { .. }
+                | RelayMsg::ClipPush { .. }
+                | RelayMsg::ClipPin { .. }
+                | RelayMsg::ClipDelete { .. }
+                | RelayMsg::ClipWatch { .. }) => {
+                    let (device, name) =
+                        ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                    if !ctx.viewer_ok.load(Ordering::SeqCst) {
+                        continue;
+                    }
+                    if !ctx.gate.grants(&device).clipboard {
+                        let message = "this device may not use the computer's clipboard — on the \
+                                   computer: wado allow <device> clipboard"
+                            .to_string();
+                        send_relay(&out_tx, &RelayMsg::ClipError { message })
+                            .await
+                            .ok();
+                        continue;
+                    }
+                    if let RelayMsg::ClipWatch { live } = msg {
+                        clip_live.store(live, Ordering::SeqCst);
+                        continue;
+                    }
+                    tokio::spawn(crate::clip::serve::handle(
+                        msg,
+                        Some(ctx.cmd_tx.clone()),
+                        crate::clip::serve::Sender { key: device, name },
+                        out_tx.clone(),
+                    ));
+                }
+
+                RelayMsg::SessionsRequest => {
+                    let sessions = crate::sessions::list();
+                    send_relay(&out_tx, &RelayMsg::Sessions { sessions })
                         .await
                         .ok();
-                });
-            }
-
-            RelayMsg::ConfigGet => {
-                let key = ctx
-                    .viewer
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .0
-                    .clone();
-                let state = crate::config::link::state_for(&key, &ctx.gate);
-                send_relay(&out_tx, &RelayMsg::ConfigState { state })
-                    .await
-                    .ok();
-            }
-
-            RelayMsg::ConfigSet {
-                ack,
-                key,
-                value,
-                confirmed,
-            } => {
-                let (device, _) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
-                let result = if ctx.viewer_ok.load(Ordering::SeqCst) {
-                    crate::config::link::set(&device, &ctx.gate, &key, &value, confirmed)
-                } else {
-                    Err("this device has not been approved yet".into())
-                };
-                // The reload it caused is pushed by `config_task` like any other; the request
-                // itself is answered too, because a write that changes nothing on disk causes
-                // no reload, and the phone would wait for it forever.
-                let answer = match result {
-                    Ok(()) => RelayMsg::ConfigSaved { ack, key },
-                    Err(message) => RelayMsg::ConfigRejected { ack, key, message },
-                };
-                send_relay(&out_tx, &answer).await.ok();
-            }
-
-            RelayMsg::ConfigSetPrefs { prefs } => {
-                let (device, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
-                if ctx.viewer_ok.load(Ordering::SeqCst)
-                    && let Err(e) = crate::config::link::set_prefs(&device, &name, &prefs)
-                {
-                    warn!("could not save device settings: {e}");
                 }
-            }
 
-            RelayMsg::AppsRequest => {
-                let mut apps = crate::apps::discover();
-                crate::apps::running::mark(&mut apps, &ctx.cmd_tx).await;
-                send_relay(&out_tx, &RelayMsg::AppsList { apps }).await.ok();
-            }
+                RelayMsg::SessionDetach { ack } => {
+                    // Left on purpose: the media path goes, the session stays — and is kept past the
+                    // no-viewer grace, until someone ends it from a home page.
+                    // With others still in it, it simply goes on for them.
+                    if ctx.session_started.load(Ordering::SeqCst) {
+                        let origin = ctx.seat_origin.load(Ordering::SeqCst);
+                        let member = ctx.hub.is_member(origin);
+                        let empty = ctx.hub.leave(origin);
+                        if empty {
+                            ctx.detached.store(true, Ordering::SeqCst);
+                            if !member {
+                                let _ = ctx.cmd_tx.send(CompositorCommand::ViewerAttached(false));
+                            }
+                            info!(
+                                "relay client: viewer left; the session is kept running until ended"
+                            );
+                        } else {
+                            info!("relay client: viewer left; the others in the session carry on");
+                        }
+                    }
+                    // Answered, so "Leave running" can say it is done rather than assume it.
+                    send_relay(&out_tx, &RelayMsg::SessionDetached { ack })
+                        .await
+                        .ok();
+                }
 
-            RelayMsg::PtyOpen { .. }
-            | RelayMsg::PtyInput { .. }
-            | RelayMsg::PtyResize { .. }
-            | RelayMsg::PtyClose { .. }
-            | RelayMsg::ShellsRequest
-                if let Some(why) = shell_refusal(ctx, true)() =>
-            {
-                if crate::passkey::is_lock(why) {
-                    // The device shows its lock instead of an error.
+                RelayMsg::HostGet { ack } => {
+                    let out_tx = out_tx.clone();
+                    let sent = Arc::clone(&ctx.media_sent);
+                    tokio::spawn(async move {
+                        let mut state = crate::host::state().await;
+                        sent.trim(&mut state);
+                        send_relay(&out_tx, &RelayMsg::HostState { ack, state })
+                            .await
+                            .ok();
+                    });
+                }
+
+                RelayMsg::HostDo { ack, action } => {
+                    let device = ctx
+                        .viewer
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .0
+                        .clone();
+                    let allowed = if !ctx.viewer_ok.load(Ordering::SeqCst) {
+                        Err("this device has not been approved yet".to_string())
+                    } else if action.is_network() && !ctx.gate.grants(&device).settings {
+                        Err("Wi-Fi needs the settings grant — on the computer: wado allow <device> settings".to_string())
+                    } else if !ctx.gate.grants(&device).host {
+                        Err("this device may not control the computer — on the computer: wado allow <device> host".to_string())
+                    } else {
+                        Ok(())
+                    };
+                    let out_tx = out_tx.clone();
+                    let sent = Arc::clone(&ctx.media_sent);
+                    tokio::spawn(async move {
+                        info!(device, ?action, "host action");
+                        if let Err(message) = match allowed {
+                            Ok(()) => crate::host::act(action).await,
+                            Err(e) => Err(e),
+                        } {
+                            warn!("host action failed: {message}");
+                            send_relay(&out_tx, &RelayMsg::HostError { ack, message })
+                                .await
+                                .ok();
+                        }
+                        // A moment for the change to land before reading it back.
+                        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                        let mut state = crate::host::state().await;
+                        sent.trim(&mut state);
+                        send_relay(&out_tx, &RelayMsg::HostState { ack, state })
+                            .await
+                            .ok();
+                    });
+                }
+
+                RelayMsg::ConfigGet => {
                     let key = ctx
                         .viewer
                         .lock()
                         .unwrap_or_else(|e| e.into_inner())
                         .0
                         .clone();
-                    let state = crate::passkey::relay::state(&Default::default(), &key, "");
-                    send_relay(&out_tx, &RelayMsg::PasskeyState { state })
+                    let state = crate::config::link::state_for(&key, &ctx.gate);
+                    send_relay(&out_tx, &RelayMsg::ConfigState { state })
                         .await
                         .ok();
-                    continue;
                 }
-                if matches!(msg, RelayMsg::PtyOpen { .. } | RelayMsg::ShellsRequest) {
-                    info!("shells: refused — {why}");
-                    send_relay(
-                        &out_tx,
-                        &RelayMsg::SessionError {
-                            ack: 0,
-                            message: format!("no shells: {why}"),
-                        },
-                    )
-                    .await
-                    .ok();
-                }
-            }
 
-            RelayMsg::PtyOpen { cols, rows, host } => match crate::shells::open(cols, rows, host) {
-                Ok(id) => {
-                    send_relay(&out_tx, &RelayMsg::PtyOpened { id }).await.ok();
-                }
-                Err(e) => {
-                    warn!("shell open failed: {e}");
-                    send_relay(
-                        &out_tx,
-                        &RelayMsg::SessionError {
-                            ack: 0,
-                            message: format!("could not start a shell: {e}"),
-                        },
-                    )
-                    .await
-                    .ok();
-                }
-            },
-
-            RelayMsg::PtyInput { id, data } => crate::shells::write(id, &data),
-
-            RelayMsg::PtyResize { id, cols, rows } => crate::shells::resize(id, cols, rows),
-
-            RelayMsg::PtyClose { id } => crate::shells::close(id),
-
-            RelayMsg::ShellsRequest => {
-                let shells = crate::shells::list();
-                let hosts = crate::shells::hosts::list();
-                send_relay(&out_tx, &RelayMsg::Shells { shells, hosts })
-                    .await
-                    .ok();
-                for (id, data) in crate::shells::replay() {
-                    send_relay(
-                        &out_tx,
-                        &RelayMsg::PtyOutput {
-                            id,
-                            data,
-                            replay: true,
-                        },
-                    )
-                    .await
-                    .ok();
-                }
-            }
-
-            RelayMsg::TimingRequest => {
-                let mut timings = *ctx.timings.borrow();
-                timings.queue_ms = ctx.queue_us.load(Ordering::Relaxed) as f64 / 1e3;
-                send_relay(&out_tx, &RelayMsg::Timing { timings })
-                    .await
-                    .ok();
-            }
-
-            // A task, not inline: the answer can take tens of milliseconds of D-Bus, and this
-            // loop also carries the SDP and ICE of a connecting viewer.
-            RelayMsg::TargetsRequest { seq, x, y, r } => {
-                let cmd_tx = ctx.cmd_tx.clone();
-                let a11y = Arc::clone(&ctx.a11y);
-                let out_tx = out_tx.clone();
-                tokio::spawn(async move {
-                    let targets = crate::a11y::tap_targets(&cmd_tx, &a11y, x, y, r).await;
-                    send_relay(&out_tx, &RelayMsg::Targets { seq, targets })
-                        .await
-                        .ok();
-                });
-            }
-
-            // A row of the menu sheet. Re-read afterwards: a submenu item changes the menu in
-            // place (GTK slides the submenu into the same popover), which the compositor does
-            // not see as a new popup.
-            RelayMsg::MenuActivate { id } => {
-                let menu = ctx.menu.clone();
-                let a11y = Arc::clone(&ctx.a11y);
-                let out_tx = out_tx.clone();
-                tokio::spawn(async move {
-                    let spot = menu.borrow().clone();
-                    let Some(spot) = spot else {
-                        return;
+                RelayMsg::ConfigSet {
+                    ack,
+                    key,
+                    value,
+                    confirmed,
+                } => {
+                    let (device, _) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                    let result = if ctx.viewer_ok.load(Ordering::SeqCst) {
+                        crate::config::link::set(&device, &ctx.gate, &key, &value, confirmed)
+                    } else {
+                        Err("this device has not been approved yet".into())
                     };
-                    let ok = crate::menu_sheet::activate(&a11y, &spot, &id).await;
-                    debug!(ok, "menu item activated");
-                    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-                    // Bound first: a borrow guard in an `if let` would live across the await.
-                    let spot = menu.borrow().clone();
-                    if let Some(spot) = spot {
-                        let sheet = crate::menu_sheet::read(&a11y, &spot).await;
-                        send_relay(&out_tx, &RelayMsg::Menu { menu: Some(sheet) })
+                    // The reload it caused is pushed by `config_task` like any other; the request
+                    // itself is answered too, because a write that changes nothing on disk causes
+                    // no reload, and the phone would wait for it forever.
+                    let answer = match result {
+                        Ok(()) => RelayMsg::ConfigSaved { ack, key },
+                        Err(message) => RelayMsg::ConfigRejected { ack, key, message },
+                    };
+                    send_relay(&out_tx, &answer).await.ok();
+                }
+
+                RelayMsg::ConfigSetPrefs { prefs } => {
+                    let (device, name) =
+                        ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                    if ctx.viewer_ok.load(Ordering::SeqCst)
+                        && let Err(e) = crate::config::link::set_prefs(&device, &name, &prefs)
+                    {
+                        warn!("could not save device settings: {e}");
+                    }
+                }
+
+                RelayMsg::AppsRequest => {
+                    let mut apps = crate::apps::discover();
+                    crate::apps::running::mark(&mut apps, &ctx.cmd_tx).await;
+                    send_relay(&out_tx, &RelayMsg::AppsList { apps }).await.ok();
+                }
+
+                RelayMsg::PtyOpen { .. }
+                | RelayMsg::PtyInput { .. }
+                | RelayMsg::PtyResize { .. }
+                | RelayMsg::PtyClose { .. }
+                | RelayMsg::ShellsRequest
+                    if let Some(why) = shell_refusal(ctx, true)() =>
+                {
+                    if crate::passkey::is_lock(why) {
+                        // The device shows its lock instead of an error.
+                        let key = ctx
+                            .viewer
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .0
+                            .clone();
+                        let state = crate::passkey::relay::state(&Default::default(), &key, "");
+                        send_relay(&out_tx, &RelayMsg::PasskeyState { state })
                             .await
                             .ok();
+                        continue;
                     }
-                });
-            }
-
-            RelayMsg::SessionWindow { ack, action } => {
-                let _ = ctx.cmd_tx.send(CompositorCommand::Window(action));
-                send_relay(&out_tx, &RelayMsg::SessionWindowed { ack })
-                    .await
-                    .ok();
-            }
-
-            // An offer into a running session from a seat viewer not (or no longer) in it — a
-            // reconnect, an older client — is a quiet rejoin: it displaces nobody.
-            RelayMsg::SdpOffer { sdp }
-                if ctx.session_started.load(Ordering::SeqCst)
-                    && offer_wants_video(&sdp)
-                    && !ctx.hub.is_member(ctx.seat_origin.load(Ordering::SeqCst))
-                    && let Err(message) =
-                        ctx.hub.join(ctx.seat_origin.load(Ordering::SeqCst), false) =>
-            {
-                send_relay(&out_tx, &RelayMsg::SessionError { ack: 0, message })
-                    .await
-                    .ok();
-            }
-            RelayMsg::SdpOffer { sdp } => match handle_sdp_offer(ctx, sdp, out_tx.clone()).await {
-                Ok(()) => {}
-                Err(e) => {
-                    error!("relay client: SdpOffer handling failed: {e}");
-                    send_relay(
-                        &out_tx,
-                        &RelayMsg::SessionError {
-                            ack: 0,
-                            message: format!("WebRTC setup failed: {e}"),
-                        },
-                    )
-                    .await
-                    .ok();
+                    if matches!(msg, RelayMsg::PtyOpen { .. } | RelayMsg::ShellsRequest) {
+                        info!("shells: refused — {why}");
+                        send_relay(
+                            &out_tx,
+                            &RelayMsg::SessionError {
+                                ack: 0,
+                                message: format!("no shells: {why}"),
+                            },
+                        )
+                        .await
+                        .ok();
+                    }
                 }
-            },
 
-            RelayMsg::IceCandidate { candidate } => {
-                let pc = ctx
-                    .active_pc
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .clone();
-                if let Some(pc) = pc
-                    && let Ok(cand) = serde_json::from_str(&candidate)
+                RelayMsg::PtyOpen { cols, rows, host } => {
+                    match crate::shells::open(cols, rows, host) {
+                        Ok(id) => {
+                            send_relay(&out_tx, &RelayMsg::PtyOpened { id }).await.ok();
+                        }
+                        Err(e) => {
+                            warn!("shell open failed: {e}");
+                            send_relay(
+                                &out_tx,
+                                &RelayMsg::SessionError {
+                                    ack: 0,
+                                    message: format!("could not start a shell: {e}"),
+                                },
+                            )
+                            .await
+                            .ok();
+                        }
+                    }
+                }
+
+                RelayMsg::PtyInput { id, data } => crate::shells::write(id, &data),
+
+                RelayMsg::PtyResize { id, cols, rows } => crate::shells::resize(id, cols, rows),
+
+                RelayMsg::PtyClose { id } => crate::shells::close(id),
+
+                RelayMsg::ShellsRequest => {
+                    let shells = crate::shells::list();
+                    let hosts = crate::shells::hosts::list();
+                    send_relay(&out_tx, &RelayMsg::Shells { shells, hosts })
+                        .await
+                        .ok();
+                    for (id, data) in crate::shells::replay() {
+                        send_relay(
+                            &out_tx,
+                            &RelayMsg::PtyOutput {
+                                id,
+                                data,
+                                replay: true,
+                            },
+                        )
+                        .await
+                        .ok();
+                    }
+                }
+
+                RelayMsg::TimingRequest => {
+                    let mut timings = *ctx.timings.borrow();
+                    timings.queue_ms = ctx.queue_us.load(Ordering::Relaxed) as f64 / 1e3;
+                    send_relay(&out_tx, &RelayMsg::Timing { timings })
+                        .await
+                        .ok();
+                }
+
+                // A task, not inline: the answer can take tens of milliseconds of D-Bus, and this
+                // loop also carries the SDP and ICE of a connecting viewer.
+                RelayMsg::TargetsRequest { seq, x, y, r } => {
+                    let cmd_tx = ctx.cmd_tx.clone();
+                    let a11y = Arc::clone(&ctx.a11y);
+                    let out_tx = out_tx.clone();
+                    tokio::spawn(async move {
+                        let targets = crate::a11y::tap_targets(&cmd_tx, &a11y, x, y, r).await;
+                        send_relay(&out_tx, &RelayMsg::Targets { seq, targets })
+                            .await
+                            .ok();
+                    });
+                }
+
+                // A row of the menu sheet. Re-read afterwards: a submenu item changes the menu in
+                // place (GTK slides the submenu into the same popover), which the compositor does
+                // not see as a new popup.
+                RelayMsg::MenuActivate { id } => {
+                    let menu = ctx.menu.clone();
+                    let a11y = Arc::clone(&ctx.a11y);
+                    let out_tx = out_tx.clone();
+                    tokio::spawn(async move {
+                        let spot = menu.borrow().clone();
+                        let Some(spot) = spot else {
+                            return;
+                        };
+                        let ok = crate::menu_sheet::activate(&a11y, &spot, &id).await;
+                        debug!(ok, "menu item activated");
+                        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                        // Bound first: a borrow guard in an `if let` would live across the await.
+                        let spot = menu.borrow().clone();
+                        if let Some(spot) = spot {
+                            let sheet = crate::menu_sheet::read(&a11y, &spot).await;
+                            send_relay(&out_tx, &RelayMsg::Menu { menu: Some(sheet) })
+                                .await
+                                .ok();
+                        }
+                    });
+                }
+
+                RelayMsg::SessionWindow { ack, action } => {
+                    let _ = ctx.cmd_tx.send(CompositorCommand::Window(action));
+                    send_relay(&out_tx, &RelayMsg::SessionWindowed { ack })
+                        .await
+                        .ok();
+                }
+
+                // An offer into a running session from a seat viewer not (or no longer) in it — a
+                // reconnect, an older client — is a quiet rejoin: it displaces nobody.
+                RelayMsg::SdpOffer { sdp }
+                    if ctx.session_started.load(Ordering::SeqCst)
+                        && offer_wants_video(&sdp)
+                        && !ctx.hub.is_member(ctx.seat_origin.load(Ordering::SeqCst))
+                        && let Err(message) =
+                            ctx.hub.join(ctx.seat_origin.load(Ordering::SeqCst), false) =>
                 {
-                    let _ = pc.add_ice_candidate(cand).await;
+                    send_relay(&out_tx, &RelayMsg::SessionError { ack: 0, message })
+                        .await
+                        .ok();
                 }
-            }
-
-            RelayMsg::ClientLog { line } => {
-                info!("browser: {line}");
-            }
-
-            // How the device reaches us, every few seconds — kept for `wado tui`, logged on change.
-            RelayMsg::DeviceStatus { link } => {
-                if ctx.viewer_ok.load(Ordering::SeqCst) {
-                    let (key, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
-                    ctx.hub.set_link(
-                        ctx.seat_origin.load(Ordering::SeqCst),
-                        crate::links::describe(&link),
-                    );
-                    if let Some(line) = crate::links::report(&ctx.remote_id, &key, &name, link) {
-                        info!("link: {line}");
+                RelayMsg::SdpOffer { sdp } => {
+                    match handle_sdp_offer(ctx, sdp, out_tx.clone()).await {
+                        Ok(()) => {}
+                        Err(e) => {
+                            error!("relay client: SdpOffer handling failed: {e}");
+                            send_relay(
+                                &out_tx,
+                                &RelayMsg::SessionError {
+                                    ack: 0,
+                                    message: format!("WebRTC setup failed: {e}"),
+                                },
+                            )
+                            .await
+                            .ok();
+                        }
                     }
                 }
-            }
 
-            RelayMsg::HostNetRequest => {
-                if ctx.viewer_ok.load(Ordering::SeqCst) {
-                    let net = crate::nat::host_net();
-                    send_relay(&out_tx, &RelayMsg::HostNet { net }).await.ok();
+                RelayMsg::IceCandidate { candidate } => {
+                    let pc = ctx
+                        .active_pc
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .clone();
+                    if let Some(pc) = pc
+                        && let Ok(cand) = serde_json::from_str(&candidate)
+                    {
+                        let _ = pc.add_ice_candidate(cand).await;
+                    }
                 }
-            }
 
-            msg @ (RelayMsg::PasskeyBegin { .. }
-            | RelayMsg::PasskeyRegister { .. }
-            | RelayMsg::PasskeyUnlock { .. }
-            | RelayMsg::PasskeyLock
-            | RelayMsg::PasskeyKeepalive
-            | RelayMsg::PasskeyGet
-            | RelayMsg::PasskeyStay { .. }
-            | RelayMsg::PasskeyRequire { .. }
-            | RelayMsg::PasskeyApprove
-            | RelayMsg::PasskeyApproveCancel) => {
-                let (key, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
-                let dev = crate::passkey::relay::Device {
-                    key: &key,
-                    name: &name,
-                    ok: ctx.viewer_ok.load(Ordering::SeqCst),
-                };
-                crate::passkey::relay::handle(msg, dev, &out_tx).await;
-            }
+                RelayMsg::ClientLog { line } => {
+                    info!("browser: {line}");
+                }
 
-            msg @ (RelayMsg::ClaudeGet
-            | RelayMsg::ClaudeAnswer { .. }
-            | RelayMsg::ClaudeOpen { .. }
-            | RelayMsg::ClaudeNew { .. }
-            | RelayMsg::ClaudeDirsGet { .. }) => {
-                let (key, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
-                let (ok, gate, out_tx) = (
-                    ctx.viewer_ok.load(Ordering::SeqCst),
-                    ctx.gate.clone(),
-                    out_tx.clone(),
-                );
-                // A task: a new session runs tmux, and a folder listing reads the disk.
-                tokio::spawn(async move {
-                    let dev = crate::claude::relay::Device {
+                // How the device reaches us, every few seconds — kept for `wado tui`, logged on change.
+                RelayMsg::DeviceStatus { link } => {
+                    if ctx.viewer_ok.load(Ordering::SeqCst) {
+                        let (key, name) =
+                            ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                        ctx.hub.set_link(
+                            ctx.seat_origin.load(Ordering::SeqCst),
+                            crate::links::describe(&link),
+                        );
+                        if let Some(line) = crate::links::report(&ctx.remote_id, &key, &name, link)
+                        {
+                            info!("link: {line}");
+                        }
+                    }
+                }
+
+                RelayMsg::HostNetRequest => {
+                    if ctx.viewer_ok.load(Ordering::SeqCst) {
+                        let net = crate::nat::host_net();
+                        send_relay(&out_tx, &RelayMsg::HostNet { net }).await.ok();
+                    }
+                }
+
+                msg @ (RelayMsg::PasskeyBegin { .. }
+                | RelayMsg::PasskeyRegister { .. }
+                | RelayMsg::PasskeyUnlock { .. }
+                | RelayMsg::PasskeyLock
+                | RelayMsg::PasskeyKeepalive
+                | RelayMsg::PasskeyGet
+                | RelayMsg::PasskeyStay { .. }
+                | RelayMsg::PasskeyRequire { .. }
+                | RelayMsg::PasskeyApprove
+                | RelayMsg::PasskeyApproveCancel) => {
+                    let (key, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                    let dev = crate::passkey::relay::Device {
                         key: &key,
                         name: &name,
-                        ok,
-                        gate: &gate,
+                        ok: ctx.viewer_ok.load(Ordering::SeqCst),
                     };
-                    crate::claude::relay::handle(msg, dev, &out_tx).await;
-                });
-            }
+                    crate::passkey::relay::handle(msg, dev, &out_tx).await;
+                }
 
-            msg @ (RelayMsg::PushGet
-            | RelayMsg::PushSubscribe { .. }
-            | RelayMsg::PushKindsSet { .. }
-            | RelayMsg::PushUnsubscribe
-            | RelayMsg::PushTest) => {
-                let (key, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
-                let (ok, out_tx) = (ctx.viewer_ok.load(Ordering::SeqCst), out_tx.clone());
-                // A task: a test push waits on the push service.
-                tokio::spawn(async move {
-                    let dev = crate::push::relay::Device {
-                        key: &key,
-                        name: &name,
-                        ok,
-                    };
-                    crate::push::relay::handle(msg, dev, &out_tx).await;
-                });
-            }
+                msg @ (RelayMsg::ClaudeGet
+                | RelayMsg::ClaudeAnswer { .. }
+                | RelayMsg::ClaudeOpen { .. }
+                | RelayMsg::ClaudeNew { .. }
+                | RelayMsg::ClaudeDirsGet { .. }) => {
+                    let (key, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                    let (ok, gate, out_tx) = (
+                        ctx.viewer_ok.load(Ordering::SeqCst),
+                        ctx.gate.clone(),
+                        out_tx.clone(),
+                    );
+                    // A task: a new session runs tmux, and a folder listing reads the disk.
+                    tokio::spawn(async move {
+                        let dev = crate::claude::relay::Device {
+                            key: &key,
+                            name: &name,
+                            ok,
+                            gate: &gate,
+                        };
+                        crate::claude::relay::handle(msg, dev, &out_tx).await;
+                    });
+                }
 
-            RelayMsg::Ping => {
-                send_relay(&out_tx, &RelayMsg::Pong).await.ok();
-            }
+                msg @ (RelayMsg::PushGet
+                | RelayMsg::PushSubscribe { .. }
+                | RelayMsg::PushKindsSet { .. }
+                | RelayMsg::PushUnsubscribe
+                | RelayMsg::PushTest) => {
+                    let (key, name) = ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                    let (ok, out_tx) = (ctx.viewer_ok.load(Ordering::SeqCst), out_tx.clone());
+                    // A task: a test push waits on the push service.
+                    tokio::spawn(async move {
+                        let dev = crate::push::relay::Device {
+                            key: &key,
+                            name: &name,
+                            ok,
+                        };
+                        crate::push::relay::handle(msg, dev, &out_tx).await;
+                    });
+                }
 
-            other => {
-                warn!("relay client: unexpected message: {other:?}");
+                RelayMsg::Ping => {
+                    send_relay(&out_tx, &RelayMsg::Pong).await.ok();
+                }
+
+                other => {
+                    warn!("relay client: unexpected message: {other:?}");
+                }
             }
         }
-    }
+        Ok::<(), crate::WadoError>(())
+    };
+    // The watchdog has already said why when it wakes this.
+    let served = tokio::select! {
+        r = serve => r,
+        () = stuck.notified() => Ok(()),
+    };
 
     log_task.abort();
     text_input_task.abort();
@@ -2489,7 +2554,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     menu_task.abort();
     ctl_rooms.clear(&ctl);
     write_task.abort();
-    Ok(())
+    served
 }
 
 /// Create a new RTCPeerConnection, attach the shared track, wire input data

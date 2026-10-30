@@ -17,6 +17,11 @@ pub const MAX_TEXT: usize = 1 << 20;
 /// The largest picture that is shared, either way: 8 MiB of PNG or JPEG. As a `data:` URI on the
 /// relay link that is under 11 MiB — inside every frame limit on the way.
 pub const MAX_IMAGE: usize = 8 << 20;
+/// The most one copy may be on the relay's lane (64 KB/s), every link to a device being one
+/// today: as files are held (`server::files::lane`), so is a bigger copy — the device is told it
+/// stays on the computer (`RelayMsg::ClipHeld`). Text never reaches it ([`MAX_TEXT`]); 31
+/// pictures fetched for the history's tiles once queued 16 MB and hung the daemon (2026-10-30).
+pub const LANE_MAX: usize = 1 << 20;
 /// The picture types shared both ways — what a browser's clipboard can hold (PNG), and what a
 /// phone camera makes (JPEG).
 pub const IMAGE_TYPES: &[&str] = &["image/png", "image/jpeg"];

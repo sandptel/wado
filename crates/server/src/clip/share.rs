@@ -5,7 +5,7 @@
 //! "Copy from this computer automatically" off, holds from the next copy on — and then:
 //!
 //! - with `live`, the copy in full ([`RelayMsg::ClipNow`]) — unless this device sent it, which
-//!   would be its own copy coming back;
+//!   would be its own copy coming back; one too big for the lane is held ([`super::held`]);
 //! - with `watching`, the history again, if it changed.
 //!
 //! Nothing at all without the `clipboard` grant.
@@ -79,13 +79,14 @@ async fn follow_on(
             && c.from.device() != Some(a.key.as_str())
             && wado_protocol::clip::shareable(&c.clip.mime, c.clip.data.len()).is_ok()
         {
-            let now = RelayMsg::ClipNow {
-                hash: c.hash.clone(),
-                mime: c.clip.mime.clone(),
-                data: super::data::to_wire(&c.clip),
-                from: c.from.label(),
-                at_ms: c.at_ms,
-            };
+            let now =
+                super::held::held(&c.clip, "", &c.hash).unwrap_or_else(|| RelayMsg::ClipNow {
+                    hash: c.hash.clone(),
+                    mime: c.clip.mime.clone(),
+                    data: super::data::to_wire(&c.clip),
+                    from: c.from.label(),
+                    at_ms: c.at_ms,
+                });
             send(&out, &now).await;
         }
         if a.watching {
@@ -176,6 +177,34 @@ mod tests {
         }
         hub.note(text("live is off"), Origin::Session);
         assert!(next(&mut rx).await.is_none(), "not asked for");
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn a_picture_too_big_for_the_lane_is_held_and_said() {
+        let hub: &'static Hub = Box::leak(Box::default());
+        let (out, mut rx) = mpsc::channel(8);
+        let (_host_tx, host) = watch::channel(0);
+        let task = tokio::spawn(follow_on(hub, host, out, || Listen {
+            key: "phone".into(),
+            granted: true,
+            watching: false,
+            live: true,
+        }));
+        tokio::task::yield_now().await;
+        let big = Clip {
+            mime: "image/png".into(),
+            data: vec![7u8; 2 << 20].into(),
+            secret: false,
+        };
+        hub.note(big, Origin::Desktop);
+        match next(&mut rx).await {
+            Some(RelayMsg::ClipHeld { hash, bytes, .. }) => {
+                assert_eq!(hash, crate::clip::hub::hash(&vec![7u8; 2 << 20]));
+                assert_eq!(bytes, 2 << 20);
+            }
+            other => panic!("expected the note, got {other:?}"),
+        }
         task.abort();
     }
 }
