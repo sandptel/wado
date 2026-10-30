@@ -4,6 +4,8 @@ local.properties
 .kotlin/
 # The bundled web client: built by scripts/android-build.sh, never committed.
 /app/src/main/assets/client/
+# The Rust core's .so files: built by scripts/android-core.sh, never committed.
+/app/src/main/jniLibs/
 # Release signing: held by the user (docs/android-release.md).
 keystore.properties
 *.jks

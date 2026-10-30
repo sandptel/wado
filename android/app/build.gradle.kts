@@ -34,8 +34,15 @@ val keystore: Properties? = run {
 android {
     namespace = "io.github.sandptel.wado"
     compileSdk = 37
-    // The one the Nix shell's SDK carries (flake.nix); AGP's default would try to download.
+    // The ones the Nix shell's SDK carries (flake.nix); AGP's defaults would try to download.
     buildToolsVersion = "37.0.0"
+    // Used here only to strip the Rust core's .so (scripts/android-core.sh builds it).
+    ndkVersion = "29.0.14206865"
+
+    // The Rust core's Kotlin bindings, generated from its .so (scripts/android-core.sh).
+    sourceSets.getByName("main") {
+        kotlin.srcDir("build/generated/uniffi")
+    }
 
     defaultConfig {
         applicationId = "io.github.sandptel.wado"
@@ -133,6 +140,8 @@ dependencies {
     implementation(libs.camerax.view)
     implementation(libs.zxing.core)
     implementation(libs.unifiedpush.connector)
+    // UniFFI's Kotlin calls the Rust core through JNA (the Android AAR carries its native part).
+    implementation(libs.jna) { artifact { type = "aar" } }
 
     testImplementation(libs.junit)
     // android.jar's org.json is stubs on the JVM; the real one for unit tests.

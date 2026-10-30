@@ -147,6 +147,27 @@ class BridgeTest {
     }
 }
 
+class TapFeelTest {
+    @Test fun a_quick_still_lone_finger_is_a_tap() {
+        val t = io.github.sandptel.wado.pad.TapFeel()
+        t.down(1, androidx.compose.ui.geometry.Offset(10f, 10f), 0, 1)
+        assertTrue(t.up(1, androidx.compose.ui.geometry.Offset(14f, 12f), 120, true))
+    }
+
+    @Test fun drags_holds_and_two_finger_touches_are_not() {
+        val t = io.github.sandptel.wado.pad.TapFeel()
+        val o = androidx.compose.ui.geometry.Offset(0f, 0f)
+        t.down(1, o, 0, 1)
+        assertFalse(t.up(1, androidx.compose.ui.geometry.Offset(80f, 0f), 100, true))
+        t.down(2, o, 0, 1)
+        assertFalse(t.up(2, o, 400, true))
+        t.down(3, o, 0, 1)
+        t.down(4, o, 10, 2)
+        assertFalse(t.up(4, o, 50, false))
+        assertFalse(t.up(3, o, 60, true))
+    }
+}
+
 class QrDecoderTest {
     @Test fun reads_a_code_zxing_drew() {
         val text = "https://sandptel.github.io/wado/?relay=https://r&id=1&pair=ABCD1234&hk=x"

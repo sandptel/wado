@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -37,6 +38,8 @@ import io.github.sandptel.wado.prefs.Prefs
 import io.github.sandptel.wado.share.SharePayload
 import io.github.sandptel.wado.ui.about.AboutScreen
 import io.github.sandptel.wado.ui.home.HomeScreen
+import io.github.sandptel.wado.ui.pad.PadModes
+import io.github.sandptel.wado.ui.pad.PadScreen
 import io.github.sandptel.wado.ui.pair.PairScreen
 import io.github.sandptel.wado.ui.settings.SettingsScreen
 import io.github.sandptel.wado.ui.share.SharePicker
@@ -52,6 +55,8 @@ class AppState {
     var shareState by mutableStateOf<ShareState>(ShareState.Choosing)
     /** A page element in fullscreen (a video): drawn over everything. */
     var fullscreen by mutableStateOf<View?>(null)
+    /** The computer the native trackpad drives. */
+    var pad by mutableStateOf<Computer?>(null)
     /** The page asked for the screen to itself (a session, the trackpad): no inset padding. */
     var active by mutableStateOf(false)
     /** The computer's volume, shown briefly after a volume key; null when hidden. */
@@ -62,6 +67,7 @@ class AppState {
 interface AppActions {
     fun open(c: Computer)
     fun door(c: Computer?, go: String)
+    val padModes: PadModes
     fun connect(link: Map<String, String>)
     fun showWeb()
     fun pick(c: Computer)
@@ -93,13 +99,22 @@ fun AppRoot(web: WebView, state: AppState, computers: Computers, prefs: Prefs, a
                 Route.Home -> HomeScreen(
                     computers,
                     onOpen = act::open,
-                    onDoor = { c, go -> act.door(c, go) },
+                    onDoor = { c, go ->
+                        // The trackpad is native; the other doors open the client.
+                        if (go == "trackpad") {
+                            state.pad = c
+                            state.route = Route.Pad
+                        } else act.door(c, go)
+                    },
                     onPair = { state.route = Route.Pair },
                     onTypeCode = act::showWeb,
                     onSettings = { state.route = Route.Settings },
                     onAll = act::showWeb,
                 )
                 Route.Pair -> PairScreen(act::connect, act::showWeb) { state.route = Route.Home }
+                Route.Pad -> state.pad?.let { c ->
+                    PadScreen(c, act.padModes, onMore = { act.door(c, "trackpad") }) { state.route = Route.Home }
+                } ?: LaunchedEffect(Unit) { state.route = Route.Home }
                 Route.Settings -> SettingsScreen(prefs, act::stayConnected, { state.route = Route.About }) { state.route = Route.Home }
                 Route.About -> AboutScreen(act::openUrl) { state.route = Route.Settings }
             }

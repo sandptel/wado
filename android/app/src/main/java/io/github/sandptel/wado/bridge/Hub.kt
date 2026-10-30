@@ -50,8 +50,8 @@ object Hub {
     /** The page has loaded and spoken: messages to it are delivered now, not queued. */
     val pageReady: StateFlow<Boolean> = _pageReady.asStateFlow()
 
-    private val _events = MutableSharedFlow<Pair<String, JSONObject>>(extraBufferCapacity = 16)
-    /** One-off page events the screens react to: `exit`, `shareDone`. */
+    private val _events = MutableSharedFlow<Pair<String, JSONObject>>(extraBufferCapacity = 64)
+    /** One-off page events the screens react to: `exit`, `shareDone`, `padState`, `padMsg`. */
     val events: SharedFlow<Pair<String, JSONObject>> = _events.asSharedFlow()
 
     fun init(prefs: Prefs) {

@@ -6,7 +6,7 @@
 //   node scripts/native-check.mjs
 import { readFileSync } from "node:fs";
 
-const FILES = ["native.js", "native_sync.js", "native_feel.js", "native_share.js", "native_push.js"];
+const FILES = ["native.js", "native_sync.js", "native_feel.js", "native_share.js", "native_push.js", "native_pad.js"];
 const src = FILES.map((f) => readFileSync(new URL("../crates/client/src/js/" + f, import.meta.url), "utf8")).join("\n");
 
 let failures = 0;
@@ -35,8 +35,17 @@ function world(native) {
     wake: { off: false, acquire: async () => "acq", release: () => "rel" },
     setWake: () => {},
     padConfirm: { show: () => "shown" },
-    padTouch: { input: () => {} },
+    padTouch: { input: () => {}, resend: () => "web-resend" },
     hostState: null,
+    pad: (() => {
+      const st = [], ms = [];
+      const P = { state: "off", sent: [], onState: (f) => st.push(f), onMsg: (f) => ms.push(f) };
+      P.start = () => { P.state = "relayed"; st.forEach((f) => f("relayed")); };
+      P.stop = () => { P.state = "off"; st.forEach((f) => f("off")); };
+      P.send = (msg, lossy) => { P.sent.push([msg, lossy]); return true; };
+      P.say = (m) => ms.forEach((f) => f(m));
+      return P;
+    })(),
   };
   const vib = () => "browser";
   const navigator = { vibrate: vib };
@@ -141,6 +150,28 @@ function world(native) {
   answer({ t: "share", key: "https://r|42", files: [], links: ["javascript:alert(1)"], text: "" });
   await new Promise((r) => setTimeout(r, 10));
   check("app: only http(s) links are opened", !w.sent.some((m) => m.command && m.command.includes("javascript")), w.sent);
+}
+
+// ── the app's native trackpad ───────────────────────────────────────────────────────────
+{
+  const posted = [];
+  const N = { postMessage: (s) => posted.push(JSON.parse(s)), onmessage: null };
+  const w = world(N);
+  const of = (t) => posted.filter((m) => m.t === t);
+  const answer = (m) => N.onmessage({ data: JSON.stringify(m) });
+  w.W.pad.say({ k: "err", message: "ignored" });
+  check("pad: nothing is forwarded before the app opens it", of("padMsg").length === 0, of("padMsg"));
+  answer({ t: "padStart", key: "https://r|42" });
+  await new Promise((r) => setTimeout(r, 10));
+  check("pad: start opens the page's pad link", w.W.pad.state === "relayed" && of("padState").at(-1)?.state === "relayed", of("padState"));
+  check("pad: …and silences the web surface's re-send", w.W.padTouch.resend() === undefined, null);
+  answer({ t: "pad", msg: { k: "frame", seq: 1, t: 0, c: [[0, 1, 2]] }, lossy: true });
+  check("pad: the app's frames go out on the pad link", JSON.stringify(w.W.pad.sent.at(-1)) === '[{"k":"frame","seq":1,"t":0,"c":[[0,1,2]]},true]', w.W.pad.sent);
+  w.W.pad.say({ k: "err", message: "no input grant", fatal: true });
+  check("pad: the daemon's answers reach the app", of("padMsg").at(-1)?.msg?.message === "no input grant", of("padMsg"));
+  answer({ t: "padStop" });
+  check("pad: stop closes the link and gives the web surface its re-send back",
+    w.W.pad.state === "off" && w.W.padTouch.resend() === "web-resend", w.W.pad.state);
 }
 
 console.log(failures ? `\n${failures} failed` : "\nall passed");

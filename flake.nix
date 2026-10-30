@@ -220,7 +220,8 @@
           runtimeLibs = rust ++ llvm ++ fonts ++ graphics ++ display ++ media ++ systemLibs ++ buildLibs;
 
           # The Android app's toolchain. Versions are the ones android/ builds against: compileSdk
-          # and targetSdk 37 (platform "37.0") and build-tools 37. No NDK: nothing native is built yet.
+          # and targetSdk 37 (platform "37.0"), build-tools 37, and the NDK the Rust core
+          # (crates/mobile-core) is cross-compiled with (scripts/android-core.sh).
           androidPkgs = import nixpkgs {
             inherit system;
             config = {
@@ -234,11 +235,14 @@
               composed = androidPkgs.androidenv.composeAndroidPackages {
                 platformVersions = [ "37.0" ];
                 buildToolsVersions = [ "37.0.0" ];
+                includeNDK = true;
+                ndkVersions = [ ndkVersion ];
                 includeEmulator = emulator;
                 includeSystemImages = emulator;
                 systemImageTypes = [ "google_apis" ];
                 abiVersions = [ "x86_64" ];
               };
+              ndkVersion = "29.0.14206865";
               sdk = composed.androidsdk;
               root = "${sdk}/libexec/android-sdk";
             in
@@ -255,7 +259,14 @@
                 androidPkgs.rustc
                 androidPkgs.lld
                 androidPkgs.nodejs
+                androidPkgs.cargo-ndk
               ];
+              ANDROID_NDK_HOME = "${root}/ndk/${ndkVersion}";
+              # The Rust core needs Android's std, which nixpkgs' rustc does not carry: rustup brings
+              # it, kept off PATH (its `cargo` proxy would shadow the one above) and in its own home
+              # (~/.cache/wado/rustup) at the same version as this rustc. scripts/android-core.sh.
+              WADO_RUSTUP = "${androidPkgs.rustup}/bin/rustup";
+              WADO_RUST_VERSION = androidPkgs.rustc.version;
               ANDROID_HOME = root;
               ANDROID_SDK_ROOT = root;
               JAVA_HOME = androidPkgs.jdk17.home;
@@ -266,7 +277,7 @@
               # libraries, and the JDK here dies loading them.
               shellHook = ''
                 unset LD_LIBRARY_PATH
-                printf '\033[1;36m%s\033[0m\n' "wado › android · sdk 37 · jdk 17${if emulator then " · emulator" else ""}"
+                printf '\033[1;36m%s\033[0m\n' "wado › android · sdk 37 · jdk 17 · ndk 29${if emulator then " · emulator" else ""}"
               '';
             };
         in

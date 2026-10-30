@@ -10,6 +10,10 @@ import android.view.KeyEvent
 import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.SystemBarStyle
+import androidx.compose.runtime.LaunchedEffect
+import androidx.core.view.WindowCompat
+import io.github.sandptel.wado.ui.pad.PadModes
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -77,7 +81,11 @@ class MainActivity : ComponentActivity(), ClientWebView.Host, AppActions {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
-        enableEdgeToEdge()
+        // Light icons over the dark ground from the first frame; a light scheme flips them below.
+        enableEdgeToEdge(
+            SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+        )
         super.onCreate(savedInstanceState)
         Motion.read(this)
         modes = ScreenModes(this)
@@ -105,6 +113,12 @@ class MainActivity : ComponentActivity(), ClientWebView.Host, AppActions {
         setContent {
             val scheme by Hub.theme.collectAsState()
             val computers by Hub.computers.collectAsState()
+            LaunchedEffect(scheme.light) {
+                WindowCompat.getInsetsController(window, window.decorView).apply {
+                    isAppearanceLightStatusBars = scheme.light
+                    isAppearanceLightNavigationBars = scheme.light
+                }
+            }
             WadoTheme(scheme) {
                 AppRoot(web.view, state, computers, app.prefs, this)
             }
@@ -183,7 +197,10 @@ class MainActivity : ComponentActivity(), ClientWebView.Host, AppActions {
         val door = runCatching { DeepLinks.door(URI(data)) }.getOrNull()
         if (door != null) {
             val c = Hub.computers.value.list.firstOrNull { it.key == door.key } ?: Hub.computers.value.current
-            door(c, door.door)
+            if (door.door == "trackpad" && c != null) {
+                state.pad = c
+                state.route = Route.Pad
+            } else door(c, door.door)
             return
         }
         DeepLinks.connect(data)?.let { link -> if (firstLoad) state.route = Route.Web else connect(link) }
@@ -219,6 +236,18 @@ class MainActivity : ComponentActivity(), ClientWebView.Host, AppActions {
     override fun open(c: Computer) {
         Hub.send(BridgeProtocol.GO) { put("key", c.key); put("go", "") }
         state.route = Route.Web
+    }
+
+    override val padModes = object : PadModes {
+        override fun enter() {
+            modes.orient("landscape")
+            modes.active(true)
+        }
+
+        override fun leave() {
+            modes.orient("none")
+            modes.active(state.active)
+        }
     }
 
     override fun door(c: Computer?, go: String) {

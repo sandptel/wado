@@ -8,6 +8,8 @@ enum class Route(val depth: Int) {
     Home(0),
     Web(1),
     Pair(1),
+    /** The native trackpad (AppState.pad names the computer). */
+    Pad(1),
     Settings(1),
     About(2),
     ;

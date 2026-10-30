@@ -23,6 +23,8 @@ object BridgeProtocol {
     const val PUSH_SUBSCRIBE = "pushSubscribe"
     const val SHARE_DONE = "shareDone"
     const val EXIT = "exit"
+    const val PAD_STATE = "padState"
+    const val PAD_MSG = "padMsg"
 
     // app → page
     const val BACK = "back"
@@ -32,6 +34,9 @@ object BridgeProtocol {
     const val SHARE = "share"
     const val NOTIFY_ACTION = "notifyAction"
     const val PUSH_ENDPOINT = "pushEndpoint"
+    const val PAD_START = "padStart"
+    const val PAD = "pad"
+    const val PAD_STOP = "padStop"
     // CLIP is both ways: page → app the computer's copy, app → page the phone's.
 
     fun message(t: String, build: JSONObject.() -> Unit = {}): String =

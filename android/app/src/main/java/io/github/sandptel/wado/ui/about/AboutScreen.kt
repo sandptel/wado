@@ -58,7 +58,8 @@ fun AboutScreen(onOpenUrl: (String) -> Unit, onBack: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Wordmark()
-                Text("Version ${BuildConfig.VERSION_NAME}", style = Type.mono, color = p.dim)
+                val core = remember { runCatching { uniffi.wado_mobile_core.coreVersion() }.getOrElse { "not loaded" } }
+                Text("Version ${BuildConfig.VERSION_NAME} · core $core", style = Type.mono, color = p.dim)
                 Text(
                     "Your computers, at this screen's own resolution. wado is free software: you can redistribute and modify it under the GNU Affero General Public License, version 3 only. It comes with no warranty.",
                     style = Type.body,

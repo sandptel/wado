@@ -38,6 +38,9 @@ if [ "$CLIENT" = 1 ]; then
 fi
 [ -f "$ASSETS/index.html" ] || { echo "no client in $ASSETS (drop --no-client)" >&2; exit 1; }
 
+# The Rust core (.so per ABI + its Kotlin bindings).
+"$ROOT/scripts/android-core.sh"
+
 cd "$ROOT/android"
 TASKS=(test assembleDebug)
 [ "$DEBUG_ONLY" = 1 ] || TASKS+=(assembleRelease)
