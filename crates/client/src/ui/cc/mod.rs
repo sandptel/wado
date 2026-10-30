@@ -63,7 +63,7 @@ pub fn render(ui: Ui) -> Element {
             div { class: "pages",
                 // The root stays mounted under a pushed page so coming back is instant and keeps
                 // its scroll; the pushed page is mounted only while it is up.
-                div { class: if page == Page::Root { "page" } else { "page behind" },
+                div { class: if page == Page::Root { "page" } else { "page behind" }, inert: page != Page::Root,
                     {hero::render(ui)}
                     {crate::ui::scoped(ui, "media", playing)}
                     if !notes.is_empty() {
