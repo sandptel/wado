@@ -5,12 +5,14 @@ import android.content.MutableContextWrapper
 import io.github.sandptel.wado.bridge.Hub
 import io.github.sandptel.wado.bridge.NowPlaying
 import io.github.sandptel.wado.clip.ClipSync
+import io.github.sandptel.wado.core.CoreHost
 import io.github.sandptel.wado.media.RemoteMedia
 import io.github.sandptel.wado.notify.Notifier
 import io.github.sandptel.wado.prefs.Prefs
 import io.github.sandptel.wado.push.Push
 import io.github.sandptel.wado.stay.StayConnectedService
 import io.github.sandptel.wado.web.ClientWebView
+import kotlinx.coroutines.flow.map
 import org.json.JSONObject
 
 /**
@@ -24,6 +26,9 @@ class WadoApp : Application() {
     lateinit var notifier: Notifier
         private set
     private lateinit var clip: ClipSync
+    /** The Rust client core: native pairing, the computers it knows, their live links. */
+    lateinit var core: CoreHost
+        private set
     private val media by lazy { RemoteMedia(this) }
 
     /** An activity of ours is in front. Notifications defer to the page then. */
@@ -45,6 +50,7 @@ class WadoApp : Application() {
             override fun pushSubscribe(vapid: String, rid: String) = Push.subscribe(this@WadoApp, vapid, rid)
             override fun nowPlaying(np: NowPlaying) = media.update(np)
         }
+        core = CoreHost(this).also { it.start(Hub.computers.map { c -> c.list }) }
         if (prefs.stayConnected) StayConnectedService.sync(this, true)
     }
 

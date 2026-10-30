@@ -1,31 +1,27 @@
 //! A computer's OS logo, from os-release: exact `ID`, then each `ID_LIKE` entry in order, then Tux.
-//! Slugs are Simple Icons slugs; `scripts/os-logos.mjs` makes one drawable per slug in [`SLUGS`].
+//! Slugs are Simple Icons slugs; `scripts/os-logos.mjs` makes one drawable per slug in [`slugs`].
+//! Only CC0 icons are used: NixOS, Debian, Fedora, Gentoo, Rocky and MX carry other licences in
+//! Simple Icons, so they fall back on `ID_LIKE` (Rocky → Red Hat) or Tux until that is decided.
 //! Pure, and shared with the desktop app.
 
 /// os-release `ID` → Simple Icons slug.
 const IDS: &[(&str, &str)] = &[
-    ("nixos", "nixos"),
     ("arch", "archlinux"),
     ("endeavouros", "endeavouros"),
     ("manjaro", "manjaro"),
-    ("debian", "debian"),
     ("ubuntu", "ubuntu"),
     ("pop", "popos"),
     ("linuxmint", "linuxmint"),
-    ("fedora", "fedora"),
     ("opensuse", "opensuse"),
-    ("gentoo", "gentoo"),
     ("alpine", "alpinelinux"),
     ("elementary", "elementary"),
     ("kali", "kalilinux"),
     ("void", "voidlinux"),
     ("centos", "centos"),
-    ("rocky", "rockylinux"),
     ("almalinux", "almalinux"),
     ("rhel", "redhat"),
     ("zorin", "zorin"),
     ("artix", "artixlinux"),
-    ("mx", "mxlinux"),
     ("deepin", "deepin"),
     ("solus", "solus"),
     ("steamos", "steam"),
@@ -68,7 +64,7 @@ mod tests {
     #[test]
     fn exact_id_wins() {
         assert_eq!(slug("pop", &["ubuntu".into(), "debian".into()]), "popos");
-        assert_eq!(slug("nixos", &[]), "nixos");
+        assert_eq!(slug("ubuntu", &[]), "ubuntu");
         assert_eq!(slug("Arch", &[]), "archlinux");
     }
 

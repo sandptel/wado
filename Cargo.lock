@@ -6290,6 +6290,7 @@ dependencies = [
  "sha2",
  "uniffi",
  "wado",
+ "wado-client-core",
  "wado-protocol",
 ]
 
