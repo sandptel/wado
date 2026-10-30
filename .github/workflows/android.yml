@@ -1,0 +1,51 @@
+# Builds the Android app's debug APK (docs/android.md) and keeps it as an artifact. No secrets:
+# release signing happens offline, on the user's machine (docs/android-release.md).
+name: android
+
+on:
+  push:
+    branches: [main]
+    paths: ["android/**", "crates/client/**", "crates/protocol/**", "crates/mobile-core/**", ".github/workflows/android.yml"]
+  pull_request:
+    paths: ["android/**", "crates/client/**", "crates/protocol/**", "crates/mobile-core/**", ".github/workflows/android.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # wasm32 for the web client; the Android targets for the Rust core (crates/mobile-core).
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown,aarch64-linux-android,x86_64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+
+      # Pinned with the wasm-bindgen pin in crates/client/Cargo.toml (see pages.yml).
+      - uses: cargo-bins/cargo-binstall@main
+      - run: cargo binstall -y dioxus-cli@0.7.10 cargo-ndk
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # The runner's SDK, with the platform, build-tools and NDK this app builds against.
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platforms;android-37.0 build-tools;37.0.0 ndk;29.0.14206865"
+
+      - run: scripts/android-build.sh --debug
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/29.0.14206865
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wado-android-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14

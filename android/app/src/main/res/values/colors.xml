@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- default-dark's base00: the ground before any scheme is known (splash, launcher icon).
+         Everything drawn after that takes the user's scheme (ui/theme/Base16.kt). -->
+    <color name="ground">#181818</color>
+</resources>

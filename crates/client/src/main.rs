@@ -15,6 +15,7 @@ mod claude;
 mod debug;
 mod deeplink;
 mod link;
+mod native;
 mod persist;
 mod profile;
 mod push;

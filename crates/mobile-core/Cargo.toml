@@ -1,0 +1,33 @@
+[package]
+name = "wado-mobile-core"
+version = "0.0.3"
+edition = "2021"
+license = "AGPL-3.0-only"
+description = "wado's shared core for the native phone apps: wire types and pure logic over UniFFI (android/)."
+
+[lib]
+# cdylib: the .so the Android app loads (scripts/android-core.sh, cargo-ndk); lib: host tests.
+crate-type = ["cdylib", "lib"]
+name = "wado_mobile_core"
+
+# Generates the Kotlin bindings from the built library (library mode).
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+required-features = ["bindgen"]
+
+[features]
+bindgen = ["uniffi/cli"]
+
+[dependencies]
+wado-protocol = { path = "../protocol" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uniffi = "0.32"
+base64 = "0.22"
+sha2 = "0.10"
+
+# The daemon's own verifier, to prove what the app's authenticator makes is what it accepts.
+[dev-dependencies]
+wado = { path = "../server" }
+ring = "0.17"

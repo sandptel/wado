@@ -250,6 +250,23 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/install_hint.js"),
     "\n",
+    // The Android app's native side (android/), feature-detected: without `window.wadoNative`
+    // these define `W.native = null` and do nothing. Last but one: they wrap functions and chain
+    // relay handlers the files above define.
+    include_str!("js/native.js"),
+    "\n",
+    include_str!("js/native_sync.js"),
+    "\n",
+    include_str!("js/native_feel.js"),
+    "\n",
+    include_str!("js/native_share.js"),
+    "\n",
+    include_str!("js/native_push.js"),
+    "\n",
+    include_str!("js/native_pad.js"),
+    "\n",
+    include_str!("js/native_passkey.js"),
+    "\n",
     include_str!("js/lifecycle.js"),
 );
 
@@ -335,6 +352,9 @@ pub fn run(ui: Ui) {
 
             match kind {
                 "status" => live.status.set(text()),
+                // The Android app (`js/native.js`): its home opened a computer, or Back ran out.
+                "nativeGo" => crate::native::go(ui, &string("key"), &string("go")),
+                "nativeBack" => crate::native::back(ui),
                 // A Back whose exit motion has run (`js/hero_flip.js`).
                 "viewBack" => crate::route::back(ui),
                 // Home's widgets: one removed after its exit, one dropped in a new place.

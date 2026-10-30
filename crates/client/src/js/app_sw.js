@@ -3,11 +3,19 @@
 //   {type:"app", state, version, signed, dev, signing, updated, key, pending, refused, refusedKind,
 //    refusedVersion, firstWhy}
 // `state` is "pinned" (served from a release the worker holds), "unpinned" (no release here — a
-// development server) or "unsupported" (no service worker: plain http, or a browser without one).
+// development server), "unsupported" (no service worker: plain http, or a browser without one) or
+// "native" (inside the Android app, which bundles the client).
 // `signing` is false while sw-keys.js holds no release key: updates are then taken unsigned.
 // A launch asks the worker to look for a newer release; a page coming back to the front asks
 // again (the worker throttles that). An update it refused is also written to the log panel.
 (() => {
+  // The Android app bundles this client and serves it itself (android/): it updates with the app,
+  // never through a worker, so none is registered there.
+  if (window.wadoNative) {
+    const v = (window.wadoNativeInfo && window.wadoNativeInfo.version) || "";
+    emit({ type: "app", state: "native", version: v });
+    return;
+  }
   const sw = navigator.serviceWorker;
   if (!sw || !window.isSecureContext) { emit({ type: "app", state: "unsupported" }); return; }
   const day = (ms) => {
