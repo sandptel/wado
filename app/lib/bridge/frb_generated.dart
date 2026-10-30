@@ -4,6 +4,7 @@
 // ignore_for_file: unused_import, unused_element, unnecessary_import, duplicate_ignore, invalid_use_of_internal_member, annotate_overrides, non_constant_identifier_names, curly_braces_in_flow_control_structures, prefer_const_literals_to_create_immutables, unused_field
 
 import 'api/core.dart';
+import 'api/webauthn.dart';
 
 import 'dart:async';
 import 'dart:convert';
@@ -68,7 +69,7 @@ class WadoCore
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 1565345170;
+  int get rustContentHash => -557642999;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -149,6 +150,28 @@ abstract class WadoCoreApi extends BaseApi {
   });
 
   List<String> crateApiCoreOsLogoSlugs();
+
+  Uint8List crateApiWebauthnWebauthnAttestation({
+    required String rpId,
+    required List<int> credId,
+    required List<int> publicKey,
+  });
+
+  Uint8List crateApiWebauthnWebauthnAuthData({
+    required String rpId,
+    required int count,
+  });
+
+  Uint8List crateApiWebauthnWebauthnClientData({
+    required bool create,
+    required List<int> challenge,
+    required String origin,
+  });
+
+  Uint8List crateApiWebauthnWebauthnSigned({
+    required List<int> authData,
+    required List<int> clientData,
+  });
 
   RustArcIncrementStrongCountFnType get rust_arc_increment_strong_count_AppCore;
 
@@ -685,6 +708,130 @@ class WadoCoreApiImpl extends WadoCoreApiImplPlatform implements WadoCoreApi {
   TaskConstMeta get kCrateApiCoreOsLogoSlugsConstMeta =>
       const TaskConstMeta(debugName: "os_logo_slugs", argNames: []);
 
+  @override
+  Uint8List crateApiWebauthnWebauthnAttestation({
+    required String rpId,
+    required List<int> credId,
+    required List<int> publicKey,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(rpId, serializer);
+          sse_encode_list_prim_u_8_loose(credId, serializer);
+          sse_encode_list_prim_u_8_loose(publicKey, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 17)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_prim_u_8_strict,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiWebauthnWebauthnAttestationConstMeta,
+        argValues: [rpId, credId, publicKey],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiWebauthnWebauthnAttestationConstMeta =>
+      const TaskConstMeta(
+        debugName: "webauthn_attestation",
+        argNames: ["rpId", "credId", "publicKey"],
+      );
+
+  @override
+  Uint8List crateApiWebauthnWebauthnAuthData({
+    required String rpId,
+    required int count,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(rpId, serializer);
+          sse_encode_u_32(count, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 18)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_prim_u_8_strict,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiWebauthnWebauthnAuthDataConstMeta,
+        argValues: [rpId, count],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiWebauthnWebauthnAuthDataConstMeta =>
+      const TaskConstMeta(
+        debugName: "webauthn_auth_data",
+        argNames: ["rpId", "count"],
+      );
+
+  @override
+  Uint8List crateApiWebauthnWebauthnClientData({
+    required bool create,
+    required List<int> challenge,
+    required String origin,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_bool(create, serializer);
+          sse_encode_list_prim_u_8_loose(challenge, serializer);
+          sse_encode_String(origin, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 19)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_prim_u_8_strict,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiWebauthnWebauthnClientDataConstMeta,
+        argValues: [create, challenge, origin],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiWebauthnWebauthnClientDataConstMeta =>
+      const TaskConstMeta(
+        debugName: "webauthn_client_data",
+        argNames: ["create", "challenge", "origin"],
+      );
+
+  @override
+  Uint8List crateApiWebauthnWebauthnSigned({
+    required List<int> authData,
+    required List<int> clientData,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_list_prim_u_8_loose(authData, serializer);
+          sse_encode_list_prim_u_8_loose(clientData, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 20)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_prim_u_8_strict,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiWebauthnWebauthnSignedConstMeta,
+        argValues: [authData, clientData],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiWebauthnWebauthnSignedConstMeta =>
+      const TaskConstMeta(
+        debugName: "webauthn_signed",
+        argNames: ["authData", "clientData"],
+      );
+
   RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_AppCore => wire
       .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAppCore;
@@ -760,6 +907,12 @@ class WadoCoreApiImpl extends WadoCoreApiImplPlatform implements WadoCoreApi {
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as Uint8List;
+  }
+
+  @protected
+  int dco_decode_u_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as int;
   }
 
   @protected
@@ -874,6 +1027,12 @@ class WadoCoreApiImpl extends WadoCoreApiImplPlatform implements WadoCoreApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var len_ = sse_decode_i_32(deserializer);
     return deserializer.buffer.getUint8List(len_);
+  }
+
+  @protected
+  int sse_decode_u_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getUint32();
   }
 
   @protected
@@ -1011,6 +1170,12 @@ class WadoCoreApiImpl extends WadoCoreApiImplPlatform implements WadoCoreApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
     serializer.buffer.putUint8List(self);
+  }
+
+  @protected
+  void sse_encode_u_32(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putUint32(self);
   }
 
   @protected

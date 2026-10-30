@@ -12,6 +12,7 @@ import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
 import 'gamepad_screen.dart';
+import '../passkey/passkey_card.dart';
 
 void openPad(BuildContext context, {bool keyboard = false}) {
   Navigator.of(context).push(PageRouteBuilder(
@@ -261,6 +262,14 @@ class _WhyCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Tok.of(context);
     final w = padWhy(err);
+    if (w.cause == 'locked' || w.cause == 'no-passkey') {
+      return SingleChildScrollView(
+        child: PasskeyCard(need: 'The touchpad', onUnlocked: () {
+          Pad.I.stop();
+          Pad.I.start();
+        }),
+      );
+    }
     return SingleChildScrollView(
       child: WCard(children: [
         Text(w.title, style: display(context, rem(context, 1.125))),

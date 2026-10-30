@@ -49,3 +49,9 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // The passkey authenticator (kotlin/…/passkey): Keystore keys behind the screen lock.
+    implementation("androidx.biometric:biometric:1.1.0")
+    implementation("androidx.fragment:fragment-ktx:1.9.1")
+}

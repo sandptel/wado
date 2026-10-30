@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 
 import 'ui/shell.dart';
+import 'wado/passkey.dart';
 import 'ui/theme/look.dart';
 
 class WadoApp extends StatelessWidget {
@@ -16,7 +17,10 @@ class WadoApp extends StatelessWidget {
         title: 'wado',
         debugShowCheckedModeBanner: false,
         theme: Look.themeData(t),
-        builder: (context, child) => TokensScope(tokens: t, child: child!),
+        builder: (context, child) => Listener(
+          onPointerDown: (_) => Passkey.I.touched(),
+          child: TokensScope(tokens: t, child: child!),
+        ),
         home: failure == null ? const Shell() : _Failed(failure!),
       ),
     );

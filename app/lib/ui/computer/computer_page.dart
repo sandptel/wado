@@ -17,6 +17,8 @@ import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
 import 'playing.dart';
+import '../../wado/passkey.dart';
+import '../passkey/passkey_card.dart';
 import 'quick.dart';
 
 String uptime(int s) {
@@ -71,6 +73,7 @@ class _ComputerPageState extends State<ComputerPage> {
         Host.I.sessions,
         Session.I.on,
         Settings.I,
+        Passkey.I.view,
       ]),
       builder: (context, _) {
         final comps = CoreHost.I.computers.value;
@@ -110,6 +113,11 @@ class _ComputerPageState extends State<ComputerPage> {
                     const SizedBox(height: 12),
                     _Actions(r: r),
                     const Running(),
+                    if (r.online && Passkey.I.view.value.state.isNotEmpty && Passkey.I.view.value.required) ...[
+                      const Sect('Passkey'),
+                      const SizedBox(height: 8),
+                      const PasskeyCard(),
+                    ],
                     if (!off) ...[
                       const Sect('Now playing'),
                       const SizedBox(height: 8),
