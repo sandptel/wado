@@ -1148,6 +1148,9 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     };
 
     // ── 4. Main message loop ─────────────────────────────────────────────────
+    // Every frame is handled in turn, and an arm that awaits holds every frame behind it: each
+    // one is timed (`crate::slow`), so a "didn't answer" on the device names its stage here.
+    let mut seq: u64 = 0;
     loop {
         let frame = if relay_pings {
             match tokio::time::timeout(RELAY_SILENCE, ws_stream.next()).await {
@@ -1177,7 +1180,9 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
         // A control-only link's frame: its own room, its own envelope, never the seat's. Taken
         // before the liveness bump below, so a widget polling never keeps an abandoned session
         // alive.
+        seq += 1;
         if text.starts_with(r#"{"type":"ctl"#) {
+            let _span = crate::slow::Span::new("relay handler", "ctl", seq);
             match serde_json::from_str::<RelayMsg>(&text) {
                 Ok(RelayMsg::CtlOpen {
                     room_id,
@@ -1214,6 +1219,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             Inbound::Relay => text,
             Inbound::Msg(m) => m,
             Inbound::Hello { v, eph } => {
+                let _span = crate::slow::Span::new("relay handler", "e2e_hello", seq);
                 let reply = ctx.link.lock().unwrap_or_else(|e| e.into_inner()).hello(
                     &ctx.host_key,
                     v,
@@ -1230,6 +1236,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 pair_mac,
                 typed_mac,
             } => {
+                let _span = crate::slow::Span::new("relay handler", "e2e_finish", seq);
                 e2e_finish(ctx, &out_tx, &dev_pk, &sig, &pair_mac, &typed_mac).await;
                 continue;
             }
@@ -1240,6 +1247,11 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             }
         };
 
+        let _span = crate::slow::Span::new(
+            "relay handler",
+            crate::e2e::link::kind(&text).unwrap_or("?"),
+            seq,
+        );
         let msg = match serde_json::from_str::<RelayMsg>(&text) {
             Ok(m) => m,
             Err(e) => {
@@ -1473,6 +1485,15 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             }
 
             RelayMsg::SessionStart { config } => {
+                // Said on arrival, so a start's stages can be read off the log: this, then
+                // `compositor session active`, the offer, `viewer connected via WebRTC`.
+                info!(
+                    seq,
+                    "relay client: session_start received — {}x{}@{}",
+                    config.width,
+                    config.height,
+                    config.fps
+                );
                 ctx.hub.audio_low.send_if_modified(|v| {
                     std::mem::replace(v, config.low_latency_audio) != config.low_latency_audio
                 });
@@ -1934,6 +1955,9 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             RelayMsg::FilesChunk { id, b } => files_lane.chunk(id, &b).await,
 
             RelayMsg::SessionLaunch { command } => {
+                // Said on arrival: `launched session application`, then `window shown — N ms
+                // after launch` (or `exited without showing a window`) follow it.
+                info!(seq, command, "relay client: session_launch received");
                 // Answered honestly. This used to send `SessionLaunched` unconditionally, so a
                 // launch into a session that does not exist was reported as a success — the
                 // compositor logged `launch ignored — no active session` and the viewer was told
