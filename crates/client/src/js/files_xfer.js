@@ -187,7 +187,9 @@
       if (x.state !== "running") return; // paused or cancelled
       if (x.broken) return fail(x, x.broken);
       if (!F.open()) return fail(x, "lost");
-      while (F.buffered() > HIGH) {
+      // On the relay's lane the queue is the relay socket's, shared with everything else this
+      // device says: keep it to about two seconds of the lane, not a megabyte.
+      while (F.buffered() > (F.lane ? 128 * 1024 : HIGH)) {
         await new Promise((r) => setTimeout(r, 10));
         if (!F.open()) return fail(x, "lost");
       }

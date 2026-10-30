@@ -14,8 +14,9 @@
 // Emitted to Rust as {type:"link", …} on change and with a fresh RTT every 2 s, and kept as
 // `W.linkNow` for device_status.js. `nat` is the computer's own NAT verdict (`host_net`).
 
-W.linkNow = { state: "offline", path: "", rtt_ms: null, net: "", nat: "", turn: false };
+W.linkNow = { state: "offline", path: "", rtt_ms: null, net: "", nat: "", turn: false, cause: "" };
 W._relayWaitingNow = "";    // the relay's reason while it parks this join
+W.iceCause = "";            // why the last ICE attempt failed, when this device can tell ("warp")
 
 // The selected candidate pair, from the transport's own pointer. The stats loop's "any
 // succeeded pair" is not the same thing: after a re-route the last pair it sees can be stale.
@@ -43,7 +44,8 @@ function netType() {
 
 let last = "";
 W.linkTick = async () => {
-  const now = { state: "offline", path: "", rtt_ms: null, net: netType(), nat: W.linkNow.nat, turn: W.linkNow.turn };
+  const now = { state: "offline", path: "", rtt_ms: null, net: netType(), nat: W.linkNow.nat, turn: W.linkNow.turn,
+    cause: W.iceCause || "" };
   const pc = W.pc;
   if (!navigator.onLine) now.state = "offline";
   else if (W.recovery && W.sessionOn) now.state = "reconnecting";

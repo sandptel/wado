@@ -552,11 +552,15 @@ W._relayNegotiate = async (opts = {}) => {
     status("ICE: " + pc.iceConnectionState);
     if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
       phase(4, "");
+      W.iceCause = "";
     }
     if (pc.iceConnectionState === "failed") {
       // Cloudflare WARP (the 1.1.1.1 app) puts this device behind a symmetric NAT, which no
       // amount of STUN gets through. Its tunnel address, 100.96.0.0/12, is the tell.
       const warp = localAddrs.some((a) => /^100\.(9[6-9]|10[0-9]|11[01])\./.test(a));
+      // Named on the link badge and the lane's hints (link_state.js → crate::lane): a cause this
+      // device can see is said; none is guessed.
+      W.iceCause = warp ? "warp" : "";
       phase(3, warp
         ? "Cloudflare WARP (1.1.1.1) is on on this device, and it blocks the direct path video " +
           "needs. Turn it off — or exclude this browser from it — and reload."

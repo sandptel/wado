@@ -30,6 +30,7 @@ pub mod health;
 pub mod home;
 pub mod host;
 pub mod landing;
+pub mod lane_hint;
 pub mod latency;
 pub mod link_badge;
 pub mod live;

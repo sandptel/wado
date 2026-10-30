@@ -92,7 +92,11 @@ pub fn of(ui: Ui, key: &str) -> Reach {
         let (tone, words) = match link.state.as_str() {
             _ if confirming => ("warn", "Waiting for the computer to confirm".to_string()),
             _ if unpaired => ("warn", "Not paired with this phone yet".to_string()),
-            _ if (live.session_on)() && stage >= 4 => ("ok", "Streaming".to_string()),
+            // Streaming only while a direct path carries it: a picture once seen is not one now,
+            // and a green dot must not say so (Decision Log 2026-10-27).
+            _ if (live.session_on)() && stage >= 4 && link.state == "direct" => {
+                ("ok", "Streaming".to_string())
+            }
             "direct" => (
                 "ok",
                 link.rtt_ms

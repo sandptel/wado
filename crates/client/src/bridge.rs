@@ -173,6 +173,9 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/files_view.js"),
     "\n",
+    // After `pty.js` (it chains the `pty_output` handler) and the files (it reads `W.files`).
+    include_str!("js/lane_hint.js"),
+    "\n",
     // The trackpad. After `relay_link.js` (it registers relay handlers and chains `__up`) and
     // `wakelock.js`; `pad_link` first, as the others call the `W.pad` it creates.
     include_str!("js/pad_link.js"),
@@ -401,6 +404,15 @@ pub fn run(ui: Ui) {
                 "link" => {
                     if let Ok(l) = serde_json::from_value(msg.clone()) {
                         live.link.set(l);
+                    }
+                }
+                // Where the relay's limited lane is felt (`js/lane_hint.js`, `ui::lane_hint`).
+                "laneHint" => {
+                    let spot = string("spot");
+                    let mut hints = live.lane_hints.write();
+                    hints.retain(|(s, _)| *s != spot);
+                    if msg.get("on").and_then(|v| v.as_bool()).unwrap_or(false) {
+                        hints.push((spot, string("detail")));
                     }
                 }
                 "screen" => {
