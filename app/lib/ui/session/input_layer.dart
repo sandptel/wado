@@ -79,7 +79,16 @@ class _InputLayerState extends State<InputLayer> {
     _button(p, b, false);
   }
 
+  bool get _raw => Settings.I.s('touch_mode') == 'touch';
+
+  /// Raw touch (input_touch.js): each finger reaches the app as wl_touch.
+  void _touch(PointerEvent e, String phase) {
+    final n = _norm(e.localPosition);
+    if (n != null) _send({'t': 'touch', 'id': e.pointer & 0xffffffff, 'phase': phase, 'x': n.dx, 'y': n.dy});
+  }
+
   void _down(PointerDownEvent e) {
+    if (_raw) return _touch(e, 'down');
     if (_id != null) return;
     _id = e.pointer;
     _start = _last = e.localPosition;
@@ -94,6 +103,7 @@ class _InputLayerState extends State<InputLayer> {
   }
 
   void _move(PointerMoveEvent e) {
+    if (_raw) return _touch(e, 'motion');
     if (e.pointer != _id) return;
     final p = e.localPosition;
     final dist = (p - _start).distance;
@@ -129,6 +139,7 @@ class _InputLayerState extends State<InputLayer> {
   }
 
   void _up(PointerEvent e) {
+    if (_raw) return _touch(e, 'up');
     if (e.pointer != _id) return;
     _holdTimer?.cancel();
     final p = e.localPosition;

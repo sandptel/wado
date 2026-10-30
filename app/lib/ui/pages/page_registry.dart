@@ -6,6 +6,7 @@ import '../widgets/basics.dart';
 import 'add_computer.dart';
 import 'appearance.dart';
 import 'diagnostics.dart';
+import 'input_pages.dart';
 import 'display_session.dart';
 import 'sound_devices.dart';
 import 'connection_trust.dart';
@@ -28,6 +29,9 @@ final _pages = <String, PageDef>{
   'display_session': PageDef('Display & session', (_) => const DisplaySession()),
   'sound_devices': PageDef('Sound & devices', (_) => const SoundDevices()),
   'connection_trust': PageDef('Connection & trust', (_) => ConnectionTrust(computerKey: Nav.I.view.value.computer)),
+  'trackpad': PageDef('Touchpad', (_) => const TouchpadSettings()),
+  'input_feel': PageDef('Input feel', (_) => const InputFeel()),
+  'about': PageDef('About', (_) => const AboutPage()),
   'input': PageDef('Virtual input', (_) => const InputHub()),
   'shells': PageDef('Shell', (_) => const ShellPage(), fullBleed: true),
   'files': PageDef('Files', (_) => const FilesPage(), fullBleed: true),

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/core_host.dart';
 import '../../wado/log.dart';
+import '../../wado/nav.dart';
 import '../../wado/relay_link.dart';
 import '../../wado/session.dart';
 import '../theme/look.dart';
@@ -36,6 +37,7 @@ class Diagnostics extends StatelessWidget {
             kv('Status', status.value),
             kv('This device', '${CoreHost.deviceName} · ${CoreHost.I.clientKey}'),
           ]),
+          Btn('About wado next', onTap: () => Nav.I.openPage('about', aboutComputer: false)),
           const Sect('Log'),
           const SizedBox(height: 8),
           Container(
