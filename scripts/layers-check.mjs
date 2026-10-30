@@ -156,7 +156,7 @@ const INSPECT = String.raw`((top) => {
   const order = (a, b) => a.z - b.z || (a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
   const painted = present.filter((l) => l.p > 0.02).sort(order).reverse();
   const T = present.find((l) => l.name === top);
-  const res = { top, ok: !!T && T.p > 0.5, painted: painted.map((l) => l.name + (l.full ? "" : "·part") + "@" + l.p.toFixed(2)), bleed: [], visiblePages: [], opaque: [], scrim: [], hits: [], inert: [] };
+  const res = { top, ok: !!T && T.p > 0.5, live: !!T && !T.inert, painted: painted.map((l) => l.name + (l.full ? "" : "·part") + "@" + l.p.toFixed(2)), bleed: [], visiblePages: [], opaque: [], scrim: [], hits: [], inert: [] };
   if (!T) return res;
   // Sample on a grid and walk down the layers at each point.
   const seen = new Set(), reached = new Set();
@@ -220,6 +220,9 @@ async function check(tag, top, opts = {}) {
   const r = await js(`${INSPECT}(${JSON.stringify(top)})`);
   const where = `${tag} [painted: ${r.painted.join(", ")}]`;
   ok(r.ok, `${tag}: ${top} is on top`, where);
+  // The layer on top takes taps and focus (Dioxus once wrote `inert="false"`, which is inert).
+  if (!r.live && opts.knownInert) console.log(`KNOWN ${tag}: ${top} is inert while up — ${opts.knownInert}`);
+  else ok(r.live, `${tag}: ${top} is live, not inert`);
   ok(!r.bleed.length, `${tag}: nothing shows through`, r.bleed.join("; "));
   const pages = r.visiblePages.filter((n) => n !== "stage" || opts.stage);
   ok(pages.length === 1, `${tag}: exactly one full page visible (${pages.join(", ") || "none"})`, where);
@@ -340,7 +343,8 @@ for (const [w, h] of [[390, 844], [1440, 900], [2000, 1270]]) {
 
   // The passkey sheet over home.
   await js(`window.__wado.fixture({ type: "passkey", state: { registered: true, unlocked: false, origin: "" }, busy: false, need: "pad", note: "", supported: true, platform: true }); true`);
-  if (await until("!!document.querySelector('.pksheet.up')", 2000)) await check(`${sz} passkey`, "passkey");
+  if (await until("!!document.querySelector('.pksheet.up')", 2000)) await check(`${sz} passkey`, "passkey",
+    { knownInert: "ui/passkey/mod.rs writes `inert: !up`, which Dioxus renders as inert=\"false\"; use `inert: crate::ui::widgets::inert(!up)` (left to the passkey work)" });
   else ok(false, `${sz}: the passkey sheet opens`);
   await js(`window.__wado.passkeyCancel && window.__wado.passkeyCancel(); true`);
 

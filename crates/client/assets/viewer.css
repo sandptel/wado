@@ -17,6 +17,9 @@
 /* Leaving: a short accelerate fade, already out of reach (it is inert), then removed. */
 .fview.out { pointer-events: none; animation: fvout 180ms cubic-bezier(.3, 0, 1, 1) forwards; }
 @keyframes fvout { to { opacity: 0; } }
+/* While it is up, the pages under the file manager are hidden: never painted, tapped or reached by
+ * Tab through it (the file manager itself is made inert by js/viewer/shell.js). */
+html:has(.fview:not(.out)) :is(#landing, #computer, #sub) { visibility: hidden; transition: visibility 0s linear var(--dur-sheet); }
 
 /* ── head ── */
 .fvhead { grid-area: head; display: flex; align-items: center; gap: 2px; min-height: 56px; padding: 6px;
