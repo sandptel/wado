@@ -60,7 +60,7 @@
   transition: background var(--dur) var(--ease), padding var(--dur-sheet) var(--spring); }
 .wspill.on { background: color-mix(in oklab, var(--accent), transparent 78%); padding-right: 6px; }
 .wsnum { min-width: 34px; height: 34px; border-radius: 999px; display: inline-grid; place-items: center;
-  font: 700 13px var(--mono); color: var(--dim); background: var(--s2); }
+  font: 700 .8125rem var(--mono); color: var(--dim); background: var(--s2); }
 .wspill.on .wsnum, .wsnum.on { background: var(--accent); color: var(--on-accent); }
 .wsnum.add { background: none; color: var(--dim); border: 1.5px dashed var(--line); }
 .wsnum.add svg { width: 15px; height: 15px; }
@@ -70,7 +70,7 @@
 .wsapp.on::after { content: ""; position: absolute; bottom: 0; width: 12px; height: 3px; border-radius: 2px; background: var(--accent); }
 .wsapp:active { scale: .88; }
 .wsletter { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center;
-  background: var(--s3); color: var(--bright); font-weight: 700; font-size: 13px; }
+  background: var(--s3); color: var(--bright); font-weight: 700; font-size: .8125rem; }
 .wsdots { display: flex; gap: 3px; padding: 0 6px 0 2px; }
 .wsdots i { width: 5px; height: 5px; border-radius: 50%; background: var(--dim); }
 @keyframes wsin { from { scale: .4; opacity: 0; } }
@@ -160,7 +160,7 @@
   background: transparent;
   color: transparent;
   caret-color: transparent;
-  font-size: 16px; /* below 16px iOS zooms the page on focus */
+  font-size: 1rem; /* below 16px iOS zooms the page on focus */
   z-index: 0;
 }
 
@@ -170,7 +170,7 @@
 .toasts { position: fixed; left: 50%; top: calc(14px + env(safe-area-inset-top)); translate: -50% 0;
   z-index: 70; display: grid; gap: 8px; width: min(440px, calc(100% - 32px)); pointer-events: none; }
 .toast { display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; border-radius: var(--r2);
-  background: var(--s1); border: 1px solid var(--line); color: var(--bright); font-size: 13px;
+  background: var(--s1); border: 1px solid var(--line); color: var(--bright); font-size: .8125rem;
   box-shadow: 0 10px 30px rgb(0 0 0 / .35); }
 .toast.warn { border-color: color-mix(in oklab, var(--warn), transparent 40%); }
 .toast.warn svg { color: var(--warn); }
@@ -188,21 +188,21 @@
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 60;
-  max-width: min(30rem, calc(100% - 2rem));
-  padding: 1.1rem 1.25rem;
+  max-width: min(26.25rem, calc(100% - 28px));
+  padding: 15px 18px;
   border: 1px solid var(--base02);
   border-radius: 10px;
   background: var(--base00);
   box-shadow: 0 8px 28px rgb(0 0 0 / 45%);
   text-align: left;
 }
-.rejoinprompt h3 { margin: 0 0 0.35rem; font-size: 1rem; }
-.rejoinprompt .rejoindesc { margin: 0 0 0.5rem; color: var(--base0D); font-weight: 600; }
-.rejoinprompt .hint { margin: 0 0 0.9rem; }
+.rejoinprompt h3 { margin: 0 0 5px; font-size: .875rem; }
+.rejoinprompt .rejoindesc { margin: 0 0 7px; color: var(--base0D); font-weight: 600; }
+.rejoinprompt .hint { margin: 0 0 13px; }
 /* Column on a narrow screen: side by side these two become thumb-sized targets a few
    millimetres apart, and one of them kills a running session. */
-.rejoinbtns { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-.rejoinbtns button { flex: 1 1 10rem; padding: 0.6rem 0.9rem; }
+.rejoinbtns { display: flex; gap: 7px; flex-wrap: wrap; }
+.rejoinbtns button { flex: 1 1 8.75rem; padding: 8px 13px; }
 .rejoinbtns .danger { border-color: var(--base08); color: var(--base08); }
 
 .rejoinbtns button { min-height: 44px; border-radius: var(--r2); background: var(--s2); color: var(--bright); font-weight: 600; }

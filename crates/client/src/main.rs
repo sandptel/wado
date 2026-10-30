@@ -24,6 +24,7 @@ mod push;
 mod reach;
 mod res;
 mod route;
+mod size;
 mod state;
 mod stepup;
 mod theme;
@@ -160,6 +161,8 @@ fn App() -> Element {
         document::Stylesheet { href: asset!("/assets/app.css") }
         document::Stylesheet { href: asset!("/assets/passkey.css") }
         document::Stylesheet { href: asset!("/assets/claude.css") }
+        // Last: the interface size's zoom and the touch-target floor override the others.
+        document::Stylesheet { href: asset!("/assets/size.css") }
 
         // The stage is the whole screen, always. Everything else floats over it and never
         // takes space from the picture — the control centre included (Decision Log 2026-10-02).

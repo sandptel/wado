@@ -59,7 +59,7 @@
   background: var(--s0); padding-block: 4px; z-index: 1; }
 .phead button { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; }
 .phead button:hover { background: var(--s2); }
-.phead h3 { margin: 0; font: 700 20px var(--display); color: var(--bright); letter-spacing: -.01em; }
+.phead h3 { margin: 0; font: 700 1.25rem var(--display); color: var(--bright); letter-spacing: -.01em; }
 
 /* ── hero ──────────────────────────────────────────────────────────────────────────────── */
 
@@ -72,30 +72,30 @@
 .hero > * { min-width: 0; }
 .avatar { width: 42px; height: 42px; border-radius: var(--r2); display: grid; place-items: center; flex: none;
   background: var(--accent); color: var(--on-accent); }
-.hero h2 { margin: 0; font: 700 19px/1.1 var(--display); color: var(--bright); letter-spacing: -.01em;
+.hero h2 { margin: 0; font: 700 1.1875rem/1.1 var(--display); color: var(--bright); letter-spacing: -.01em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.hero .sub { font: 12px var(--mono); color: var(--dim); }
+.hero .sub { font: .75rem var(--mono); color: var(--dim); }
 .verdict { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px;
-  border-radius: 999px; font-size: 12px; font-weight: 600; --tone: var(--dim);
+  border-radius: 999px; font-size: .75rem; font-weight: 600; --tone: var(--dim);
   background: color-mix(in oklab, var(--tone), transparent 84%); color: var(--tone); }
 .verdict.ok { --tone: var(--good); } .verdict.warn { --tone: var(--base0A); } .verdict.bad { --tone: var(--bad); }
 .verdict::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .verdict.ok::before, .verdict.warn::before, .verdict.bad::before { animation: breathe 2.4s ease-in-out infinite; }
-.swchip { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; border-radius: var(--r1); font-size: 12px;
+.swchip { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; border-radius: var(--r1); font-size: .75rem;
   background: color-mix(in oklab, var(--warn), transparent 84%); color: var(--bright); }
 .swchip svg { color: var(--warn); width: 16px; height: 16px; }
 .meters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .meter { background: color-mix(in oklab, var(--s0), transparent 35%); border-radius: var(--r2); padding: 8px 10px 6px; min-width: 0; }
-.meter .k { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
-.meter .v { font: 600 17px/1.1 var(--display); color: var(--bright); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.meter .v small { font: 500 10px var(--body); color: var(--dim); margin-left: 2px; }
+.meter .k { font-size: .625rem; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+.meter .v { font: 600 1.0625rem/1.1 var(--display); color: var(--bright); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.meter .v small { font: 500 .625rem var(--body); color: var(--dim); margin-left: 2px; }
 .meter svg { display: block; width: 100%; height: 22px; margin-top: 4px; overflow: visible; }
 .meter .area { fill: color-mix(in oklab, var(--hue), transparent 82%); stroke: none; }
 .meter .line { fill: none; stroke: var(--hue); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .meter circle { fill: var(--hue); }
-.herofix { margin: 0; font-size: 12px; color: var(--text); }
+.herofix { margin: 0; font-size: .75rem; color: var(--text); }
 .hops { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
-.hop { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); padding-top: 8px; position: relative; }
+.hop { font-size: .625rem; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); padding-top: 8px; position: relative; }
 .hop::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px; border-radius: 2px; background: var(--s3);
   transition: background var(--dur) var(--ease); }
 .hop.done::before { background: var(--good); }
@@ -111,16 +111,16 @@
 .tile .ic { width: 42px; height: 42px; flex: none; border-radius: var(--r2); display: grid; place-items: center; background: var(--s3);
   transition: background var(--dur) var(--ease), border-radius 360ms var(--spring); }
 .tile .tl { min-width: 0; }
-.tile b { display: block; font-weight: 600; font-size: 13px; color: var(--bright); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tile small { display: block; font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile b { display: block; font-weight: 600; font-size: .8125rem; color: var(--bright); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile small { display: block; font-size: .6875rem; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tile.on { background: var(--accent); color: var(--on-accent); border-radius: calc(var(--r3) + 8px); }
 .tile.on b, .tile.on small { color: var(--on-accent); }
 .tile.on .ic { background: color-mix(in oklab, var(--on-accent), transparent 84%); border-radius: 50%; }
 .tile.off { opacity: .45; pointer-events: none; }
 
 .sect { display: flex; justify-content: space-between; align-items: center; margin: 4px 4px -4px;
-  font: 600 11px var(--body); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
-.sect button { color: var(--accent); letter-spacing: .04em; text-transform: none; font-size: 13px; min-height: 32px; }
+  font: 600 .6875rem var(--body); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+.sect button { color: var(--accent); letter-spacing: .04em; text-transform: none; font-size: .8125rem; min-height: 32px; }
 
 /* ── settings list ─────────────────────────────────────────────────────────────────────── */
 
@@ -133,7 +133,7 @@
   color: var(--hue); background: color-mix(in oklab, var(--hue), transparent 84%); }
 .navtext { min-width: 0; }
 .navtext b { display: block; font-weight: 600; color: var(--bright); }
-.navtext small { display: block; font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.navtext small { display: block; font-size: .75rem; color: var(--dim); overflow-wrap: anywhere; }
 
 .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
@@ -145,17 +145,17 @@
 .card p { margin: 0; }
 details.card > summary { cursor: pointer; font-weight: 600; color: var(--bright); list-style-position: inside; }
 .cardhead { font-weight: 600; color: var(--bright); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.why { font-size: 12px; color: var(--dim); }
+.why { font-size: .75rem; color: var(--dim); }
 .why.host { color: var(--base0A); }
 .why.ok { color: var(--good); }
 .why.bad { color: var(--bad); }
 .row { display: flex; gap: 8px; }
 .row > * { flex: 1; min-width: 0; }
 .field { display: grid; gap: 4px; }
-.field > span { font-size: 12px; color: var(--dim); }
-.field > small { font-size: 11px; color: var(--dim); }
+.field > span { font-size: .75rem; color: var(--dim); }
+.field > small { font-size: .6875rem; color: var(--dim); }
 
-.whenbadge { font: 600 9.5px var(--body); letter-spacing: .08em; text-transform: uppercase; padding: 3px 7px; border-radius: 999px; margin-left: 2px; }
+.whenbadge { font: 600 .5938rem var(--body); letter-spacing: .08em; text-transform: uppercase; padding: 3px 7px; border-radius: 999px; margin-left: 2px; }
 .whenbadge.apply { color: var(--accent); background: color-mix(in oklab, var(--accent), transparent 86%); }
 .whenbadge.restart { color: var(--base0A); background: color-mix(in oklab, var(--base0A), transparent 86%); }
 .whenbadge.host { color: var(--base0E); background: color-mix(in oklab, var(--base0E), transparent 86%); }
@@ -167,7 +167,7 @@ details.card > summary { cursor: pointer; font-weight: 600; color: var(--bright)
   translate: calc(100% * var(--i)) 0;
   border-radius: calc(var(--r2) - 4px); background: var(--accent); transition: translate 420ms var(--spring); }
 .seg.none .knob { opacity: 0; }
-.seg button { position: relative; z-index: 1; min-height: 40px; border-radius: calc(var(--r2) - 4px); font-weight: 600; font-size: 13px;
+.seg button { position: relative; z-index: 1; min-height: 40px; border-radius: calc(var(--r2) - 4px); font-weight: 600; font-size: .8125rem;
   color: var(--dim); transition: color var(--dur) var(--ease); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 4px; }
 .seg button.on { color: var(--on-accent); }
 
@@ -175,7 +175,7 @@ details.card > summary { cursor: pointer; font-weight: 600; color: var(--bright)
 .switchrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-height: 48px; }
 .swtext { flex: 1; min-width: 0; }
 .swtext b { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; color: var(--bright); font-weight: 600; }
-.swtext small { display: block; font-size: 12px; color: var(--dim); }
+.swtext small { display: block; font-size: .75rem; color: var(--dim); }
 .sw { width: 52px; height: 32px; border-radius: 999px; background: var(--s3); position: relative; flex: none; transition: background var(--dur) var(--ease); }
 .sw::after { content: ""; position: absolute; top: 8px; left: 8px; width: 16px; height: 16px; border-radius: 50%; background: var(--dim);
   transition: left 340ms var(--pop), top 340ms var(--pop), width 340ms var(--pop), height 340ms var(--pop), background var(--dur); }
@@ -189,7 +189,7 @@ details.card > summary { cursor: pointer; font-weight: 600; color: var(--bright)
 .infobtn.on { color: var(--accent); background: color-mix(in oklab, var(--accent), transparent 88%); }
 .infotext { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--dur-sheet) var(--spring); flex-basis: 100%; }
 .infotext.open { grid-template-rows: 1fr; }
-.infotext > p { overflow: hidden; min-height: 0; margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--text); }
+.infotext > p { overflow: hidden; min-height: 0; margin: 0; font-size: .7812rem; line-height: 1.55; color: var(--text); }
 .infotext.open > p { padding: 4px 0 2px; }
 .cardhead .infotext { font-weight: 400; }
 /* Folded, it must not hold a wrapped row of its own open. */
@@ -220,7 +220,7 @@ details.card > summary { cursor: pointer; font-weight: 600; color: var(--bright)
 .slidelab, .slideval { position: absolute; top: 50%; translate: 0 -50%; pointer-events: none; font-weight: 600; color: var(--bright); z-index: 2; }
 .slidelab { left: 16px; display: flex; align-items: center; gap: 8px; }
 .slidelab svg { width: 18px; height: 18px; }
-.slideval { right: 16px; font: 600 12px var(--mono); transition: scale 220ms var(--pop), color var(--dur) var(--ease); }
+.slideval { right: 16px; font: 600 .75rem var(--mono); transition: scale 220ms var(--pop), color var(--dur) var(--ease); }
 .slide.grab .slideval { scale: 1.18; color: var(--accent); }
 
 /* Resolution chips, each drawn at its own aspect. */
@@ -232,8 +232,8 @@ details.card > summary { cursor: pointer; font-weight: 600; color: var(--bright)
 .shape i.exact { border-style: solid; border-color: var(--good); }
 .shape i.dotsbox { width: 34px; height: 22px; border-style: dashed; }
 .shape.on i { border-color: var(--accent); background: color-mix(in oklab, var(--accent), transparent 80%); }
-.shape b { font: 600 11px var(--mono); color: var(--bright); }
-.shape small { font-size: 10px; color: var(--dim); max-width: 88px; text-align: center; }
+.shape b { font: 600 .6875rem var(--mono); color: var(--bright); }
+.shape small { font-size: .625rem; color: var(--dim); max-width: 88px; text-align: center; }
 
 /* Appearance gallery. */
 .themes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
@@ -243,7 +243,7 @@ details.card > summary { cursor: pointer; font-weight: 600; color: var(--bright)
 .theme .pv { position: relative; height: 54px; border-radius: var(--r2); overflow: hidden; display: block; }
 .theme .pv i { position: absolute; border-radius: 6px; }
 .theme .strip { display: grid; grid-template-columns: repeat(8, 1fr); height: 10px; border-radius: 4px; overflow: hidden; }
-.theme b { font-size: 12px; font-weight: 600; padding-inline: 2px; }
+.theme b { font-size: .75rem; font-weight: 600; padding-inline: 2px; }
 .accents { display: flex; gap: 10px; flex-wrap: wrap; }
 .accent { width: 36px; height: 36px; border-radius: 50%; background: var(--hue); box-shadow: inset 0 0 0 3px var(--s1);
   border: 2px solid transparent; transition: border-color var(--dur), scale 200ms var(--pop); }
@@ -251,7 +251,7 @@ details.card > summary { cursor: pointer; font-weight: 600; color: var(--bright)
 
 /* Tile editor rows. */
 .editrow { display: flex; align-items: center; gap: 10px; min-height: 48px; }
-.editrow b { flex: 1; font-weight: 600; color: var(--bright); }
+.editrow b { flex: 1; min-width: 0; overflow-wrap: anywhere; font-weight: 600; color: var(--bright); }
 .editrow button { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: var(--dim); }
 .editrow button:hover { background: var(--s2); color: var(--bright); }
 
@@ -261,21 +261,21 @@ details.card > summary { cursor: pointer; font-weight: 600; color: var(--bright)
 .applybar { flex: none; display: flex; align-items: center; gap: 10px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
   border-top: 1px solid var(--line); background: var(--s1); animation: rise 360ms var(--spring) both; }
 .applybar span { font-weight: 600; color: var(--bright); }
-.applybar small { color: var(--dim); font-size: 12px; flex: 1; }
+.applybar small { color: var(--dim); font-size: .75rem; flex: 1; }
 .applybar .btn { width: auto; min-height: 42px; }
 
 /* Shell cards on the root page. */
 .shellstrip { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin-inline: -16px; padding-inline: 16px; }
 .shellcard { flex: none; width: 130px; display: grid; gap: 4px; justify-items: start; text-align: left; padding: 12px;
   border-radius: var(--r3); background: var(--s1); border: 1px solid var(--line); }
-.shellcard b { font-size: 13px; color: var(--bright); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.shellcard small { font-size: 11px; color: var(--dim); }
+.shellcard b { font-size: .8125rem; color: var(--bright); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shellcard small { font-size: .6875rem; color: var(--dim); }
 .shellcard.dead { opacity: .6; }
 
 /* Clipboard history: what apps copied, each one tap from the phone's clipboard. */
 .clips { display: grid; gap: 6px; }
 .clip { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; border-radius: var(--r2); background: var(--s1); }
-.cliptext { flex: 1; min-width: 0; font: 12px var(--mono); color: var(--text); overflow: hidden; text-overflow: ellipsis;
+.cliptext { flex: 1; min-width: 0; font: .75rem var(--mono); color: var(--text); overflow: hidden; text-overflow: ellipsis;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: pre-wrap; word-break: break-all; }
 .clip .btn { width: auto; min-height: 38px; flex: none; }
 
@@ -283,14 +283,14 @@ details.card > summary { cursor: pointer; font-weight: 600; color: var(--bright)
 .notes { display: grid; gap: 6px; }
 .note { display: flex; gap: 12px; align-items: flex-start; padding: 10px 6px 10px 12px; border-radius: var(--r3); background: var(--s1); }
 .notetext { flex: 1; min-width: 0; display: grid; gap: 1px; }
-.notetext small { font-size: 11px; color: var(--dim); letter-spacing: .04em; text-transform: uppercase; }
+.notetext small { font-size: .6875rem; color: var(--dim); letter-spacing: .04em; text-transform: uppercase; }
 .notetext b { color: var(--bright); }
-.notetext p { margin: 0; font-size: 12.5px; color: var(--text); overflow-wrap: anywhere; }
+.notetext p { margin: 0; font-size: .7812rem; color: var(--text); overflow-wrap: anywhere; }
 
 /* The sound card and the Sound page's rows. */
 .soundcard { border-radius: var(--r3); background: var(--s1); padding: 14px; display: grid; gap: 10px; }
 .soundcard .cardhead .why { font-weight: 400; }
-.linkbtn { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; color: var(--accent); font-weight: 600; font-size: 13px; min-height: 32px; }
+.linkbtn { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; color: var(--accent); font-weight: 600; font-size: .8125rem; min-height: 32px; }
 .linkbtn svg { width: 16px; height: 16px; }
 .volrow { display: flex; align-items: center; gap: 8px; }
 .volrow .slide { flex: 1; min-width: 0; }
@@ -305,7 +305,7 @@ details.card > summary { cursor: pointer; font-weight: 600; color: var(--bright)
 /* Output chips on the Sound page: wrap, so every output's name stays whole. */
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border-radius: 999px;
-  background: var(--s0); color: var(--dim); font-size: 13px; font-weight: 600; border: 1px solid var(--line); }
+  background: var(--s0); color: var(--dim); font-size: .8125rem; font-weight: 600; border: 1px solid var(--line); }
 .chip svg { width: 15px; height: 15px; }
 .chip.on { background: var(--accent); color: var(--on-accent); border-color: transparent; }
 
@@ -314,17 +314,17 @@ details.card > summary { cursor: pointer; font-weight: 600; color: var(--bright)
   background: linear-gradient(135deg, color-mix(in oklab, var(--accent), var(--s1) 62%), color-mix(in oklab, var(--base0E), var(--s1) 70%));
   flex-shrink: 0; }
 .mediatop { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.mediaapp { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; opacity: .9; min-width: 0;
+.mediaapp { display: inline-flex; align-items: center; gap: 8px; font-size: .75rem; font-weight: 600; opacity: .9; min-width: 0;
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .mediaicon { width: 20px; height: 20px; border-radius: 5px; object-fit: contain; flex: none; }
-.mediaout { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 600;
+.mediaout { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; font-size: .8125rem; font-weight: 600;
   background: color-mix(in oklab, var(--bright), transparent 82%); }
 .mediaout svg { width: 16px; height: 16px; }
 .mediamid { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .mediaart { width: 64px; height: 64px; flex: none; border-radius: var(--r2); object-fit: cover; box-shadow: 0 4px 14px rgb(0 0 0 / .3); }
 .mediatext { flex: 1; min-width: 0; display: grid; gap: 2px; }
-.mediatext b { font: 700 19px/1.15 var(--display); letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mediatext span { font-size: 13px; opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mediatext b { font: 700 1.1875rem/1.15 var(--display); letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mediatext span { font-size: .8125rem; opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mediaplay { width: 60px; height: 60px; flex: none; border-radius: var(--r3); display: grid; place-items: center;
   background: color-mix(in oklab, var(--bright), var(--accent) 25%); color: var(--s0); }
 .mediaplay svg { width: 24px; height: 24px; fill: currentColor; stroke: none; }
@@ -334,7 +334,7 @@ details.card > summary { cursor: pointer; font-weight: 600; color: var(--bright)
 .mediafill.run { animation: mediarun var(--left) linear forwards; }
 @keyframes mediarun { from { width: var(--from); } to { width: 100%; } }
 .mediabar input[type=range] { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
-.mediatimes { display: flex; justify-content: space-between; font: 10.5px var(--mono); opacity: .75; margin-top: -8px; }
+.mediatimes { display: flex; justify-content: space-between; font: .6562rem var(--mono); opacity: .75; margin-top: -8px; }
 .mediactl { display: flex; align-items: center; gap: 4px; }
 .mediactl > button { width: 40px; height: 40px; flex: none; border-radius: 50%; display: grid; place-items: center; }
 .mediactl > button.on { background: color-mix(in oklab, var(--bright), transparent 80%); }
@@ -349,12 +349,12 @@ details.card > summary { cursor: pointer; font-weight: 600; color: var(--bright)
 
 /* neofetch, in the scheme's colours (ui/fetch.rs). */
 .fetch { display: flex; gap: 14px; padding: 14px; border-radius: var(--r3); background: var(--s0); border: 1px solid var(--line);
-  font: 11.5px/1.45 var(--mono); color: var(--text); overflow-x: auto; flex-shrink: 0; }
-.fetchlogo { margin: 0; color: var(--accent); font: 700 10.5px/1.25 var(--mono); flex: none; }
+  font: .7188rem/1.45 var(--mono); color: var(--text); overflow-x: auto; flex-shrink: 0; }
+.fetchlogo { margin: 0; color: var(--accent); font: 700 .6562rem/1.25 var(--mono); flex: none; }
 .fetchtext { min-width: 0; display: grid; gap: 1px; align-content: start; }
 .fetchhead { color: var(--accent); font-weight: 700; }
 .fetchrule { color: var(--dim); overflow: hidden; }
-.fetchrow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fetchrow { overflow-wrap: anywhere; }
 .fetchrow span { color: var(--accent); font-weight: 700; }
 .fetchblocks { display: flex; margin-top: 6px; }
 .fetchblocks i { width: 16px; height: 12px; }

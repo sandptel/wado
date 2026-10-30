@@ -43,7 +43,7 @@ typography:
     fontFamily: "Bricolage Grotesque, Figtree, system-ui, sans-serif"
     fontSize: "30px"
     fontWeight: 700
-    lineHeight: 1.05
+    lineHeight: 1.2
     letterSpacing: "-0.025em"
   headline:
     fontFamily: "Bricolage Grotesque, Figtree, system-ui, sans-serif"
@@ -192,14 +192,16 @@ and the theme's own warning colours. Personality comes from the user's chosen ba
 from motion. Decoration is not where it lives.
 
 Density is phone-first and generous: 44–62px targets, 16px input text, safe-area insets on every
-edge. The same markup becomes a right-hand card on desktop at 720px.
+edge. The same markup becomes a right-hand card on desktop at 720px. Each device can make it
+smaller or larger, and its text separately (see Size); the cozy default is the size described here.
 
 **Key Characteristics:**
 - Every colour comes from sixteen swappable base16 slots; derived tokens are mixes, never hex.
 - The stage behind the video is always black, whatever the theme.
 - Tonal elevation (a mixed surface ladder) plus soft shadows only on floating chrome.
 - Two motion curves for the whole UI: a massy spring and a small overshoot pop.
-- The user tunes corner radius, motion level and accent slot from the Appearance page.
+- The user tunes text size, interface size, corner radius, motion level and accent slot from the
+  Appearance page.
 
 ## Colors
 
@@ -255,7 +257,7 @@ machine produced: addresses, resolutions, workspace numbers, values.
 
 ### Hierarchy
 - **Display** (700, clamp(42px, 12vw, 64px), 1, -0.045em): the wordmark on the home page only.
-- **Hero name** (700, 30px/1.05, -0.025em; 38px from 960px): a computer's name in its Computer
+- **Hero name** (700, 30px/1.2, -0.025em; 38px from 960px; one line, ellipsis, the whole name in its `title`): a computer's name in its Computer
   page hero. Between Display and Headline; nothing else uses it.
 - **Headline** (700, 19–20px, -0.01em): control-centre page heads, the hero host name, and the
   Start button at 17px.
@@ -267,8 +269,53 @@ machine produced: addresses, resolutions, workspace numbers, values.
 - **Mono** (400–700, 11–13px): device IDs, resolutions, values, workspace numbers.
 
 ### Named Rules
-**The Sixteen-Pixel Input Rule.** Every text input is exactly 16px. Below that, iOS Safari zooms
-on focus and the streamed picture jumps sideways.
+**The Sixteen-Pixel Input Rule.** Every text input is at least 16px *on the glass*. Below that,
+iOS Safari zooms on focus and the streamed picture jumps sideways. It grows with the text size,
+and a compact interface never takes it under 16px (`max(1rem, 16px / var(--z))`).
+
+## Size
+
+Every size above is the design's own, at **text 100% and the cozy interface** — the default, and
+the one tuned for a 390px-wide phone. Each device picks two more numbers on Appearance, stored on
+the computer under `device "<key>" { size { text; follow; interface } }` (self-settable, like the
+console's) and mirrored in the browser for the first paint (`js/ui_size.js`).
+
+| | what it scales | how | range |
+|---|---|---|---|
+| **Text size** | every font | `--text-scale` on `<html>`; the root font size is `--text-base` × it, and all type is in `rem` | 85–150% in 5% steps, or *Follow phone / browser* |
+| **Interface size** | spacing, radii, control heights, icons — and the text in them | `--ui-scale` → `zoom` on the app's pages and sheets (`size.css`) | Compact 0.9 · **Cozy 1** · Comfy 1.1 · Large 1.2 |
+
+This is Android's own pair: *Display size* (the interface) and *Font size* (the text). Text on
+the glass is `16px × text × interface × (rem / 16)`.
+
+- **One place.** Type is in `rem` (1rem = 16px at 100%), so a font size is written once and
+  scales with the root; no component multiplies anything itself. `size.css` is the only file
+  that applies the interface size.
+- **Follow.** In a browser, following sets `--text-base: 100%`, the browser's default size. In
+  the Android app the WebView's own `textZoom` is pinned at 100 — left alone it multiplied every
+  font on top of a layout drawn for 100%, and text spilled out of its boxes — and the phone's font
+  scale is handed to the page (`wadoNativeInfo.fontScale`, the `fontScale` message), which applies
+  it as `--text-scale`.
+- **Never the stage.** The zoom is on the pages and sheets only (home, a computer's page, settings,
+  the control centre, Files, the passkey and widget sheets). The console, the trackpad and the
+  gamepad lay themselves out against the glass, and the picture is the session's size.
+- **`--z` and `--tap`.** Inside a zoomed element `--z` is its zoom and `--tap` is 44px on the glass
+  in that element's own px. On a touchscreen every control is at least `--tap` (`size.css`): a
+  control drawn smaller (a switch, an ⓘ, the link test's Again) keeps its drawing and grows a
+  transparent border, with a negative margin giving the space back. Viewport units inside a zoom
+  are zoomed too, so a share of the screen is written `calc(88dvh / var(--z))`.
+- **Reflow, not clip.** The doors are two across, or one under the other below 8.5rem each, and the
+  three stat cells a wrapping flex row (basis 5.5rem; a cell that wraps alone takes the whole
+  row), so both re-flow as the text grows instead of cutting words off. A grid that holds
+  text gives its column `minmax(0, 1fr)`. Subtitles, hints and machine lines wrap
+  (`overflow-wrap: anywhere`); only a *name* is cut to one line with an ellipsis, and then the
+  whole of it is in its `title`.
+- **Checked** by `scripts/responsive-check.mjs`: ten device sizes from 360×740 to 2000×1270, text
+  85 / 100 / 130 / 150%, interface compact / cozy / large, every page.
+
+The live sample on Appearance reads at the size being dragged to; the page itself changes on
+release, so it does not re-flow under the finger. Nothing about it moves, so reduced motion has
+nothing to remove.
 
 **The Machine Speaks Mono Rule.** A value the system generated (an address, a resolution, a
 count) is set in mono. Words a person reads are set in Figtree.

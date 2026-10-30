@@ -2,6 +2,22 @@
 
 ### Added
 
+- **Text size and interface size, per device.** Appearance now leads with two sizes: **Text
+  size**, 85–150% in 5% steps with a live sample (or *Follow phone* / *Follow this browser*), and
+  **Interface size** — Compact, Cozy, Comfy, Large — which scales controls, spacing, corners and
+  icons together. Cozy at 100% is the default and the size wado is designed at. They are kept on
+  the computer for this device, like its console and trackpad settings, and applied before the
+  first frame. On a touchscreen no control drops under 44 px at any size.
+  - **The Android app no longer blows its text up.** The WebView applied the phone's font size on
+    top of a layout drawn for 100%, so names, stat tiles and door cards spilled out of their boxes.
+    It now draws at 100% and hands the phone's size to *Follow phone*, which applies it through
+    wado's own type scale.
+  - **Nothing clips any more.** The Computer page's stat tiles and doors reflow (three across, or
+    two and one; two doors across, or one under the other) instead of cutting their words off;
+    subtitles and machine lines wrap; a name cut to fit keeps the whole of it in its tooltip.
+    Checked at ten screen sizes from a small phone to a 2000-px desktop, at every text and
+    interface size (`scripts/responsive-check.mjs`).
+
 - **The clipboard just follows you.** Copy something on your computer — on its desktop or in a
   wado session — and it is on your phone, ready to paste. Copy something on your phone, come back
   to wado, and it is on your computer. Each computer's page has two switches for this phone ("Copy

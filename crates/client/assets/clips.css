@@ -21,15 +21,15 @@
 .clipsearch:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent), transparent 72%); }
 .clipsearch svg { width: 17px; height: 17px; flex: none; }
 /* The Sixteen-Pixel Input Rule: below 16px, iOS zooms on focus. */
-.clipsearch input { flex: 1; min-width: 0; background: none; border: 0; outline: 0; color: var(--bright); font-size: 16px; }
+.clipsearch input { flex: 1; min-width: 0; background: none; border: 0; outline: 0; color: var(--bright); font-size: 1rem; }
 
 .clipkinds { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
 .clipkind { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 44px; padding: 0 6px;
-  border-radius: 999px; background: var(--s2); color: var(--dim); font-size: 12px; font-weight: 650;
+  border-radius: 999px; background: var(--s2); color: var(--dim); font-size: .75rem; font-weight: 650;
   transition: background var(--dur) var(--ease), color var(--dur) var(--ease), scale var(--dur-press) var(--pop); }
 .clipkind svg { width: 15px; height: 15px; flex: none; }
 .clipkind .ck { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.clipkind .cn { font: 600 11px var(--mono); color: inherit; opacity: .8; }
+.clipkind .cn { font: 600 .6875rem var(--mono); color: inherit; opacity: .8; }
 .clipkind.on { background: var(--accent); color: var(--on-accent); }
 .clipkind:active { scale: .96; }
 @media (max-width: 380px) { .clipkind .ck { display: none; } }
@@ -37,10 +37,10 @@
 /* ── the list ─────────────────────────────────────────────────────────────────────────── */
 .cliplist { list-style: none; margin: 0; padding: 0; display: grid; }
 .clipnote { display: flex; align-items: center; gap: 10px; margin: 0; padding: 14px; border-radius: var(--r3); background: var(--s1);
-  color: var(--text); font-size: 13px; line-height: 1.45; }
+  color: var(--text); font-size: .8125rem; line-height: 1.45; }
 .clipnote.quiet { color: var(--dim); }
 .clipnote svg { width: 18px; height: 18px; flex: none; color: var(--dim); }
-.clipmore { margin: -2px 4px 0; color: var(--dim); font-size: 12px; }
+.clipmore { margin: -2px 4px 0; color: var(--dim); font-size: .75rem; }
 
 /* One entry. The li is a one-row grid so a delete can fold its row to nothing; the card inside
  * is what is seen. */
@@ -72,13 +72,13 @@
 .cliptile.fresh .clipico { animation: clippop 420ms var(--pop) both; }
 @keyframes clippop { from { scale: .6; } }
 .cliptxt { display: grid; gap: 4px; min-width: 0; }
-.clipbody { margin: 0; font: 13px/1.45 var(--mono); color: var(--text);
+.clipbody { margin: 0; font: .8125rem/1.45 var(--mono); color: var(--text);
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .cliptile.link .clipbody { -webkit-line-clamp: 2; color: color-mix(in oklab, var(--base0E), var(--bright) 50%); }
-.clipmeta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--dim); font-size: 12px; }
+.clipmeta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--dim); font-size: .75rem; }
 .clippin { display: inline-flex; align-items: center; gap: 3px; color: var(--accent); font-weight: 650; }
 .clippin svg { width: 13px; height: 13px; }
-.clipdim { color: var(--dim); font-size: 11.5px; }
+.clipdim { color: var(--dim); font-size: .7188rem; }
 
 .clippic { height: 120px; border-radius: var(--r2); overflow: hidden; background: var(--s2); }
 .clippic img { width: 100%; height: 100%; object-fit: cover; display: block; animation: clipfade var(--dur-sheet) var(--spring) both; }
@@ -126,14 +126,14 @@
 .compact .clipmain { grid-template-columns: 28px minmax(0, 1fr); gap: 8px; align-items: center; }
 .compact .clipico { width: 28px; height: 28px; }
 .compact .clipico svg { width: 15px; height: 15px; }
-.compact .clipbody { -webkit-line-clamp: 1; font-size: 12.5px; }
+.compact .clipbody { -webkit-line-clamp: 1; font-size: .7812rem; }
 .compact .clippic { height: 44px; width: 64px; border-radius: var(--r1); }
-.compact .clipmeta { font-size: 11px; }
+.compact .clipmeta { font-size: .6875rem; }
 .compact .clipnote { padding: 10px 12px; background: none; }
 
 /* The Computer page's section: the switches, then the surface. */
 .clipsec .clipswitches { display: grid; gap: 4px; padding: 6px 14px 10px; border-radius: var(--r3); background: var(--s1); }
-.clipsecret { display: flex; gap: 8px; align-items: flex-start; margin: 4px 0 0; color: var(--dim); font-size: 12px; line-height: 1.45; }
+.clipsecret { display: flex; gap: 8px; align-items: flex-start; margin: 4px 0 0; color: var(--dim); font-size: .75rem; line-height: 1.45; }
 .clipsecret svg { width: 15px; height: 15px; flex: none; margin-top: 1px; }
 
 /* ── the voice: confirmations and the one-tap chip ───────────────────────────────────────── */
@@ -145,7 +145,7 @@
 #clipdock > .clipsaid { pointer-events: none; }
 
 .clipsaid { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 16px 0 8px; border-radius: 999px;
-  background: var(--s2); color: var(--bright); font-size: 13.5px; font-weight: 600;
+  background: var(--s2); color: var(--bright); font-size: .8438rem; font-weight: 600;
   box-shadow: 0 18px 50px -20px #000a;
   animation: saidin var(--dur-sheet) var(--spring) both, saidout 180ms cubic-bezier(.3, 0, 1, 1) 2620ms both; }
 .clipsaid .csico { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
@@ -169,9 +169,9 @@
   animation: chipflow 1400ms ease-in-out infinite; }
 @keyframes chipflow { 0% { translate: 0 0; opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } 100% { translate: 12px 0; opacity: 0; } }
 .chiptext { display: grid; min-width: 0; }
-.chiptext b { font-size: 14px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.chiptext small { color: var(--dim); font: 12px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.chipgo { min-height: 44px; padding: 0 18px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-weight: 700; font-size: 14px;
+.chiptext b { font-size: .875rem; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chiptext small { color: var(--dim); font: .75rem var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chipgo { min-height: 44px; padding: 0 18px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-weight: 700; font-size: .875rem;
   transition: scale var(--dur-press) var(--pop); }
 .chipgo:active { scale: .94; }
 .chipno { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; color: var(--dim); }

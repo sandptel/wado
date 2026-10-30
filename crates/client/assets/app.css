@@ -5,18 +5,18 @@
 /* ── version card ─────────────────────────────────────────────────────────────────────── */
 .appver { gap: 6px; }
 .avhead { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.avline { font: 600 13px var(--mono); color: var(--bright); overflow-wrap: anywhere; }
+.avline { font: 600 .8125rem var(--mono); color: var(--bright); overflow-wrap: anywhere; }
 /* A still dot: dim unpinned or unsigned, good once a signed release is in use. */
 .avdot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
 .avdot.ok { background: var(--good); }
-.avsub { margin: 0; color: var(--dim); font-size: 12px; line-height: 1.45; }
-.avkey { margin: 0; color: var(--dim); font: 11px var(--mono); }
+.avsub { margin: 0; color: var(--dim); font-size: .75rem; line-height: 1.45; }
+.avkey { margin: 0; color: var(--dim); font: .6875rem var(--mono); }
 .avnote { margin: 4px 0 0; display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px;
-  border-radius: var(--r1); background: var(--s2); color: var(--text); font-size: 12.5px; line-height: 1.45; }
+  border-radius: var(--r1); background: var(--s2); color: var(--text); font-size: .7812rem; line-height: 1.45; }
 .avnote svg { flex: none; width: 18px; height: 18px; color: var(--accent); }
 .avnote span { display: grid; gap: 2px; }
 .avnote b { color: var(--bright); font-weight: 600; }
-.avnote small { color: var(--dim); font-size: 12px; }
+.avnote small { color: var(--dim); font-size: .75rem; }
 .avnote.warn { background: color-mix(in oklab, var(--warn), var(--s1) 85%);
   border: 1px solid color-mix(in oklab, var(--warn), transparent 60%); }
 .avnote.warn svg { color: var(--warn); }
@@ -32,8 +32,8 @@
   background: color-mix(in oklab, var(--accent), transparent 82%); color: var(--accent); }
 .ihicon svg { width: 20px; height: 20px; }
 .ihtext { display: grid; gap: 2px; min-width: 0; }
-.ihtext > b { color: var(--bright); font-size: 14px; font-weight: 600; }
-.ihtext p { margin: 0; color: var(--dim); font-size: 12.5px; line-height: 1.45; }
+.ihtext > b { color: var(--bright); font-size: .875rem; font-weight: 600; }
+.ihtext p { margin: 0; color: var(--dim); font-size: .7812rem; line-height: 1.45; }
 .ihtext p b { color: var(--text); font-weight: 600; }
 @keyframes ihrise { from { opacity: 0; translate: 0 12px; } }
 @keyframes ihleave { to { opacity: 0; } }

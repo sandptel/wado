@@ -39,6 +39,8 @@ object BridgeProtocol {
     const val PAD_START = "padStart"
     const val PAD = "pad"
     const val PAD_STOP = "padStop"
+    /** The phone's font scale (`scale`, 1.0 = default), sent at load and whenever it changes. */
+    const val FONT_SCALE = "fontScale"
     // CLIP is both ways: page → app the computer's copy, app → page the phone's.
 
     fun message(t: String, build: JSONObject.() -> Unit = {}): String =
@@ -55,8 +57,14 @@ object BridgeProtocol {
         return if (t.isEmpty()) null else t to o
     }
 
-    /** The document-start script: what the page can read synchronously about its host. */
-    fun infoScript(version: String, sdk: Int, notifications: String): String =
+    /** The document-start script: what the page can read synchronously about its host.
+     *  `fontScale` is the phone's font size, which the page applies itself (the WebView's own
+     *  textZoom is pinned at 100, ClientWebView). */
+    fun infoScript(version: String, sdk: Int, notifications: String, fontScale: Float): String =
         "window.wadoNativeInfo=" + JSONObject().put("platform", "android").put("version", version)
-            .put("sdk", sdk).put("notifications", notifications).toString() + ";"
+            .put("sdk", sdk).put("notifications", notifications)
+            .put("fontScale", fontScale.toDouble()).toString() + ";"
+
+    /** The `fontScale` message for a scale. */
+    fun fontScale(scale: Float): String = message(FONT_SCALE) { put("scale", scale.toDouble()) }
 }
