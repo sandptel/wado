@@ -480,6 +480,16 @@ icon (`min`, "Leave full screen") on the cockpit's quick rail, where the active 
 leads back to the console. Every target is 44px; the touchpad's Left / Right zones run the deck's
 width at 30px.
 
+### File Viewer
+One opaque layer over the file manager (`js/viewer/`, `viewer.css`): a 56px header (back, the name
+truncated in the middle so its extension shows, size · type · position, ⋯ holding every action),
+the file, and a footer with its own tools (zoom, Wrap, Source) and **Details**. Pictures and video
+sit on Stage Black; text, tables, listings and cards on the ground. Details are a bottom sheet
+pulled up from the footer on a phone, over a scrim, with the file and its tools inert beneath; from
+900px a 360px panel beside the file. What cannot be previewed — a format, a browser, the relay's
+limited lane — gets an honest card that says why, states type, size and modified, and offers
+Download / Open on the computer. One module per kind of file, picked by `viewer/kinds.js`.
+
 ### Widgets
 Home's last section: cards that each follow one computer (header: type label and a host chip
 with that computer's status dot). Media, Volume, Brightness, Clipboard, Trackpad. Stored on the
@@ -529,9 +539,12 @@ ambient loop that stops under reduced motion — the words, a solid accent Copy/
   between them.
 
 ### Don't:
-- **Don't** hard-code hex or `rgb()` in chrome. `files.css` currently does (`#888`, `#eee`,
-  `#fff`, `rgb(20 20 22 / .94)` in the viewer). That is drift, and it should be brought back to
-  tokens.
+- **Don't** hard-code hex or `rgb()` in chrome. The file viewer was brought back to tokens
+  (`viewer.css`, `2026-10-30`); the media player's white-on-black scrims in `files.css` remain.
+- **Don't** leave a covered page painted under another: a page under another is hidden once its
+  motion has run and inert from the start, every page and sheet is opaque, and a sheet sits on a
+  scrim. `scripts/layers-check.mjs` holds this. Never write `inert: bool` in rsx — Dioxus writes
+  `inert="false"`, which is inert; use `ui::widgets::inert()`.
 - **Don't** read elevation from base01 or base02. Mix it.
 - **Don't** let chrome reflow the picture in the cockpit phase, or put a banner across it. Health
   lives in the dock LED, a toast or a hero chip.
