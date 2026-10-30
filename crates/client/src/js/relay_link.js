@@ -160,6 +160,7 @@ W._bootIds = {};
 W.relayOn = (type, fn) => { W._relayHandlers[type] = fn; };
 
 function fire(type, msg) {
+  if (W.askGot) W.askGot(type);
   const h = W._relayHandlers[type];
   if (!h) return;
   try { h(msg); } catch (e) { if (W.rlog) W.rlog("relay handler " + type + " threw: " + e); }
@@ -173,7 +174,9 @@ W.relaySendMsg = (obj) => {
   if (obj && obj.type === "pong") {
     try { ws.send(JSON.stringify(obj)); return true; } catch (_) { return false; }
   }
-  return W.e2eSend(obj);
+  const sent = W.e2eSend(obj);
+  if (sent && W.askSent) W.askSent(obj.type);
+  return sent;
 };
 
 W.relayDial = (url, id) => {
@@ -412,6 +415,7 @@ function openLink() {
     if (W.relayWs === ws) { W.relayWs = null; W.relayUp = false; }
     if (W._e2e && W._e2e.ws === ws) { W._e2e = null; W.e2eReady = false; }
     if (W.rlog) W.rlog("relay link closed — code " + (ev && ev.code));
+    if (W.askDropped) W.askDropped();
     fire("__down");
     scheduleRelink();
   };
