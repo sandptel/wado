@@ -86,6 +86,7 @@ impl Pump {
     /// Run until the link's reports end (it was stopped).
     pub async fn run(self, mut out: mpsc::UnboundedReceiver<LinkOut>) {
         let mut caps: Vec<String> = Vec::new();
+        let mut instance = String::new();
         let mut open = false;
         let period = host::poll_ms(true).unwrap_or(5000);
         let mut tick = tokio::time::interval(Duration::from_millis(period));
@@ -101,10 +102,13 @@ impl Pump {
                                 self.poll();
                                 tick.reset();
                             }
-                            let view = LinkView::new(s, (self.clock)(), caps.clone());
+                            let view = LinkView::new(s, (self.clock)(), caps.clone(), instance.clone());
                             self.events.push(CoreEvent::Link { key: self.key.clone(), view });
                         }
-                        LinkOut::Caps(c) => caps = c,
+                        LinkOut::Joined { caps: c, instance: i } => {
+                            caps = c;
+                            instance = i;
+                        }
                         LinkOut::SavePin(pin) => {
                             let _ = self.pins.lock().unwrap().set(&self.remote_id, pin, PinFrom::FirstUse);
                         }

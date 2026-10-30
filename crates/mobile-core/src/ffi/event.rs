@@ -37,6 +37,8 @@ pub struct LinkInfo {
     /// The state's technical name, for Diagnostics.
     pub tech: String,
     pub caps: Vec<String>,
+    /// The daemon of the computer's pool this link reached (`<remote id>:<n>`).
+    pub instance: String,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
@@ -136,6 +138,7 @@ fn link(v: ev::LinkView) -> LinkInfo {
         },
         tech: v.tech,
         caps: v.caps,
+        instance: v.instance,
     }
 }
 
@@ -223,7 +226,12 @@ mod tests {
     fn link_events_carry_plain_words_and_kind() {
         let e = event(ev::CoreEvent::Link {
             key: "1".into(),
-            view: ev::LinkView::new(LinkState::RelayTooOld, 0, vec!["leave".into()]),
+            view: ev::LinkView::new(
+                LinkState::RelayTooOld,
+                0,
+                vec!["leave".into()],
+                "1:1".into(),
+            ),
         });
         let CoreEvent::Link { key, link } = e else {
             panic!()
@@ -233,5 +241,6 @@ mod tests {
         assert_eq!(link.words, "Relay too old for the app");
         assert_eq!(link.tone, LinkTone::Bad);
         assert_eq!(link.caps, ["leave"]);
+        assert_eq!(link.instance, "1:1");
     }
 }

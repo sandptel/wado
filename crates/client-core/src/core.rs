@@ -41,6 +41,8 @@ struct Inner {
     links: Mutex<HashMap<String, Watched>>,
     clock: Clock,
     visible: Arc<std::sync::atomic::AtomicBool>,
+    /// Each new link's silence timeout (`LinkCfg::silence_ms`).
+    silence_ms: std::sync::atomic::AtomicU64,
 }
 
 pub struct Core {
@@ -79,6 +81,7 @@ impl Core {
             links: Mutex::new(HashMap::new()),
             clock: Arc::new(move || start.elapsed().as_millis() as u64),
             visible: Arc::new(std::sync::atomic::AtomicBool::new(true)),
+            silence_ms: std::sync::atomic::AtomicU64::new(crate::link::state::SILENCE_MS),
         };
         Ok(Core {
             inner: Arc::new(inner),
@@ -122,6 +125,15 @@ impl Core {
             .store(on, std::sync::atomic::Ordering::Relaxed);
     }
 
+    /// How long a link may hear nothing (the relay pings every 15 s) before it redials — for links
+    /// opened from now on. A long-lived background holder keeps the default or lowers it for a
+    /// network that drops idle sockets sooner.
+    pub fn set_keepalive(&self, silence_ms: u64) {
+        self.inner
+            .silence_ms
+            .store(silence_ms.max(20_000), std::sync::atomic::Ordering::Relaxed);
+    }
+
     /// Hold a control room for exactly `keys` (the computers on screen), and drop the rest.
     pub fn watch(&self, keys: Vec<String>) {
         let mut links = self.inner.links.lock().unwrap();
@@ -141,7 +153,13 @@ impl Core {
             };
             let pin = self.inner.pins.lock().unwrap().get(&p.remote_id);
             let link = Link::new(
-                LinkCfg::new(&key, &p.relay_url, &p.remote_id, &self.inner.name),
+                LinkCfg {
+                    silence_ms: self
+                        .inner
+                        .silence_ms
+                        .load(std::sync::atomic::Ordering::Relaxed),
+                    ..LinkCfg::new(&key, &p.relay_url, &p.remote_id, &self.inner.name)
+                },
                 self.inner.identity.clone(),
                 pin,
             );

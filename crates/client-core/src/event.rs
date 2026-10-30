@@ -56,6 +56,10 @@ pub struct LinkView {
     pub tech: String,
     /// The relay's caps, from its last `join_accepted`.
     pub caps: Vec<String>,
+    /// The daemon of the computer's pool this link reached (`<remote id>:<n>`), or "" before the
+    /// relay said. Together with the event's key (the computer), what anything per-host is
+    /// labelled by — several computers' links run at once.
+    pub instance: String,
 }
 
 fn ago(ms: u64) -> String {
@@ -98,7 +102,7 @@ pub fn words(state: &LinkState, now_ms: u64) -> (String, Tone) {
 }
 
 impl LinkView {
-    pub fn new(state: LinkState, now_ms: u64, caps: Vec<String>) -> LinkView {
+    pub fn new(state: LinkState, now_ms: u64, caps: Vec<String>, instance: String) -> LinkView {
         let (words, tone) = words(&state, now_ms);
         let tech = format!("{state:?}");
         LinkView {
@@ -107,6 +111,7 @@ impl LinkView {
             tone,
             tech,
             caps,
+            instance,
         }
     }
 }

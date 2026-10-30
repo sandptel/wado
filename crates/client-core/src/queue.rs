@@ -70,7 +70,7 @@ mod tests {
     fn link(key: &str, s: LinkState) -> CoreEvent {
         CoreEvent::Link {
             key: key.into(),
-            view: LinkView::new(s, 0, vec![]),
+            view: LinkView::new(s, 0, vec![], String::new()),
         }
     }
 

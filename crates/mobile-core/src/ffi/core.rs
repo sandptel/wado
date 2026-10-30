@@ -69,6 +69,11 @@ impl WadoCore {
         self.core.set_visible(on)
     }
 
+    /// The silence after which a link redials, for links opened from now on (at least 20 s).
+    pub fn set_keepalive(&self, silence_ms: u64) {
+        self.core.set_keepalive(silence_ms)
+    }
+
     pub fn pair(&self, link: String) -> u64 {
         self.core.pair(link)
     }

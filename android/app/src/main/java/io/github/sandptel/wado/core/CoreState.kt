@@ -14,7 +14,7 @@ import uniffi.wado_mobile_core.PairProgress
 object CoreState {
     private fun digits(s: String) = s.filter(Char::isDigit)
 
-    private fun link(l: LinkInfo) = LinkModel(l.kind, l.words, l.tone, l.tech, l.caps)
+    private fun link(l: LinkInfo) = LinkModel(l.kind, l.words, l.tone, l.tech, l.caps, l.instance)
 
     /** Cards for `core` computers, keeping what earlier events said about each, plus legacy. */
     private fun cards(core: List<ComputerInfo>, old: List<CardModel>, legacy: List<Computer>): List<CardModel> {

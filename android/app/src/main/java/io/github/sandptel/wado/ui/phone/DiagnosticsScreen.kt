@@ -62,6 +62,7 @@ fun DiagnosticsScreen(core: CoreHost, onBack: () -> Unit) {
                 Line("Remote ID", c.remoteId)
                 Line("Relay", c.relayUrl)
                 Line("Link", c.link.tech)
+                Line("Daemon", c.link.instance.ifEmpty { "—" })
                 Line("Words", c.link.words)
                 Line("Relay caps", c.link.caps.joinToString(" ").ifEmpty { "—" })
             }

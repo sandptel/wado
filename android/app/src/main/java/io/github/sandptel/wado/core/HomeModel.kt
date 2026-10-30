@@ -11,6 +11,8 @@ data class LinkModel(
     val tone: LinkTone = LinkTone.STILL,
     val tech: String = "Idle",
     val caps: List<String> = emptyList(),
+    /** The daemon of the pool this link reached (`<remote id>:<n>`). */
+    val instance: String = "",
 ) {
     val online get() = kind == "open"
 }

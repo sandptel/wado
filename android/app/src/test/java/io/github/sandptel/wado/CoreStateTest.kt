@@ -22,7 +22,7 @@ class CoreStateTest {
 
     private fun two() = CoreState.reduce(HomeModel(), CoreEvent.Computers(listOf(computer("1"), computer("2"))))
 
-    private fun link(kind: String, words: String) = LinkInfo(kind, words, LinkTone.LIVE, kind, emptyList())
+    private fun link(kind: String, words: String) = LinkInfo(kind, words, LinkTone.LIVE, kind, emptyList(), "1:1")
 
     @Test fun link_event_updates_only_that_card() {
         val m = CoreState.reduce(two(), CoreEvent.Link("2", link("open", "Online")))

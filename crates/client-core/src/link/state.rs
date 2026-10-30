@@ -113,8 +113,12 @@ pub enum Action {
     Msg(RelayMsg),
     /// Pin this computer on first use.
     SavePin(String),
-    /// The relay's caps, from `join_accepted`.
-    Caps(Vec<String>),
+    /// The relay's caps and the daemon of the pool it reached (`<remote id>:<n>`), from
+    /// `join_accepted`: events from this link are this computer's, this instance's.
+    Joined {
+        caps: Vec<String>,
+        instance: String,
+    },
     /// The link is done for good: the driver returns.
     Halt,
 }
@@ -295,8 +299,16 @@ impl Link {
     fn wire(&mut self, now_ms: u64, w: WireMsg, out: &mut Vec<Action>) {
         match w {
             WireMsg::Ping => out.push(Action::Send(r#"{"type":"pong"}"#.into())),
-            WireMsg::JoinAccepted { room_id, caps, .. } => {
-                out.push(Action::Caps(caps.clone()));
+            WireMsg::JoinAccepted {
+                room_id,
+                caps,
+                instance_id,
+                ..
+            } => {
+                out.push(Action::Joined {
+                    caps: caps.clone(),
+                    instance: instance_id,
+                });
                 if !REQUIRED_CAPS.iter().all(|c| caps.iter().any(|k| k == c)) {
                     // An older relay seated us. Leave at once; send nothing.
                     return self.halt(LinkState::RelayTooOld, out);
