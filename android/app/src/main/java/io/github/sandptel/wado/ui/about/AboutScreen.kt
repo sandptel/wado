@@ -26,7 +26,7 @@ import androidx.compose.ui.unit.dp
 import io.github.sandptel.wado.BuildConfig
 import io.github.sandptel.wado.ui.common.WadoButton
 import io.github.sandptel.wado.ui.home.Wordmark
-import io.github.sandptel.wado.ui.settings.TopBar
+import io.github.sandptel.wado.ui.common.TopBar
 import io.github.sandptel.wado.ui.theme.LocalPalette
 import io.github.sandptel.wado.ui.theme.Radius
 import io.github.sandptel.wado.ui.theme.Type

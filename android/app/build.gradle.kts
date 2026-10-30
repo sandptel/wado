@@ -104,21 +104,24 @@ android {
     }
 }
 
-// The AGPL text, from the repository root, into the APK's assets for the About screen — copied
-// at build time rather than kept twice.
+// The AGPL text and the web client's base16 schemes, from the repository, into the APK's assets
+// (the About screen; Appearance) — copied at build time rather than kept twice.
 abstract class LicenceAssets : DefaultTask() {
     @get:InputFile abstract val licence: RegularFileProperty
+    @get:InputFile abstract val schemes: RegularFileProperty
     @get:OutputDirectory abstract val out: DirectoryProperty
 
     @TaskAction
     fun copy() {
         val dir = out.get().asFile.resolve("licenses").apply { mkdirs() }
         licence.get().asFile.copyTo(dir.resolve("AGPL-3.0.txt"), overwrite = true)
+        schemes.get().asFile.copyTo(out.get().asFile.resolve("schemes.json"), overwrite = true)
     }
 }
 
 val licenceAssets = tasks.register<LicenceAssets>("licenceAssets") {
     licence.set(rootProject.layout.projectDirectory.file("../LICENSE"))
+    schemes.set(rootProject.layout.projectDirectory.file("../crates/client/src/schemes.json"))
 }
 
 androidComponents {

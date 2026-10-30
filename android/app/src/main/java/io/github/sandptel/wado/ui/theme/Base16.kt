@@ -23,7 +23,21 @@ class Base16(val slots: List<Int>) {
     val line get() = mix(slots[0x0], slots[0x5], 0.14f)
     val bright get() = slots[0x5]
     val text get() = mix(slots[0x5], slots[0x0], 0.10f)
-    val dim get() = mix(slots[0x5], slots[0x0], 0.42f)
+    /**
+     * The web's 42 % mix toward the ground — eased off, two points at a time, until it holds 3:1 on
+     * surface-2 (ContrastTest: light schemes such as catppuccin-latte fell to 2.4:1). Dark schemes
+     * keep the web's exact value.
+     */
+    val dim: Int
+        get() {
+            var t = 0.42f
+            var c = mix(slots[0x5], slots[0x0], t)
+            while (t > 0.1f && contrast(c, surface2) < 3.0) {
+                t -= 0.02f
+                c = mix(slots[0x5], slots[0x0], t)
+            }
+            return c
+        }
     val accent get() = slots[0xD]
     val onAccent get() = slots[0x0]
     val good get() = slots[0xB]
@@ -56,6 +70,14 @@ class Base16(val slots: List<Int>) {
                 (s.toLongOrNull(16) ?: return null).toInt() or (0xFF shl 24)
             }
             return Base16(slots)
+        }
+
+        /** WCAG contrast ratio of two opaque colours. */
+        fun contrast(a: Int, b: Int): Double {
+            fun ch(v: Int): Double = (v / 255.0).let { if (it <= 0.03928) it / 12.92 else ((it + 0.055) / 1.055).pow(2.4) }
+            fun lum(c: Int) = 0.2126 * ch((c shr 16) and 255) + 0.7152 * ch((c shr 8) and 255) + 0.0722 * ch(c and 255)
+            val (x, y) = lum(a) to lum(b)
+            return (maxOf(x, y) + 0.05) / (minOf(x, y) + 0.05)
         }
 
         /** `color-mix(in oklab, a, b t)`: t of b into a, opaque. */

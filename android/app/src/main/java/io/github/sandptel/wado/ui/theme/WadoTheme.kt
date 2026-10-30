@@ -93,10 +93,23 @@ object Type {
 
 /** DESIGN.md's radii. */
 object Radius {
-    val r1 = 10.dp
-    val r2 = 16.dp
-    val r3 = 22.dp
-    val r4 = 28.dp
+    /** The corner style (Appearance): `soft` 1, `round` 1.4, `square` 0.4. Read when composed. */
+    private var kState = androidx.compose.runtime.mutableFloatStateOf(1f)
+    /** Snapshot state, so a change of style redraws every corner without resetting the pages. */
+    val k get() = kState.floatValue
+
+    fun style(corners: String) {
+        kState.floatValue = when (corners) {
+            "round" -> 1.4f
+            "square" -> 0.4f
+            else -> 1f
+        }
+    }
+
+    val r1 get() = (10 * k).dp
+    val r2 get() = (16 * k).dp
+    val r3 get() = (22 * k).dp
+    val r4 get() = (28 * k).dp
 }
 
 val LocalPalette = staticCompositionLocalOf { Palette.of(Base16.DEFAULT) }

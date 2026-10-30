@@ -6,6 +6,7 @@ import io.github.sandptel.wado.bridge.Hub
 import io.github.sandptel.wado.bridge.NowPlaying
 import io.github.sandptel.wado.clip.ClipSync
 import io.github.sandptel.wado.core.CoreHost
+import io.github.sandptel.wado.ui.phone.LookStore
 import io.github.sandptel.wado.media.RemoteMedia
 import io.github.sandptel.wado.notify.Notifier
 import io.github.sandptel.wado.prefs.Prefs
@@ -50,6 +51,7 @@ class WadoApp : Application() {
             override fun pushSubscribe(vapid: String, rid: String) = Push.subscribe(this@WadoApp, vapid, rid)
             override fun nowPlaying(np: NowPlaying) = media.update(np)
         }
+        LookStore.load(prefs)
         core = CoreHost(this).also { it.start(Hub.computers.map { c -> c.list }) }
         if (prefs.stayConnected) StayConnectedService.sync(this, true)
     }

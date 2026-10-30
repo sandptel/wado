@@ -3,11 +3,14 @@
 # app's smoke test where no phone is attached. Run inside the emulator shell:
 #
 #   nix develop .#android-emulator -c scripts/android-emulator.sh [apk] [screenshot dir]
+#   nix develop .#android-emulator -c scripts/android-emulator.sh --tests   # instrumented tests
 #
 # The AVD lives in ~/.android/avd/wado.avd (made once). The emulator is left running for adb;
 # stop it with `adb emu kill`.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
+TESTS=0
+if [ "${1:-}" = "--tests" ]; then TESTS=1; shift; fi
 APK=${1:-$ROOT/android/app/build/outputs/apk/debug/app-debug.apk}
 SHOTS=${2:-$ROOT/captures/android}
 PKG=io.github.sandptel.wado.debug
@@ -27,6 +30,10 @@ fi
 adb wait-for-device
 until [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; do sleep 2; done
 adb shell settings put global window_animation_scale 1
+if [ "$TESTS" = 1 ]; then
+  # The instrumented tests (androidTest): NavRestoreTest, HomeUiTest, PairUiTest.
+  cd "$ROOT/android" && exec ./gradlew --no-daemon connectedDebugAndroidTest
+fi
 adb install -r -g "$APK"
 
 shot() { sleep "${2:-4}"; adb exec-out screencap -p >"$SHOTS/$1.png"; echo "screenshot: $SHOTS/$1.png"; }
