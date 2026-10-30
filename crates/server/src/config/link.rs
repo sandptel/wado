@@ -6,8 +6,16 @@ use wado_protocol::{ConfigState, HostLimits, PinnedInput};
 use crate::gate::Gate;
 
 /// What this daemon can do that an older one could not, as `ConfigState::caps` names it:
-/// `pad-gamepad` — the pad link carries a gamepad (`crate::pad::game`).
-pub const CAPS: &[&str] = &["pad-gamepad"];
+/// `pad-gamepad` — the pad link carries a gamepad (`crate::pad::game`); `pad-hypr` — running
+/// under Hyprland, so a phone's touchpad speed, scroll, tapping and drag settings are applied
+/// (`crate::platform::linux::hypr_device`). Without it the phone says they are not available.
+pub fn caps(hypr: bool) -> Vec<String> {
+    let mut caps = vec!["pad-gamepad"];
+    if hypr {
+        caps.push("pad-hypr");
+    }
+    caps.into_iter().map(String::from).collect()
+}
 
 /// The config as the device `key` sees it.
 pub fn state_for(key: &str, gate: &Gate) -> ConfigState {
@@ -53,7 +61,7 @@ pub fn state_for(key: &str, gate: &Gate) -> ConfigState {
             .get(key)
             .and_then(|d| d.keyboard.as_ref())
             .map(Into::into),
-        caps: CAPS.iter().map(|c| c.to_string()).collect(),
+        caps: caps(crate::platform::linux::hypr_device::available()),
         // "May change privileged settings" — the owner, or a device granted `settings`.
         owner: gate.grants(key).settings,
         grants: grants_for(key, gate),
@@ -109,13 +117,16 @@ pub fn set(
     permit(key, gate, cfg_key, confirmed)?;
     wado_config::ui_file::set_values(cfg_key, wado_config::ui_file::parse_values(value))
         .map_err(|e| e.to_string())?;
+    // A slider moved while its pad is open: the computer's side follows now, not at next open.
+    let reloaded = super::watch::reload();
+    crate::pad::feel::changed(key, cfg_key);
     tracing::info!(
         device = key,
         key = cfg_key,
         value,
         "config changed from a client"
     );
-    super::watch::reload()
+    reloaded
 }
 
 /// May the device `key` change `cfg_key`? Privileged keys need the settings grant and an
@@ -200,10 +211,11 @@ mod tests {
     }
 
     #[test]
-    fn the_caps_say_the_pad_link_carries_a_gamepad() {
-        assert!(CAPS.contains(&"pad-gamepad"));
+    fn the_caps_say_gamepad_always_and_hypr_only_under_hyprland() {
+        assert_eq!(caps(false), ["pad-gamepad"]);
+        assert_eq!(caps(true), ["pad-gamepad", "pad-hypr"]);
         let s = wado_protocol::ConfigState {
-            caps: CAPS.iter().map(|c| c.to_string()).collect(),
+            caps: caps(false),
             ..Default::default()
         };
         assert_eq!(
