@@ -11,6 +11,13 @@ pub struct StepUp {
     pub state: PasskeyState,
     /// A ceremony is underway (the phone's passkey prompt is up, or the computer is checking).
     pub busy: bool,
+    /// What busy waits on: `computer` (a challenge, a verdict) or `prompt` (the phone's own).
+    pub stage: String,
+    /// What the last failure calls for (`js/passkey_errors.js`): `retry`, `elsewhere`, `setup`,
+    /// `silent`; empty when nothing failed.
+    pub kind: String,
+    /// An "approve on the computer" request, while there is one.
+    pub approve: Option<Approve>,
     /// The door asking: `shell`, `pad`, `files`, `allow`, `claude`, `new`, `add`, `paired`,
     /// `again`. Empty: no sheet.
     pub need: String,
@@ -23,6 +30,18 @@ pub struct StepUp {
     pub origin: String,
     /// Bumped on every unlock, so the lock glyph can play its opening once.
     pub opened: u32,
+}
+
+/// How an approval on the computer stands (`js/passkey_approve.js`).
+#[derive(Clone, Debug, Default, PartialEq, serde::Deserialize)]
+pub struct Approve {
+    /// `waiting`, `approved`, `declined`, `expired`, `refused`.
+    #[serde(default)]
+    pub state: String,
+    #[serde(default)]
+    pub left_s: u32,
+    #[serde(default)]
+    pub message: String,
 }
 
 pub static STEP: GlobalSignal<StepUp> = Signal::global(StepUp::default);
@@ -43,6 +62,9 @@ pub fn on_event(ui: Ui, msg: &serde_json::Value) {
     *STEP.write() = StepUp {
         state,
         busy: b("busy"),
+        stage: s("stage"),
+        kind: s("kind"),
+        approve: get("approve").and_then(|v| serde_json::from_value(v.clone()).ok()),
         need: s("need"),
         note: s("note"),
         supported: b("supported"),

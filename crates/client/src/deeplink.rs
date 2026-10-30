@@ -1,4 +1,5 @@
-//! The app icon's shortcuts (long-press: Trackpad, Files, Shell, Start / join session): each opens
+//! The app icon's shortcuts (long-press: Trackpad, Files, Shell, Start / join session), and the
+//! Virtual input links (`?go=keyboard`, `?go=gamepad`, `?go=input`; `?go=trackpad` is unchanged): each opens
 //! wado at `?go=…`, and this follows it on the **last used computer** — the selected profile.
 //!
 //! It goes there the way a person would: that computer's page opens at once, and when the
@@ -20,7 +21,7 @@ use crate::{
     bridge, reach,
     route::{self, View},
     state::Ui,
-    ui::computer::actions,
+    ui::computer::{actions, input::open as input},
 };
 
 /// How long a shortcut waits for its computer before giving up and showing home.
@@ -29,6 +30,12 @@ pub const TIMEOUT_MS: u32 = 20_000;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Go {
     Trackpad,
+    /// The touchpad screen with the keyboard up.
+    Keyboard,
+    /// The gamepad, full screen, with no session.
+    Gamepad,
+    /// The Virtual input hub.
+    Input,
     Files,
     Shell,
     Session,
@@ -39,7 +46,10 @@ pub enum Go {
 impl Go {
     pub fn parse(s: &str) -> Option<Go> {
         match s.trim().to_ascii_lowercase().as_str() {
-            "trackpad" => Some(Go::Trackpad),
+            "trackpad" | "touchpad" => Some(Go::Trackpad),
+            "keyboard" => Some(Go::Keyboard),
+            "gamepad" => Some(Go::Gamepad),
+            "input" => Some(Go::Input),
             "files" => Some(Go::Files),
             "shell" => Some(Go::Shell),
             "session" | "desktop" => Some(Go::Session),
@@ -50,7 +60,10 @@ impl Go {
 
     fn what(self) -> &'static str {
         match self {
-            Go::Trackpad => "the trackpad",
+            Go::Trackpad => "the touchpad",
+            Go::Keyboard => "the keyboard",
+            Go::Gamepad => "the gamepad",
+            Go::Input => "its virtual input",
             Go::Files => "its files",
             Go::Shell => "a shell",
             Go::Session => "the desktop",
@@ -190,7 +203,9 @@ pub fn follow(ui: Ui) {
             unpaired: !(live.unpaired)().is_empty() || !(live.pair_sas)().is_empty(),
             ready: r.config.is_some() || r.host.is_some(),
             allowed: match go {
-                Go::Trackpad => relay && d.pad,
+                Go::Trackpad | Go::Keyboard => relay && d.pad,
+                Go::Gamepad => relay && d.pad && !crate::ui::computer::input::open::too_old(&r),
+                Go::Input => true,
                 Go::Files => relay && d.files,
                 Go::Shell => relay && d.shell,
                 Go::Session => true,
@@ -204,7 +219,10 @@ pub fn follow(ui: Ui) {
             Next::Act => {
                 live.go.set(None);
                 match go {
-                    Go::Trackpad => bridge::call("window.__wado.padOpen();".to_string()),
+                    Go::Trackpad => input::open(ui, input::Door::Touchpad),
+                    Go::Keyboard => input::open(ui, input::Door::Keyboard),
+                    Go::Gamepad => input::open(ui, input::Door::Gamepad),
+                    Go::Input => input::hub(ui),
                     Go::Files => bridge::call("window.__wado.filesOpen();".to_string()),
                     Go::Shell => crate::ui::console::open_shells(ui),
                     Go::Session => bridge::call(SHOW_SESSION_DOOR.to_string()),
@@ -247,6 +265,10 @@ mod tests {
     #[test]
     fn parses_each_shortcut() {
         assert_eq!(Go::parse("trackpad"), Some(Go::Trackpad));
+        assert_eq!(Go::parse("touchpad"), Some(Go::Trackpad));
+        assert_eq!(Go::parse("keyboard"), Some(Go::Keyboard));
+        assert_eq!(Go::parse("Gamepad"), Some(Go::Gamepad));
+        assert_eq!(Go::parse("input"), Some(Go::Input));
         assert_eq!(Go::parse("files"), Some(Go::Files));
         assert_eq!(Go::parse("shell"), Some(Go::Shell));
         assert_eq!(Go::parse("session"), Some(Go::Session));

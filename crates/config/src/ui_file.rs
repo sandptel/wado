@@ -269,6 +269,168 @@ mod tests {
         std::fs::remove_dir_all(dir).ok();
     }
 
+    /// The exact `ConfigSet`s the client sends for virtual input (F11).
+    #[test]
+    fn virtual_input_settings_are_written_the_way_the_client_sends_them() {
+        let dir = std::env::temp_dir().join(format!("wado-ui-vi-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (main, ui) = (dir.join("config.kdl"), dir.join("ui.kdl"));
+        std::fs::write(&main, "").unwrap();
+
+        set_at(
+            &main,
+            &ui,
+            "device.k1.gamepad.layout",
+            parse_values("racing"),
+        )
+        .unwrap();
+        set_at(
+            &main,
+            &ui,
+            "device.k1.gamepad.haptics",
+            parse_values("strong"),
+        )
+        .unwrap();
+        let saved = serde_json::to_string(&["Couch racer", "racing", r#"{"v":1}"#]).unwrap();
+        set_at(
+            &main,
+            &ui,
+            "device.k1.gamepad.mine.mine-3f2a",
+            parse_values(&saved),
+        )
+        .unwrap();
+        set_at(
+            &main,
+            &ui,
+            "device.k1.gamepad.mine.mine-b",
+            parse_values(r#"["B","xbox","{}"]"#),
+        )
+        .unwrap();
+        set_at(
+            &main,
+            &ui,
+            "device.k1.keyboard.keys",
+            parse_values(r#"["esc","tab"]"#),
+        )
+        .unwrap();
+        set_at(&main, &ui, "device.k1.trackpad.speed", parse_values("1.25")).unwrap();
+        let c = crate::kdl::load(&main).unwrap();
+        let g = c.device["k1"].gamepad.clone().unwrap();
+        assert_eq!(
+            (g.layout.as_str(), g.haptics.as_str()),
+            ("racing", "strong")
+        );
+        assert_eq!(g.mine["mine-3f2a"], ["Couch racer", "racing", r#"{"v":1}"#]);
+        assert_eq!(g.mine.len(), 2);
+        assert_eq!(
+            c.device["k1"].keyboard.clone().unwrap().keys,
+            ["esc", "tab"]
+        );
+        assert_eq!(c.device["k1"].trackpad.clone().unwrap().speed, 1.25);
+
+        // The touchpad's feel, each with its plain value; `natural` unset by an empty one.
+        for (k, v) in [
+            ("scroll-speed", "0.5"),
+            ("natural", "true"),
+            ("tap", "false"),
+            ("tap-drag", "false"),
+            ("drag-lock", "briefly"),
+            ("click-bar", "true"),
+            ("palm", "false"),
+            ("marks", "false"),
+            ("gesture-distance", "short"),
+        ] {
+            set_at(
+                &main,
+                &ui,
+                &format!("device.k1.trackpad.{k}"),
+                parse_values(v),
+            )
+            .unwrap_or_else(|e| panic!("{k}: {e}"));
+        }
+        let t = crate::kdl::load(&main).unwrap().device["k1"]
+            .trackpad
+            .clone()
+            .unwrap();
+        assert_eq!(
+            (t.scroll_speed, t.natural, t.tap, t.tap_drag),
+            (0.5, Some(true), false, false)
+        );
+        assert_eq!(
+            (t.drag_lock.as_str(), t.gesture_distance.as_str()),
+            ("briefly", "short")
+        );
+        assert!(t.click_bar && !t.palm && !t.marks);
+        set_at(&main, &ui, "device.k1.trackpad.natural", parse_values("")).unwrap();
+        let t = crate::kdl::load(&main).unwrap().device["k1"]
+            .trackpad
+            .clone()
+            .unwrap();
+        assert_eq!(t.natural, None, "unset: the computer's own setting again");
+        assert!(
+            set_at(
+                &main,
+                &ui,
+                "device.k1.trackpad.drag-lock",
+                parse_values("always")
+            )
+            .is_err()
+        );
+
+        // Saved again: replaced, not doubled. Emptied: deleted.
+        set_at(
+            &main,
+            &ui,
+            "device.k1.gamepad.mine.mine-3f2a",
+            parse_values(r#"["Renamed","racing","{}"]"#),
+        )
+        .unwrap();
+        set_at(
+            &main,
+            &ui,
+            "device.k1.gamepad.mine.mine-b",
+            parse_values(""),
+        )
+        .unwrap();
+        let g = crate::kdl::load(&main).unwrap().device["k1"]
+            .gamepad
+            .clone()
+            .unwrap();
+        assert_eq!(g.mine.len(), 1);
+        assert_eq!(g.mine["mine-3f2a"][0], "Renamed");
+
+        // Refused like any other bad value, and the file is left as it was.
+        assert!(
+            set_at(
+                &main,
+                &ui,
+                "device.k1.gamepad.mine.mine-c",
+                parse_values(r#"["C","x","[]"]"#)
+            )
+            .is_err()
+        );
+        assert!(
+            set_at(
+                &main,
+                &ui,
+                "device.k1.keyboard.keys",
+                parse_values(r#"["meta"]"#)
+            )
+            .is_err()
+        );
+        assert!(set_at(&main, &ui, "device.k1.trackpad.speed", parse_values("4")).is_err());
+        assert_eq!(
+            crate::kdl::load(&main).unwrap().device["k1"]
+                .gamepad
+                .clone()
+                .unwrap()
+                .mine
+                .len(),
+            1
+        );
+        std::fs::remove_dir_all(dir).ok();
+    }
+
     #[test]
     fn a_json_list_is_one_value_each() {
         assert_eq!(

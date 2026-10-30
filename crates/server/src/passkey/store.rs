@@ -18,7 +18,7 @@ impl Default for Store {
 }
 
 /// A device key as a file name: itself when it is plainly safe, else its SHA-256 in hex.
-fn file_name(key: &str) -> String {
+pub(super) fn file_name(key: &str) -> String {
     let plain = !key.is_empty()
         && key.len() <= 128
         && key
@@ -43,6 +43,11 @@ impl Store {
         self.dir.join(file_name(key))
     }
 
+    /// The folder itself, for the files that live beside a passkey (`super::require`).
+    pub(super) fn dir(&self) -> &std::path::Path {
+        &self.dir
+    }
+
     pub fn get(&self, key: &str) -> Option<Credential> {
         if key.is_empty() {
             return None;
@@ -53,7 +58,7 @@ impl Store {
 
     /// Write `key`'s passkey, replacing any it had. Atomic: a crash leaves the old one or the new.
     pub fn put(&self, key: &str, cred: &Credential) -> std::io::Result<()> {
-        self.write(&self.path(key), &file_name(key), cred)
+        self.write_file(&self.path(key), &file_name(key), cred)
     }
 
     /// The counter after an unlock.
@@ -77,9 +82,16 @@ impl Store {
     }
 
     /// Forget `key`'s passkey, and with it how long its unlock lasts. True if there was one.
+    /// Whether it is asked for one at all stays: that is the owner's choice, not the passkey's.
     pub fn remove(&self, key: &str) -> bool {
         let _ = std::fs::remove_file(self.prefs_path(key));
         std::fs::remove_file(self.path(key)).is_ok()
+    }
+
+    /// Forget everything about `key` here — the device was unpaired. True if it had a passkey.
+    pub fn forget(&self, key: &str) -> bool {
+        let _ = self.set_required(key, true);
+        self.remove(key)
     }
 
     // `<name>.stay`: a file name never has a dot otherwise, so it cannot be another device's.
@@ -107,7 +119,7 @@ impl Store {
             key: key.to_string(),
             ..p.clone()
         };
-        self.write(
+        self.write_file(
             &self.prefs_path(key),
             &format!("{}.stay", file_name(key)),
             &p,
@@ -127,7 +139,7 @@ impl Store {
             .collect()
     }
 
-    fn write<T: serde::Serialize>(
+    pub(super) fn write_file<T: serde::Serialize>(
         &self,
         to: &std::path::Path,
         name: &str,

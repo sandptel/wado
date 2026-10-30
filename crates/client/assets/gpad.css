@@ -1,0 +1,82 @@
+/* The gamepad's controls, wherever they are drawn (js/gpad/render.js): the play screen, the
+ * in-session overlay, the console deck, the picker thumbnails, the hub and settings previews.
+ * What a control looks like is `data-*` on it (kind, shape, style, labels, press); classes are
+ * `gp*`, so nothing here meets the app's generic names. Base16 slots only; transform / opacity /
+ * translate / scale only; --spring and --pop only (DESIGN.md). */
+
+.gpc { position: absolute; display: grid; place-items: center; touch-action: none; --c: var(--bright);
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.gpc .gpface { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 50%; background: var(--s2); color: var(--c);
+  font: 700 calc(var(--h) * .36) / 1 var(--body); letter-spacing: .02em; opacity: var(--op, .92);
+  transition: scale var(--dur-press) var(--spring), background var(--dur-press) var(--spring), color var(--dur-press) var(--spring); }
+.gpc[data-shape="pill"] .gpface { border-radius: 999px; }
+.gpc[data-shape="round"] .gpface { border-radius: var(--r2); }
+.gpc[data-style="solid"] .gpface { background: var(--s3); }
+.gpc[data-style="flat"] .gpface { background: var(--s1); }
+.gpc[data-style="outline"] .gpface { background: transparent; box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--c), transparent 30%); }
+.gpc[data-labels="colors"][data-kind="btn"] .gpface { background: color-mix(in oklab, var(--c), var(--s2) 72%); }
+.gpc[data-labels="colors"][data-kind="btn"][data-style="outline"] .gpface { background: color-mix(in oklab, var(--c), transparent 88%); }
+.gpc .gpface svg { width: 44%; height: 44%; stroke: currentColor; fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.gpc .gpword { font: 700 calc(var(--h) * .3) var(--body); letter-spacing: .04em; text-transform: uppercase; }
+.gpc[data-kind="small"] .gpface { font: 700 calc(var(--h) * .27) var(--body); letter-spacing: .08em; color: var(--dim); }
+.gpc[data-kind="small"] .gpface svg { width: calc(var(--h) * .5); height: calc(var(--h) * .5); stroke-width: 2; }
+.gpc.on .gpface { scale: .92; background: color-mix(in oklab, var(--c), var(--s2) 45%); color: var(--s0); }
+.gpc .gphalo { position: absolute; inset: -6px; border-radius: 50%; border: 2px solid var(--c); opacity: 0; pointer-events: none; }
+.gpc[data-shape="pill"] .gphalo { border-radius: 999px; }
+.gpc[data-shape="round"] .gphalo { border-radius: calc(var(--r2) + 6px); }
+.gpc[data-press="ring"].on .gphalo { opacity: .9; }
+
+/* pedal: fills by finger height */
+.gpc[data-kind="pedal"] .gpface { border-radius: var(--r3); display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+  padding-bottom: 14px; overflow: hidden; }
+.gpc[data-kind="pedal"] .gpfill { position: absolute; left: 0; right: 0; bottom: 0; height: 100%; background: color-mix(in oklab, var(--c), transparent 70%);
+  transform-origin: bottom; scale: 1 0; }
+.gpc[data-kind="pedal"] .gpchev { position: absolute; top: 14px; width: 24px; height: 24px; opacity: .6; }
+.gpc[data-kind="pedal"] .gpword { position: relative; font-size: calc(var(--h) * .19); }
+.gpc[data-kind="pedal"].on .gpface { scale: 1; }
+
+/* d-pad: four arms and a hub; the face itself is only the hit area */
+.gpc[data-kind="dpad"] .gpface { background: transparent !important; box-shadow: none !important; border-radius: 0; }
+.gpdp { position: absolute; inset: 0; }
+.gpdp .gparm { position: absolute; width: 34%; height: 34%; background: var(--s2); display: grid; place-items: center; color: var(--dim);
+  opacity: var(--op, .92); transition: background var(--dur-press) var(--spring), scale var(--dur-press) var(--spring); }
+.gpc[data-style="solid"] .gparm, .gpc[data-style="solid"] .gphub { background: var(--s3); }
+.gpc[data-style="flat"] .gparm, .gpc[data-style="flat"] .gphub { background: var(--s1); }
+.gpc[data-style="outline"] .gparm, .gpc[data-style="outline"] .gphub { background: transparent; box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--bright), transparent 55%); }
+.gpdp .gparm svg { width: 40%; height: 40%; fill: currentColor; stroke: none; }
+.gpdp .gparm[data-d="u"] { left: 33%; top: 0; border-radius: var(--r1) var(--r1) 4px 4px; }
+.gpdp .gparm[data-d="d"] { left: 33%; bottom: 0; border-radius: 4px 4px var(--r1) var(--r1); }
+.gpdp .gparm[data-d="l"] { left: 0; top: 33%; border-radius: var(--r1) 4px 4px var(--r1); }
+.gpdp .gparm[data-d="r"] { right: 0; top: 33%; border-radius: 4px var(--r1) var(--r1) 4px; }
+.gpdp .gphub { position: absolute; left: 33%; top: 33%; width: 34%; height: 34%; background: var(--s2); opacity: var(--op, .92); }
+.gpc[data-dir="8"] .gphub::after { content: ""; position: absolute; inset: 30%; border-radius: 50%; border: 1.5px dashed color-mix(in oklab, var(--bright), transparent 60%); }
+.gpdp .gparm.on { background: color-mix(in oklab, var(--accent), var(--s2) 30%); color: var(--on-accent); scale: .94; }
+.gpc[data-kind="dpad"][data-shape="circle"] .gpdp { border-radius: 50%; overflow: hidden; }
+
+/* stick and steering slider */
+.gpc[data-kind="stick"] .gpface { background: color-mix(in oklab, var(--s2), transparent 30%); box-shadow: inset 0 0 0 1.5px var(--line); }
+.gpc[data-kind="stick"][data-style="outline"] .gpface { background: transparent; box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--bright), transparent 55%); }
+.gpc .gpdead { position: absolute; left: 50%; top: 50%; width: calc(var(--dz) * 100%); height: calc(var(--dz) * 100%); translate: -50% -50%;
+  border-radius: 50%; border: 1.5px dashed color-mix(in oklab, var(--accent), transparent 30%); box-shadow: 0 0 0 1px var(--s0);
+  opacity: 0; z-index: 2; pointer-events: none; transition: opacity var(--dur) var(--spring); }
+.gpc.showdead .gpdead { opacity: 1; }
+.gpc .gpthumb { position: absolute; left: 50%; top: 50%; width: 46%; height: 46%; margin: -23% 0 0 -23%; border-radius: 50%; background: var(--s3);
+  box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--bright), transparent 80%); display: grid; place-items: center;
+  font: 700 calc(var(--h) * .1) var(--body); color: var(--dim); opacity: var(--op, .92); }
+.gpc.on .gpthumb { background: color-mix(in oklab, var(--accent), var(--s3) 40%); color: var(--on-accent); }
+.gpc .gptrail { position: absolute; left: 50%; top: 50%; width: 30%; height: 30%; margin: -15% 0 0 -15%; border-radius: 50%; background: var(--accent);
+  opacity: 0; pointer-events: none; }
+.gpc .gpdir { position: absolute; inset: 0; pointer-events: none; opacity: 0; }
+.gpc .gpdir::before { content: ""; position: absolute; left: 50%; top: -3px; width: 22%; height: 7px; margin-left: -11%; border-radius: 999px; background: var(--accent); }
+.gpc[data-kind="slider"] .gpface { border-radius: 999px; }
+.gpc[data-kind="slider"] .gpthumb { width: 30%; height: 80%; margin: -20% 0 0 -15%; border-radius: 999px; }
+
+/* comfort flags: a breathing warn ring (ambient) */
+.gpc.flag::after { content: ""; position: absolute; inset: -8px; border-radius: 50%; border: 2px solid var(--warn); pointer-events: none;
+  animation: gpbreathe 2.4s ease-in-out infinite; }
+.gpc.flag[data-shape="pill"]::after, .gpc.flag[data-kind="pedal"]::after { border-radius: 999px; }
+@keyframes gpbreathe { 50% { opacity: .35; } }
+
+/* a picture of a layout (picker, carousel, hub): drawn, never pressed */
+.gpthumbs { position: relative; overflow: hidden; pointer-events: none; }
+.gpthumbs .gpc { pointer-events: none; }

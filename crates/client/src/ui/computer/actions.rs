@@ -1,5 +1,5 @@
-//! The four reasons to open a computer: its desktop, this phone as its trackpad, its files, a
-//! shell. Big tiles, Desktop first and loudest — it is the one most taps are for.
+//! The four reasons to open a computer: its desktop, this phone as its input (the Virtual input
+//! tile, `input/tile.rs`), its files, a shell. Big tiles, Desktop first and loudest — it is the one most taps are for.
 //!
 //! Each says what it will do *now* ("Rejoin · Firefox and 2 more", "Start at this screen's
 //! size"), and a door this phone may not use says so instead of failing after the tap.
@@ -55,9 +55,9 @@ pub fn Actions(ui: Ui, r: Reach) -> Element {
     let shells_open = (live.shells)().iter().filter(|s| s.alive).count();
     let off = !r.online;
     let Doors {
-        pad: pad_ok,
         files: files_ok,
         shell: shell_ok,
+        ..
     } = doors(&r);
 
     let idle_elsewhere = r.busy && r.running_there == Some(false);
@@ -99,13 +99,7 @@ pub fn Actions(ui: Ui, r: Reach) -> Element {
                 span { class: "aic", Icon { name: "play", fill: true } }
                 span { b { "Desktop" } small { "{desk_sub}" } }
             }
-            button {
-                class: "act",
-                disabled: off || !relay || !pad_ok,
-                onclick: move |_| bridge::call("window.__wado.padOpen();".to_string()),
-                span { class: "aic", Icon { name: "trackpad" } }
-                span { b { "Trackpad" } small { if pad_ok { "This phone as its touchpad" } else { "Not allowed for this phone" } } }
-            }
+            crate::ui::computer::input::tile::Tile { ui, r: r.clone() }
             button {
                 class: "act",
                 disabled: off || !relay || !files_ok,

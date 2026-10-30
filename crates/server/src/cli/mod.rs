@@ -11,6 +11,7 @@ pub mod files;
 pub mod landing;
 pub mod msg;
 pub mod passkey;
+pub mod passkey_approve;
 pub mod qr;
 pub mod relay;
 pub mod status;

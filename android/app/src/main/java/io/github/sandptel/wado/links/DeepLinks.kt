@@ -10,11 +10,12 @@ import java.net.URLEncoder
  * - **Connect links** — what a computer's QR holds (`wado qr`, the TUI's pair page):
  *   `<client url>?relay=…&id=…&pair=…&hk=…`, or the same as `wado://pair?…`. Only those four
  *   parameters are carried over, onto the app's own origin, where js/storage.js takes them in.
- * - **Doors** — the app-icon shortcuts' `go` (`trackpad`, `files`, `shell`, `session`), the
+ * - **Doors** — the app-icon shortcuts' `go` (`trackpad`, `files`, `shell`, `session`) and the
+ *   Virtual input links (`keyboard`, `gamepad`, `input`, opened by the web client), the
  *   same set and meaning as the web app's manifest shortcuts (crates/client/src/deeplink.rs).
  */
 object DeepLinks {
-    val DOORS = listOf("trackpad", "files", "shell", "session")
+    val DOORS = listOf("trackpad", "files", "shell", "session", "keyboard", "gamepad", "input")
     private val CONNECT_KEYS = listOf("relay", "id", "pair", "hk")
 
     /** A door name, normalised, or null if it is not one. */

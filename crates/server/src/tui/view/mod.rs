@@ -147,6 +147,23 @@ fn footer(app: &App) -> Paragraph<'static> {
             Span::styled(" unpair   any other key keeps it", theme::dim()),
         ]));
     }
+    if let Some(a) = app.snap.approving.first() {
+        let mut spans = vec![
+            Span::styled(
+                format!(
+                    " {} asks to unlock without its passkey — only if you just tapped it there ({} s) ",
+                    a.device,
+                    a.left()
+                ),
+                Style::new().fg(theme::WARN),
+            ),
+            Span::styled(" a ", theme::cursor()),
+        ];
+        spans.push(Span::styled(" approve  ", theme::dim()));
+        spans.push(Span::styled(" d ", theme::cursor()));
+        spans.push(Span::styled(" turn away", theme::dim()));
+        return Paragraph::new(Line::from(spans));
+    }
     let mut spans = vec![Span::raw(" ")];
     let hints: &[(&str, &str)] = match app.focus {
         _ if !app.snap.asking.is_empty() => &[("y", "the words match"), ("n", "they don't")],
@@ -156,7 +173,12 @@ fn footer(app: &App) -> Paragraph<'static> {
             ("c", "copy link"),
             ("z", "QR size"),
         ],
-        Card::Devices => &[("space", "flip"), ("L", "lock passkey"), ("x", "unpair")],
+        Card::Devices => &[
+            ("space", "flip"),
+            ("L", "lock passkey"),
+            ("P", "ask for passkey on/off"),
+            ("x", "unpair"),
+        ],
         Card::Switches => &[("space", "flip")],
     };
     for (k, what) in hints

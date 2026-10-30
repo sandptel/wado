@@ -29,7 +29,7 @@
   // the strip's neighbours first (nearest the picture's edge, as if pushed), then status, then
   // the dock (spec S2).
   const FLY = [
-    [0, ".rail .barbtn, #wado-bar .wsnum, #wado-bar .wsapp, #wado-pad .padbtn, #wado-pad .padstick"],
+    [0, ".rail .barbtn, #wado-bar .wsnum, #wado-bar .wsapp, #wado-pad .gpc"],
     [1, ".linkbadge .linkpill, #wado-here"],
     [2, "#wado-bar .grp.mid .barbtn, #wado-bar .grp.right .barbtn"],
   ];

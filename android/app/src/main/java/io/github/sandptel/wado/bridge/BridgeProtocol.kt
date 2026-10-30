@@ -24,6 +24,8 @@ object BridgeProtocol {
     const val SHARE_DONE = "shareDone"
     const val EXIT = "exit"
     const val WEBAUTHN = "webauthn"
+    /** The page gave up on a `webauthn` request (`id`): take its prompt down. */
+    const val WEBAUTHN_CANCEL = "webauthnCancel"
     const val PAD_STATE = "padState"
     const val PAD_MSG = "padMsg"
 

@@ -4,16 +4,16 @@
 //!
 //! | about | pages | built in |
 //! |---|---|---|
-//! | one computer | Display & session, Sound & devices, Connection & trust | `ui/computer/pages/` |
-//! | this phone | Appearance, Input feel, Gamepad, Quick tiles, Diagnostics, Add a computer | `ui/home/pages/` |
+//! | one computer | Display & session, Virtual input (and its Touchpad, Keyboard, Gamepad), Sound & devices, Connection & trust | `ui/computer/pages/`, `ui/computer/input/` |
+//! | this phone | Appearance, Input feel, Quick tiles, Diagnostics, Add a computer | `ui/home/pages/` |
 //!
 //! Each page is one component with two hosts: pushed over home or a computer's page, and pushed
 //! inside the control centre during a session (whose list is just *This computer ›* and *On this
 //! phone ›*). The files in this folder are the **sections** those pages are made of.
 //!
-//! A computer's **Trackpad** settings are not a page here: its row opens the trackpad's own
-//! settings sheet (`js/pad_settings.js`, `W.padSettings.openHere`) — one implementation, reached
-//! from the pad and from the computer's page.
+//! A computer's **Virtual input** is a hub with three pages under it (Touchpad, Keyboard,
+//! Gamepad); Back from one of those goes to the hub. The Touchpad page draws the trackpad's own
+//! settings (`js/pad_settings.js`) — one implementation, reached from the pad and from here.
 //!
 //! When a setting applies is said on the control (see [`crate::ui::widgets::When`]), not by
 //! which page it is on — the page answers "what is this about", the badge answers "when".
@@ -25,7 +25,6 @@ pub mod computers;
 pub mod connection;
 pub mod diagnostics;
 pub mod display;
-pub mod gamepad;
 pub mod host;
 pub mod input;
 pub mod network;
@@ -50,10 +49,14 @@ pub enum Page {
     DisplaySession,
     SoundDevices,
     ConnectionTrust,
+    /// Virtual input: the hub, and its three pages.
+    Input,
+    InputTouchpad,
+    InputKeyboard,
+    InputGamepad,
     // ── about this phone ──
     Appearance,
     InputFeel,
-    Gamepad,
     Tiles,
     Diagnostics,
     AddComputer,
@@ -70,7 +73,10 @@ impl Page {
             Page::ConnectionTrust => "Connection & trust",
             Page::Appearance => "Appearance",
             Page::InputFeel => "Input feel",
-            Page::Gamepad => "Gamepad",
+            Page::Input => "Virtual input",
+            Page::InputTouchpad => "Touchpad",
+            Page::InputKeyboard => "Keyboard",
+            Page::InputGamepad => "Gamepad",
             Page::Tiles => "Quick tiles",
             Page::Diagnostics => "Diagnostics",
             Page::AddComputer => "Add a computer",
@@ -81,7 +87,14 @@ impl Page {
     pub fn about_computer(self) -> bool {
         matches!(
             self,
-            Page::ThisComputer | Page::DisplaySession | Page::SoundDevices | Page::ConnectionTrust
+            Page::ThisComputer
+                | Page::DisplaySession
+                | Page::SoundDevices
+                | Page::ConnectionTrust
+                | Page::Input
+                | Page::InputTouchpad
+                | Page::InputKeyboard
+                | Page::InputGamepad
         )
     }
 
@@ -89,6 +102,7 @@ impl Page {
     pub fn parent(self) -> Page {
         match self {
             Page::Root | Page::ThisComputer | Page::OnThisPhone => Page::Root,
+            Page::InputTouchpad | Page::InputKeyboard | Page::InputGamepad => Page::Input,
             p if p.about_computer() => Page::ThisComputer,
             _ => Page::OnThisPhone,
         }
@@ -110,7 +124,22 @@ pub fn render(ui: Ui, page: Page) -> Element {
         }
         Page::Appearance => crate::ui::scoped(ui, "appearance", h::appearance::render),
         Page::InputFeel => input::feel(ui),
-        Page::Gamepad => gamepad::render(ui),
+        Page::Input => crate::ui::scoped(ui, "vi_hub", crate::ui::computer::input::hub::render),
+        Page::InputTouchpad => crate::ui::scoped(
+            ui,
+            "vi_touchpad",
+            crate::ui::computer::input::touchpad::render,
+        ),
+        Page::InputKeyboard => crate::ui::scoped(
+            ui,
+            "vi_keyboard",
+            crate::ui::computer::input::keyboard::render,
+        ),
+        Page::InputGamepad => crate::ui::scoped(
+            ui,
+            "vi_gamepad",
+            crate::ui::computer::input::gamepad::render,
+        ),
         Page::Tiles => tiles::render(ui),
         Page::Diagnostics => diagnostics::render(ui),
         Page::AddComputer => crate::ui::scoped(ui, "add_computer", h::add_computer::render),

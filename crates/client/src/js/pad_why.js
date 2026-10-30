@@ -23,6 +23,9 @@
           : "Unlock with this phone's passkey to use the trackpad.",
         cmds: [],
         act: none ? "Add a passkey" : "Unlock",
+        // Never only the passkey: a phone whose prompt hangs or fails still has a way in.
+        approve: true,
+        alt: "Passkey not working on this phone? Someone at the computer can let it in — or stop asking this phone for one there, with wado passkey require <device> off.",
       };
     }
     if (/may not use the trackpad/.test(m)) {
@@ -123,6 +126,12 @@
       b.type = "button";
       b.onclick = () => W.passkeyFor("pad", retry);
       el.appendChild(b);
+      if (w.approve && W.passkeyApproveFor) {
+        const a = node("button", "btn tpact tpappr", "Approve on the computer");
+        a.type = "button";
+        a.onclick = () => W.passkeyApproveFor("pad", retry);
+        el.appendChild(a);
+      }
     } else if (w.cause !== "unsupported") {
       const b = node("button", "btn tpact", "Try again");
       b.type = "button";

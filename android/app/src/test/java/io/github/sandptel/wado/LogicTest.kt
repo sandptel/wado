@@ -71,6 +71,8 @@ class DeepLinksTest {
     @Test fun doors_match_the_web_shortcuts() {
         assertEquals("session", DeepLinks.door("Desktop"))
         assertEquals("trackpad", DeepLinks.door("trackpad"))
+        assertEquals("gamepad", DeepLinks.door("Gamepad"))
+        assertEquals("input", DeepLinks.door("input"))
         assertNull(DeepLinks.door("home"))
         val d = DeepLinks.door(URI(DeepLinks.doorLink("files", "https://r|42")))!!
         assertEquals("files", d.door)

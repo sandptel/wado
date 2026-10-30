@@ -30,7 +30,7 @@ pub struct Credential {
     pub added: u64,
 }
 
-fn b64(s: &str) -> Result<Vec<u8>, &'static str> {
+pub(super) fn b64(s: &str) -> Result<Vec<u8>, &'static str> {
     base64::engine::general_purpose::URL_SAFE_NO_PAD
         .decode(s.trim_end_matches('='))
         .map_err(|_| "a passkey field is not base64url")

@@ -36,7 +36,8 @@ use serde::{Deserialize, Serialize};
 pub use apps::AppEntry;
 pub use clip::{ClipEntry, ClipKind};
 pub use config::{
-    ConfigState, ConsolePrefs, DeviceGrants, HostLimits, PinnedInput, SizePrefs, TrackpadPrefs,
+    ConfigState, ConsolePrefs, DeviceGrants, GamepadPrefs, HostLimits, InputHost, KeyboardPrefs,
+    PinnedInput, SavedLayout, SizePrefs, TrackpadPrefs,
 };
 pub use control::{
     LaunchNote, SessionControl, WindowAction, WindowInfo, WindowList, LAUNCHES_KEPT,

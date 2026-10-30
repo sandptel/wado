@@ -188,6 +188,8 @@
   };
 
   F.attach = (node) => {
+    // "Finger marks" off (Touchpad settings): no rings under the fingers; the rest of the feel stays.
+    if (node && node.classList) node.classList.toggle("nomarks", !!(W.padPrefs && W.padPrefs.get().marks === false));
     F.detach();
     el = node;
   };

@@ -5,6 +5,18 @@ use wado_protocol::{ConfigState, HostLimits, PinnedInput};
 
 use crate::gate::Gate;
 
+/// What this daemon can do that an older one could not, as `ConfigState::caps` names it:
+/// `pad-gamepad` — the pad link carries a gamepad (`crate::pad::game`); `pad-hypr` — running
+/// under Hyprland, so a phone's touchpad speed, scroll, tapping and drag settings are applied
+/// (`crate::platform::linux::hypr_device`). Without it the phone says they are not available.
+pub fn caps(hypr: bool) -> Vec<String> {
+    let mut caps = vec!["pad-gamepad"];
+    if hypr {
+        caps.push("pad-hypr");
+    }
+    caps.into_iter().map(String::from).collect()
+}
+
 /// The config as the device `key` sees it.
 pub fn state_for(key: &str, gate: &Gate) -> ConfigState {
     let cfg = wado_config::live::current();
@@ -39,6 +51,27 @@ pub fn state_for(key: &str, gate: &Gate) -> ConfigState {
             .get(key)
             .and_then(|d| d.size.as_ref())
             .map(Into::into),
+        gamepad: cfg
+            .device
+            .get(key)
+            .and_then(|d| d.gamepad.as_ref())
+            .map(Into::into),
+        keyboard: cfg
+            .device
+            .get(key)
+            .and_then(|d| d.keyboard.as_ref())
+            .map(Into::into),
+        caps: caps(crate::platform::linux::hypr_device::available()),
+        input_host: Some(wado_protocol::InputHost {
+            enabled: cfg.trackpad.enabled,
+            smoothing: cfg.trackpad.smoothing,
+            rate_hz: cfg.trackpad.rate_hz,
+            delay: match cfg.trackpad.delay {
+                wado_config::schema::TrackpadDelay::Adaptive => "adaptive",
+                wado_config::schema::TrackpadDelay::Fixed => "fixed",
+            }
+            .into(),
+        }),
         // "May change privileged settings" — the owner, or a device granted `settings`.
         owner: gate.grants(key).settings,
         grants: grants_for(key, gate),
@@ -94,22 +127,25 @@ pub fn set(
     permit(key, gate, cfg_key, confirmed)?;
     wado_config::ui_file::set_values(cfg_key, wado_config::ui_file::parse_values(value))
         .map_err(|e| e.to_string())?;
+    // A slider moved while its pad is open: the computer's side follows now, not at next open.
+    let reloaded = super::watch::reload();
+    crate::pad::feel::changed(key, cfg_key);
     tracing::info!(
         device = key,
         key = cfg_key,
         value,
         "config changed from a client"
     );
-    super::watch::reload()
+    reloaded
 }
 
 /// May the device `key` change `cfg_key`? Privileged keys need the settings grant and an
-/// on-screen yes — except a device's own trackpad layout, console preferences and size
-/// (`device.<its key>.trackpad.*`, `….console.*`, `….size.*`), which are its own business, like
-/// its prefs blob.
+/// on-screen yes — except a device's own trackpad layout, console preferences, size, gamepad and
+/// keyboard keys (`device.<its key>.trackpad.*`, `….console.*`, `….size.*`, `….gamepad.*`,
+/// `….keyboard.*`), which are its own business, like its prefs blob.
 fn permit(key: &str, gate: &Gate, cfg_key: &str, confirmed: bool) -> Result<(), String> {
     let own = !key.is_empty()
-        && ["trackpad", "console", "size"]
+        && ["trackpad", "console", "size", "gamepad", "keyboard"]
             .iter()
             .any(|b| cfg_key.starts_with(&format!("device.{key}.{b}.")));
     if own || tier::of(cfg_key) == Tier::Live {
@@ -164,6 +200,38 @@ mod tests {
         // The rest of its own block is still the owner's to change.
         assert!(permit("k1", &g, "device.k1.name", false).is_err());
         assert!(permit("", &g, "device..trackpad.rail", false).is_err());
+    }
+
+    #[test]
+    fn a_device_sets_its_own_gamepad_and_keyboard_without_the_settings_grant() {
+        let g = gate();
+        for k in [
+            "device.k1.gamepad.layout",
+            "device.k1.gamepad.mine.mine-3f2a",
+            "device.k1.keyboard.keys",
+            "device.k1.trackpad.speed",
+        ] {
+            assert_eq!(permit("k1", &g, k, false), Ok(()), "{k}");
+        }
+        for k in ["device.k2.gamepad.layout", "device.k2.keyboard.keys"] {
+            let e = permit("k1", &g, k, false).unwrap_err();
+            assert!(e.contains("settings grant"), "{k}: {e}");
+        }
+        assert!(permit("k1", &g, "device.k1x.gamepad.layout", false).is_err());
+    }
+
+    #[test]
+    fn the_caps_say_gamepad_always_and_hypr_only_under_hyprland() {
+        assert_eq!(caps(false), ["pad-gamepad"]);
+        assert_eq!(caps(true), ["pad-gamepad", "pad-hypr"]);
+        let s = wado_protocol::ConfigState {
+            caps: caps(false),
+            ..Default::default()
+        };
+        assert_eq!(
+            serde_json::to_value(&s).unwrap()["caps"],
+            serde_json::json!(["pad-gamepad"])
+        );
     }
 
     #[test]

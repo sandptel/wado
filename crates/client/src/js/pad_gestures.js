@@ -28,14 +28,19 @@
 (() => {
   const G = (W.padGestures = {});
   const EDGE_PX = 10;
-  const EDGE_IN_PX = 40;
+  // wado's own gestures, and only these, follow this phone's "Gesture distance" (Short / Medium /
+  // Long; docs/superpowers/research/2026-10-30-touchpad-feel.md §5): the computer's gestures are
+  // its own, and libinput's thresholds are never moved from here.
+  const DISTANCE = { short: [28, 450], medium: [40, 600], long: [56, 800] };
+  const distance = () => DISTANCE[(W.padPrefs && W.padPrefs.get().gesture_distance) || "medium"] || DISTANCE.medium;
+  const EDGE_IN_PX = () => distance()[0];
   const EDGE_MS = 300;
   const HOLD_BACK_MS = 60;
   const EDGE_LEAN_PX = 6; // at the 60 ms decision, this much inward motion (and more in than along) claims
   const FOUR_MS = 250;
   const FOUR_STILL_PX = 12;
   const TAP_LIFT_MS = 200; // libinput's tap timeout is 180 ms: lift held fingers no sooner than this
-  const TWO_MS = 600;
+  const TWO_MS = () => distance()[1];
   const TWO_STILL_PX = 8;
 
   let el = null;
@@ -107,9 +112,9 @@
   }
 
   function edgeCheck(f) {
-    const p = inward(f) / EDGE_IN_PX;
+    const p = inward(f) / EDGE_IN_PX();
     showGlow(edge.side, f.y, Math.max(0, p));
-    if (!edge.fired && inward(f) >= EDGE_IN_PX && now() - start <= EDGE_MS) {
+    if (!edge.fired && inward(f) >= EDGE_IN_PX() && now() - start <= EDGE_MS) {
       edge.fired = true;
       if (mode === "edge-hold") edgeClaim();
       if (glow) glow.classList.add("fired");
@@ -195,7 +200,7 @@
     }
 
     twoCancel();
-    if (fingers.size === 2 && actionFor("two-hold")) twoTimer = setTimeout(twoFire, TWO_MS);
+    if (fingers.size === 2 && actionFor("two-hold")) twoTimer = setTimeout(twoFire, TWO_MS());
     return true;
   }
 

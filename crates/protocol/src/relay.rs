@@ -1019,6 +1019,25 @@ pub enum RelayMsg {
     PasskeyState {
         state: crate::passkey::PasskeyState,
     },
+    /// Client → daemon: unlock without the passkey, if someone at the computer approves
+    /// (`wado passkey approve`, `wado tui`). Answered with [`RelayMsg::PasskeyApproveState`].
+    PasskeyApprove,
+    /// Client → daemon: withdraw the approval request.
+    PasskeyApproveCancel,
+    /// Daemon → client: how the approval request stands — one of the `APPROVE_*` names in
+    /// [`crate::passkey`] — with the seconds left to answer while waiting, and why it ended.
+    PasskeyApproveState {
+        state: String,
+        #[serde(default)]
+        left_s: u32,
+        #[serde(default)]
+        message: String,
+    },
+    /// Client → daemon: ask this device for its passkey (`on`), or stop asking. Off only while
+    /// unlocked; on at any time.
+    PasskeyRequire {
+        on: bool,
+    },
 
     // ── Claude Code sessions (see `crate::claude`) ───────────────────────────
     /// Client → daemon: the cards, please. Answered with [`RelayMsg::ClaudeCards`], which is
@@ -1098,6 +1117,8 @@ mod wire_tests {
             "passkey_lock",
             "passkey_keepalive",
             "passkey_get",
+            "passkey_approve",
+            "passkey_approve_cancel",
             "claude_get",
             "push_get",
             "push_unsubscribe",
@@ -1264,6 +1285,8 @@ mod wire_tests {
             r#"{"type":"passkey_unlock","cred_id":"a","client_data":"b","auth_data":"c","signature":"d"}"#,
             r#"{"type":"passkey_stay","stay":"lock","lock_on_leave":false}"#,
             r#"{"type":"passkey_stay","stay":"1h"}"#,
+            r#"{"type":"passkey_require","on":false}"#,
+            r#"{"type":"passkey_approve"}"#,
             r#"{"type":"claude_answer","session":"s","ask":"a1","allow":true}"#,
             r#"{"type":"claude_open","session":"s"}"#,
             r#"{"type":"claude_new","dir":"/home/me/code/wado"}"#,
