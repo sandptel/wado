@@ -1,0 +1,230 @@
+/* The Pocket Console (ui/surround, spec docs/superpowers/specs/2026-10-30-pocket-console-design.md).
+ *
+ * `data-arr` on the root picks the arrangement: "console" here, "cockpit" is today's CSS
+ * untouched, absent outside a session. Every slot is a CSS variable `--c-<slot>-x|r|y|w|h|o`
+ * written by js/stage_fit.js from ui/surround/layout.rs. Controls present in both arrangements
+ * are the same nodes: the rules below only *place* them. Motion is transform/opacity only, and
+ * there is no backdrop blur anywhere in the console (it costs decode time on a phone). */
+
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* ── the ground and the plates: they never move, they fade (spec §2.5, S3, S4) ─────────── */
+.cground, .cplate { position: fixed; pointer-events: none; opacity: 0;
+  transition: opacity calc(var(--dur-stage) * .55) cubic-bezier(.3, 0, 1, 1); }
+.cground { inset: 0;
+  background:
+    radial-gradient(70% 30% at 50% 0%, color-mix(in oklab, var(--accent), transparent 88%), transparent 70%),
+    radial-gradient(60% 26% at 100% 100%, color-mix(in oklab, var(--base0E), transparent 92%), transparent 70%),
+    var(--s0); }
+.cplate.bezel { left: var(--c-bezel-x); top: var(--c-bezel-y); width: var(--c-bezel-w); height: var(--c-bezel-h);
+  background: var(--s1); border-radius: var(--r4); }
+.cplate.deckplate { left: var(--c-deck-x); top: var(--c-deck-y); width: var(--c-deck-w); height: var(--c-deck-h);
+  background: var(--s1); border-radius: var(--r3); }
+/* The picture's own slot is stage black, never themed (the Untouchable Picture Rule). */
+.cplate.screen { left: var(--c-pic-x); top: var(--c-pic-y); width: var(--c-pic-w); height: var(--c-pic-h);
+  background: #000; border-radius: 16px; }
+:root[data-arr="console"] .cground { opacity: 1; transition: opacity calc(var(--dur-stage-out) * .55) var(--spring); }
+:root[data-arr="console"] .cplate { opacity: 1; transition: opacity calc(var(--dur-stage-out) * .7) var(--spring) calc(var(--dur-stage-out) * .3); }
+:root[data-arr="console"] .cplate.deckplate { opacity: var(--c-deck-o); }
+
+/* The cockpit's pill plates arrive with their float shadow from 45% of the run, and leave by 30%. */
+#wado-bar .grp::before, .rail::before {
+  transition: opacity calc(var(--dur-stage) * .55) var(--spring) calc(var(--dur-stage) * .45); }
+:root[data-arr="console"] #wado-bar .grp::before, :root[data-arr="console"] .rail::before {
+  opacity: 0; transition: opacity calc(var(--dur-stage-out) * .3) cubic-bezier(.3, 0, 1, 1); }
+
+/* Console-only controls: faded and inert in the cockpit (js/stage_fit.js sets `inert`). */
+#surround > * { position: fixed; transition: opacity calc(var(--dur-stage) * .38) cubic-bezier(.3, 0, 1, 1); }
+:root:not([data-arr="console"]) #surround > * { opacity: 0; pointer-events: none; }
+:root[data-arr="console"] #surround > * { transition: opacity calc(var(--dur-stage-out) * .6) var(--spring) calc(var(--dur-stage-out) * .3); }
+
+/* ── the picture: scale, never resize ──────────────────────────────────────────────────── */
+#wado-video { transform-origin: 0 0; }
+:root[data-arr="console"] #wado-video {
+  transform: translate(var(--c-tx), var(--c-ty)) scale(var(--c-k));
+  background: transparent; border-radius: var(--c-pr); }
+:root[data-arr="console"] #stage { background: var(--s0); }
+
+/* ── the top band: link words, the computer's name (or the encoder chip), people ─────── */
+.cband { display: none; }
+:root[data-arr="console"] .linkbadge { left: var(--c-link-x); top: var(--c-link-y); }
+.cname { left: calc(var(--c-link-x) + var(--c-linkw, 0px) + 12px); top: var(--c-band-y); height: var(--c-band-h);
+  max-width: calc(var(--c-band-w) - var(--c-linkw, 0px) - 150px);
+  display: inline-flex; align-items: center; gap: 8px; color: var(--bright);
+  font: 700 15px var(--display); letter-spacing: -.01em; white-space: nowrap; }
+.cname span { overflow: hidden; text-overflow: ellipsis; }
+.cname i { width: 8px; height: 8px; border-radius: 50%; background: var(--hue); flex: none; }
+.cname.enc { top: calc(var(--c-band-y) + (var(--c-band-h) - 28px) / 2); height: 28px; padding: 0 10px; border-radius: 999px;
+  font: 600 12px var(--body); letter-spacing: 0; color: var(--warn); background: color-mix(in oklab, var(--warn), transparent 85%); }
+.cname.enc .ldot { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); animation: breathe 2.4s ease-in-out infinite; }
+:root[data-arr="console"] #wado-here { left: var(--c-people-x); right: var(--c-people-r); top: var(--c-people-y);
+  box-shadow: none; max-width: min(46vw, 260px); }
+
+/* ── the dock's own nodes, placed ──────────────────────────────────────────────────────── */
+:root[data-arr="console"] #wado-bar { translate: none !important; opacity: 1 !important; }
+:root[data-arr="console"] #wado-bar .grp { position: fixed; padding: 0; pointer-events: none; gap: 4px; }
+:root[data-arr="console"] #wado-bar .grp > * { pointer-events: auto; }
+:root[data-arr="console"] #wado-bar .grp.left { left: var(--c-ws-x); top: var(--c-ws-y); width: var(--c-ws-w); height: var(--c-ws-h);
+  overflow: visible; justify-content: center; align-items: flex-start; max-width: none; }
+:root[data-arr="console"][data-cws="row"] #wado-bar .grp.left { align-items: center; }
+:root[data-arr="console"][data-cws="col"] .wsbar,
+:root[data-arr="console"][data-cws="col"] .wspill { flex-direction: column; }
+:root[data-arr="console"][data-cws="col"] .wsbar { gap: 6px; max-height: 100%; overflow-y: auto; scrollbar-width: none; }
+:root[data-arr="console"][data-cws="col"] .wspill.on { padding: 2px 2px 6px; }
+:root[data-arr="console"][data-cws="col"] .wsdots { flex-direction: column; padding: 2px 0 6px; }
+/* Vertical: the active window's mark sits on the left edge, not under the icon. */
+:root[data-arr="console"][data-cws="col"] .wsapp.on::after { bottom: auto; left: -2px; top: 50%; width: 3px; height: 12px; translate: 0 -50%; }
+:root[data-arr="console"] #wado-bar .grp.mid { left: var(--c-nav-x); top: var(--c-nav-y); width: var(--c-nav-w); height: var(--c-nav-h);
+  justify-content: center; }
+:root[data-arr="console"][data-cnav="grid"] #wado-bar .grp.mid { display: grid; grid-template-columns: 48px 48px; gap: 6px 8px;
+  align-content: start; justify-content: center; }
+:root[data-arr="console"][data-cnav="grid"] #wado-bar .barbtn.nav { min-width: 48px; }
+:root[data-arr="console"][data-form="land"] #wado-bar .grp.mid,
+:root[data-arr="console"][data-form="tland"] #wado-bar .grp.mid { justify-content: start; }
+:root[data-arr="console"] #wado-bar .grp.right { left: var(--c-more-x); right: var(--c-more-r); top: var(--c-more-y); }
+
+/* The quick rail: its buttons go to their own slots; the rail itself keeps no box. */
+:root[data-arr="console"] .rail, :root[data-arr="console"] #wado-bar ~ .rail {
+  position: fixed; inset: 0 auto auto 0; padding: 0; translate: none !important; opacity: 1 !important; }
+:root:not([data-arr="console"]) .rail.off { display: none; }
+:root[data-arr="console"] .rail [data-rotate] { position: fixed; left: var(--c-rotate-x); top: var(--c-rotate-y); opacity: var(--c-rotate-o); }
+:root[data-arr="console"] .rail [data-osk] { position: fixed; left: var(--c-kbd-x); top: var(--c-kbd-y); opacity: var(--c-kbd-o); }
+:root[data-arr="console"] .rail .railface { position: fixed; left: var(--c-faces-x); top: var(--c-faces-y); opacity: 0; pointer-events: none; }
+
+/* Full screen: a labelled accent pill in the console, an icon on the cockpit's rail. */
+.rail .full .lbl { display: none; }
+:root[data-arr="console"] .rail .full { position: fixed; left: var(--c-full-x); right: var(--c-full-r); top: var(--c-full-y);
+  width: var(--c-full-w); height: 44px; display: inline-flex; justify-content: center; gap: 8px; padding: 0 14px 0 12px;
+  background: color-mix(in oklab, var(--accent), transparent 82%); color: var(--accent); font: 600 13px var(--body); white-space: nowrap; }
+:root[data-arr="console"] .rail .full .lbl { display: inline; }
+:root[data-arr="console"][data-form="land"] .rail .full { padding: 0 8px; gap: 6px; font-size: 12px; }
+
+/* ── the window strip (the bezel's chin) ───────────────────────────────────────────────── */
+.cstrip { left: var(--c-strip-x); top: var(--c-strip-y); width: var(--c-strip-w); height: var(--c-strip-h);
+  display: flex; align-items: center; gap: 6px; }
+:root[data-arr="console"] #surround > .cstrip { opacity: var(--c-strip-o); }
+.ctitle { flex: 1; min-width: 0; height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 10px 0 6px;
+  border-radius: var(--r2); text-align: left; transition: background var(--dur) var(--ease), scale var(--dur-press) var(--ease); }
+.ctitle:hover { background: var(--s2); }
+.ctitle:active { scale: .98; }
+.ctitle.none { color: var(--dim); font-size: 13px; padding-left: 12px; }
+.cglyph { width: 28px; height: 28px; flex: none; display: grid; place-items: center; }
+.cglyph img { width: 26px; height: 26px; }
+.ctt { min-width: 0; display: grid; }
+.ctt b { color: var(--bright); font-weight: 600; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctt small { color: var(--dim); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cwin { width: 44px; height: 44px; flex: none; border-radius: var(--r2); background: var(--s2); color: var(--bright);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease), scale var(--dur-press) var(--ease); }
+.cwin:active { scale: .96; }
+.cwin.close { margin-left: 4px; } /* 10 px from its neighbours: Close is not a slip of the thumb */
+.cwin.close:hover, .cwin.close:active { background: color-mix(in oklab, var(--bad), transparent 78%); color: var(--bad); }
+
+/* ── the face switcher ────────────────────────────────────────────────────────────────── */
+.cfaces { left: var(--c-faces-x); top: var(--c-faces-y); width: var(--c-faces-w); height: var(--c-faces-h);
+  display: flex; gap: 6px; }
+:root[data-cfaces="col"] .cfaces { flex-direction: column; }
+:root[data-cfaces="grid"] .cfaces { display: grid; grid-template-columns: 44px 44px; justify-content: center; gap: 6px 12px; }
+:root[data-cfaces="row"] .cfaces { gap: 2px; }
+.fbtn { width: 44px; height: 44px; border-radius: var(--r2); color: var(--dim);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease), border-radius 360ms var(--spring), scale var(--dur-press) var(--ease); }
+.fbtn.on { background: var(--accent); color: var(--on-accent); border-radius: 999px; }
+.fbtn:not(.on):hover { background: var(--s2); color: var(--bright); }
+
+/* ── the deck ─────────────────────────────────────────────────────────────────────────── */
+.cdeck { left: var(--c-deck-x); top: var(--c-deck-y); width: var(--c-deck-w); height: var(--c-deck-h);
+  padding: 8px; display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); }
+:root[data-arr="console"] #surround > .cdeck { opacity: var(--c-deck-o); }
+:root[data-cdeck="row"] .cdeck { padding: 6px; }
+.cface { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); align-content: center;
+  animation: facein 360ms var(--spring) both; }
+:root[data-cdeck="col"] .cface { animation: faceinx 420ms var(--spring) both; align-content: start; }
+@keyframes facein { from { opacity: 0; translate: 0 10px; } }
+@keyframes faceinx { from { opacity: 0; translate: 10px 0; } }
+
+/* Touchpad: the surface and a two-zone click bar (each zone ≥ 180 px wide, 30 px tall). */
+.cdeck[data-face="pad"] .cface { align-content: stretch; grid-template-rows: minmax(0, 1fr) 30px;
+  border-radius: var(--r2); overflow: hidden; background: var(--s0); border: 1px solid var(--line); }
+:root[data-cdeck="col"] .cdeck[data-face="pad"] .cface { grid-template-rows: minmax(0, 1fr) auto; }
+/* A narrow column stacks the zones, so each stays a full 44 px target. */
+:root[data-cdeck="col"] .dpbtns { grid-template-columns: 1fr; grid-auto-rows: 44px; }
+:root[data-cdeck="col"] .dpbtn + .dpbtn { border-left: 0; border-top: 1px solid var(--line); }
+.dpsurf { position: relative; display: grid; place-items: center; text-align: center; color: var(--dim);
+  touch-action: none; user-select: none; -webkit-user-select: none; cursor: crosshair; }
+.dphint b { display: block; font-size: 12.5px; color: var(--text); font-weight: 600; }
+.dphint small { display: block; font-size: 11px; }
+.dpbtns { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--line); }
+.dpbtn { font-size: 11px; color: var(--dim); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; touch-action: none; }
+.dpbtn + .dpbtn { border-left: 1px solid var(--line); }
+.dpbtn.down { background: var(--s2); color: var(--bright); }
+/* The pointer the touchpad moves, drawn over the picture (the compositor draws none). */
+#deck-cursor { position: fixed; left: 0; top: 0; z-index: 12; width: 12px; height: 12px; margin: -6px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 0 2px var(--s0); pointer-events: none; opacity: 0;
+  transition: opacity var(--dur) var(--ease); }
+#deck-cursor.in { opacity: 1; }
+#deck-cursor.tap { animation: dctap 320ms var(--pop); }
+@keyframes dctap { 50% { scale: .6; } }
+:root:not([data-arr="console"]) #deck-cursor { opacity: 0; }
+
+/* Keys: the trackpad rail's keys, as a row (band) or a two-column grid (column). */
+.dkeys { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; align-content: center; }
+:root[data-cdeck="row"] .dkeys .tpkey, :root[data-cdeck="row"] .dkeys .tptype { height: 34px; min-height: 34px; }
+:root[data-cdeck="row"] .dkeys .tptype { padding: 0 12px; gap: 6px; }
+:root[data-cdeck="col"] .dkeys { display: grid; grid-template-columns: 1fr 1fr; align-content: start; }
+:root[data-cdeck="col"] .dkeys .tpkey { min-width: 0; padding: 0; }
+:root[data-cdeck="col"] .dkeys .tptype { grid-column: span 2; justify-content: center; }
+
+/* Quick actions: a row of tiles (band), a column with what is playing under it (column). */
+.dquick { display: flex; gap: 6px; }
+.dquick .tpact { flex: 1 1 0; min-width: 0; }
+:root[data-cdeck="col"] .dquick { flex-direction: column; }
+:root[data-cdeck="col"] .dquick .tpact { flex: none; }
+.dnote { font-size: 11.5px; color: var(--dim); line-height: 1.4; margin: 0; align-self: center; }
+.npmini { display: none; }
+:root[data-cdeck="col"] .npmini { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 4px 8px; align-items: center;
+  margin-top: 10px; padding: 8px; border-radius: var(--r2); background: var(--s2); }
+.npmini .cv { width: 36px; height: 36px; border-radius: 8px; object-fit: cover; background: var(--s3); display: grid; place-items: center; }
+.npmini .nt { min-width: 0; display: grid; }
+.npmini .nt b, .npmini .nt small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.npmini .nt b { font-size: 12px; color: var(--bright); }
+.npmini .nt small { font-size: 11px; color: var(--dim); }
+.npmini .ctl { grid-column: 1 / -1; display: flex; justify-content: space-around; }
+.npmini .ctl button { width: 44px; height: 36px; border-radius: 999px; color: var(--bright); }
+
+/* Gamepad: the deck is the pad's box; its own anchors place the clusters (js/gamepad.js). */
+.dgp { display: none; }
+:root[data-arr="console"][data-face="gamepad"] #wado-pad {
+  position: fixed; inset: auto; left: var(--c-pad-x); top: var(--c-pad-y); width: var(--c-pad-w); height: var(--c-pad-h);
+  opacity: 1; --pad-u0: calc(min(24px, var(--c-pad-h) / 7) * var(--pad-scale, 1));
+  --ix: 8px; --iy: 6px; --it: 8px; }
+
+/* Targets: 44 px everywhere in the console (spec §7); the cockpit keeps its denser dock. */
+:root[data-arr="console"] #wado-bar .wsnum, :root[data-arr="console"] #wado-bar .wsapp { min-width: 44px; width: 44px; height: 44px; }
+:root[data-arr="console"] .rail .barbtn { min-width: 44px; min-height: 44px; }
+
+/* What rides on the picture: the debug readout keeps to the picture's own top-right corner. */
+:root[data-arr="console"] #stagebar { position: fixed; top: calc(var(--c-pic-y) + 8px); right: auto;
+  left: calc(var(--c-pic-x) + var(--c-pic-w) - 8px); translate: -100% 0; max-width: calc(var(--c-pic-w) - 16px); }
+/* A landscape band is shared with the workspaces: the people chip keeps to its own corner. */
+:root[data-arr="console"][data-form="land"] #wado-here, :root[data-arr="console"][data-form="port"] #wado-here { max-width: 132px; }
+
+/* The gamepad seam (ui/surround/deck/gamepad.rs): the box above is the whole contract. These
+ * cluster overrides only fit today's overlay into it, and go when the gamepad lays itself out.
+ * A band deck (portrait) is too short for the overlay's stacked corners: the crosses sit at the
+ * sides, the shoulders and Select · Guide · Start between them, and the sticks fold away (they
+ * fold into the crosses in the prototype too). A column deck (landscape) keeps the corners, with
+ * the centre buttons in the band under the picture rather than on it. */
+:root[data-arr="console"][data-face="gamepad"][data-cdeck="row"] #wado-pad {
+  --cross-y: calc(50% - 0.65 * var(--pad-u)); --cross-x: calc(var(--ix) + 2.2 * var(--pad-u)); }
+:root[data-arr="console"][data-face="gamepad"][data-cdeck="row"] #wado-pad .padstick { display: none; }
+:root[data-arr="console"][data-face="gamepad"][data-cdeck="row"] #wado-pad [data-id="l1"],
+:root[data-arr="console"][data-face="gamepad"][data-cdeck="row"] #wado-pad [data-id="l2"] { left: calc(50% - 2.55 * var(--pad-u)); }
+:root[data-arr="console"][data-face="gamepad"][data-cdeck="row"] #wado-pad [data-id="r1"],
+:root[data-arr="console"][data-face="gamepad"][data-cdeck="row"] #wado-pad [data-id="r2"] { right: auto; left: calc(50% + 0.15 * var(--pad-u)); }
+:root[data-arr="console"][data-face="gamepad"] #wado-pad .pill { top: auto; bottom: var(--iy); }
+:root[data-arr="console"][data-face="gamepad"][data-cdeck="col"] #wado-pad {
+  --pad-u0: calc(min(24px, var(--c-deck-w) / 4.7) * var(--pad-scale, 1)); --ix: 0px; }
+
+/* The clipboard's voice (F10, #clipdock): above the dock in the cockpit; in the console it rides
+ * the picture's bottom edge, so it never covers the deck under the thumbs. Reachable in both. */
+:root[data-arr="console"] #clipdock.insession { bottom: auto; top: calc(var(--c-pic-y) + var(--c-pic-h) - 56px);
+  left: calc(var(--c-pic-x) + var(--c-pic-w) / 2); width: min(440px, calc(var(--c-pic-w) - 16px)); }

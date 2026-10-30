@@ -42,6 +42,7 @@ pub fn render(ui: Ui) -> Element {
         "landscape"
     };
     let rail = (s.rail)();
+    let cockpit = (live.stage)().cockpit;
     let bar_class = if cc {
         "hidden"
     } else if (live.recording)() {
@@ -106,19 +107,28 @@ pub fn render(ui: Ui) -> Element {
                 }
             }
         }
-        // The quick rail: rotate, fullscreen, keyboard on the screen's edge. Rotate and
-        // fullscreen are caught by js/chrome.js inside the tap — both need the user gesture.
-        if rail != "off" {
-            div { class: "rail {rail}", "aria-label": "Quick",
-                button { class: "barbtn", "data-rotate": turn_to, title: "Turn to {turn_to}", "aria-label": "Turn to {turn_to}",
-                    Icon { name: "rotate" }
-                }
-                button { class: "barbtn", "data-fullscreen": "1", title: "Fullscreen", "aria-label": "Fullscreen",
-                    Icon { name: "max" }
-                }
-                button { "data-osk": "1", class: "barbtn", title: "Keyboard", "aria-label": "Keyboard",
-                    Icon { name: "kbd" }
-                }
+        // The quick rail: rotate, full screen, keyboard on the screen's edge. Rotate and the
+        // arrangement toggle are caught by js/chrome.js and js/stage_morph.js inside the tap —
+        // both need the user gesture. Rendered whatever `rail` says: the console places these
+        // three around the picture (`ui::surround`), and `off` hides the rail in the cockpit only.
+        div { class: "rail {rail}", role: "toolbar", "aria-label": "Quick",
+            {crate::ui::surround::faces::rail_button(ui)}
+            button { class: "barbtn", "data-rotate": turn_to, title: "Turn to {turn_to}", "aria-label": "Turn to {turn_to}",
+                Icon { name: "rotate" }
+            }
+            // Full screen is the arrangement toggle (spec §5.2): the console's labelled pill, the
+            // cockpit's "Leave full screen".
+            button {
+                class: "barbtn full",
+                "data-arrange": "toggle",
+                "aria-pressed": "{cockpit}",
+                title: if cockpit { "Leave full screen" } else { "Full screen" },
+                "aria-label": if cockpit { "Leave full screen" } else { "Full screen" },
+                Icon { name: if cockpit { "min" } else { "max" } }
+                span { class: "lbl", "Full screen" }
+            }
+            button { "data-osk": "1", class: "barbtn", title: "Keyboard", "aria-label": "Keyboard",
+                Icon { name: "kbd" }
             }
         }
         {crate::ui::workspaces::sheet(ui)}

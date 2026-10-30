@@ -482,6 +482,9 @@ pub struct Live {
     pub drawer_open: Signal<bool>,
     /// Every window in the session and the workspace showing (`js/chrome.js`).
     pub windows: Signal<(Vec<wado_protocol::WindowInfo>, u32)>,
+    /// The Pocket Console: the arrangement, and what its layout is computed from
+    /// (`ui::surround`). The page owns it (`js/stage_*.js`); this mirrors it for rendering.
+    pub stage: Signal<crate::ui::surround::Stage>,
     /// Auto bitrate's current cap, kbps; `None` while the link carries the full rate.
     pub auto_kbps: Signal<Option<u32>>,
     /// The window whose action sheet is open — a long press on its icon in the workspace bar.
@@ -590,6 +593,7 @@ impl Live {
             apps: use_signal(Vec::new),
             drawer_open: use_signal(|| false),
             windows: use_signal(|| (Vec::new(), 1)),
+            stage: use_signal(Default::default),
             win_menu: use_signal(|| None),
             auto_kbps: use_signal(|| None),
             fps: use_signal(|| None),

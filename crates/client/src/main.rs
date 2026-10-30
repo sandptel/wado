@@ -113,11 +113,17 @@ fn App() -> Element {
         }
     });
 
+    // The Pocket Console's slots follow the viewport, the face and the picture's aspect.
+    ui::surround::use_layout(ui);
+
     // The computer's state (sound, Wi-Fi, Bluetooth) is polled while the control centre is
     // open — that is when someone is looking at it — and not otherwise.
     use_effect(move || {
         // …or while home or a computer's page is up: Now playing and Quick are the computer's, live.
-        let open = (ui.live.cc_open)() || !(ui.live.session_on)();
+        // …or while the console's Quick actions face shows what is playing.
+        let st = (ui.live.stage)();
+        let quick = !st.cockpit && st.face() == ui::surround::layout::Face::Quick;
+        let open = (ui.live.cc_open)() || !(ui.live.session_on)() || quick;
         bridge::call(format!("window.__wado.hostWatch({open});"));
     });
 
@@ -148,6 +154,7 @@ fn App() -> Element {
         document::Stylesheet { href: asset!("/assets/files.css") }
         document::Stylesheet { href: asset!("/assets/link.css") }
         document::Stylesheet { href: asset!("/assets/pad.css") }
+        document::Stylesheet { href: asset!("/assets/surround.css") }
         document::Stylesheet { href: asset!("/assets/app.css") }
         document::Stylesheet { href: asset!("/assets/passkey.css") }
         document::Stylesheet { href: asset!("/assets/claude.css") }
@@ -156,7 +163,9 @@ fn App() -> Element {
         // takes space from the picture — the control centre included (Decision Log 2026-10-02).
         div { class: if (ui.live.cc_open)() { "app cc-open" } else { "app" },
             main { id: "stage",
+                {ui::surround::backdrop(ui)}
                 {ui::stage::render(ui)}
+                {ui::surround::render(ui)}
                 {ui::dock::render(ui)}
             }
             {ui::landing::render(ui)}

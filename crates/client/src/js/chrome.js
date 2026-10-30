@@ -76,13 +76,8 @@ W.edgeSwipe = {
   },
 };
 
-// ── Fullscreen, from the rail: inside the tap for the same reason as rotate ──
-document.addEventListener("click", (e) => {
-  if (!(e.target && e.target.closest && e.target.closest("[data-fullscreen]"))) return;
-  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-  else (document.querySelector(".app") || document.documentElement)
-    .requestFullscreen({ navigationUI: "hide" }).catch(() => {});
-}, true);
+// Full screen is the arrangement toggle now: js/stage_morph.js takes the tap (inside the gesture,
+// for the same reason as rotate) and morphs the console into the cockpit.
 
 // ── Long press on a window icon in the workspace bar → its action sheet ─────
 // A timer rather than `contextmenu`: iOS never sends that for a long press. The tap that

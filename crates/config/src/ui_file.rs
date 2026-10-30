@@ -236,6 +236,18 @@ mod tests {
 
         // A bad value is refused like any other.
         assert!(set_at(&main, &ui, "device.k1.trackpad.rail", parse_values("left")).is_err());
+
+        // The console's block is written the same way, beside the trackpad's.
+        set_at(&main, &ui, "device.k1.console.face", parse_values("keys")).unwrap();
+        set_at(&main, &ui, "device.k1.console.open", parse_values("full")).unwrap();
+        let c = crate::kdl::load(&main).unwrap();
+        let k = c.device["k1"].console.clone().unwrap();
+        assert_eq!((k.open.as_str(), k.face.as_str()), ("full", "keys"));
+        assert!(
+            c.device["k1"].trackpad.is_some(),
+            "the trackpad block is kept"
+        );
+        assert!(set_at(&main, &ui, "device.k1.console.face", parse_values("mouse")).is_err());
         std::fs::remove_dir_all(dir).ok();
     }
 

@@ -8,7 +8,8 @@
 //! ponytail: an opaque JSON string. Typed keys are the upgrade if people start hand-editing it.
 //!
 //! `trackpad` is that upgrade for the trackpad screen: typed, because it is meant to be read and
-//! edited in the file, `wado tui` and `wado devices` as well as from the phone.
+//! edited in the file, `wado tui` and `wado devices` as well as from the phone. `console` is the
+//! same for how a session opens (console or full screen) and the deck's input face.
 
 use serde::{Deserialize, Serialize};
 
@@ -19,4 +20,6 @@ pub struct Device {
     pub name: Option<String>,
     pub prefs: Option<String>,
     pub trackpad: Option<super::DeviceTrackpad>,
+    /// How a session opens on it, and the deck's face (the Pocket Console).
+    pub console: Option<super::DeviceConsole>,
 }

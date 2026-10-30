@@ -7,7 +7,12 @@ use super::{Action, Does, Need};
 
 pub fn all() -> Vec<Action> {
     [
-        ("fullscreen", "Fullscreen", "max", WindowOp::Fullscreen),
+        (
+            "fullscreen",
+            "Window full screen",
+            "max",
+            WindowOp::Fullscreen,
+        ),
         ("close-window", "Close window", "x", WindowOp::Close),
         (
             "toggle-float",

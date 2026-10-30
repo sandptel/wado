@@ -53,13 +53,18 @@
   --dur-hero: 520ms;
   --dur-press: 120ms;
   --stagger: 40ms;
+  /* The Pocket Console's morph (spec §6): to the cockpit, and back at about 84%. The picture
+   * travels up to the whole display, ~1.6× the hero's distance. No new curve: `--spring`. */
+  --dur-stage: 620ms;
+  --dur-stage-out: 520ms;
 
   color-scheme: dark;
 }
 :root[data-ground="light"] { color-scheme: light; }
 :root[data-radius="sharp"] { --r1: 3px; --r2: 4px; --r3: 6px; --r4: 8px; }
 :root[data-radius="pill"] { --r1: 14px; --r2: 22px; --r3: 28px; --r4: 34px; }
-:root[data-motion="reduced"] { --dur: 120ms; --dur-sheet: 200ms; --dur-hero: 160ms; --stagger: 0ms; --pop: var(--spring); }
+:root[data-motion="reduced"] { --dur: 120ms; --dur-sheet: 200ms; --dur-hero: 160ms; --stagger: 0ms; --pop: var(--spring);
+  --dur-stage: 160ms; --dur-stage-out: 160ms; }
 
 * { box-sizing: border-box; }
 
