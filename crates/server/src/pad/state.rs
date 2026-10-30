@@ -22,14 +22,10 @@ use super::ticker::Pace;
 
 pub struct Pad {
     sink: Devices,
-    /// The size the touchpad device is told: the phone's, times its pointer speed.
+    /// The phone's pad size, exactly as it said — the device's declared size is the truth, so
+    /// libinput's millimetre thresholds stay true. Pointer speed is the compositor's
+    /// (`crate::platform::linux::hypr_device`), never a scaled size.
     size: Option<(u16, u16)>,
-    /// The size the phone said, to tell a real resize from a repeat.
-    said: Option<(u16, u16)>,
-    /// This phone's pointer speed (`device "<key>" { trackpad { speed } }`), asked at each size.
-    speed: Box<dyn Fn() -> f64 + Send>,
-    /// The speed the device's size was made with.
-    speed_at: f64,
     last_seq: Option<u32>,
     /// Any finger down, as last sent to the sink.
     down: bool,
@@ -65,9 +61,6 @@ impl Pad {
             arrivals: Arrivals::default(),
             sink,
             size: None,
-            said: None,
-            speed: Box::new(|| 1.0),
-            speed_at: 1.0,
             last_seq: None,
             down: false,
             last_frame_ms: 0,
@@ -147,11 +140,6 @@ impl Pad {
         result.err().map(reply)
     }
 
-    /// Where this phone's pointer speed comes from — read whenever the phone says its size.
-    pub fn set_speed(&mut self, speed: impl Fn() -> f64 + Send + 'static) {
-        self.speed = Box::new(speed);
-    }
-
     /// Text waiting to be typed (typing is async; the caller does it).
     pub fn take_text(&mut self) -> Option<String> {
         (!self.text.is_empty()).then(|| self.text.remove(0))
@@ -223,14 +211,10 @@ impl Pad {
         self.sink.touch(size, c)
     }
 
-    /// The phone's pad is `size` CSS px. The touchpad device is told it is `speed` times that,
-    /// so libinput — which turns the device's size into millimetres — moves the pointer that much
-    /// further for the same slide.
     fn resize(&mut self, size: (u16, u16)) -> InputRes {
         let moved = |a: u16, b: u16| a.abs_diff(b) > 2;
-        let speed = (self.speed)();
-        if let Some(old) = self.said {
-            if !moved(old.0, size.0) && !moved(old.1, size.1) && self.speed_at == speed {
+        if let Some(old) = self.size {
+            if !moved(old.0, size.0) && !moved(old.1, size.1) {
                 return Ok(());
             }
             self.pacer.clear();
@@ -238,23 +222,9 @@ impl Pad {
                 let _ = self.touch(&[]);
             }
         }
-        let scaled = scale(size, speed);
-        self.said = Some(size);
-        self.speed_at = speed;
-        self.size = Some(scaled);
-        self.sink.ready(Some(scaled))
+        self.size = Some(size);
+        self.sink.ready(Some(size))
     }
-}
-
-/// `size` times the pointer speed, which is kept to 0.5–2.
-fn scale((w, h): (u16, u16), speed: f64) -> (u16, u16) {
-    let s = if speed.is_finite() {
-        speed.clamp(0.5, 2.0)
-    } else {
-        1.0
-    };
-    let by = |v: u16| (f64::from(v) * s).round().min(f64::from(u16::MAX)) as u16;
-    (by(w), by(h))
 }
 
 /// A device error, as the phone is told it: one the computer cannot fix by retrying (no
@@ -365,22 +335,19 @@ mod tests {
         );
     }
 
+    /// The declared size is the phone's own, whatever its pointer speed: scaling it would scale
+    /// libinput's mm thresholds too, and taps would fail at 2× (research `touchpad-feel` §3.2).
     #[test]
-    fn the_pointer_speed_makes_the_device_bigger() {
+    fn the_device_is_told_the_phones_real_size() {
         let rec = Rec::default();
         let cfg = wado_config::schema::Trackpad {
             smoothing: false,
             ..Default::default()
         };
         let mut p = Pad::with_config(rec.devices(), &cfg);
-        p.set_speed(|| 1.5);
         p.handle(0, PadMsg::Size { w: 400, h: 200 }, false);
         p.handle(1, frame(1, vec![(0, 9, 9)]), false);
-        assert_eq!(rec.calls()[0], Call::Touch((600, 300), vec![(0, 9, 9)]));
-        // Out of range is kept in range.
-        assert_eq!(scale((400, 200), 9.0), (800, 400));
-        assert_eq!(scale((400, 200), 0.1), (200, 100));
-        assert_eq!(scale((400, 200), f64::NAN), (400, 200));
+        assert_eq!(rec.calls()[0], Call::Touch((400, 200), vec![(0, 9, 9)]));
     }
 
     #[test]

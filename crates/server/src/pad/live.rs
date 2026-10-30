@@ -68,6 +68,8 @@ struct Inner {
     /// The gamepad's timer, while anything about it is timed.
     game_task: Option<JoinHandle<()>>,
     game_wake: Arc<Notify>,
+    /// The phone whose touchpad feel was applied for this pad (`feel.rs`), until it closes.
+    feel: Option<String>,
 }
 
 impl Live {
@@ -167,11 +169,19 @@ impl Live {
             self.game(msg);
             return;
         }
+        // Its touchpad device is made at its first size: its feel goes with it.
+        if matches!(msg, PadMsg::Size { .. }) {
+            let mut inner = self.lock();
+            if inner.feel.is_none() {
+                inner.feel = Some(peer.who.key.clone());
+                super::feel::opened(&peer.who.key);
+            }
+        }
         let keyboard = matches!(
             msg,
             PadMsg::Key { .. } | PadMsg::Char { .. } | PadMsg::Hold { .. } | PadMsg::Text { .. }
         );
-        if !self.start(&peer.who.name, &peer.who.key, relayed) {
+        if !self.start(&peer.who.name, relayed) {
             return;
         }
         if keyboard {
@@ -222,6 +232,9 @@ impl Live {
             t.abort();
         }
         inner.keys = None;
+        if let Some(key) = inner.feel.take() {
+            super::feel::closed(&key);
+        }
         inner.keys_dc = None;
         inner.epoch = None;
         inner.generation += 1;
@@ -234,14 +247,12 @@ impl Live {
 
     /// Make the pad, its devices and its two workers on the first message that passed the gate.
     /// False when the devices cannot be made (the phone has been told why).
-    fn start(&self, device: &str, key: &str, relayed: bool) -> bool {
+    fn start(&self, device: &str, relayed: bool) -> bool {
         let mut inner = self.lock();
         if inner.pad.is_some() {
             return true;
         }
         let mut pad = Pad::new(devices());
-        let key = key.to_string();
-        pad.set_speed(move || speed(&key));
         if let Err(e) = pad.prepare() {
             let message = e.to_string();
             drop(inner);
@@ -433,15 +444,6 @@ async fn type_text(text: String) -> Result<(), String> {
         Ok(t) => t.type_text(text).await,
         Err(absent) => Err(absent.why),
     }
-}
-
-/// This phone's pointer speed as the config has it now (`device "<key>" { trackpad { speed } }`).
-fn speed(key: &str) -> f64 {
-    wado_config::live::current()
-        .device
-        .get(key)
-        .and_then(|d| d.trackpad.as_ref())
-        .map_or(1.0, |t| t.speed)
 }
 
 fn approved(peer: &Peer) -> bool {
