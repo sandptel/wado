@@ -19,5 +19,6 @@ pub mod pump;
 pub mod queue;
 pub mod relay;
 pub mod request;
+pub mod rooms;
 pub mod secret;
 pub mod store;

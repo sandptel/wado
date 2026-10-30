@@ -123,6 +123,7 @@ fn kind(s: &LinkState) -> &'static str {
         LinkState::Offline { .. } => "offline",
         LinkState::Refused { .. } => "refused",
         LinkState::RelayTooOld => "relay_too_old",
+        LinkState::TakenOver => "taken_over",
     }
 }
 

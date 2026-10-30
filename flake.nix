@@ -230,7 +230,10 @@
             };
           };
           androidShell =
-            { emulator }:
+            {
+              emulator,
+              withFlutter ? false,
+            }:
             let
               composed = androidPkgs.androidenv.composeAndroidPackages {
                 platformVersions = [ "37.0" ];
@@ -260,7 +263,25 @@
                 androidPkgs.lld
                 androidPkgs.nodejs
                 androidPkgs.cargo-ndk
-              ];
+              ]
+              # The Flutter app (app/): Flutter, the Rust bridge's codegen (its version must equal
+              # the `flutter_rust_bridge` crate and Dart package, docs/app.md) and what the Linux
+              # desktop build links.
+              ++ androidPkgs.lib.optionals withFlutter (
+                with androidPkgs;
+                [
+                  flutter
+                  flutter_rust_bridge_codegen
+                  pkg-config
+                  cmake
+                  ninja
+                  clang
+                  gtk3
+                  libsecret
+                  jsoncpp
+                  libepoxy
+                ]
+              );
               ANDROID_NDK_HOME = "${root}/ndk/${ndkVersion}";
               # The Rust core needs Android's std, which nixpkgs' rustc does not carry: rustup brings
               # it, kept off PATH (its `cargo` proxy would shadow the one above) and in its own home
@@ -277,7 +298,7 @@
               # libraries, and the JDK here dies loading them.
               shellHook = ''
                 unset LD_LIBRARY_PATH
-                printf '\033[1;36m%s\033[0m\n' "wado › android · sdk 37 · jdk 17 · ndk 29${if emulator then " · emulator" else ""}"
+                printf '\033[1;36m%s\033[0m\n' "wado › android · sdk 37 · jdk 17 · ndk 29${if emulator then " · emulator" else ""}${if withFlutter then " · flutter" else ""}"
               '';
             };
         in
@@ -345,6 +366,11 @@
           # `nix develop .#android-emulator`: the same plus an emulator and an x86_64 system image
           # (KVM), for scripts/android-emulator.sh. Kept apart: it is a large download.
           android-emulator = androidShell { emulator = true; };
+          # `nix develop .#app`: the Android shell plus Flutter, for the app in app/ (docs/app.md).
+          app = androidShell {
+            emulator = false;
+            withFlutter = true;
+          };
         }
       );
     };

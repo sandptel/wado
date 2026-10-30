@@ -123,7 +123,7 @@ impl Pump {
                             let rows = sessions::rows(&list);
                             self.events.push(CoreEvent::Sessions { key: self.key.clone(), rows });
                         }
-                        LinkOut::Msg(_) => {}
+                        LinkOut::Msg(_) | LinkOut::Raw(_) | LinkOut::Relay(_) => {}
                     }
                 }
                 _ = tick.tick(), if open => {

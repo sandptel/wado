@@ -53,6 +53,11 @@ pub fn seat_pair(relay: &str, rid: &str, client_key: &str, name: &str) -> String
     join(relay, rid, client_key, name) + "&pair=1"
 }
 
+/// The seat, as the web client's main link; `takeover` only on a person's tap.
+pub fn seat(relay: &str, rid: &str, client_key: &str, name: &str, takeover: bool) -> String {
+    join(relay, rid, client_key, name) + if takeover { "&takeover=1" } else { "" }
+}
+
 /// A seatless control room.
 pub fn control(relay: &str, rid: &str, client_key: &str, name: &str) -> String {
     join(relay, rid, client_key, name) + "&control=1&strict=1"

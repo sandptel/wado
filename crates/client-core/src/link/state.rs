@@ -70,6 +70,8 @@ pub enum LinkState {
         why: Refusal,
     },
     RelayTooOld,
+    /// Another device took this seat (a seat link only): not redialled until asked again.
+    TakenOver,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -121,6 +123,12 @@ pub enum Action {
     },
     /// The link is done for good: the driver returns.
     Halt,
+    /// An opened message from the computer, as its plaintext JSON (every one, typed or not), for a
+    /// UI that handles messages itself — the app's port of the web client.
+    Raw(String),
+    /// A relay frame a seat or view room's UI reads itself (waiting, join_denied, taken_over,
+    /// occupancy, seat_hold), as received.
+    Relay(String),
 }
 
 /// `RelayMsg` has no `PartialEq`; actions compare by their debug form (tests only need this).
@@ -128,6 +136,19 @@ impl PartialEq for Action {
     fn eq(&self, other: &Self) -> bool {
         format!("{self:?}") == format!("{other:?}")
     }
+}
+
+/// Which room a link joins (`relay/url.rs`).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum Room {
+    /// Seatless, one per computer: every feature the daemon serves there.
+    #[default]
+    Control,
+    /// The seat, as the web client's main link (`relay_link.js`); `takeover` asks for it on the
+    /// first dial only (a person's tap).
+    Seat { takeover: bool },
+    /// A joined session's room on exactly this daemon instance (`multi.js`).
+    View { instance: String },
 }
 
 /// Where and as whom.
@@ -142,6 +163,7 @@ pub struct LinkCfg {
     /// so a long-lived background link (push without a distributor) keeps the default; a link
     /// behind a NAT that drops idle mappings sooner can lower it.
     pub silence_ms: u64,
+    pub room: Room,
 }
 
 impl LinkCfg {
@@ -152,6 +174,7 @@ impl LinkCfg {
             remote_id: remote_id.into(),
             name: name.into(),
             silence_ms: SILENCE_MS,
+            room: Room::Control,
         }
     }
 }
@@ -171,12 +194,15 @@ pub struct Link {
     open_since: Option<u64>,
     last_open: Option<u64>,
     rng: u64,
+    /// The next seat dial carries `takeover=1` (set from the room, spent by one dial).
+    takeover: bool,
 }
 
 const REQUIRED_CAPS: [&str; 2] = ["control", "room_strict"];
 
 impl Link {
     pub fn new(cfg: LinkCfg, identity: Arc<Identity>, pin: Option<Pin>) -> Link {
+        let cfg_takeover = matches!(cfg.room, Room::Seat { takeover: true });
         let mut seed = [0u8; 8];
         let _ = ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), &mut seed);
         Link {
@@ -193,6 +219,7 @@ impl Link {
             open_since: None,
             last_open: None,
             rng: u64::from_le_bytes(seed) | 1,
+            takeover: cfg_takeover,
         }
     }
 
@@ -219,13 +246,22 @@ impl Link {
         }
     }
 
-    fn url(&self) -> String {
-        url::control(
+    fn url(&mut self) -> String {
+        let (r, id, k, n) = (
             &self.cfg.relay_url,
             &self.cfg.remote_id,
             &self.identity.client_key,
             &self.cfg.name,
-        )
+        );
+        match &self.cfg.room {
+            Room::Control => url::control(r, id, k, n),
+            Room::View { instance } => url::view(r, id, k, n, instance),
+            Room::Seat { .. } => {
+                let u = url::seat(r, id, k, n, self.takeover);
+                self.takeover = false;
+                u
+            }
+        }
     }
 
     /// The socket is gone (or being dropped): forget its keys, and plan the next dial.
@@ -309,7 +345,8 @@ impl Link {
                     caps: caps.clone(),
                     instance: instance_id,
                 });
-                if !REQUIRED_CAPS.iter().all(|c| caps.iter().any(|k| k == c)) {
+                let seat = matches!(self.cfg.room, Room::Seat { .. });
+                if !seat && !REQUIRED_CAPS.iter().all(|c| caps.iter().any(|k| k == c)) {
                     // An older relay seated us. Leave at once; send nothing.
                     return self.halt(LinkState::RelayTooOld, out);
                 }
@@ -343,6 +380,9 @@ impl Link {
                     out,
                 );
                 out.push(Action::Arm(Timer::Retry, in_ms));
+            }
+            WireMsg::TakenOver { .. } if matches!(self.cfg.room, Room::Seat { .. }) => {
+                self.halt(LinkState::TakenOver, out);
             }
             // Seats, takeovers and server-side frames are not a control room's.
             _ => {}
@@ -420,6 +460,7 @@ impl Link {
             }
             return;
         }
+        out.push(Action::Raw(String::from_utf8_lossy(&plain).into_owned()));
         if let Ok(m) = serde_json::from_value::<RelayMsg>(msg) {
             out.push(Action::Msg(m));
         }
@@ -485,7 +526,12 @@ pub fn step(l: &mut Link, now_ms: u64, input: Input) -> Vec<Action> {
             }
             out.push(Action::Arm(Timer::Silence, l.cfg.silence_ms));
             match classify(&text) {
-                Frame::Wire(w) => l.wire(now_ms, w, &mut out),
+                Frame::Wire(w) => {
+                    if !matches!(w, WireMsg::Ping | WireMsg::Pong) {
+                        out.push(Action::Relay(text.clone()));
+                    }
+                    l.wire(now_ms, w, &mut out)
+                }
                 Frame::E2e(m) => l.e2e(now_ms, &text, m, &mut out),
                 Frame::Sealed => l.sealed(now_ms, &text, &mut out),
                 // In the clear and not the relay's: never acted on.
@@ -523,6 +569,52 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    fn seat_link(takeover: bool) -> Link {
+        Link::new(
+            LinkCfg {
+                room: Room::Seat { takeover },
+                ..LinkCfg::new("1", "https://relay.example", "1", "Phone")
+            },
+            Arc::new(Identity::ephemeral()),
+            None,
+        )
+    }
+
+    #[test]
+    fn seat_dials_the_seat_and_takes_over_once() {
+        let mut l = seat_link(true);
+        let a = step(&mut l, 0, Input::Start);
+        let Some(Action::Dial(u)) = a.iter().find(|x| matches!(x, Action::Dial(_))) else {
+            panic!("{a:?}")
+        };
+        assert!(u.ends_with("&takeover=1") && !u.contains("control=1"), "{u}");
+        step(&mut l, 1, Input::Opened);
+        step(&mut l, 2, Input::Closed);
+        let a = step(&mut l, 99_999, Input::Timer(Timer::Retry));
+        let Some(Action::Dial(u)) = a.iter().find(|x| matches!(x, Action::Dial(_))) else {
+            panic!("{a:?}")
+        };
+        assert!(!u.contains("takeover"), "{u}");
+    }
+
+    #[test]
+    fn seat_needs_no_control_caps_and_forwards_relay_frames() {
+        let mut l = seat_link(false);
+        step(&mut l, 0, Input::Start);
+        step(&mut l, 1, Input::Opened);
+        let a = step(&mut l, 2, accepted(&[]));
+        assert!(matches!(l.state(), LinkState::Securing), "{a:?}");
+        assert!(a.iter().any(|x| matches!(x, Action::Relay(t) if t.contains("join_accepted"))));
+        let a = step(
+            &mut l,
+            3,
+            Input::Frame(r#"{"type":"taken_over","by":"Laptop"}"#.into()),
+        );
+        assert!(a.iter().any(|x| matches!(x, Action::Relay(t) if t.contains("taken_over"))));
+        assert_eq!(l.state(), &LinkState::TakenOver);
+        assert!(step(&mut l, 9_999_999, Input::Timer(Timer::Retry)).is_empty());
     }
 
     fn accepted(caps: &[&str]) -> Input {

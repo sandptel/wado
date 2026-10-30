@@ -33,6 +33,8 @@ pub enum LinkOut {
     Msg(RelayMsg),
     SavePin(String),
     Joined { caps: Vec<String>, instance: String },
+    Raw(String),
+    Relay(String),
 }
 
 /// Milliseconds on the link's clock (a monotonic one, from when the core started).
@@ -112,6 +114,14 @@ pub async fn run(
                 }
                 Action::Joined { caps, instance } => {
                     let _ = out.send(LinkOut::Joined { caps, instance });
+                    Vec::new()
+                }
+                Action::Raw(t) => {
+                    let _ = out.send(LinkOut::Raw(t));
+                    Vec::new()
+                }
+                Action::Relay(t) => {
+                    let _ = out.send(LinkOut::Relay(t));
                     Vec::new()
                 }
                 Action::Halt => return,

@@ -14,7 +14,8 @@ use tokio::task::JoinHandle;
 use crate::event::{ComputerView, CoreEvent};
 use crate::identity::Identity;
 use crate::link::driver::{self, Clock, LinkCmd};
-use crate::link::state::{Link, LinkCfg};
+use crate::link::outbox::Class;
+use crate::link::state::{Link, LinkCfg, Room};
 use crate::pair::flow::{self, PairCtx, PairStep};
 use crate::pair::link::{self as pairlink, PairCode, PairLink};
 use crate::pins::Pins;
@@ -39,6 +40,9 @@ struct Inner {
     events: Arc<EventQueue>,
     ops: Mutex<Ops>,
     links: Mutex<HashMap<String, Watched>>,
+    /// Rooms the UI opened itself (`open_room`), by room id.
+    rooms: Mutex<HashMap<String, Watched>>,
+    next_room: std::sync::atomic::AtomicU64,
     clock: Clock,
     visible: Arc<std::sync::atomic::AtomicBool>,
     /// Each new link's silence timeout (`LinkCfg::silence_ms`).
@@ -79,6 +83,8 @@ impl Core {
             events: Arc::new(EventQueue::default()),
             ops: Mutex::new(Ops::default()),
             links: Mutex::new(HashMap::new()),
+            rooms: Mutex::new(HashMap::new()),
+            next_room: std::sync::atomic::AtomicU64::new(1),
             clock: Arc::new(move || start.elapsed().as_millis() as u64),
             visible: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             silence_ms: std::sync::atomic::AtomicU64::new(crate::link::state::SILENCE_MS),
@@ -198,6 +204,82 @@ impl Core {
         }
     }
 
+    /// Open a room on the saved computer `key`: the seat, a control room, or a view room on
+    /// `instance`. Its state, messages and relay frames come as `Room*{id, …}` events until
+    /// `close_room`. `None` if this device does not know the computer.
+    pub fn open_room(&self, key: String, room: Room) -> Option<String> {
+        let p = self.inner.profiles.lock().unwrap().get(&key).cloned()?;
+        let pin = self.inner.pins.lock().unwrap().get(&p.remote_id);
+        let n = self
+            .inner
+            .next_room
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let id = format!("r{n}");
+        let link = Link::new(
+            LinkCfg {
+                silence_ms: self
+                    .inner
+                    .silence_ms
+                    .load(std::sync::atomic::Ordering::Relaxed),
+                room,
+                ..LinkCfg::new(&key, &p.relay_url, &p.remote_id, &self.inner.name)
+            },
+            self.inner.identity.clone(),
+            pin,
+        );
+        let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
+        let (out_tx, out_rx) = mpsc::unbounded_channel();
+        let pump = crate::rooms::RoomPump {
+            id: id.clone(),
+            remote_id: p.remote_id.clone(),
+            events: self.inner.events.clone(),
+            pins: self.inner.pins.clone(),
+            clock: self.inner.clock.clone(),
+        };
+        let tasks = [
+            self.spawn(driver::run(
+                link,
+                self.inner.connector.clone(),
+                out_tx,
+                cmd_rx,
+                self.inner.clock.clone(),
+            )),
+            self.spawn(pump.run(out_rx)),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        self.inner.rooms.lock().unwrap().insert(
+            id.clone(),
+            Watched {
+                cmds: cmd_tx,
+                tasks,
+            },
+        );
+        Some(id)
+    }
+
+    /// Send plaintext JSON to a room's computer, sealed as it leaves. Urgent jumps the bulk
+    /// queue; `resend` sends it again after a reconnect. False if the room is closed.
+    pub fn send_room(&self, id: &str, json: String, urgent: bool, resend: bool) -> bool {
+        let rooms = self.inner.rooms.lock().unwrap();
+        let Some(w) = rooms.get(id) else { return false };
+        w.cmds
+            .send(LinkCmd::Send {
+                text: json,
+                class: if urgent { Class::Urgent } else { Class::Bulk },
+                resend,
+            })
+            .is_ok()
+    }
+
+    /// Leave a room (4001) and forget it.
+    pub fn close_room(&self, id: &str) {
+        if let Some(w) = self.inner.rooms.lock().unwrap().remove(id) {
+            let _ = w.cmds.send(LinkCmd::Stop);
+        }
+    }
+
     fn start_pair(&self, link: PairLink) -> u64 {
         let op = self.inner.ops.lock().unwrap().next_id();
         let inner = self.inner.clone();
@@ -300,7 +382,7 @@ impl Core {
 
     /// Leave every room (4001) and stop the runtime. Waits briefly for the leaves to go out.
     pub fn shutdown(&self) {
-        let watched: Vec<Watched> = self
+        let mut watched: Vec<Watched> = self
             .inner
             .links
             .lock()
@@ -308,6 +390,7 @@ impl Core {
             .drain()
             .map(|(_, w)| w)
             .collect();
+        watched.extend(self.inner.rooms.lock().unwrap().drain().map(|(_, w)| w));
         for w in &watched {
             let _ = w.cmds.send(LinkCmd::Stop);
         }

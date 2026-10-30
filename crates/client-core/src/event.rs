@@ -98,6 +98,7 @@ pub fn words(state: &LinkState, now_ms: u64) -> (String, Tone) {
             Tone::Bad,
         ),
         LinkState::RelayTooOld => ("Relay too old for the app".into(), Tone::Bad),
+        LinkState::TakenOver => ("In use on another device".into(), Tone::Still),
     }
 }
 
@@ -124,6 +125,12 @@ pub enum CoreEvent {
     Sessions { key: String, rows: Vec<SessionRow> },
     Pair { op: u64, step: PairStep },
     Answer { op: u64, outcome: Outcome },
+    /// A room the UI opened (`Core::open_room`): its link state.
+    RoomState { id: String, view: LinkView },
+    /// A room's opened message, plaintext JSON, in arrival order.
+    RoomMsg { id: String, json: String },
+    /// A relay frame the room's UI reads itself, in arrival order.
+    RoomRelay { id: String, json: String },
 }
 
 impl CoreEvent {
@@ -135,7 +142,12 @@ impl CoreEvent {
             CoreEvent::Link { key, .. } => Some((1, key)),
             CoreEvent::Host { key, .. } => Some((2, key)),
             CoreEvent::Sessions { key, .. } => Some((3, key)),
-            CoreEvent::Pair { .. } | CoreEvent::Answer { .. } => None,
+            // A room's states and messages keep their order: a UI reads them as a stream.
+            CoreEvent::RoomState { .. }
+            | CoreEvent::Pair { .. }
+            | CoreEvent::Answer { .. }
+            | CoreEvent::RoomMsg { .. }
+            | CoreEvent::RoomRelay { .. } => None,
         }
     }
 }
