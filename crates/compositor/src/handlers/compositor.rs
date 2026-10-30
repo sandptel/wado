@@ -33,12 +33,16 @@ impl CompositorHandler for Wado {
             while let Some(parent) = get_parent(&root) {
                 root = parent;
             }
-            if let Some(window) = self
+            let window = self
                 .space
                 .elements()
                 .find(|w| w.toplevel().unwrap().wl_surface() == &root)
-            {
+                .cloned();
+            if let Some(window) = window {
                 window.on_commit();
+                if &root == surface {
+                    crate::launch_clock::on_commit(self, surface);
+                }
             }
         };
 

@@ -188,9 +188,11 @@ pub async fn answer(
                                     r
                                 };
                                 for ev in ready {
+                                    // Kept for the warning: which event, which field.
+                                    let raw = ev.to_string();
                                     match serde_json::from_value::<InputEvent>(ev) {
                                         Ok(ev) => hub.input(origin, ev),
-                                        Err(e) => warn!("relay client: bad input event: {e}"),
+                                        Err(e) => bad_input(&e, raw.as_bytes()),
                                     }
                                 }
                                 return;
@@ -206,7 +208,7 @@ pub async fn answer(
                                     .await;
                             }
                             Ok(ev) => hub.input(origin, ev),
-                            Err(e) => warn!("relay client: bad input event: {e}"),
+                            Err(e) => bad_input(&e, &msg.data),
                         }
                     })
                 }));
@@ -371,4 +373,11 @@ pub async fn answer(
         );
     }
     Ok((answer_json, trickle))
+}
+
+/// An input message the daemon could not read — a dropped touch, so it names the event. A
+/// `null` here is what `JSON.stringify` writes for a `NaN` coordinate on the device.
+fn bad_input(e: &serde_json::Error, raw: &[u8]) {
+    let raw = String::from_utf8_lossy(&raw[..raw.len().min(200)]);
+    warn!("relay client: bad input event: {e} — {raw}");
 }

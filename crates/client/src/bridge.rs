@@ -61,6 +61,9 @@ pub const JS: &str = concat!(
     "W.SAS_WORDS = `",
     include_str!("../../protocol/src/sas_words.txt"),
     "`.trim().split(/\\s+/);\n",
+    // Before `relay_link.js`, which reports every request and reply to it.
+    include_str!("js/ask_clock.js"),
+    "\n",
     include_str!("js/e2e_keys.js"),
     "\n",
     include_str!("js/e2e_seal.js"),

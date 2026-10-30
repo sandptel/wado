@@ -41,10 +41,12 @@ fn sigterm_stops_the_session_and_its_applications() {
     )
     .expect("spawn");
     let pgid = child.id() as i32;
-    state.app_processes.push(wado_compositor::proc::Launched {
-        command: command.to_string(),
-        child,
-    });
+    state
+        .app_processes
+        .push(wado_compositor::proc::Launched::new(
+            command.to_string(),
+            child,
+        ));
     std::thread::sleep(Duration::from_millis(250));
     assert!(
         unsafe { libc::killpg(pgid, 0) } == 0,

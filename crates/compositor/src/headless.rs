@@ -324,10 +324,17 @@ fn install_render_timer(state: &mut Wado, fps: u32) -> crate::Result<()> {
     let frame_nanos = 1_000_000_000 / fps.max(1) as u64;
     let frame_period = Duration::from_nanos(frame_nanos);
     let mut pacing = TickStats::new(fps);
+    let mut reaped = std::time::Instant::now();
     let token = state
         .loop_handle
         .insert_source(Timer::immediate(), move |deadline, _, state: &mut Wado| {
             pacing.tick();
+            // Once a second: an application that died without a window is said at once, not
+            // when someone next asks which apps are running (`crate::launch_clock`).
+            if reaped.elapsed() >= Duration::from_secs(1) {
+                reaped = std::time::Instant::now();
+                crate::launch_clock::reap(state);
+            }
             // Guard the render path: a panic here must tear down only the session,
             // not abort the process (and the server with it). Only Rust unwinding
             // panics are caught — a native segfault in EGL/GLES/x264 still aborts.
@@ -644,10 +651,9 @@ pub fn launch_command(state: &mut Wado, command: &str) {
     match spawned {
         Ok(child) => {
             info!(pid = child.id(), command, "launched session application");
-            state.app_processes.push(crate::proc::Launched {
-                command: asked,
-                child,
-            });
+            state
+                .app_processes
+                .push(crate::proc::Launched::new(asked, child));
         }
         // Not fatal to the session: the stream still runs, the window is just empty.
         Err(e) => tracing::error!("failed to launch session app {command:?}: {e}"),
@@ -665,9 +671,7 @@ pub fn launch_command(state: &mut Wado, command: &str) {
 /// ponytail: reaped here, on the question, rather than by a timer. Nothing else needs to know
 /// an application has exited, so nothing else has to be woken to find out.
 pub fn running_apps(state: &mut Wado) -> Vec<String> {
-    state
-        .app_processes
-        .retain_mut(|app| !matches!(app.child.try_wait(), Ok(Some(_))));
+    crate::launch_clock::reap(state);
     state
         .app_processes
         .iter()

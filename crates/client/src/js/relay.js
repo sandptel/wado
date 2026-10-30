@@ -92,9 +92,22 @@ const phase = (stage, error) => emit({ type: "phase", stage, error: error || "" 
 W.relayPhase = phase;
 W._relayStage = 0;
 
+// A line the link could not carry (down, or mid-handshake) waits here and goes first next time
+// one does — the give-ups said while the link is down are the ones worth reading.
+const RLOG_LATE_MAX = 40;
+const rlogLate = [];
+let rlogLost = 0;
 const rlog = W.rlog = (line) => {
-  emit({ type: "log", line: "INFO|" + new Date().toTimeString().slice(0, 8) + "|browser: " + line });
-  W.relaySendMsg({ type: "client_log", line });
+  const at = new Date().toTimeString().slice(0, 8);
+  emit({ type: "log", line: "INFO|" + at + "|browser: " + line });
+  while (rlogLate.length && W.relaySendMsg({ type: "client_log", line: rlogLate[0] })) rlogLate.shift();
+  if (!rlogLate.length && rlogLost) {
+    if (W.relaySendMsg({ type: "client_log", line: "(" + rlogLost + " earlier lines lost while the link was down)" })) rlogLost = 0;
+  }
+  if (rlogLate.length || !W.relaySendMsg({ type: "client_log", line })) {
+    rlogLate.push("(late, said " + at + ") " + line);
+    if (rlogLate.length > RLOG_LATE_MAX) { rlogLate.shift(); rlogLost++; }
+  }
 };
 
 // ── The one timeout, and what it is actually for ─────────────────────────────
