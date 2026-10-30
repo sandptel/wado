@@ -1377,3 +1377,53 @@ P3b:
 
 1. **TURN on the relay** as the honest fallback when no direct path exists (HANDOVER item 1). It costs relay bandwidth beyond the 64 KB/s lane's intent. This is needed only if P3's hotspot check fails.
 2. **Remove "More (web)" in P8, or keep it one more release?** The plan removes it in P8, as decided ("the WebView is deleted last").
+
+---
+
+## Addendum (`2026-10-31`): live events over wado's own connection (user request)
+
+The user, verbatim: "I want to send notifications directly over wado connection or some other way
+that can use push events style structure to deliver those and sync playback properly over it too
+live, if multiple hosts are connected then multiple playbacks and notifications labelled ones
+should appear accordingly."
+
+**One event stream per computer, delivered over wado's own link. No FCM, no third party.**
+
+- **Shape:** typed, sequenced events from each daemon, sealed end to end like everything else:
+  - `notify {id, kind, title, body, actions[], urgency}`: Claude needs permission or finished,
+    transfer done, computer online.
+  - `playback {player, title, artist, art_hash, state, position_ms, rate, at_ms, can{…}}`. The
+    phone extrapolates the position from `at_ms` and `rate`, so the scrubber is live without a
+    stream of updates. A new event comes only when something changes (track, play/pause, seek,
+    rate) and on a resync.
+  - `volume {level, muted}`, `presence {online}`, `clip_ready {…}`, …
+  - Each event carries `seq`. On reconnect the phone asks "since seq N", and the daemon replays
+    from a small ring (last ~200), so nothing is missed across a blip.
+- **Delivery while the app is in the background:** the app keeps a long-lived link (a
+  `remoteMessaging` foreground service with a silent ongoing notification, keepalives every few
+  minutes). With several computers the efficient structure is **one socket for all of them**: a
+  relay *device inbox* (new additive cap `inbox`). Each daemon posts sealed events to the device's
+  inbox, and the relay forwards them unread to that device's single background socket, or holds a
+  small backlog for it. The fallback for an older relay is one control link per computer. The
+  relay also posts an unsealed `host_gone {remote_id, instance}` when a daemon drops: the only
+  part that can say "bushido stopped answering". UnifiedPush stays as an optional wake-up.
+- **On the phone:**
+  - One **Android notification channel group per computer**, labelled with its name and OS
+    logo.
+  - Notifications carry the computer's name, and their actions (Allow/Deny, Open) go back over
+    the link.
+  - **One MediaSession per computer that is playing**, so the lock screen and quick settings show
+    one player card per computer ("Spotify · bushido", "mpv · laptop2"), each with its own
+    controls, position and art.
+  - Volume keys drive the computer whose card was used last; this is settable.
+- **Where it lands:**
+  - P1: the core's link supports a long-lived background mode, with configurable keepalive and
+    multiplexed hosts.
+  - P7: the events protocol (daemon `events/` with ring and seq), the relay `inbox` cap, the
+    foreground service, channels per computer, MediaSessions per computer, and resync.
+  - The web client can use the same stream while it is open.
+- **Tests:**
+  - an e2e with two daemons and one phone core: interleaved notifications, both labelled;
+  - two playback events → two sessions;
+  - a dropped link → resync from seq with nothing lost or duplicated;
+  - position drift under 250 ms over 5 minutes without updates.
