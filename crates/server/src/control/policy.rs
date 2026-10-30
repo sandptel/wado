@@ -27,9 +27,14 @@ pub fn need(msg: &RelayMsg) -> Need {
         // Wi-Fi can cut the computer off: the owner's say, as on the main link.
         RelayMsg::HostDo { action } if action.is_network() => Need::Grants(&["host", "settings"]),
         RelayMsg::HostDo { .. } => Need::Grants(&["host"]),
-        RelayMsg::ClipList | RelayMsg::ClipGet { .. } | RelayMsg::ClipPush { .. } => {
-            Need::Grants(&["clipboard"])
-        }
+        // The Clipboard widget is the whole Clipboard surface: the history, each entry's copy,
+        // send, pin and delete, and following the computer's copies as they happen.
+        RelayMsg::ClipList
+        | RelayMsg::ClipGet { .. }
+        | RelayMsg::ClipPush { .. }
+        | RelayMsg::ClipPin { .. }
+        | RelayMsg::ClipDelete { .. }
+        | RelayMsg::ClipWatch { .. } => Need::Grants(&["clipboard"]),
         RelayMsg::PadIn {
             msg: PadMsg::Actions | PadMsg::Run { .. },
         } => Need::Grants(&["host"]),
@@ -70,7 +75,17 @@ mod tests {
             }),
             Need::Grants(&["host", "settings"])
         );
-        assert_eq!(need(&RelayMsg::ClipList), Need::Grants(&["clipboard"]));
+        for m in [
+            r#"{"type":"clip_list"}"#,
+            r#"{"type":"clip_get","id":"1"}"#,
+            r#"{"type":"clip_push","mime":"text/plain","data":"x"}"#,
+            r#"{"type":"clip_pin","id":"1","on":true}"#,
+            r#"{"type":"clip_delete","id":"1"}"#,
+            r#"{"type":"clip_watch","live":true}"#,
+        ] {
+            let msg: RelayMsg = serde_json::from_str(m).unwrap_or_else(|e| panic!("{m}: {e}"));
+            assert_eq!(need(&msg), Need::Grants(&["clipboard"]), "{m}");
+        }
         assert_eq!(
             need(&RelayMsg::PadIn {
                 msg: PadMsg::Run { id: "lock".into() }
@@ -82,7 +97,7 @@ mod tests {
             r#"{"type":"pad_in","msg":{"k":"key","key":"esc","mods":[]}}"#,
             r#"{"type":"session_launch","command":"foot"}"#,
             r#"{"type":"sessions_request"}"#,
-            r#"{"type":"clip_delete","id":"1"}"#,
+            r#"{"type":"clipboard_set","text":"into a session"}"#,
             r#"{"type":"config_set","key":"stream.max-fps","value":"30","confirmed":false}"#,
         ] {
             let msg: RelayMsg = serde_json::from_str(m).unwrap_or_else(|e| panic!("{m}: {e}"));

@@ -62,6 +62,10 @@ pub struct DeviceGrants {
     pub host: bool,
     pub input: bool,
     pub clipboard: bool,
+    /// Its key was proven with a pairing code (QR or typed) rather than carried over from before
+    /// pairing. Sharing the clipboard automatically is on by default only for such a device.
+    #[serde(default)]
+    pub paired: bool,
 }
 
 /// One device's trackpad layout, as `wado_config::schema::DeviceTrackpad` types it. The phone

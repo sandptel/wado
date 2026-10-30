@@ -21,12 +21,26 @@ use super::on_desktop::run_with;
 pub struct Cliphist;
 
 impl Cliphist {
-    /// Offered inside a Wayland desktop — `cliphist` itself not being installed is said when the
-    /// history is asked for, as the rail always has.
+    /// Offered inside a Wayland desktop that has `cliphist` installed. Without it the server keeps
+    /// a history of its own, in memory (`crate::clip::ram`).
     pub fn probe() -> Result<Cliphist, String> {
         super::on_desktop::command("cliphist")?;
+        if !on_path("cliphist") {
+            return Err("cliphist is not installed".into());
+        }
         Ok(Cliphist)
     }
+}
+
+/// Is `prog` an executable file on `PATH`?
+fn on_path(prog: &str) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::env::var_os("PATH").is_some_and(|path| {
+        std::env::split_paths(&path).any(|d| {
+            std::fs::metadata(d.join(prog))
+                .is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+        })
+    })
 }
 
 impl ClipHistory for Cliphist {
@@ -83,6 +97,8 @@ fn entry(id: &str, text: &str, pins: &[String]) -> ClipEntry {
         kind,
         pinned: pins.iter().any(|p| p == text),
         preview,
+        at_ms: 0,
+        from: String::new(),
     }
 }
 
@@ -114,6 +130,7 @@ async fn get(id: &str) -> Result<Clip, String> {
     Ok(Clip {
         mime: mime.into(),
         data: bytes.into(),
+        secret: false,
     })
 }
 

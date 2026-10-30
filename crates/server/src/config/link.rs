@@ -55,6 +55,7 @@ fn grants_for(key: &str, gate: &Gate) -> Option<wado_protocol::config::DeviceGra
         host: g.host,
         input: g.input,
         clipboard: g.clipboard,
+        paired: d.pinned,
     })
 }
 

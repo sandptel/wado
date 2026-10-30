@@ -110,6 +110,7 @@ impl Rooms {
                 gate: sh.gate.clone(),
                 cmd_tx: sh.cmd_tx.clone(),
                 sent: Arc::default(),
+                clip: Arc::default(),
                 out,
             },
         };

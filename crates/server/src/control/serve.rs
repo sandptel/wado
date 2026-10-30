@@ -22,14 +22,55 @@ pub struct Who {
 }
 
 /// What a room needs to answer: the gate, the compositor (for a clipboard push), the room's own
-/// picture memory, and its writer.
+/// picture memory, its clipboard follower, and its writer.
 #[derive(Clone)]
 pub struct Ctx {
     pub gate: Gate,
-    /// `None` only in tests, which have no compositor; a clipboard push then says so.
+    /// `None` only in tests, which have no compositor; a clipboard push then reaches the desktop
+    /// alone.
     pub cmd_tx: Option<wado_compositor::CommandSender>,
     pub sent: Arc<crate::host::trim::Sent>,
+    pub clip: Arc<ClipFollow>,
     pub out: mpsc::Sender<String>,
+}
+
+/// A room's clipboard follower (`crate::clip::share`): started by the room's first
+/// `ClipWatch`, stopped with the room — the follower holds the room's writer, so it must not
+/// outlive it.
+#[derive(Default)]
+pub struct ClipFollow {
+    live: std::sync::atomic::AtomicBool,
+    task: std::sync::Mutex<Option<tokio::task::JoinHandle<()>>>,
+}
+
+impl Drop for ClipFollow {
+    fn drop(&mut self) {
+        if let Some(t) = self.task.get_mut().ok().and_then(Option::take) {
+            t.abort();
+        }
+    }
+}
+
+impl ClipFollow {
+    /// Follow the clipboard for `who`, wanting every copy in full or not. Each send asks the gate
+    /// again.
+    fn watch(&self, live: bool, who: &Who, cx: &Ctx) {
+        use std::sync::atomic::Ordering;
+        self.live.store(live, Ordering::SeqCst);
+        let mut task = self.task.lock().unwrap_or_else(|e| e.into_inner());
+        if task.is_some() {
+            return;
+        }
+        let (gate, key, me) = (cx.gate.clone(), who.key.clone(), Arc::downgrade(&cx.clip));
+        *task = Some(crate::clip::share::follow(cx.out.clone(), move || {
+            crate::clip::share::Listen {
+                granted: gate.knows(&key) && gate.grants(&key).clipboard,
+                key: key.clone(),
+                watching: true,
+                live: me.upgrade().is_some_and(|m| m.live.load(Ordering::SeqCst)),
+            }
+        }));
+    }
 }
 
 /// The device is no longer trusted: the link ends.
@@ -99,6 +140,10 @@ pub async fn handle(text: &str, who: &Who, cx: &Ctx) -> Result<(), Untrusted> {
         send(&cx.out, &answer).await;
         return Ok(());
     }
+    if let RelayMsg::ClipWatch { live } = msg {
+        cx.clip.watch(live, who, cx);
+        return Ok(());
+    }
     // Spawned, so a slow tool never holds up the next message.
     let cx = cx.clone();
     let who = who.clone();
@@ -147,14 +192,16 @@ async fn run(msg: RelayMsg, who: &Who, cx: &Ctx) {
             };
             send(&cx.out, &RelayMsg::PadOut { msg }).await;
         }
-        clip @ (RelayMsg::ClipList | RelayMsg::ClipGet { .. } | RelayMsg::ClipPush { .. }) => {
-            match cx.cmd_tx.clone() {
-                Some(cmd_tx) => crate::clip::serve::handle(clip, cmd_tx, cx.out.clone()).await,
-                None => {
-                    let message = "no compositor here".to_string();
-                    send(&cx.out, &RelayMsg::ClipError { message }).await;
-                }
-            }
+        clip @ (RelayMsg::ClipList
+        | RelayMsg::ClipGet { .. }
+        | RelayMsg::ClipPush { .. }
+        | RelayMsg::ClipPin { .. }
+        | RelayMsg::ClipDelete { .. }) => {
+            let sender = crate::clip::serve::Sender {
+                key: who.key.clone(),
+                name: who.name.clone(),
+            };
+            crate::clip::serve::handle(clip, cx.cmd_tx.clone(), sender, cx.out.clone()).await;
         }
         _ => {}
     }
