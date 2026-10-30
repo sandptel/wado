@@ -5,6 +5,7 @@
 //!   wado passkey approve                    each waiting request, y or n
 //!   wado passkey approve <device> --yes     answer that one without asking (also --no)
 //!   wado passkey approve --wait             wait up to 2 minutes for a request to come in
+//!   wado passkey approve --list             only list what waits
 //! ```
 //!
 //! The answer is read from stdin, a line per request, so a script can pipe it (the e2e does).
@@ -50,6 +51,16 @@ pub fn run(args: &[String]) -> i32 {
     }
     if asks.is_empty() {
         println!("  nothing is waiting for approval");
+        return 0;
+    }
+    if flag("--list") {
+        for a in &asks {
+            println!(
+                "  {}  {}",
+                bold(&a.device),
+                dim(&format!("{} s left", a.left()))
+            );
+        }
         return 0;
     }
     let mut lines = std::io::stdin().lock().lines();

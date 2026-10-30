@@ -17,6 +17,15 @@
 //   pairing   a freshly code-paired device: the sheet's "Add a passkey"
 //   silence   a request the computer never answers: busy gives up after 20 s, with a reason on
 //             the card and a button that works again
+//   stuck     never stuck (2026-10-30), with the virtual authenticator: a prompt that never
+//             answers gives up on its own deadline with Try again; Not now aborts it, so the next
+//             Unlock is not refused as "already pending"; the person cancelling; the page going to
+//             the background mid-prompt; two challenges for one tap; no matching passkey
+//   approve   "Approve on the computer instead": `wado passkey approve --no` turns it away, `--yes`
+//             unlocks and opens the door that asked; the request is in the TUI's list meanwhile
+//   require   "Ask for my passkey on this phone" off from the phone (only while unlocked): open
+//             across a reconnect, the pad opens with no passkey; `wado passkey require … on|off`
+//             from the computer
 //
 //   dx build -p wado-client --platform web && cargo build --release -p wado -p wado-relay
 //   node scripts/passkey-ui-e2e.mjs [target/release]       (needs Chrome and bwrap; sandbox off)
@@ -63,7 +72,7 @@ const start = (cmd, args, e = {}) => {
 };
 for (const sig of ["SIGTERM", "SIGINT", "SIGHUP"]) process.on(sig, () => { for (const p of procs) try { p.kill(); } catch {} process.exit(1); });
 const wado = (...args) => execFileSync(join(BIN, "wado"), args, { env: { ...process.env, ...env } }).toString();
-const daemonEnv = { WADO_RELAY_URL: "ws://127.0.0.1:" + PORT, WADO_REMOTE_ID: RID, WADO_INSTANCE: "e2e-pkui", WADO_UDP_SLICE: "6" };
+const daemonEnv = { WADO_RELAY_URL: "ws://127.0.0.1:" + PORT, WADO_REMOTE_ID: RID, WADO_INSTANCE: "e2e-pkui", WADO_UDP_SLICE: "6", WADO_NO_DESKTOP_NOTIFY: "1" };
 const startDaemon = () => start("bwrap", ["--dev-bind", "/", "/", "--dev", "/dev", "--die-with-parent", join(BIN, "wado"), "daemon"], daemonEnv);
 const pkLog = () => logs.split("\n").filter((l) => /passkey|pad: |refused/i.test(l)).slice(-10).join("\n");
 
@@ -88,8 +97,8 @@ class Browser {
     await this.cdp("Emulation.setFocusEmulationEnabled", { enabled: true });
     await this.cdp("Page.addScriptToEvaluateOnNewDocument", { source: `try { localStorage.setItem("wado.client", ${JSON.stringify(key)}); } catch (_) {}` });
     await this.cdp("WebAuthn.enable", {});
-    await this.cdp("WebAuthn.addVirtualAuthenticator", { options: { protocol: "ctap2", transport: "internal",
-      hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true } });
+    this.auth = (await this.cdp("WebAuthn.addVirtualAuthenticator", { options: { protocol: "ctap2", transport: "internal",
+      hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true } })).result.authenticatorId;
     await this.go(url);
   }
   go(url) { return this.cdp("Page.navigate", { url }); }
@@ -332,6 +341,200 @@ try {
     check("a refusal card's tap does not dismiss it", await (async () => { await a.click(`document.querySelector("#wado-trackpad .tperr .tpwhyt")`); await sleep(300); return a.ev(`${padCause} === "unsupported"`); })());
     wado("allow", "PhoneA-key", "input");
     await a.ev(`window.__wado.padClose(); true`);
+  }
+
+  // ── stuck ──────────────────────────────────────────────────────────────────
+  // Every way the passkey step can hang or fail, each with a way out (2026-10-30).
+  const presence = (on) => a.cdp("WebAuthn.setAutomaticPresenceSimulation", { authenticatorId: a.auth, enabled: on });
+  const verified = (on) => a.cdp("WebAuthn.setUserVerified", { authenticatorId: a.auth, isUserVerified: on });
+  // What the page asks of WebAuthn, and how each ended.
+  const traceWa = () => a.ev(`(() => { const W = window.__wado; if (W.__wa) return true; W.__wa = []; const c = navigator.credentials;
+    for (const op of ["get", "create"]) { const f = c[op].bind(c); c[op] = (o) => { const n = W.__wa.length; W.__wa.push({ op, st: "pending" }); const p = f(o);
+      p.then(() => (W.__wa[n].st = "ok"), (e) => (W.__wa[n].st = e.name)); return p; }; }
+    return true; })()`);
+  const wa = () => a.ev(`JSON.stringify(window.__wado.__wa)`);
+  const primary = $(".pksheet.up .btn.primary");
+  const primaryText = `((${primary}) || {}).textContent || ""`;
+  const sheetNote = `((document.querySelector(".pksheet.up .pknote")) || {}).textContent || ""`;
+  const lockA = async () => {
+    await a.until(`!${sheetUp}`, 4000);
+    if (await a.ev(unlocked)) await a.ev(`window.__wado.passkeyLockNow(); true`);
+    return a.until(`!${unlocked}`, 5000);
+  };
+  const askPad = async () => {
+    await a.ev(`window.__wado.__padRan = 0; window.__wado.passkeyThen("pad", () => { window.__wado.__padRan++; }); true`);
+    return a.until(sheetUp, 5000);
+  };
+  const ensurePasskey = async () => {
+    if (await a.ev(`window.__wado.passkey.state.registered`)) return true;
+    await openTrust(a);
+    await a.click(byText(".pkcard .btn", "Add a passkey"));
+    return a.until(`window.__wado.passkey.state.registered && ${unlocked}`, 15000);
+  };
+
+  if (want("stuck") || want("approve") || want("require")) {
+    await a.go(BASE);
+    await a.up();
+    await later(a);
+    await presence(true);
+    await verified(true);
+    check("A has a passkey to work with", await ensurePasskey(), (await a.pk()) + "\n" + pkLog());
+    await traceWa();
+    await a.ev(`window.__wado.passkeyAuthWaitMs = 6000; true`);
+  }
+
+  if (want("stuck")) {
+    console.log("stuck");
+    // 1. The prompt never answers: its own deadline ends it, with a reason and Try again.
+    await lockA();
+    await presence(false);
+    await askPad();
+    await a.click(primary);
+    check("never answers: the sheet waits on the passkey", await a.until(`window.__wado.passkey.busy && /Waiting for your passkey/.test(${primaryText})`, 5000), (await a.pk()) + " " + (await a.ev(primaryText)));
+    await a.shot("pk-stuck-waiting.png");
+    const t0 = Date.now();
+    check("…and gives up on its own deadline", await a.until(`!window.__wado.passkey.busy`, 12000), await a.pk());
+    check("…in about the deadline (6 s here, 60 s for real)", Date.now() - t0 < 9000, Date.now() - t0 + " ms");
+    check("…the prompt itself was aborted, not left pending", await a.until(`!window.__wado.__wa.some((w) => w.st === "pending")`, 3000), await wa());
+    check("…with a reason, Try again, and the way round it", await a.until(`/didn't answer in time/.test(${sheetNote}) && /Try again/.test(${primaryText}) && !!${byText(".pksheet.up .btn", "Approve on")}`, 3000), (await a.ev(sheetNote)) + " | " + (await a.ev(primaryText)));
+    check("…and the owner's switch, named with the command", await a.ev(`/wado passkey require .* off/.test(document.querySelector(".pksheet.up .pkoff").textContent)`), await a.ev(`(document.querySelector(".pksheet.up .pkoff") || {}).textContent`));
+    await sleep(400);
+    await a.shot("pk-stuck-timeout.png");
+
+    // 2. Not now while a prompt is up aborts it: the next Unlock is not "already pending".
+    await a.click(primary);
+    await a.until(`window.__wado.passkey.busy && window.__wado.passkey.stage === "prompt"`, 5000);
+    await a.click(byText(".pksheet.up .pkacts .btn", "Not now"));
+    check("Not now closes the sheet at once", await a.until(`!${sheetUp} && !window.__wado.passkey.busy`, 3000), await a.pk());
+    check("…and takes the prompt down with it", await a.until(`!window.__wado.__wa.some((w) => w.st === "pending")`, 3000), await wa());
+    await presence(true);
+    await askPad();
+    await a.click(primary);
+    check("…so the next Unlock works", await a.until(`${unlocked} && window.__wado.__padRan === 1`, 15000), (await a.pk()) + "\n" + (await wa()) + "\n" + pkLog());
+    check("…and nothing was refused as already pending", !/already pending/.test(logs), pkLog());
+
+    // 3. The person cancels (here: the screen lock is not confirmed).
+    await lockA();
+    await verified(false);
+    await askPad();
+    await a.click(primary);
+    check("cancelled: said plainly, Try again", await a.until(`!window.__wado.passkey.busy && /Cancelled/.test(${sheetNote}) && /Try again/.test(${primaryText})`, 10000), (await a.pk()) + " " + (await a.ev(sheetNote)));
+    await sleep(400);
+    await a.shot("pk-stuck-cancelled.png");
+    await verified(true);
+    await a.click(primary);
+    check("…and Try again unlocks", await a.until(unlocked, 15000), await a.pk());
+
+    // 4. The page goes to the background mid-prompt (the prompt itself hides it on a phone):
+    // nothing locks or cancels underneath it.
+    await lockA();
+    await presence(false);
+    await askPad();
+    await a.click(primary);
+    await a.until(`window.__wado.passkey.stage === "prompt"`, 5000);
+    await a.ev(`(() => { Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" }); document.dispatchEvent(new Event("visibilitychange")); delete document.visibilityState; return true; })()`);
+    await sleep(800);
+    check("background mid-prompt: still waiting on the passkey, not cancelled", await a.ev(`window.__wado.passkey.busy && window.__wado.passkey.stage === "prompt" && window.__wado.__wa.at(-1).st === "pending"`), (await a.pk()) + " " + (await wa()));
+    await a.click(byText(".pksheet.up .pkacts .btn", "Not now"));
+    await presence(true);
+
+    // 5. Two challenges for one tap (a double tap, a reconnect): the older prompt gives way to
+    // the newer, whose challenge is the one the computer holds — it unlocks, no refusal.
+    await a.until(`!${sheetUp}`, 4000);
+    await askPad();
+    const before = (logs.match(/passkey: unlock refused/g) || []).length;
+    await a.ev(`window.__wado.passkeyGo(); window.__wado.passkey.busy = false; window.__wado.passkeyGo(); true`);
+    check("double begin: unlocks", await a.until(`${unlocked} && window.__wado.__padRan === 1`, 15000), (await a.pk()) + "\n" + (await wa()) + "\n" + pkLog());
+    check("…with no refusal and no prompt left behind", (logs.match(/passkey: unlock refused/g) || []).length === before && (await a.ev(`!window.__wado.__wa.some((w) => w.st === "pending")`)), pkLog() + "\n" + (await wa()));
+
+    // 6. No passkey here matches (one made in another browser or app): said, with the way round.
+    await lockA();
+    await a.cdp("WebAuthn.clearCredentials", { authenticatorId: a.auth });
+    await askPad();
+    await a.click(primary);
+    check("no matching passkey: says so and offers approve on the computer", await a.until(`!window.__wado.passkey.busy && /no passkey for/.test(${sheetNote}) && !!${byText(".pksheet.up .btn", "Approve on")}`, 10000), (await a.pk()) + " " + (await a.ev(sheetNote)));
+    await sleep(400);
+    await a.shot("pk-stuck-no-credential.png");
+  }
+
+  // ── approve ────────────────────────────────────────────────────────────────
+  if (want("approve") || want("stuck")) {
+    console.log("approve");
+    await lockA();
+    await a.until(`!${sheetUp}`, 4000);
+    await askPad();
+    await a.click(byText(".pksheet.up .btn", "Approve on"));
+    check("approve: the sheet waits for the computer, says what to run there", await a.until(`window.__wado.passkey.approve && window.__wado.passkey.approve.state === "waiting" && /wado passkey approve/.test((document.querySelector(".pksheet.up .pkappwait") || {}).textContent || "")`, 6000), (await a.pk()) + " " + JSON.stringify(await a.ev(`window.__wado.passkey.approve`)));
+    const listed = wado("passkey", "approve", "--list");
+    check("…the request is listed on the computer", /Linux · Chrome/.test(listed) && /s left/.test(listed), listed);
+    check("…and logged", /asked to be approved on the computer/.test(logs), pkLog());
+    await sleep(400);
+    await a.shot("pk-approve-waiting.png");
+    const no = wado("passkey", "approve", "--no");
+    check("`wado passkey approve --no` turns it away", /turned away/.test(no), no);
+    check("…the phone says so, still locked", await a.until(`window.__wado.passkey.approve && window.__wado.passkey.approve.state === "declined" && !${unlocked} && /Turned down/.test(${sheetUp} ? document.querySelector(".pksheet.up").textContent : "")`, 6000), JSON.stringify(await a.ev(`window.__wado.passkey.approve`)));
+    await a.shot("pk-approve-declined.png");
+    await a.click(byText(".pksheet.up .btn", "Approve on"));
+    await a.until(`window.__wado.passkey.approve && window.__wado.passkey.approve.state === "waiting"`, 6000);
+    // Piped, as a person types it: y.
+    const yes = execFileSync(join(BIN, "wado"), ["passkey", "approve"], { env: { ...process.env, ...env }, input: "y\n" }).toString();
+    check("`wado passkey approve` (y) lets it in", /approved/.test(yes), yes);
+    check("…the phone unlocks and the door that asked opens", await a.until(`${unlocked} && window.__wado.__padRan === 1 && !${sheetUp}`, 8000), (await a.pk()) + "\n" + pkLog());
+    check("…logged as approved", /approved on the computer — unlocked/.test(logs), pkLog());
+    check("…the same lifetime as a passkey's (15 min, idle clock running)", await a.ev(`${pkState("idle_s")} === 900`), await a.pk());
+    const none = wado("passkey", "approve");
+    check("…and nothing waits any more", /nothing is waiting/.test(none), none);
+    // Not now withdraws a waiting request.
+    await lockA();
+    await askPad();
+    await a.click(byText(".pksheet.up .btn", "Approve on"));
+    await a.until(`window.__wado.passkey.approve && window.__wado.passkey.approve.state === "waiting"`, 6000);
+    await a.click(byText(".pksheet.up .pkacts .btn", "Not now"));
+    check("Not now withdraws the request", await (async () => { for (let i = 0; i < 20; i++) { if (/nothing is waiting/.test(wado("passkey", "approve", "--no"))) return true; await sleep(200); } return false; })(), wado("passkey", "approve", "--no"));
+  }
+
+  // ── require ────────────────────────────────────────────────────────────────
+  if (want("require") || want("stuck")) {
+    console.log("require");
+    // The switch is offered only while unlocked; turning it off is the phone's own choice.
+    await a.until(`!${sheetUp}`, 4000);
+    await a.ev(`window.__wado.relaySendMsg({ type: "passkey_require", on: false }); true`);
+    check("off is refused while locked", await a.until(`/Unlock first/.test(window.__wado.passkey.note)`, 5000), await a.pk());
+    // Unlock — by approval: A's credential was cleared above.
+    await askPad();
+    await a.click(byText(".pksheet.up .btn", "Approve on"));
+    await a.until(`window.__wado.passkey.approve && window.__wado.passkey.approve.state === "waiting"`, 6000);
+    wado("passkey", "approve", "--yes");
+    await a.until(unlocked, 8000);
+    await openTrust(a);
+    check("unlocked: the card offers \"Ask for my passkey on this phone\"", await a.until(`!!document.querySelector(".pkreq .sw.on")`, 4000), await a.ev(cardText));
+    await a.click($(".pkreq .sw"));
+    check("…off: not asked, said honestly on the card", await a.until(`${pkState("required")} === false && ${unlocked} && ${cardText}.includes("Not asked") && /Anyone holding this phone/.test(document.querySelector(".pkreq .pkhint").textContent)`, 6000), (await a.pk()) + "\n" + (await a.ev(cardText)));
+    check("…logged as the device's choice", /no longer asked — turned off by the device/.test(logs), pkLog());
+    check("…and listed on the computer", /passkey not asked/.test(wado("passkey")), wado("passkey"));
+    await cardShot(a, "pk-require-off.png");
+    await a.go(BASE + "&go=trackpad");
+    await a.up();
+    check("a reconnect: still open, no sheet", await a.until(unlocked, 8000) && !(await a.ev(sheetUp)), await a.pk());
+    check("…the trackpad opens without a passkey", await a.until(`!!document.querySelector("#wado-trackpad:not([hidden])") && ${padCause} !== "locked" && ${padCause} !== "no-passkey"`, 10000), (await a.pk()) + " " + (await a.ev(padCause)));
+    await a.ev(`window.__wado.padClose && window.__wado.padClose(); true`);
+    // Back on, from the computer: asked again at once.
+    const on = wado("passkey", "require", "PhoneA-key", "on");
+    check("`wado passkey require … on` says what it did", /asked for its passkey again/.test(on), on);
+    await a.ev(`window.__wado.relaySendMsg({ type: "passkey_get" }); true`);
+    check("…and the phone is asked again", await a.until(`${pkState("required")} === true && !${unlocked}`, 6000), await a.pk());
+    // Off from the computer, while the phone is locked: the owner's way out.
+    const off = wado("passkey", "require", "PhoneA-key", "off");
+    check("`wado passkey require … off` warns", /no longer asked/.test(off) && /Anyone holding it/.test(off), off);
+    await a.ev(`window.__wado.relaySendMsg({ type: "passkey_get" }); true`);
+    check("…the locked phone is open", await a.until(`${pkState("required")} === false && ${unlocked}`, 6000), await a.pk());
+    wado("passkey", "require", "PhoneA-key", "on");
+    // A real passkey again for the phases after this one.
+    wado("passkey", "remove", "PhoneA-key");
+    await a.ev(`window.__wado.relaySendMsg({ type: "passkey_get" }); true`);
+    await a.until(`!window.__wado.passkey.state.registered`, 5000);
+    await ensurePasskey();
+    await a.ev(`window.__wado.passkeyAuthWaitMs = 0; true`);
   }
 
   // ── pairing ────────────────────────────────────────────────────────────────

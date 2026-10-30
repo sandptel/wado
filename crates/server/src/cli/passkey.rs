@@ -32,7 +32,7 @@ pub fn run(args: &[String]) -> i32 {
 }
 
 const USAGE: &str = "usage: wado passkey [list] | lock <device|all> | remove <device> | \
-    approve [<device>] [--yes|--no] [--wait] | require <device> on|off";
+    approve [<device>] [--yes|--no|--list] [--wait] | require <device> on|off";
 
 /// How long `stay` keeps a device unlocked, in the card's words.
 fn lasts(stay: &str) -> &'static str {

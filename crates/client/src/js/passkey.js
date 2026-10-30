@@ -89,7 +89,9 @@
   // that works. A button that just stays "waiting" is how this looked broken (2026-10-30).
   const WAIT = 20000;
   // The phone's own prompt: a person needs a few seconds, a PIN fallback some more — not a minute.
+  // (`W.passkeyAuthWaitMs` shortens it for the e2e script.)
   const AUTH_WAIT = 60000;
+  const authWait = () => W.passkeyAuthWaitMs || AUTH_WAIT;
   const OFFLINE = "Not connected to the computer right now — try again when it is back.";
   let waitTimer = 0;
   const waitFor = () => {
@@ -138,9 +140,9 @@
       no(e);
     };
     me.timer = setTimeout(() => {
-      if (W.rlog) W.rlog("passkey: the prompt didn't answer in " + AUTH_WAIT / 1000 + " s — given up");
+      if (W.rlog) W.rlog("passkey: the prompt didn't answer in " + authWait() / 1000 + " s — given up");
       me.end("timeout");
-    }, AUTH_WAIT);
+    }, authWait());
     cer = me;
     let p;
     try { p = run(me.ac.signal); } catch (e) { p = Promise.reject(e); }
@@ -251,7 +253,7 @@
             pubKeyCredParams: [{ type: "public-key", alg: -7 }],
             authenticatorSelection: { userVerification: "required", residentKey: "preferred" },
             attestation: "none",
-            timeout: AUTH_WAIT,
+            timeout: authWait(),
           },
         }));
         ask_({
@@ -267,7 +269,7 @@
             rpId: location.hostname,
             allowCredentials: m.cred_id ? [{ type: "public-key", id: dec(m.cred_id) }] : [],
             userVerification: "required",
-            timeout: AUTH_WAIT,
+            timeout: authWait(),
           },
         }));
         ask_({
