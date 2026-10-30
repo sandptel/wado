@@ -147,21 +147,23 @@ try {
   await sleep(2500);
   a.clear();
   const t0 = performance.now();
-  const midId = ++fid;
-  a.send({ type: "files_in", text: JSON.stringify({ id: midId, op: "get", path: join(HOME, "docs/mid.bin") }) });
-  await sleep(2500);
+  // Three files of 900 KB at once — ~3.6 MB sealed, well past the daemon's 1.25 MiB burst.
+  const ids = [++fid, ++fid, ++fid];
+  for (const id of ids) a.send({ type: "files_in", text: JSON.stringify({ id, op: "get", path: join(HOME, "docs/mid.bin") }) });
+  const midId = ids[2];
+  await sleep(25000);
   const asked = performance.now();
   a.send({ type: "host_net_request" });
   const net = await a.wait("host_net", 10000);
-  const midEnd = await a.waitWhere((x) => x.type === "files_out" && JSON.parse(x.text).id === midId && JSON.parse(x.text).done, 40000);
+  const midEnd = await a.waitWhere((x) => x.type === "files_out" && JSON.parse(x.text).id === midId && JSON.parse(x.text).done, 90000);
   const midGot = Buffer.concat(a.msgs.filter((x) => x.type === "files_chunk" && x.id === midId).map((x) => Buffer.from(x.b, "base64")));
   const wire = a.wire.filter(([t]) => t >= t0);
   const bytes = wire.reduce((s, [, n]) => s + n, 0);
   const secs = (wire.at(-1)[0] - t0) / 1000;
-  const rate = (bytes - 160 * 1024) / secs; // past the daemon's own burst
-  console.log(`     900 KB file on the lane: ${(bytes / 1024).toFixed(0)} KB on the wire in ${secs.toFixed(1)} s ≈ ${(rate / 1024).toFixed(1)} KB/s after the burst`);
+  const rate = (bytes - 1280 * 1024) / secs; // past the daemon's own burst
+  console.log(`     3 × 900 KB files on the lane: ${(bytes / 1024).toFixed(0)} KB on the wire in ${secs.toFixed(1)} s ≈ ${(rate / 1024).toFixed(1)} KB/s after the burst`);
   check("the file arrives whole on the lane", midEnd && sha(midGot) === sha(mid), `${midGot.length} bytes`);
-  check("…paced under the relay's 64 KB/s", rate <= 66 * 1024 && secs > 10, `${(rate / 1024).toFixed(1)} KB/s over ${secs.toFixed(1)} s`);
+  check("…paced under the relay's 64 KB/s past the burst", rate <= 66 * 1024 && secs > 25, `${(rate / 1024).toFixed(1)} KB/s over ${secs.toFixed(1)} s`);
   const late = net ? Math.round(net.__at - asked) : null;
   console.log(`     host_net answered ${late} ms after asking, in the middle of the transfer`);
   check("an answer overtakes the transfer (no head-of-line wait)", net && late < 1500, `${late} ms`);
@@ -184,11 +186,12 @@ try {
   a.clear();
   const line = "x".repeat(16 * 1024);
   const u0 = performance.now();
-  for (let i = 0; i < 70; i++) a.send({ type: "client_log", line });
+  // 3 MB, past the relay's 2 MiB burst for this seat.
+  for (let i = 0; i < 192; i++) a.send({ type: "client_log", line });
   a.send({ type: "host_net_request" });
-  const upNet = await a.wait("host_net", 40000);
+  const upNet = await a.wait("host_net", 60000);
   const upMs = upNet ? Math.round(upNet.__at - u0) : null;
-  console.log(`     70 × 16 KB sent at once, then a question: answered after ${upMs} ms`);
+  console.log(`     192 × 16 KB sent at once, then a question: answered after ${upMs} ms`);
   check("the relay paces a device's flood past its burst (it waits; nothing is dropped)", upNet && upMs > 5000, `${upMs} ms`);
 
   // ── files on the lane ──
