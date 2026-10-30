@@ -80,6 +80,21 @@ Each item has what you'd see, the evidence, where to start, and a suggested appr
 - **Start at:** `crates/server/src/lane/`, `crates/server/src/clip/share.rs`, the
   `relay_client.rs` main loop (`RELAY_SILENCE`).
 
+### 0b. Parallel use for every feature (decided 2026-10-30 — see Decision Log)
+- **Goal:** all approved devices use Files, Clipboard, Shells, Claude, widgets, sessions (join and
+  co-control) and their own gamepad at the same time. Only the host Touchpad and Keyboard are
+  exclusive, each with an instant take over plus a toast and Take back. Nobody holds the seat to
+  use a feature or to start a session.
+- **Today:** many features ride the single relay *seat*, so a second device must "take over".
+  F6's seatless `control` rooms (now live on the relay) give each device its own link.
+- **Work list (check each, then move it off the seat):**
+  - Files, clipboard, shells, Claude, push, widgets/host controls, config: on the control room.
+  - Pad: per-feature holds (touchpad, keyboard) in the daemon, with "In use by …" on the door,
+    tile and hub, plus take over and take back.
+  - Gamepad: one virtual pad per device (`pad/game.rs`).
+  - Desktop: join by default; Start my own; take over only for size.
+  - Remove the seat-takeover prompts that stand in front of basic features.
+
 ### 1. No picture when the computer is on the phone's hotspot
 - **You see:** "Connecting…" forever, then "Relayed — limited", no picture.
 - **Evidence** (daemon log, 10:53Z): the laptop's `wlp97s0` is 10.83.90.214/24 via 10.83.90.22,
