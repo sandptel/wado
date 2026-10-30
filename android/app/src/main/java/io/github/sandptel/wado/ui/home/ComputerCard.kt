@@ -1,11 +1,7 @@
 package io.github.sandptel.wado.ui.home
 
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,85 +9,101 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import io.github.sandptel.wado.bridge.Computer
-import io.github.sandptel.wado.online.OnlineProbe.Seen
+import io.github.sandptel.wado.core.CardModel
 import io.github.sandptel.wado.ui.common.LineIcon
 import io.github.sandptel.wado.ui.common.Pressable
+import io.github.sandptel.wado.ui.common.WadoButton
+import io.github.sandptel.wado.ui.common.semanticsLabel
 import io.github.sandptel.wado.ui.theme.LocalPalette
-import io.github.sandptel.wado.ui.theme.Motion
 import io.github.sandptel.wado.ui.theme.Radius
 import io.github.sandptel.wado.ui.theme.Type
 
-/** The four doors on a computer — the same as the app-icon shortcuts. */
+/** The doors on a computer that open the web part (or the native trackpad). */
 val DOORS = listOf(
-    Triple("session", "Desktop", "monitor"),
     Triple("trackpad", "Trackpad", "trackpad"),
     Triple("files", "Files", "folder"),
     Triple("shell", "Shell", "term"),
 )
 
 /**
- * One computer: its name and honest status (DESIGN.md: the true state, never a softened
- * "connected"), the card itself opening its page, and its four doors as tiles below.
+ * One computer (A7's card): its OS logo in a disc of its hue, its name, OS · compositor, the link's
+ * honest words and its sessions, and a ▶ for its desktop — accent, or solid with a glow while a
+ * session runs; disabled, saying why, while it is offline. A computer only the web part knows
+ * offers "Pair the app" instead (the app's core is a new device, A9.5).
  */
 @Composable
 fun ComputerCard(
-    computer: Computer,
-    seen: Seen,
-    selected: Boolean,
+    card: CardModel,
     onOpen: () -> Unit,
+    onPlay: () -> Unit,
     onDoor: (String) -> Unit,
+    onPairApp: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val p = LocalPalette.current
     Column(
         modifier
             .fillMaxWidth()
-            .clip(androidx.compose.foundation.shape.RoundedCornerShape(Radius.r3))
+            .clip(RoundedCornerShape(Radius.r3))
             .background(p.surface1)
-            .padding(8.dp),
+            .border(1.dp, p.line, RoundedCornerShape(Radius.r3))
+            .padding(6.dp),
     ) {
-        Pressable(onOpen, Modifier.fillMaxWidth(), color = p.surface1, radius = Radius.r2, sink = 0.985f) {
-            Row(Modifier.padding(horizontal = 10.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(computer.title, style = Type.headline, color = p.bright, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Spacer(Modifier.height(4.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        StatusDot(seen)
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            status(seen) + if (selected) " · last used" else "",
-                            style = Type.small,
-                            color = p.dim,
-                        )
+        Row(Modifier.fillMaxWidth().heightIn(min = 80.dp), verticalAlignment = Alignment.CenterVertically) {
+            Pressable(onOpen, Modifier.weight(1f).heightIn(min = 72.dp), color = p.surface1, radius = Radius.r2, sink = 0.985f) {
+                Row(Modifier.padding(horizontal = 8.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OsLogoDisc(card.logo, card.hue)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(card.name, style = Type.headline, color = p.bright, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (card.osLine.isNotEmpty()) {
+                            Text(card.osLine, style = Type.mono, color = p.dim, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        if (card.needsAppPairing) {
+                            Text("Known to the web part only", style = Type.small, color = p.dim)
+                        } else {
+                            val n = card.sessions
+                            LinkWords(card.link, if (n > 0) " · $n session${if (n == 1) "" else "s"}" else "")
+                        }
                     }
                 }
-                LineIcon("right", p.dim, size = 20.dp)
             }
+            if (!card.needsAppPairing) PlayButton(card, onPlay)
         }
-        Spacer(Modifier.height(6.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            DOORS.forEach { (go, label, icon) ->
-                Pressable({ onDoor(go) }, Modifier.weight(1f).height(62.dp), radius = Radius.r2) {
-                    Column(
-                        Modifier.fillMaxWidth().padding(vertical = 9.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        LineIcon(icon, p.bright, size = 20.dp)
-                        Text(label, style = Type.small, color = p.text, maxLines = 1)
+        if (card.needsAppPairing) {
+            WadoButton("Pair the app", onPairApp, Modifier.fillMaxWidth().padding(4.dp), primary = true) {
+                LineIcon("qr", p.onAccent, size = 18.dp)
+            }
+        } else if (card.webKey != null) {
+            Spacer(Modifier.height(2.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                DOORS.forEach { (go, label, icon) ->
+                    Pressable({ onDoor(go) }, Modifier.weight(1f).heightIn(min = 48.dp).semanticsLabel("$label on ${card.name}"), radius = Radius.r2) {
+                        Row(
+                            Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+                        ) {
+                            LineIcon(icon, p.bright, size = 18.dp)
+                            Text(label, style = Type.small, color = p.text, maxLines = 1)
+                        }
                     }
                 }
             }
@@ -99,35 +111,29 @@ fun ComputerCard(
     }
 }
 
-fun status(seen: Seen) = when (seen) {
-    Seen.ONLINE -> "Online"
-    Seen.OFFLINE -> "Offline"
-    Seen.UNREACHABLE -> "Can't reach its relay"
-    Seen.UNKNOWN -> "Checking…"
-}
-
-/** Online breathes (the only ambient motion here); offline is still and dim. */
+/** The 48 dp ▶ for the desktop. */
 @Composable
-fun StatusDot(seen: Seen) {
+private fun PlayButton(card: CardModel, onPlay: () -> Unit) {
     val p = LocalPalette.current
-    val color = when (seen) {
-        Seen.ONLINE -> p.good
-        Seen.OFFLINE -> p.dim
-        Seen.UNREACHABLE -> p.warn
-        Seen.UNKNOWN -> p.surface3
+    val running = card.sessions > 0
+    if (!card.link.online) {
+        Box(
+            Modifier.size(48.dp).clip(CircleShape).background(p.surface2)
+                .semantics { contentDescription = "Desktop — ${card.name} is offline"; disabled() },
+            contentAlignment = Alignment.Center,
+        ) { LineIcon("play", p.dim, size = 20.dp) }
+        return
     }
-    val breathe = if (seen == Seen.ONLINE && !Motion.reduced) {
-        val t = rememberInfiniteTransition(label = "dot")
-        t.animateFloat(0.35f, 0f, infiniteRepeatable(tween(1600, easing = Motion.Spring), RepeatMode.Restart), label = "halo").value
-    } else 0f
-    Box(Modifier.size(14.dp), contentAlignment = Alignment.Center) {
-        if (breathe > 0f) {
-            Box(
-                Modifier.size(14.dp)
-                    .graphicsLayer { scaleX = 1.6f - breathe * 1.7f; scaleY = scaleX; alpha = breathe * 2f }
-                    .clip(CircleShape).background(color),
-            )
+    val glow = if (running) Modifier.shadow(12.dp, CircleShape, ambientColor = p.accent, spotColor = p.accent) else Modifier
+    Pressable(
+        onPlay,
+        glow.size(48.dp).semanticsLabel(if (running) "Desktop on ${card.name} — a session is running" else "Desktop on ${card.name}"),
+        color = if (running) p.accent else p.surface2,
+        radius = 24.dp,
+        sink = 0.92f,
+    ) {
+        Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+            LineIcon("play", if (running) p.onAccent else p.accent, size = 20.dp)
         }
-        Box(Modifier.size(8.dp).clip(CircleShape).background(color))
     }
 }
