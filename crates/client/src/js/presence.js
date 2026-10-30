@@ -123,7 +123,8 @@ setInterval(() => {
     if (now - d.at > PRESENCE_IDLE_MS) d.el.classList.add("idle");
   }
 }, 1000);
-window.addEventListener("resize", () => { for (const d of presenceDots.values()) presencePlace(d); });
+W.presenceRefit = () => { for (const d of presenceDots.values()) presencePlace(d); };
+window.addEventListener("resize", W.presenceRefit);
 
 // Screenshot and UI checks (`?fixture`): play the daemon's side of presence.
 if (W.fixture) W.fixturePresence = (batch, list, you) => {

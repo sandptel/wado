@@ -10,6 +10,7 @@
 //! | [`pages`] | the page list, and the sections the pages are built from |
 //! | [`dock`] | ⋯ ○ ◁ over the picture |
 //! | [`stage`] | the video and everything drawn on it |
+//! | [`surround`] | the Pocket Console: the picture inset, the controls around it |
 //! | [`console`], [`drawer`] | the shell and the app drawer sheets |
 //! | [`widgets`] | the controls the pages are built from |
 //!
@@ -38,6 +39,7 @@ pub mod reconnecting;
 pub mod rejoin;
 pub mod stage;
 pub mod subpage;
+pub mod surround;
 pub mod toast;
 pub mod widgets;
 pub mod workspaces;
