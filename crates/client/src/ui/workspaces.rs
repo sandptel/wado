@@ -11,19 +11,19 @@ use wado_protocol::{AppEntry, WindowInfo};
 
 use crate::{bridge, state::Ui, ui::widgets::Icon};
 
-fn act(a: serde_json::Value) {
+pub fn act(a: serde_json::Value) {
     bridge::call(format!("window.__wado.windowAction({});", bridge::js(&a)));
 }
 
 /// The icon for a window: its app's, by `app_id`, or `None` for a letter tile.
-fn icon_of(apps: &[AppEntry], w: &WindowInfo) -> Option<String> {
+pub fn icon_of(apps: &[AppEntry], w: &WindowInfo) -> Option<String> {
     let id = w.app_id.to_ascii_lowercase();
     apps.iter()
         .find(|a| a.app_ids.iter().any(|x| x.to_ascii_lowercase() == id))
         .and_then(|a| a.icon.clone())
 }
 
-fn letter(w: &WindowInfo) -> String {
+pub fn letter(w: &WindowInfo) -> String {
     let src = if w.app_id.is_empty() {
         &w.title
     } else {

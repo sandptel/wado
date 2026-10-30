@@ -170,13 +170,21 @@ wado's chrome is the shell around someone else's screen. It works in two phases,
 is the one already built. **Glass Cockpit** (incumbent): the streamed desktop owns the whole
 display and every control floats over it as an instrument: a thumb-reachable dock that fades when
 idle, a link badge in the corner, a control centre that slides up as a sheet. Nothing reflows the
-picture. **Pocket Console** (decided `2026-10-29`, not yet built): by default, a session opens
-with the screen drawn smaller at its true aspect ratio, held inside a console-like shell whose
-controls sit *around* it. Going full screen grows the picture to take the whole display, and the
-same controls morph outward into the floating cockpit instruments. They are one set of controls
-in two arrangements, never two UIs. The candidates for the console's surround are window controls
-(resize, close, minimise, switching), input controls (touchpad, keys, gamepad, playback), and
-status with quick tiles. The final arrangement is undecided.
+picture. **Pocket Console** (built `2026-10-30`, `ui/surround`; spec
+`docs/superpowers/specs/2026-10-30-pocket-console-design.md`): by default a session opens with
+the picture drawn smaller at its true aspect ratio, held inside a console shell whose controls
+sit *around* it. **Full screen** grows the picture to the whole display, and the same controls
+fly outward into the floating cockpit instruments. They are one set of controls in two
+arrangements, never two UIs: the dock, quick rail, workspace bar, link badge and people chip are
+the same nodes in both.
+
+The arrangement, per form factor: a **top band** of status (link words, the computer's name, the
+people chip); the **workspaces** down the left rail (portrait, desktop) or along the band
+(landscape); **rotate, keyboard and the four input faces** on the right rail (portrait) or the
+left column (landscape); the **window strip** (focused window, Minimise, Maximise, Close) as the
+bezel's chin; the **deck** under it (portrait) or beside the picture (landscape, desktop) holding
+the active face — Touchpad, Keys, Quick actions or Gamepad; and the **dock row** (Full screen ·
+Apps Home Back · ⋯) at the bottom, which stays put through the morph.
 
 The mood is **calm, tactile, honest**. Surfaces are soft, filled and pressable, moving on a spring
 with a little mass. The chrome stays quiet until something is wrong, then says so in plain words
@@ -288,6 +296,15 @@ fixed z-order: dock (10), landing (40), control-centre scrim (45) and sheet (50)
 video. Chrome floats over it and only dims what is behind. The Pocket Console phase relaxes this
 deliberately: the picture is inset at its true aspect ratio until the user goes full screen.
 
+**The Scale, Never Resize Rule.** The console is a transform on the video, never a different
+output size: no fresh Output, no keyframe, no app reflow on a toggle. Input maps against the
+video's transformed rect at event time, so a tap lands under the finger in either arrangement and
+mid-morph.
+
+**The Gutter Law.** The picture has the display's own aspect, so a band on one axis always leaves
+proportional gutters on the other. Each form fills both: a band pair *and* a rail pair. Height
+left over goes to the deck, so a taller phone gets a bigger touchpad, never a dead band.
+
 ## Elevation & Depth
 
 This is a hybrid system. Depth on content comes from the tonal surface ladder: cards on surface-1
@@ -306,6 +323,11 @@ fine-pointer devices, never on phones, where it costs decode time.
 ### Named Rules
 **The Float-Only Shadow Rule.** A shadow means "this is floating over the picture". Content
 inside a sheet or card stays flat and gets its depth from tone.
+
+**The Plates Rule.** The surface behind a group of controls (a dock pill, the rail, the console's
+bezel and deck) is a plate of its own, never the group's background. In the morph the buttons fly
+and the plates only cross-fade, so text never distorts and the shadows arrive with the cockpit's
+plates — the moment things start floating over the picture.
 
 ## Shapes
 
@@ -400,6 +422,17 @@ is never ambiguous about which computer it changes.
 `.lstate`: a tone dot and plain words. Direct ripples once per ping sample; Relayed and
 Reconnecting breathe; Offline is still — stillness means nothing is alive.
 
+### Pocket Console (signature)
+The picture inset on an s1 r4 **bezel** (no shadow: it does not float) over a ground wash. Around
+it: the **window strip** (a title button that opens the window sheet, then Minimise, Maximise and
+Close, Close 10px apart and tinted `bad` on press), the **face switcher** (44px buttons; the
+active face is accent and a full pill, per the Morphing Toggle Rule), and the **deck** on an r3
+plate. The deck's faces reuse the trackpad's vocabulary (`.tpkey`, `.tptype`, `.tpact`) and the
+on-screen gamepad's clusters. **Full screen** is a labelled accent-tint pill in the console and an
+icon (`min`, "Leave full screen") on the cockpit's quick rail, where the active face also sits and
+leads back to the console. Every target is 44px; the touchpad's Left / Right zones run the deck's
+width at 30px.
+
 ### Widgets
 Home's last section: cards that each follow one computer (header: type label and a host chip
 with that computer's status dot). Media, Volume, Brightness, Clipboard, Trackpad. Stored on the
@@ -435,8 +468,10 @@ ambient loop that stops under reduced motion — the words, a solid accent Copy/
   (cubic-bezier(.34, 1.56, .64, 1)) for small things a finger just flipped. Use `--dur` (220ms)
   and `--dur-sheet` (480ms).
 - **Do** time things from the duration tokens: `--dur` (220ms), `--dur-sheet` (480ms),
-  `--dur-hero` (520ms, shared-element transitions), `--dur-press` (120ms, press feedback) and
-  `--stagger` (40ms between sections rising in). Reduced motion: 120 / 200 / 160 / 120 / 0ms.
+  `--dur-hero` (520ms, shared-element transitions), `--dur-press` (120ms, press feedback),
+  `--stagger` (40ms between sections rising in) and `--dur-stage` / `--dur-stage-out` (620 /
+  520ms, the console ⇄ cockpit morph). Reduced motion: 120 / 200 / 160 / 120 / 0 / 160 / 160ms,
+  and the morph keeps no travel at all, only a fade of the new arrangement.
 - **Do** let exits run on `--spring` at about 80% of the entrance (520 → 420ms); a departing
   opacity-only fade may use a plain accelerate (`cubic-bezier(.3, 0, 1, 1)`, ≤180ms).
 - **Do** honour `prefers-reduced-motion` and the user's `data-motion` (full / reduced / off).

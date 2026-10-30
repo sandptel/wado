@@ -20,6 +20,7 @@
 
 pub mod about;
 pub mod appearance;
+pub mod arrangement;
 pub mod computers;
 pub mod connection;
 pub mod diagnostics;

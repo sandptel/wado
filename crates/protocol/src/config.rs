@@ -43,6 +43,10 @@ pub struct ConfigState {
     /// `None` when the file has no block for it, and the phone keeps its own copy.
     #[serde(default)]
     pub trackpad: Option<TrackpadPrefs>,
+    /// This device's console preferences (`device "<key>" { console { … } }`), every field
+    /// filled; `None` when the file has no block for it, and the device keeps its own copy.
+    #[serde(default)]
+    pub console: Option<ConsolePrefs>,
     /// What this device may do here, so a page can say what is missing — and the exact command
     /// that allows it — instead of offering a control the daemon will refuse. `None`: a daemon
     /// from before this was sent; the client then offers everything and lets the daemon say no.
@@ -90,6 +94,16 @@ pub struct TrackpadPrefs {
     pub gestures: std::collections::BTreeMap<String, String>,
     /// The keyboard opens with the pad.
     pub keyboard: bool,
+}
+
+/// How one device opens a session, as `wado_config::schema::DeviceConsole` types it. The device
+/// changes a field with `ConfigSet` on `device.<its key>.console.<field>`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConsolePrefs {
+    /// `console` or `full`.
+    pub open: String,
+    /// `auto`, `pad`, `keys`, `quick` or `gamepad`.
+    pub face: String,
 }
 
 fn yes() -> bool {
