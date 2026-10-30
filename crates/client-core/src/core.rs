@@ -259,6 +259,39 @@ impl Core {
         Some(id)
     }
 
+    /// A room's UI read the computer's host state: refresh the saved name (until the person names
+    /// it), OS and desktop, as a watched link's pump does, so cards and logos follow the computer.
+    pub fn note_host(&self, key: &str, state_json: &str) {
+        let Ok(state) = serde_json::from_str::<wado_protocol::HostState>(state_json) else {
+            return;
+        };
+        let v = crate::feeds::host::view(&state);
+        let changed = {
+            let mut ps = self.inner.profiles.lock().unwrap();
+            let Some(mut p) = ps.get(key).cloned() else {
+                return;
+            };
+            let before = p.clone();
+            if !v.name.is_empty()
+                && p.name == wado_protocol::relay_wire::display_remote_id(&p.remote_id)
+            {
+                p.name = v.name.clone();
+            }
+            p.os_id = v.os_id.clone();
+            p.os_like = v.os_like.clone();
+            p.desktop = v.desktop.clone();
+            let changed = p != before;
+            if changed {
+                ps.upsert(p);
+                let _ = ps.save();
+            }
+            changed
+        };
+        if changed {
+            self.emit_computers();
+        }
+    }
+
     /// Send plaintext JSON to a room's computer, sealed as it leaves. Urgent jumps the bulk
     /// queue; `resend` sends it again after a reconnect. False if the room is closed.
     pub fn send_room(&self, id: &str, json: String, urgent: bool, resend: bool) -> bool {

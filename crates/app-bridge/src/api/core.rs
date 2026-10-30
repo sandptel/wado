@@ -93,6 +93,12 @@ impl AppCore {
         self.core.open_room(key, room).unwrap_or_default()
     }
 
+    /// The computer's host state as a room read it (`host_state.state`, JSON).
+    #[frb(sync)]
+    pub fn note_host(&self, key: String, state_json: String) {
+        self.core.note_host(&key, &state_json)
+    }
+
     #[frb(sync)]
     pub fn send_room(&self, id: String, json: String, urgent: bool, resend: bool) -> bool {
         self.core.send_room(&id, json, urgent, resend)

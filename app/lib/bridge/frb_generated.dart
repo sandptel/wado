@@ -68,7 +68,7 @@ class WadoCore
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => -1127620407;
+  int get rustContentHash => -648852133;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -97,6 +97,12 @@ abstract class WadoCoreApi extends BaseApi {
   });
 
   bool crateApiCoreAppCoreKeyReset({required AppCore that});
+
+  void crateApiCoreAppCoreNoteHost({
+    required AppCore that,
+    required String key,
+    required String stateJson,
+  });
 
   String crateApiCoreAppCoreOpenRoom({
     required AppCore that,
@@ -335,6 +341,41 @@ class WadoCoreApiImpl extends WadoCoreApiImplPlatform implements WadoCoreApi {
       const TaskConstMeta(debugName: "AppCore_key_reset", argNames: ["that"]);
 
   @override
+  void crateApiCoreAppCoreNoteHost({
+    required AppCore that,
+    required String key,
+    required String stateJson,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerAppCore(
+            that,
+            serializer,
+          );
+          sse_encode_String(key, serializer);
+          sse_encode_String(stateJson, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 7)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiCoreAppCoreNoteHostConstMeta,
+        argValues: [that, key, stateJson],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiCoreAppCoreNoteHostConstMeta =>
+      const TaskConstMeta(
+        debugName: "AppCore_note_host",
+        argNames: ["that", "key", "stateJson"],
+      );
+
+  @override
   String crateApiCoreAppCoreOpenRoom({
     required AppCore that,
     required String key,
@@ -354,7 +395,7 @@ class WadoCoreApiImpl extends WadoCoreApiImplPlatform implements WadoCoreApi {
           sse_encode_String(kind, serializer);
           sse_encode_String(instance, serializer);
           sse_encode_bool(takeover, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 7)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 8)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -387,7 +428,7 @@ class WadoCoreApiImpl extends WadoCoreApiImplPlatform implements WadoCoreApi {
             serializer,
           );
           sse_encode_String(link, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 8)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 9)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_u_64,
@@ -423,7 +464,7 @@ class WadoCoreApiImpl extends WadoCoreApiImplPlatform implements WadoCoreApi {
           sse_encode_String(relay, serializer);
           sse_encode_String(remoteId, serializer);
           sse_encode_String(code, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 9)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 10)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_u_64,
@@ -462,7 +503,7 @@ class WadoCoreApiImpl extends WadoCoreApiImplPlatform implements WadoCoreApi {
           sse_encode_String(json, serializer);
           sse_encode_bool(urgent, serializer);
           sse_encode_bool(resend, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 10)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 11)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_bool,
@@ -495,7 +536,7 @@ class WadoCoreApiImpl extends WadoCoreApiImplPlatform implements WadoCoreApi {
             serializer,
           );
           sse_encode_u_64(silenceMs, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 11)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 12)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -527,7 +568,7 @@ class WadoCoreApiImpl extends WadoCoreApiImplPlatform implements WadoCoreApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 12,
+            funcId: 13,
             port: port_,
           );
         },
@@ -561,7 +602,7 @@ class WadoCoreApiImpl extends WadoCoreApiImplPlatform implements WadoCoreApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 13,
+            funcId: 14,
             port: port_,
           );
         },
@@ -588,7 +629,7 @@ class WadoCoreApiImpl extends WadoCoreApiImplPlatform implements WadoCoreApi {
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 14)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 15)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_String,
@@ -1000,6 +1041,12 @@ class AppCoreImpl extends RustOpaque implements AppCore {
 
   bool keyReset() =>
       WadoCore.instance.api.crateApiCoreAppCoreKeyReset(that: this);
+
+  /// The computer's host state as a room read it (`host_state.state`, JSON).
+  void noteHost({required String key, required String stateJson}) => WadoCore
+      .instance
+      .api
+      .crateApiCoreAppCoreNoteHost(that: this, key: key, stateJson: stateJson);
 
   /// Open a room on computer `key`: `kind` is "seat", "control" or "view" (with `instance`).
   /// `takeover` asks for the seat on the first dial only. Returns the room id, or "" when this

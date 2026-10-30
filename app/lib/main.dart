@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'app.dart';
 import 'core/core_host.dart';
 import 'ui/theme/look.dart';
+import 'wado/e2e.dart';
 import 'wado/host.dart';
 import 'wado/session.dart';
 import 'wado/relay_link.dart';
@@ -20,6 +21,7 @@ Future<void> main() async {
     Host.I;
     final sel = Settings.I.s('selected');
     if (sel.isNotEmpty && CoreHost.I.computer(sel) != null) RelayLink.I.dial(sel);
+    e2eHooks();
   } catch (e) {
     failure = e;
   }

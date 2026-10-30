@@ -26,6 +26,9 @@ abstract class AppCore implements RustOpaqueInterface {
 
   bool keyReset();
 
+  /// The computer's host state as a room read it (`host_state.state`, JSON).
+  void noteHost({required String key, required String stateJson});
+
   /// Open a room on computer `key`: `kind` is "seat", "control" or "view" (with `instance`).
   /// `takeover` asks for the seat on the first dial only. Returns the room id, or "" when this
   /// device does not know the computer.

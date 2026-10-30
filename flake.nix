@@ -283,6 +283,7 @@
                   # flutter_webrtc's libwebrtc links these on Linux.
                   libgbm
                   libdrm
+                  libpulseaudio
                 ]
               );
               ANDROID_NDK_HOME = "${root}/ndk/${ndkVersion}";
@@ -299,6 +300,9 @@
                     libsecret
                     libepoxy
                     jsoncpp
+                    # libwebrtc's audio device module dlopens one of these, and aborts without.
+                    libpulseaudio
+                    alsa-lib
                   ]
                 )
               );

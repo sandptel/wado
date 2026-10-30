@@ -2,9 +2,11 @@
 // config.js): its state (sound, media, Wi-Fi…), its settings, and the sessions running on it.
 // Host state is polled while someone is looking (`watch`), as the web does.
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../core/core_host.dart';
 import 'relay_link.dart';
 import 'session.dart';
 
@@ -65,6 +67,8 @@ class Host {
       _pics[bus] = {'art': p['art'], 'icon': p['icon']};
     }
     state.value = s;
+    final k = RelayLink.I.key;
+    if (s != null && k != null) CoreHost.I.core.noteHost(key: k, stateJson: jsonEncode(s));
     final fast = (s?['media'] as List? ?? []).any((p) => p['playing'] == true);
     if (fast != _fast) {
       _fast = fast;
