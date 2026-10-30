@@ -1,0 +1,28 @@
+{
+  "origin": "https://wado.example",
+  "rp_id": "wado.example",
+  "register_challenge": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc",
+  "get_challenge": "CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQk",
+  "register": {
+    "cred_id": "y0Z1LEVrvkjSO5OOT4g_-Q",
+    "client_data": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiQndjSEJ3Y0hCd2NIQndjSEJ3Y0hCd2NIQndjSEJ3Y0hCd2NIQndjSEJ3YyIsIm9yaWdpbiI6Imh0dHBzOi8vd2Fkby5leGFtcGxlIiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ",
+    "attestation": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViUGCKVRhbCDXG0LWGLUg9oWTlaGBqHhcC1Squrv0JWWQJFAAAAAAAAAAAAAAAAAAAAAAAAAAAAEMtGdSxFa75I0juTjk-IP_mlAQIDJiABIVgguJA4wJVqPvwi1xRwJCq49Z4UvLiFb5fSShDDNzCxwvQiWCAwwLPq-PZfKUqlQxIQeyxuJAmYHfu17AIlj4A1p4NiWQ"
+  },
+  "assert": {
+    "cred_id": "y0Z1LEVrvkjSO5OOT4g_-Q",
+    "client_data": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiQ1FrSkNRa0pDUWtKQ1FrSkNRa0pDUWtKQ1FrSkNRa0pDUWtKQ1FrSkNRayIsIm9yaWdpbiI6Imh0dHBzOi8vd2Fkby5leGFtcGxlIiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ",
+    "auth_data": "GCKVRhbCDXG0LWGLUg9oWTlaGBqHhcC1Squrv0JWWQIFAAAABQ",
+    "signature": "MEQCIER-3i97vM_r6UupxqkYOSzLYmoP9b6OaNEZQy-63oSCAiA_som865eMHXyS-_BFcAqvamsIVw7VJuAeANmVK8NJMg"
+  },
+  "synced_register": {
+    "cred_id": "BgoPChqC0Ps8NVPz7fKodg",
+    "client_data": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiQndjSEJ3Y0hCd2NIQndjSEJ3Y0hCd2NIQndjSEJ3Y0hCd2NIQndjSEJ3YyIsIm9yaWdpbiI6Imh0dHBzOi8vd2Fkby5leGFtcGxlIiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ",
+    "attestation": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViUGCKVRhbCDXG0LWGLUg9oWTlaGBqHhcC1Squrv0JWWQJFAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAYKDwoagtD7PDVT8-3yqHalAQIDJiABIVggf4V4J3Y3YyQe713FvhmAvW-dzhskV6NjVdz5G1CuPeIiWCBnlSUgq9001KLVXPNblgrZLUlQRAZsjAvuc9iPpOBrDg"
+  },
+  "synced_assert": {
+    "cred_id": "BgoPChqC0Ps8NVPz7fKodg",
+    "client_data": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiQ1FrSkNRa0pDUWtKQ1FrSkNRa0pDUWtKQ1FrSkNRa0pDUWtKQ1FrSkNRayIsIm9yaWdpbiI6Imh0dHBzOi8vd2Fkby5leGFtcGxlIiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ",
+    "auth_data": "GCKVRhbCDXG0LWGLUg9oWTlaGBqHhcC1Squrv0JWWQIFAAAAAA",
+    "signature": "MEQCIDWI2Ayd7QDqRTjFC3nleEQt9RJCnqG0XXeTsc7WcjTdAiBEOMusBZQig7W7V9EcSk0kzXfysrw_MEeBj5OaL3mBPw"
+  }
+}

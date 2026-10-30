@@ -15,6 +15,12 @@ pub enum Program {
     /// `ssh <alias>` — an alias the caller checked against the user's own ssh config. One
     /// argument, never through a shell.
     Ssh(String),
+    /// A program and its arguments, run as given — never through a shell — with `env` added.
+    /// Claude's sessions (`tmux attach-session …`, or `claude` itself).
+    Command {
+        argv: Vec<String>,
+        env: Vec<(String, String)>,
+    },
 }
 
 /// A terminal to open.

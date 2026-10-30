@@ -11,16 +11,19 @@ mod actions;
 mod app_info;
 mod bridge;
 mod cfg;
+mod claude;
 mod debug;
 mod deeplink;
 mod link;
 mod multi;
 mod persist;
 mod profile;
+mod push;
 mod reach;
 mod res;
 mod route;
 mod state;
+mod stepup;
 mod theme;
 mod ui;
 mod widget;
@@ -145,6 +148,8 @@ fn App() -> Element {
         document::Stylesheet { href: asset!("/assets/link.css") }
         document::Stylesheet { href: asset!("/assets/pad.css") }
         document::Stylesheet { href: asset!("/assets/app.css") }
+        document::Stylesheet { href: asset!("/assets/passkey.css") }
+        document::Stylesheet { href: asset!("/assets/claude.css") }
 
         // The stage is the whole screen, always. Everything else floats over it and never
         // takes space from the picture — the control centre included (Decision Log 2026-10-02).
@@ -160,6 +165,8 @@ fn App() -> Element {
             {ui::cc::render(ui)}
             {ui::reconnecting::render(ui)}
             {ui::link_badge::render(ui)}
+            {ui::scoped(ui, "claude-picker", ui::claude::picker::render)}
+            {ui::scoped(ui, "passkey", ui::passkey::sheet)}
         }
     }
 }

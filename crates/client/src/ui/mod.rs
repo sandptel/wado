@@ -16,6 +16,7 @@
 //! [`live`] and [`gamepad`] hold no UI any more: they push browser-side settings to the bridge.
 
 pub mod cc;
+pub mod claude;
 pub mod computer;
 pub mod console;
 pub mod dock;
@@ -31,6 +32,8 @@ pub mod latency;
 pub mod link_badge;
 pub mod live;
 pub mod pages;
+pub mod passkey;
+pub mod push;
 pub mod reconnecting;
 pub mod rejoin;
 pub mod stage;

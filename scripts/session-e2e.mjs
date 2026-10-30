@@ -18,6 +18,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deviceFor, secure } from "./lib/e2e-device.mjs";
+import { authenticator, enrolAndUnlock } from "./lib/e2e-passkey.mjs";
 
 const ROOT = new URL("..", import.meta.url).pathname;
 const BIN = join(ROOT, process.argv[2] || "target/release");
@@ -83,6 +84,8 @@ try {
   a.send({ type: "session_start", config: { width: 640, height: 360, fps: 30, quality: "balanced" } });
   const started = await a.waitWhere((m) => m.type === "session_started" || m.type === "session_error", 30000);
   check("a session starts", started && started.type === "session_started", JSON.stringify(started) + d.out.slice(-400));
+  // Shells need a fresh passkey unlock (F3).
+  await enrolAndUnlock(a.send, (p) => a.waitWhere(p), await authenticator());
   a.send({ type: "pty_open", cols: 120, rows: 30 });
   const { id } = (await a.wait("pty_opened")) || {};
 

@@ -98,6 +98,15 @@ impl Pty {
                 c.arg("-l");
                 (c, shell.as_str())
             }
+            Program::Command { argv, env } => {
+                let prog = argv.first().map_or("", String::as_str);
+                let mut c = CommandBuilder::new(prog);
+                c.args(&argv[1.min(argv.len())..]);
+                for (k, v) in env {
+                    c.env(k, v);
+                }
+                (c, prog)
+            }
         };
         if let Some(cwd) = cwd {
             cmd.cwd(cwd);

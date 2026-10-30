@@ -8,6 +8,7 @@
 
 pub mod apps;
 pub mod caps;
+pub mod claude;
 pub mod clip;
 pub mod config;
 pub mod control;
@@ -18,6 +19,8 @@ pub mod link;
 pub mod menu;
 pub mod multi;
 pub mod pad;
+pub mod passkey;
+pub mod push;
 pub mod relay;
 pub mod relay_wire;
 pub mod sessions;
