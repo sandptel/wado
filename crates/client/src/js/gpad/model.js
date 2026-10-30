@@ -81,7 +81,6 @@
     return M.clamp(L);
   };
 
-  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   const near = (a, b) => Array.isArray(a) && Array.isArray(b) && a.every((x, i) => Math.abs(x - b[i]) < 1e-4);
 
   M.diff = (full) => {
@@ -135,7 +134,8 @@
 
   M.mirror = (full) => {
     const L = clone(full);
-    for (const c of L.controls) { c.l[0] = 1 - c.l[0]; c.p[0] = 1 - c.p[0]; }
+    const flip = (x) => +(1 - x).toFixed(6); // so mirroring twice is the same layout, not a float off
+    for (const c of L.controls) { c.l[0] = flip(c.l[0]); c.p[0] = flip(c.p[0]); }
     return L;
   };
 
