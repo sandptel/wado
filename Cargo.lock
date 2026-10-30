@@ -6186,7 +6186,7 @@ dependencies = [
 
 [[package]]
 name = "wado"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "base64",
  "bytes",
@@ -6220,7 +6220,7 @@ dependencies = [
 
 [[package]]
 name = "wado-client"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "console_error_panic_hook",
  "dioxus",
@@ -6232,7 +6232,7 @@ dependencies = [
 
 [[package]]
 name = "wado-compositor"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "bitflags 2.13.1",
  "bytes",
@@ -6252,7 +6252,7 @@ dependencies = [
 
 [[package]]
 name = "wado-config"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "kdl 6.7.1",
  "serde",
@@ -6263,7 +6263,7 @@ dependencies = [
 
 [[package]]
 name = "wado-mobile-core"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "base64",
  "ring",
@@ -6277,7 +6277,7 @@ dependencies = [
 
 [[package]]
 name = "wado-platform"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "tokio",
  "wado-protocol",
@@ -6285,7 +6285,7 @@ dependencies = [
 
 [[package]]
 name = "wado-protocol"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "serde",
  "serde_json",
@@ -6293,7 +6293,7 @@ dependencies = [
 
 [[package]]
 name = "wado-relay"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "anyhow",
  "axum 0.7.9",

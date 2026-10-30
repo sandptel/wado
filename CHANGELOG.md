@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.0.4 — `2026-10-30`
+
+The phone becomes the computer's touchpad, keyboard and gamepad; pairing by code only; the
+Computer page, the Pocket Console, several devices in one session, an installable app and an
+Android APK; a clipboard that follows you; passkeys, Claude and push. Everything since v0.0.3
+is below, newest first.
+
+### Highlights of the last day
+
+- **Virtual input.** Touchpad, Keyboard and Gamepad live in one place on the Computer page, and
+  all three work without a session. The gamepad has layouts (Standard, Shapes, Swapped, Minimal,
+  Racing, Fighting, Retro, or the session's own), an editor for position, size, look and
+  behaviour, a comfort check, and an animated build. Touchpad speed, scrolling and tapping are
+  applied on the computer through Hyprland, so taps keep working at any speed.
+- **You can always leave a session.** A session opens only when you pick it. Back always takes you
+  to the computer's page and stops this phone's retries, while the session keeps running. While
+  it connects, or if the picture can't come through, the state, a timer, Leave and Retry sit
+  inside the picture instead of cards over the controls. The phone keyboard no longer squeezes the
+  console, and the Android app no longer shows a giant play icon over an empty picture.
+- **A passkey never traps you.** Every prompt has a deadline, Try again and Not now, and failures
+  say what to do. **Approve on the computer** (`wado passkey approve`, `wado tui`) unlocks without
+  the passkey. The owner can stop a device being asked (`wado passkey require <device> off`), and
+  a device can choose how long an unlock lasts. Two quick taps no longer lock you out.
+- **Pages no longer show through each other**, and the file viewer is rebuilt: pictures, video,
+  audio, PDF, text and code, Markdown, JSON, CSV, zip contents and fonts, with details in a sheet.
+- **Text size and interface size** per device, cozy by default.
+- **Keep awake no longer outlives the daemon.** A restart used to leave the laptop unable to sleep.
+- **The web client downloads a third of what it did** (0.93 MB gzipped, from 2.6 MB): its WASM
+  shipped debug info.
+
 ### Added
 
 - **Text size and interface size, per device.** Appearance now leads with two sizes: **Text
@@ -247,7 +277,6 @@
   tap. A status poll already in flight answered with the state from before the action and
   overwrote it.
 
-## Unreleased
 
 ### Added
 

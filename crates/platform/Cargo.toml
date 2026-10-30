@@ -1,6 +1,6 @@
 [package]
 name = "wado-platform"
-version = "0.0.3"
+version = "0.0.4"
 edition = "2024"
 license = "AGPL-3.0-only"
 description = "wado's platform layer: every host capability (input devices, sound, Wi-Fi, clipboard, windows, …) as a trait, a registry that says honestly what is missing, published state, and fakes. No Smithay, no network types."
