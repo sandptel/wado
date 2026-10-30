@@ -57,6 +57,8 @@ pub struct Launched {
     /// (`crate::launch_clock`).
     pub at: std::time::Instant,
     pub shown: bool,
+    /// Its number in `WindowList::launches` (`crate::launch_clock::next`).
+    pub n: u64,
 }
 
 impl Launched {
@@ -66,6 +68,7 @@ impl Launched {
             child,
             at: std::time::Instant::now(),
             shown: false,
+            n: crate::launch_clock::next(),
         }
     }
 }

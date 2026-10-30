@@ -37,6 +37,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::{SessionConfig, SessionInfo};
 
+/// `skip_serializing_if` for an `ack`: 0 is "none", and is left off the wire so a message to an
+/// older peer is byte-for-byte what it was.
+pub(crate) fn is_zero(n: &u32) -> bool {
+    *n == 0
+}
+
 pub use crate::relay_wire::{
     display_remote_id, normalize_remote_id, RELAY_JOIN_BASE_PATH, RELAY_REGISTER_PATH, WIRE_VERSION,
 };
@@ -288,7 +294,11 @@ pub enum RelayMsg {
     /// a fresh session takes.
     SessionRejoin,
     /// Ask the server to stop the running session.
-    SessionStop,
+    SessionStop {
+        /// The client's number for this request, echoed on its answer (0: none — an older peer).
+        #[serde(default, skip_serializing_if = "crate::relay::is_zero")]
+        ack: u32,
+    },
     /// Change the shape of the **running** session — resolution, aspect ratio, frame rate,
     /// bitrate — without stopping it.
     ///
@@ -309,6 +319,9 @@ pub enum RelayMsg {
     /// Spawn a command into the running session.
     SessionLaunch {
         command: String,
+        /// The client's number for this request, echoed on its answer (0: none — an older peer).
+        #[serde(default, skip_serializing_if = "crate::relay::is_zero")]
+        ack: u32,
     },
     /// Ask for the list of launchable applications.
     ///
@@ -323,6 +336,9 @@ pub enum RelayMsg {
     /// nothing. (HTTP consolidates instead — see [`crate::SessionControl`].)
     SessionWindow {
         action: crate::WindowAction,
+        /// The client's number for this request, echoed on its answer (0: none — an older peer).
+        #[serde(default, skip_serializing_if = "crate::relay::is_zero")]
+        ack: u32,
     },
 
     // ── Session control: server → client (forwarded by relay) ───────────────
@@ -345,7 +361,11 @@ pub enum RelayMsg {
         info: SessionInfo,
     },
     /// Session stopped cleanly.
-    SessionStopped,
+    SessionStopped {
+        /// The `ack` of the request this answers; 0 when it answers none.
+        #[serde(default, skip_serializing_if = "crate::relay::is_zero")]
+        ack: u32,
+    },
     /// The running session changed shape. Carries the *new* [`SessionInfo`], so the client can
     /// re-aim its health verdict: the decode budget is `1000 / fps` and the arrival comparison
     /// is against the CBR target, and both just moved. See [`RelayMsg::SessionReconfigure`].
@@ -353,9 +373,17 @@ pub enum RelayMsg {
         info: SessionInfo,
     },
     /// A launch command was accepted.
-    SessionLaunched,
+    SessionLaunched {
+        /// The `ack` of the request this answers; 0 when it answers none.
+        #[serde(default, skip_serializing_if = "crate::relay::is_zero")]
+        ack: u32,
+    },
     /// A window action was accepted.
-    SessionWindowed,
+    SessionWindowed {
+        /// The `ack` of the request this answers; 0 when it answers none.
+        #[serde(default, skip_serializing_if = "crate::relay::is_zero")]
+        ack: u32,
+    },
     /// Which actionable elements lie within `r` of the point — asked on touch-down so the
     /// answer is usually back before the finger lifts. `x`, `y` normalized to the output; `r`
     /// as a fraction of the output's width. `seq` pairs the answer with the question.
@@ -388,6 +416,9 @@ pub enum RelayMsg {
         /// The workspace showing.
         #[serde(default)]
         workspace: u32,
+        /// The latest launches and how each went ([`crate::LaunchNote`]).
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        launches: Vec<crate::LaunchNote>,
     },
     /// The launchable applications the server found.
     AppsList {
@@ -396,6 +427,9 @@ pub enum RelayMsg {
     /// A session operation failed.
     SessionError {
         message: String,
+        /// The `ack` of the request this answers; 0 when it answers none.
+        #[serde(default, skip_serializing_if = "crate::relay::is_zero")]
+        ack: u32,
     },
 
     // ── Interactive shells (PTY), several per daemon ───────────────────────
@@ -469,8 +503,18 @@ pub enum RelayMsg {
         sessions: Vec<crate::SessionSummary>,
     },
     /// Client → server: this viewer is leaving and the session is to stay running until someone
-    /// ends it — not reaped by the no-viewer watchdog.
-    SessionDetach,
+    /// ends it — not reaped by the no-viewer watchdog. Answered with [`RelayMsg::SessionDetached`].
+    SessionDetach {
+        /// The client's number for this request, echoed on its answer (0: none — an older peer).
+        #[serde(default, skip_serializing_if = "crate::relay::is_zero")]
+        ack: u32,
+    },
+    /// Server → client: the session is kept running for whoever comes back to it.
+    SessionDetached {
+        /// The `ack` of the request this answers; 0 when it answers none.
+        #[serde(default, skip_serializing_if = "crate::relay::is_zero")]
+        ack: u32,
+    },
 
     // ── Several devices in one session (`crate::multi`) ──────────────────────
     // Post-handshake, forwarded by the relay unread — no mirror in `relay_wire.rs`.
@@ -556,18 +600,32 @@ pub enum RelayMsg {
 
     // ── The computer itself: sound, Wi-Fi, Bluetooth (see `server::host`) ────
     /// Client → server: send me [`RelayMsg::HostState`]. Needs no session.
-    HostGet,
-    /// Server → client: the computer as it is now. Sent on request and after every action.
+    HostGet {
+        /// The client's number for this request, echoed on its answer (0: none — an older peer).
+        #[serde(default, skip_serializing_if = "crate::relay::is_zero")]
+        ack: u32,
+    },
+    /// Server → client: the computer as it is now. Sent on request and after every action; `ack`
+    /// names the [`RelayMsg::HostGet`] or [`RelayMsg::HostDo`] it answers.
     HostState {
         state: crate::HostState,
+        /// The `ack` of the request this answers; 0 when it answers none.
+        #[serde(default, skip_serializing_if = "crate::relay::is_zero")]
+        ack: u32,
     },
     /// Client → server: do this to the computer.
     HostDo {
         action: crate::HostAction,
+        /// The client's number for this request, echoed on its answer (0: none — an older peer).
+        #[serde(default, skip_serializing_if = "crate::relay::is_zero")]
+        ack: u32,
     },
     /// Server → client: an action failed, and why.
     HostError {
         message: String,
+        /// The `ack` of the request this answers; 0 when it answers none.
+        #[serde(default, skip_serializing_if = "crate::relay::is_zero")]
+        ack: u32,
     },
 
     // ── Notifications from the session's apps ──────────────────────────────
@@ -584,9 +642,19 @@ pub enum RelayMsg {
     },
 
     // ── Clipboard, as text ─────────────────────────────────────────────────
-    /// Client → server: make this the session's clipboard.
+    /// Client → server: make this the session's clipboard. Answered with
+    /// [`RelayMsg::ClipboardSent`] once it is there.
     ClipboardSet {
         text: String,
+        /// The client's number for this request, echoed on its answer (0: none — an older peer).
+        #[serde(default, skip_serializing_if = "crate::relay::is_zero")]
+        ack: u32,
+    },
+    /// Server → client: the text of a [`RelayMsg::ClipboardSet`] is on the session's clipboard.
+    ClipboardSent {
+        /// The `ack` of the request this answers; 0 when it answers none.
+        #[serde(default, skip_serializing_if = "crate::relay::is_zero")]
+        ack: u32,
     },
     /// Server → client: an app in the session copied this.
     Clipboard {
@@ -682,6 +750,9 @@ pub enum RelayMsg {
         value: String,
         #[serde(default)]
         confirmed: bool,
+        /// The client's number for this request, echoed on its answer (0: none — an older peer).
+        #[serde(default, skip_serializing_if = "crate::relay::is_zero")]
+        ack: u32,
     },
     /// Client → server: save this device's settings blob in `ui.kdl`.
     ConfigSetPrefs {
@@ -691,6 +762,18 @@ pub enum RelayMsg {
     ConfigRejected {
         key: String,
         message: String,
+        /// The `ack` of the request this answers; 0 when it answers none.
+        #[serde(default, skip_serializing_if = "crate::relay::is_zero")]
+        ack: u32,
+    },
+    /// Server → client: a `ConfigSet` was written. The reload it causes comes as ever, as a
+    /// [`RelayMsg::ConfigState`]; this is the answer to the request itself, which a write that
+    /// changes nothing on disk would otherwise never get.
+    ConfigSaved {
+        key: String,
+        /// The `ack` of the request this answers; 0 when it answers none.
+        #[serde(default, skip_serializing_if = "crate::relay::is_zero")]
+        ack: u32,
     },
 
     /// Ask for the server's per-stage render timings.
@@ -1052,9 +1135,12 @@ mod wire_tests {
                 focused: true,
                 workspace: 1,
             }],
+            launches: vec![],
         })
         .unwrap();
         assert_eq!(json["type"], "windows");
+        // No launches: the message is byte-for-byte what an older client knows.
+        assert!(json.get("launches").is_none());
         assert_eq!(json["windows"][0]["app_id"], "org.gnome.Nautilus");
         // What js/relay.js sends when a bar icon is tapped.
         let tap: RelayMsg =
@@ -1063,9 +1149,33 @@ mod wire_tests {
         assert!(matches!(
             tap,
             RelayMsg::SessionWindow {
-                action: crate::WindowAction::Focus { id: 7 }
+                action: crate::WindowAction::Focus { id: 7 },
+                ack: 0,
             }
         ));
+    }
+
+    /// The acks are additive both ways: an older client's request (no `ack`) still parses, an
+    /// answer to one carries none, and a newer client's `ack` comes back on its answer.
+    #[test]
+    fn acks_are_additive() {
+        let old: RelayMsg = serde_json::from_str(r#"{"type":"session_stop"}"#).unwrap();
+        assert!(matches!(old, RelayMsg::SessionStop { ack: 0 }));
+        let new: RelayMsg =
+            serde_json::from_str(r#"{"type":"session_launch","command":"foot","ack":7}"#).unwrap();
+        assert!(matches!(new, RelayMsg::SessionLaunch { ack: 7, .. }));
+        assert_eq!(
+            serde_json::to_string(&RelayMsg::SessionStopped { ack: 0 }).unwrap(),
+            r#"{"type":"session_stopped"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&RelayMsg::SessionLaunched { ack: 7 }).unwrap(),
+            r#"{"type":"session_launched","ack":7}"#
+        );
+        let old_get: RelayMsg = serde_json::from_str(r#"{"type":"host_get"}"#).unwrap();
+        assert!(matches!(old_get, RelayMsg::HostGet { ack: 0 }));
+        let old_detach: RelayMsg = serde_json::from_str(r#"{"type":"session_detach"}"#).unwrap();
+        assert!(matches!(old_detach, RelayMsg::SessionDetach { ack: 0 }));
     }
 
     #[test]

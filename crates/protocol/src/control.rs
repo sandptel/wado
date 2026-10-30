@@ -90,7 +90,28 @@ pub struct WindowInfo {
 pub struct WindowList {
     pub windows: Vec<WindowInfo>,
     pub workspace: u32,
+    /// The latest launches and how each went, newest last — what turns a launch's "Opening
+    /// Firefox…" into "open" or "closed without opening a window" on the phone.
+    #[serde(default)]
+    pub launches: Vec<LaunchNote>,
 }
+
+/// One launch into the session, as far as it has got (`compositor::launch_clock`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LaunchNote {
+    /// Counts up per session: a client tells a launch it already saw from its own by this.
+    pub n: u64,
+    /// The command as the client sent it.
+    pub command: String,
+    /// `starting`, `shown` (a window is on screen) or `exited` (it ended without one).
+    pub state: String,
+    /// Milliseconds from the launch to that state; 0 while starting.
+    #[serde(default)]
+    pub ms: u64,
+}
+
+/// How many launches a [`WindowList`] remembers.
+pub const LAUNCHES_KEPT: usize = 6;
 
 #[cfg(test)]
 mod tests {

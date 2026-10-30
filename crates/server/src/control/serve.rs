@@ -110,6 +110,7 @@ pub async fn handle(text: &str, who: &Who, cx: &Ctx) -> Result<(), Untrusted> {
             send(
                 &cx.out,
                 &RelayMsg::SessionError {
+                    ack: 0,
                     message: "a widget's link carries the computer's controls only".into(),
                 },
             )
@@ -120,7 +121,7 @@ pub async fn handle(text: &str, who: &Who, cx: &Ctx) -> Result<(), Untrusted> {
     if let Some(message) = refused {
         info!(device = %who.name, "control link: refused — {message}");
         let answer = match msg {
-            RelayMsg::HostDo { .. } => RelayMsg::HostError { message },
+            RelayMsg::HostDo { ack, .. } => RelayMsg::HostError { ack, message },
             RelayMsg::PadIn {
                 msg: PadMsg::Run { id },
             } => RelayMsg::PadOut {
@@ -153,16 +154,16 @@ pub async fn handle(text: &str, who: &Who, cx: &Ctx) -> Result<(), Untrusted> {
 
 async fn run(msg: RelayMsg, who: &Who, cx: &Ctx) {
     match msg {
-        RelayMsg::HostGet => state(cx).await,
-        RelayMsg::HostDo { action } => {
+        RelayMsg::HostGet { ack } => state(cx, ack).await,
+        RelayMsg::HostDo { ack, action } => {
             info!(device = %who.name, ?action, "control link: host action");
             if let Err(message) = crate::host::act(action).await {
                 warn!("control link: host action failed: {message}");
-                send(&cx.out, &RelayMsg::HostError { message }).await;
+                send(&cx.out, &RelayMsg::HostError { ack, message }).await;
             }
             // A moment for the change to land before reading it back.
             tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-            state(cx).await;
+            state(cx, ack).await;
         }
         RelayMsg::ConfigGet => {
             let state = crate::config::link::state_for(&who.key, &cx.gate);
@@ -207,8 +208,8 @@ async fn run(msg: RelayMsg, who: &Who, cx: &Ctx) {
     }
 }
 
-async fn state(cx: &Ctx) {
+async fn state(cx: &Ctx, ack: u32) {
     let mut state = crate::host::state().await;
     cx.sent.trim(&mut state);
-    send(&cx.out, &RelayMsg::HostState { state }).await;
+    send(&cx.out, &RelayMsg::HostState { ack, state }).await;
 }

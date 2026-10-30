@@ -914,6 +914,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     &RelayMsg::Windows {
                         windows: list.windows,
                         workspace: list.workspace,
+                        launches: list.launches,
                     },
                 )
                 .await
@@ -1263,6 +1264,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 send_relay(
                     &out_tx,
                     &RelayMsg::SessionError {
+                        ack: 0,
                         message: format!("this daemon could not understand that message: {e}"),
                     },
                 )
@@ -1502,6 +1504,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     send_relay(
                         &out_tx,
                         &RelayMsg::SessionError {
+                            ack: 0,
                             message: format!("that configuration cannot work: {why}"),
                         },
                     )
@@ -1542,6 +1545,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                         send_relay(
                             &out_tx,
                             &RelayMsg::SessionError {
+                                ack: 0,
                                 message: format!("a new session would not work here: {why}"),
                             },
                         )
@@ -1571,6 +1575,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     send_relay(
                         &out_tx,
                         &RelayMsg::SessionError {
+                            ack: 0,
                             message: "compositor unavailable".into(),
                         },
                     )
@@ -1589,14 +1594,21 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                             .ok();
                     }
                     Ok(Ok(Err(msg))) => {
-                        send_relay(&out_tx, &RelayMsg::SessionError { message: msg })
-                            .await
-                            .ok();
+                        send_relay(
+                            &out_tx,
+                            &RelayMsg::SessionError {
+                                ack: 0,
+                                message: msg,
+                            },
+                        )
+                        .await
+                        .ok();
                     }
                     Ok(Err(_)) => {
                         send_relay(
                             &out_tx,
                             &RelayMsg::SessionError {
+                                ack: 0,
                                 message: "compositor dropped reply".into(),
                             },
                         )
@@ -1607,6 +1619,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                         send_relay(
                             &out_tx,
                             &RelayMsg::SessionError {
+                                ack: 0,
                                 message: "session start timed out".into(),
                             },
                         )
@@ -1624,7 +1637,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                         if let Err(message) =
                             ctx.hub.join(ctx.seat_origin.load(Ordering::SeqCst), false)
                         {
-                            send_relay(&out_tx, &RelayMsg::SessionError { message })
+                            send_relay(&out_tx, &RelayMsg::SessionError { ack: 0, message })
                                 .await
                                 .ok();
                             continue;
@@ -1649,6 +1662,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                         send_relay(
                             &out_tx,
                             &RelayMsg::SessionError {
+                                ack: 0,
                                 message: "the session ended before you could rejoin it".into(),
                             },
                         )
@@ -1667,6 +1681,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     send_relay(
                         &out_tx,
                         &RelayMsg::SessionError {
+                            ack: 0,
                             message: format!("that configuration cannot work: {why}"),
                         },
                     )
@@ -1682,6 +1697,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     let msg = match live_session(&ctx).await {
                         Some(info) => RelayMsg::SessionReconfigured { info },
                         None => RelayMsg::SessionError {
+                            ack: 0,
                             message: "there is no session to change".into(),
                         },
                     };
@@ -1710,6 +1726,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     send_relay(
                         &out_tx,
                         &RelayMsg::SessionError {
+                            ack: 0,
                             message: "compositor unavailable".into(),
                         },
                     )
@@ -1728,14 +1745,21 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                             .ok();
                     }
                     Ok(Ok(Err(msg))) => {
-                        send_relay(&out_tx, &RelayMsg::SessionError { message: msg })
-                            .await
-                            .ok();
+                        send_relay(
+                            &out_tx,
+                            &RelayMsg::SessionError {
+                                ack: 0,
+                                message: msg,
+                            },
+                        )
+                        .await
+                        .ok();
                     }
                     Ok(Err(_)) => {
                         send_relay(
                             &out_tx,
                             &RelayMsg::SessionError {
+                                ack: 0,
                                 message: "compositor dropped reply".into(),
                             },
                         )
@@ -1746,6 +1770,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                         send_relay(
                             &out_tx,
                             &RelayMsg::SessionError {
+                                ack: 0,
                                 message: "reconfigure timed out".into(),
                             },
                         )
@@ -1755,7 +1780,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 }
             }
 
-            RelayMsg::SessionStop => {
+            RelayMsg::SessionStop { ack } => {
                 // Logged on receipt, not just on the watchdog's own reap: this is the only other
                 // path to `CompositorCommand::Stop` in relay mode, and until now neither side
                 // logged anything for it — a stop here and a stop from the grace expiring
@@ -1766,7 +1791,9 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 ctx.hub.end(Some(ctx.seat_origin.load(Ordering::SeqCst)));
                 ctx.session_started.store(false, Ordering::SeqCst);
                 let _ = ctx.cmd_tx.send(CompositorCommand::Stop);
-                send_relay(&out_tx, &RelayMsg::SessionStopped).await.ok();
+                send_relay(&out_tx, &RelayMsg::SessionStopped { ack })
+                    .await
+                    .ok();
             }
 
             RelayMsg::ViewerVisible { visible } => {
@@ -1822,7 +1849,9 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                                  join one"
                             ),
                         },
-                        crate::desks::Desk::Failed(message) => RelayMsg::SessionError { message },
+                        crate::desks::Desk::Failed(message) => {
+                            RelayMsg::SessionError { ack: 0, message }
+                        }
                     };
                     send_relay(&out_tx, &msg).await.ok();
                 });
@@ -1830,6 +1859,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             RelayMsg::SessionJoin => {
                 let msg = match live_session(&ctx).await {
                     None => RelayMsg::SessionError {
+                        ack: 0,
                         message: "that session has ended".into(),
                     },
                     Some(info) => {
@@ -1838,7 +1868,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                                 ctx.detached.store(false, Ordering::SeqCst);
                                 RelayMsg::SessionStarted { info }
                             }
-                            Err(message) => RelayMsg::SessionError { message },
+                            Err(message) => RelayMsg::SessionError { ack: 0, message },
                         }
                     }
                 };
@@ -1854,7 +1884,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     Ok(()) => ctx.hub.takeover(origin, &config),
                 };
                 let msg = match taken {
-                    Err(message) => RelayMsg::SessionError { message },
+                    Err(message) => RelayMsg::SessionError { ack: 0, message },
                     Ok(cfg) => {
                         ctx.detached.store(false, Ordering::SeqCst);
                         *ctx.session_shape.lock().unwrap_or_else(|e| e.into_inner()) =
@@ -1864,7 +1894,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                                 ctx.hub.note_session(&info, true);
                                 RelayMsg::SessionStarted { info }
                             }
-                            Err(message) => RelayMsg::SessionError { message },
+                            Err(message) => RelayMsg::SessionError { ack: 0, message },
                         }
                     }
                 };
@@ -1954,7 +1984,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             }
             RelayMsg::FilesChunk { id, b } => files_lane.chunk(id, &b).await,
 
-            RelayMsg::SessionLaunch { command } => {
+            RelayMsg::SessionLaunch { ack, command } => {
                 // Said on arrival: `launched session application`, then `window shown — N ms
                 // after launch` (or `exited without showing a window`) follow it.
                 info!(seq, command, "relay client: session_launch received");
@@ -1967,6 +1997,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     send_relay(
                         &out_tx,
                         &RelayMsg::SessionError {
+                            ack,
                             message: "there is no session to launch into — start one first".into(),
                         },
                     )
@@ -1975,10 +2006,12 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     continue;
                 }
                 let _ = ctx.cmd_tx.send(CompositorCommand::Launch { command });
-                send_relay(&out_tx, &RelayMsg::SessionLaunched).await.ok();
+                send_relay(&out_tx, &RelayMsg::SessionLaunched { ack })
+                    .await
+                    .ok();
             }
 
-            RelayMsg::ClipboardSet { text } => {
+            RelayMsg::ClipboardSet { ack, text } => {
                 if ctx.viewer_ok.load(Ordering::SeqCst) {
                     let clip = wado_compositor::clipboard::Clip {
                         mime: "text/plain;charset=utf-8".into(),
@@ -1997,6 +2030,9 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     } else {
                         let _ = ctx.cmd_tx.send(CompositorCommand::SetClipboard(clip));
                     }
+                    send_relay(&out_tx, &RelayMsg::ClipboardSent { ack })
+                        .await
+                        .ok();
                 }
             }
 
@@ -2038,7 +2074,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     .ok();
             }
 
-            RelayMsg::SessionDetach => {
+            RelayMsg::SessionDetach { ack } => {
                 // Left on purpose: the media path goes, the session stays — and is kept past the
                 // no-viewer grace, until someone ends it from a home page.
                 // With others still in it, it simply goes on for them.
@@ -2056,21 +2092,25 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                         info!("relay client: viewer left; the others in the session carry on");
                     }
                 }
+                // Answered, so "Leave running" can say it is done rather than assume it.
+                send_relay(&out_tx, &RelayMsg::SessionDetached { ack })
+                    .await
+                    .ok();
             }
 
-            RelayMsg::HostGet => {
+            RelayMsg::HostGet { ack } => {
                 let out_tx = out_tx.clone();
                 let sent = Arc::clone(&ctx.media_sent);
                 tokio::spawn(async move {
                     let mut state = crate::host::state().await;
                     sent.trim(&mut state);
-                    send_relay(&out_tx, &RelayMsg::HostState { state })
+                    send_relay(&out_tx, &RelayMsg::HostState { ack, state })
                         .await
                         .ok();
                 });
             }
 
-            RelayMsg::HostDo { action } => {
+            RelayMsg::HostDo { ack, action } => {
                 let device = ctx
                     .viewer
                     .lock()
@@ -2095,7 +2135,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                         Err(e) => Err(e),
                     } {
                         warn!("host action failed: {message}");
-                        send_relay(&out_tx, &RelayMsg::HostError { message })
+                        send_relay(&out_tx, &RelayMsg::HostError { ack, message })
                             .await
                             .ok();
                     }
@@ -2103,7 +2143,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     tokio::time::sleep(std::time::Duration::from_millis(250)).await;
                     let mut state = crate::host::state().await;
                     sent.trim(&mut state);
-                    send_relay(&out_tx, &RelayMsg::HostState { state })
+                    send_relay(&out_tx, &RelayMsg::HostState { ack, state })
                         .await
                         .ok();
                 });
@@ -2123,6 +2163,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
             }
 
             RelayMsg::ConfigSet {
+                ack,
                 key,
                 value,
                 confirmed,
@@ -2133,13 +2174,14 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 } else {
                     Err("this device has not been approved yet".into())
                 };
-                // Success needs no reply of its own: the reload it caused is pushed by
-                // `config_task` like any other.
-                if let Err(message) = result {
-                    send_relay(&out_tx, &RelayMsg::ConfigRejected { key, message })
-                        .await
-                        .ok();
-                }
+                // The reload it caused is pushed by `config_task` like any other; the request
+                // itself is answered too, because a write that changes nothing on disk causes
+                // no reload, and the phone would wait for it forever.
+                let answer = match result {
+                    Ok(()) => RelayMsg::ConfigSaved { ack, key },
+                    Err(message) => RelayMsg::ConfigRejected { ack, key, message },
+                };
+                send_relay(&out_tx, &answer).await.ok();
             }
 
             RelayMsg::ConfigSetPrefs { prefs } => {
@@ -2183,6 +2225,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     send_relay(
                         &out_tx,
                         &RelayMsg::SessionError {
+                            ack: 0,
                             message: format!("no shells: {why}"),
                         },
                     )
@@ -2200,6 +2243,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     send_relay(
                         &out_tx,
                         &RelayMsg::SessionError {
+                            ack: 0,
                             message: format!("could not start a shell: {e}"),
                         },
                     )
@@ -2282,9 +2326,11 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                 });
             }
 
-            RelayMsg::SessionWindow { action } => {
+            RelayMsg::SessionWindow { ack, action } => {
                 let _ = ctx.cmd_tx.send(CompositorCommand::Window(action));
-                send_relay(&out_tx, &RelayMsg::SessionWindowed).await.ok();
+                send_relay(&out_tx, &RelayMsg::SessionWindowed { ack })
+                    .await
+                    .ok();
             }
 
             // An offer into a running session from a seat viewer not (or no longer) in it — a
@@ -2296,7 +2342,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     && let Err(message) =
                         ctx.hub.join(ctx.seat_origin.load(Ordering::SeqCst), false) =>
             {
-                send_relay(&out_tx, &RelayMsg::SessionError { message })
+                send_relay(&out_tx, &RelayMsg::SessionError { ack: 0, message })
                     .await
                     .ok();
             }
@@ -2307,6 +2353,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     send_relay(
                         &out_tx,
                         &RelayMsg::SessionError {
+                            ack: 0,
                             message: format!("WebRTC setup failed: {e}"),
                         },
                     )

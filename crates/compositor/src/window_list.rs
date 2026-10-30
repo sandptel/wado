@@ -71,6 +71,8 @@ impl Wado {
         let list = wado_protocol::WindowList {
             windows: list,
             workspace: self.ws.active,
+            // The launch clock's, carried along (`crate::launch_clock::note`).
+            launches: self.windows_tx.borrow().launches.clone(),
         };
         self.windows_tx.send_if_modified(|cur| {
             if *cur == list {
