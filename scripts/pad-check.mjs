@@ -15,9 +15,19 @@ const MODULES = ["pad_link.js", "pad_prefs.js", "pad_orient.js", "pad_touch.js",
   "pad_feel.js", "pad_icons.js", "pad_actions.js", "pad_rail.js", "pad_hints.js", "pad_pointer.js", "pad_settings.js"];
 const src = MODULES.map(js).join("\n");
 
+// A compact touch frame read back the way the daemon reads it (wado_protocol::pad_bin): written
+// here independently of js/pad_link.js, so the encoder is checked rather than echoed.
+function readFrame(u8) {
+  const b = Buffer.from(u8);
+  if (b.length < 8 || (b.length - 8) % 5) return null;
+  const c = [];
+  for (let o = 8; o < b.length; o += 5) c.push([b.readUInt8(o), b.readUInt16BE(o + 1), b.readUInt16BE(o + 3)]);
+  return { k: "frame", seq: b.readUInt32BE(0), t: b.readUInt32BE(4), c, bin: b.length };
+}
+
 class FakeDC {
   constructor(label, opts, record) { this.label = label; this.opts = opts; this.readyState = "connecting"; this.sent = []; this.record = record; }
-  send(s) { this.sent.push(JSON.parse(s)); this.record(this.label, JSON.parse(s)); }
+  send(s) { const m = typeof s === "string" ? JSON.parse(s) : readFrame(s); this.sent.push(m); this.record(this.label, m); }
   open() { this.readyState = "open"; if (this.onopen) this.onopen(); }
 }
 
@@ -169,6 +179,52 @@ await run("a refused offer stops the pad and says why", async (e) => {
   await e.tick();
   assert(e.W.pad.state === "off", `state ${e.W.pad.state}`);
   assert(got.some((m) => m.k === "err" && m.message.includes("wado allow phone input")), "err delivered");
+});
+
+// ── compact touch frames (negotiated; JSON stays the fallback) ───────────────────────────
+await run("compact frames: offered in every ping, JSON until the daemon's pong says bin", async (e) => {
+  e.W.pad.start();
+  assert(padIn(e.relay, "ping")[0].bin === true, "the ping offers them");
+  const f = { k: "frame", seq: 70000, t: 1234567, c: [[0, 32768, 32768]] };
+  e.W.pad.send(f, true);
+  eq(padIn(e.relay, "frame").at(-1), f, "an older daemon (no bin in its pong) still gets JSON");
+  e.out({ k: "pong", t: 0 });
+  e.W.pad.send(f, true);
+  assert(!padIn(e.relay, "bin").length, "a pong without bin changes nothing");
+  e.out({ k: "pong", t: 0, bin: true });
+  e.W.pad.send(f, true);
+  const b = padIn(e.relay, "bin").at(-1);
+  assert(b, "relayed compact frame");
+  const back = readFrame(Buffer.from(b.b, "base64"));
+  eq([back.seq, back.t, back.c], [f.seq, f.t, f.c], "round trip through base64");
+  const json = JSON.stringify(f).length;
+  console.log(`     one finger: ${json} bytes of JSON → ${back.bin} bytes compact (${(json / back.bin).toFixed(1)}×)`);
+  assert(json / back.bin >= 4, "about four times smaller");
+  e.W.pad.send({ k: "size", w: 10, h: 20 }, false);
+  eq(padIn(e.relay, "size").at(-1), { k: "size", w: 10, h: 20 }, "only frames go compact");
+});
+
+await run("compact frames direct: a binary message on pad-touch", async (e) => {
+  e.W.pad.start();
+  await goDirect(e);
+  e.out({ k: "pong", t: 0, bin: true });
+  const [touch] = e.pcs[0].dcs;
+  const f = { k: "frame", seq: 5, t: 9, c: [[0, 1, 2], [3, 65535, 0]] };
+  e.W.pad.send(f, true);
+  const got = touch.sent.at(-1);
+  assert(got.bin === 8 + 5 * 2, `binary, ${got.bin} bytes`);
+  eq([got.seq, got.t, got.c], [5, 9, f.c], "the frame it encodes");
+  e.W.pad.stop();
+  e.W.pad.start();
+  assert(e.W.pad.bin === false, "asked again on every start");
+});
+
+await run("compact frames: the exact bytes the daemon's test reads", async (e) => {
+  const b = e.W.padBin.encode({ seq: 7, t: 1000, c: [[0, 100, 65535]] });
+  eq([...b], [0, 0, 0, 7, 0, 0, 3, 232, 0, 0, 100, 255, 255], "bytes (crates/protocol/src/pad_bin.rs)");
+  eq(e.W.padBin.b64(b), "AAAABwAAA+gAAGT//w==", "base64 (crates/server/src/pad/bin.rs)");
+  eq(e.W.padBin.decode(b), { k: "frame", seq: 7, t: 1000, c: [[0, 100, 65535]] }, "decode");
+  assert(e.W.padBin.decode(new Uint8Array(9)) === null, "a partial contact is refused");
 });
 
 await run("pong sets rtt", async (e) => {

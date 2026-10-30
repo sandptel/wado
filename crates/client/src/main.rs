@@ -14,6 +14,7 @@ mod cfg;
 mod claude;
 mod debug;
 mod deeplink;
+mod lane;
 mod link;
 mod multi;
 mod native;
@@ -153,6 +154,7 @@ fn App() -> Element {
         document::Stylesheet { href: asset!("/assets/gamepad.css") }
         document::Stylesheet { href: asset!("/assets/files.css") }
         document::Stylesheet { href: asset!("/assets/link.css") }
+        document::Stylesheet { href: asset!("/assets/lane.css") }
         document::Stylesheet { href: asset!("/assets/pad.css") }
         document::Stylesheet { href: asset!("/assets/surround.css") }
         document::Stylesheet { href: asset!("/assets/app.css") }
@@ -176,6 +178,7 @@ fn App() -> Element {
             {ui::cc::render(ui)}
             {ui::reconnecting::render(ui)}
             {ui::link_badge::render(ui)}
+            {ui::lane_hint::render(ui)}
             {ui::scoped(ui, "claude-picker", ui::claude::picker::render)}
             {ui::scoped(ui, "passkey", ui::passkey::sheet)}
         }

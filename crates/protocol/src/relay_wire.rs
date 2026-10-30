@@ -152,6 +152,11 @@ pub enum WireMsg {
         takeover: bool,
         #[serde(default)]
         retry_ms: u64,
+        /// Added with the `idle_seat` cap; absent from older relays.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        idle: Option<bool>,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        holder: String,
     },
     Waiting {
         reason: String,
@@ -270,6 +275,15 @@ mod tests {
                 reason: "no".into(),
                 takeover: true,
                 retry_ms: 3,
+                idle: Some(true),
+                holder: "Android · Chrome".into(),
+            },
+            WireMsg::JoinDenied {
+                reason: "no".into(),
+                takeover: false,
+                retry_ms: 0,
+                idle: None,
+                holder: String::new(),
             },
             WireMsg::Ping,
             WireMsg::Pong,
@@ -307,6 +321,12 @@ mod tests {
             serde_json::from_str(r#"{"type":"join_accepted","remote_id":"1","room_id":"r"}"#)
                 .unwrap();
         assert!(matches!(acc, RelayMsg::JoinAccepted { relay_v: 0, .. }));
+        // An older relay's refusal: whether the holder is idle is not known, not "busy".
+        let d: RelayMsg = serde_json::from_str(
+            r#"{"type":"join_denied","reason":"in use","takeover":true,"retry_ms":0}"#,
+        )
+        .unwrap();
+        assert!(matches!(d, RelayMsg::JoinDenied { idle: None, .. }));
     }
 
     /// A future peer's extra fields must not break an older reader.

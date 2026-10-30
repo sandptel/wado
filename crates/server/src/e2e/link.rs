@@ -96,6 +96,16 @@ pub struct Link {
     client_key: String,
     state: State,
     held: VecDeque<String>,
+    /// Which device's link this is: new on every reset and clear. A frame queued for one
+    /// device (the lane's outbox holds bulk for seconds) must never be sealed for the next.
+    generation: u64,
+}
+
+/// Unique across every link of the process.
+static GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+fn next_generation() -> u64 {
+    GENERATION.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
 impl Default for Link {
@@ -105,6 +115,7 @@ impl Default for Link {
             client_key: String::new(),
             state: State::Failed,
             held: VecDeque::new(),
+            generation: next_generation(),
         }
     }
 }
@@ -117,12 +128,18 @@ impl Link {
             client_key: client_key.into(),
             state: State::Waiting,
             held: VecDeque::new(),
+            generation: next_generation(),
         };
     }
 
     /// The device left; nothing more goes to or comes from it.
     pub fn clear(&mut self) {
         *self = Self::default();
+    }
+
+    /// See the field: frames queued under another generation are not this device's.
+    pub fn generation(&self) -> u64 {
+        self.generation
     }
 
     pub fn room(&self) -> &str {

@@ -13,12 +13,14 @@
 //! | [`quick`], [`thumb`] | pinned folders, recent files; thumbnails |
 //! | [`audit`] | the log of every operation, and the toasts it feeds other devices |
 //! | [`pace`] | the download rate cap while a session's video is live |
+//! | [`lane`] | the same wire on the relay link, when there is no direct path: ≤ 1 MB |
 //!
 //! The wire is `wado_protocol::files`. The compositor never sees any of this.
 
 pub mod audit;
 pub mod channel;
 pub mod find;
+pub mod lane;
 pub mod list;
 pub mod media;
 pub mod ops;

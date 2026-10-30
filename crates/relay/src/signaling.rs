@@ -72,6 +72,11 @@ pub const SILENCE: Duration = Duration::from_secs(45);
 ///   What such a room may carry is the daemon's policy; the relay reads only the room id.
 /// - `room_strict`: `strict=1` (with `control=1` and `instance=`) reaches exactly that daemon, or
 ///   parks until it is back — never another daemon of the pool.
+/// - `idle_seat`: a refusal because every seat is taken says `holder` and `idle` (no session
+///   runs on any of the pool's daemons — an open page holding a seat with nothing running).
+/// - `lane`: what this relay forwards for a seat or a control link is paced to the fallback
+///   lane's cap, 64 KB/s each way after a 2 MiB burst, one budget per seat (`crate::lane`). Frames wait; none is
+///   dropped. `/health` says the numbers.
 pub const CAPS: &[&str] = &[
     "park",
     "hold",
@@ -83,6 +88,8 @@ pub const CAPS: &[&str] = &[
     "occupancy",
     "control",
     "room_strict",
+    "lane",
+    "idle_seat",
 ];
 
 pub fn caps() -> Vec<String> {
@@ -123,6 +130,12 @@ pub fn is_pong(text: &str) -> bool {
     text.trim() == r#"{"type":"pong"}"#
 }
 
+/// The relay's own ping, on its way to a client: the link's liveness, not the seat's traffic, so
+/// it never waits behind the lane's cap.
+pub fn is_relay_ping(text: &str) -> bool {
+    text == r#"{"type":"ping"}"#
+}
+
 pub async fn send_wire(ws_tx: &mut WsTx, msg: &WireMsg) -> bool {
     match serde_json::to_string(msg) {
         Ok(text) => ws_tx.send(Message::Text(text)).await.is_ok(),
@@ -147,6 +160,25 @@ pub async fn send_deny(ws_tx: &mut WsTx, reason: &str, takeover: bool, retry_ms:
             reason: reason.to_string(),
             takeover,
             retry_ms,
+            idle: None,
+            holder: String::new(),
+        },
+    )
+    .await;
+}
+
+/// Every seat is taken (cap `idle_seat`): the refusal says who holds it and whether anything is
+/// running there, so a device kept out by an idle page is told "nothing is running — use it
+/// here", not "every session is in use".
+pub async fn send_busy(ws_tx: &mut WsTx, reason: &str, idle: bool, holder: &str) {
+    send_wire(
+        ws_tx,
+        &WireMsg::JoinDenied {
+            reason: reason.to_string(),
+            takeover: true,
+            retry_ms: 0,
+            idle: Some(idle),
+            holder: holder.to_string(),
         },
     )
     .await;
@@ -196,7 +228,16 @@ pub fn head(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{head, is_pong};
+    use super::{head, is_pong, is_relay_ping};
+
+    #[test]
+    fn the_relays_own_ping_is_recognised_exactly() {
+        let ping = serde_json::to_string(&wado_protocol::relay_wire::WireMsg::Ping).unwrap();
+        assert!(is_relay_ping(&ping), "{ping}");
+        assert!(!is_relay_ping(
+            r#"{"type":"pty_output","data":"{\"type\":\"ping\"}"}"#
+        ));
+    }
 
     #[test]
     fn only_a_real_pong_is_swallowed() {

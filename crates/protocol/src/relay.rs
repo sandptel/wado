@@ -221,6 +221,14 @@ pub enum RelayMsg {
         /// Rate-limited: try again no sooner than this.
         #[serde(default)]
         retry_ms: u64,
+        /// With `takeover`: whether the device(s) holding the pool run a session (`false`: a
+        /// seat held by an open page with nothing running — "your other device is connected,
+        /// nothing is running"). `None` from a relay without the `idle_seat` cap: not known.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        idle: Option<bool>,
+        /// With `takeover`: the device holding the seat, as it named itself.
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        holder: String,
     },
     /// Relay → client: the join is parked, not refused — the socket stays open and
     /// `join_accepted` follows on it when the reason clears (a daemon registers, the client's
@@ -824,6 +832,23 @@ pub enum RelayMsg {
         device: String,
         op: String,
         path: String,
+    },
+    /// Client → server, when the files peer connection cannot be had (no direct path): one
+    /// request of the files wire ([`crate::files::FileFrame`] as JSON text), on the **fallback
+    /// lane** instead (Decision Log 2026-10-27: listings and files ≤ 1 MB ride it; thumbnails,
+    /// archives, playback and bigger transfers wait for a direct path, and say so).
+    FilesIn {
+        text: String,
+    },
+    /// Server → client: one answer on the lane, exactly the JSON the files channel would carry.
+    FilesOut {
+        text: String,
+    },
+    /// Either way, on the lane: one transfer chunk — `id` is the transfer, `b` its bytes in
+    /// standard padded base64 (the browser's `btoa`).
+    FilesChunk {
+        id: u32,
+        b: String,
     },
 
     // ── Trackpad mode: its own peer connection (see `crate::pad`) ─────────────

@@ -12,8 +12,13 @@
 const seatName = (s) => s || "another device";
 
 W.relayOn("__occupied", (msg) => {
-  const who = /in use by ([^)]*)\)/.exec(msg.reason || "");
-  W.sheet.ask("seat", "This desktop is in use on " + seatName(who && who[1]) + ".", [
+  const who = msg.holder || ((/in use by ([^)]*)\)/.exec(msg.reason || "") || [])[1]);
+  // Held by an open page with nothing running (relay cap `idle_seat`): the user's other device,
+  // not someone's session — said so, and using it here starts nothing anyone loses.
+  const text = msg.idle === true
+    ? "Your other device, " + seatName(who) + ", is connected to this computer — nothing is running. Use it here instead?"
+    : "This desktop is in use on " + seatName(who) + ".";
+  W.sheet.ask("seat", text, [
     { label: "Use it here", primary: true, run: () => W.relayTakeover() },
     { label: "Not now" },
   ]);

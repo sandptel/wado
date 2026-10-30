@@ -62,6 +62,12 @@ fn landing(sc: &Scope, dir: &str, name: &str) -> Result<(Opened, String, String)
 }
 
 pub async fn put(chan: &Chan, sc: &Scope, id: u32, dir: &str, name: &str, size: u64, clash: Clash) {
+    if let Some(max) = chan.max_bytes()
+        && size > max
+    {
+        let why = super::lane::too_big(size);
+        return chan.reply(id, json!({ "err": why, "lane": true })).await;
+    }
     let r: Result<(Upload, u64), Refusal> = (|| {
         let (at, mut file, folder) = landing(sc, dir, name)?;
         if file.ends_with(PART) {

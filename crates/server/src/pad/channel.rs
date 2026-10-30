@@ -52,10 +52,16 @@ pub async fn open(
                 }));
             }
             dc.on_message(Box::new(move |m: DataChannelMessage| {
-                match std::str::from_utf8(&m.data)
-                    .ok()
-                    .and_then(|s| serde_json::from_str::<PadMsg>(s).ok())
-                {
+                // A binary message is a compact touch frame (`super::bin`), sent only after our
+                // pong said we read them; text is JSON, as every older phone sends.
+                let msg = if m.is_string {
+                    std::str::from_utf8(&m.data)
+                        .ok()
+                        .and_then(|s| serde_json::from_str::<PadMsg>(s).ok())
+                } else {
+                    super::bin::from_bytes(&m.data)
+                };
+                match msg {
                     Some(msg) => live.accept(msg, false, &peer),
                     None => warn!("pad: unreadable message on {label}"),
                 }
