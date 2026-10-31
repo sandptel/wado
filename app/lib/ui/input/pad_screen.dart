@@ -12,6 +12,7 @@ import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
 import 'gamepad_screen.dart';
+import '../motion/feel.dart';
 import '../passkey/passkey_card.dart';
 
 void openPad(BuildContext context, {bool keyboard = false}) {
@@ -47,7 +48,7 @@ class _PadScreenState extends State<PadScreen> {
   @override
   void initState() {
     super.initState();
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    active(true);
     Pad.I.start();
     PadTouch.I.attach();
     if (_kb) WidgetsBinding.instance.addPostFrameCallback((_) => _focus.requestFocus());
@@ -57,7 +58,7 @@ class _PadScreenState extends State<PadScreen> {
   void dispose() {
     PadTouch.I.detach();
     Pad.I.stop();
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    active(false);
     super.dispose();
   }
 

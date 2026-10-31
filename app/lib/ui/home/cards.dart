@@ -11,6 +11,7 @@ import '../../wado/session.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
+import '../motion/motion.dart';
 import 'home_screen.dart';
 import 'running.dart';
 
@@ -77,52 +78,83 @@ class Cards extends StatelessWidget {
   }
 }
 
-class _Card extends StatelessWidget {
+class _Card extends StatefulWidget {
   const _Card({required this.c, required this.hue, required this.sessions});
   final Computer c;
   final Color hue;
   final int sessions;
   @override
+  State<_Card> createState() => _CardState();
+}
+
+class _CardState extends State<_Card> {
+  bool _down = false;
+  @override
   Widget build(BuildContext context) {
     final t = Tok.of(context);
+    final c = widget.c;
     final r = Reach.of(c);
     final os = [c.os, c.desktop].where((x) => x.isNotEmpty).join(' · ');
-    final live = sessions > 0;
-    return Container(
-      constraints: const BoxConstraints(minHeight: 80),
-      padding: const EdgeInsets.fromLTRB(6, 6, 8, 6),
-      decoration: BoxDecoration(color: t.s1, borderRadius: BorderRadius.circular(t.r3), border: Border.all(color: t.line)),
-      child: Row(children: [
-        Expanded(
-          child: Press(
-            onTap: () => Nav.I.openComputer(c.key),
-            label: '${c.name} — open its page',
-            child: Padding(
-              padding: const EdgeInsets.only(left: 8),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: 66),
-                child: Row(children: [
-                  OsDisc(logo: c.logo, hue: hue),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                      Text(c.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: display(context, rem(context, 1.0625), ls: -.17)),
-                      if (os.isNotEmpty) Text(os, style: mono(context, size: .7188, color: t.dim)),
-                      const SizedBox(height: 3),
-                      Row(children: [
-                        Flexible(child: LinkWords(tone: r.tone, words: r.words)),
-                        if (live) Text('  · ${sessions == 1 ? '1 session' : '$sessions sessions'}', style: body(context, size: .75, color: t.dim)),
-                      ]),
+    final live = widget.sessions > 0;
+    // The card *is* the hero while it flies (ui/motion): it steps out until the page has landed.
+    return ValueListenableBuilder(
+      valueListenable: Motion.flying,
+      builder: (context, flying, child) => Opacity(opacity: flying == c.key ? 0 : 1, child: child),
+      // The whole card gives under the finger (`.ccard:has(.cpick:active)`), its disc a little more.
+      child: AnimatedScale(
+        scale: _down ? .98 : 1,
+        duration: t.durPress,
+        curve: Tokens.spring,
+        child: Container(
+          key: Motion.key('card:${c.key}'),
+          constraints: const BoxConstraints(minHeight: 80),
+          padding: const EdgeInsets.fromLTRB(6, 6, 8, 6),
+          decoration: BoxDecoration(color: t.s1, borderRadius: BorderRadius.circular(t.r3), border: Border.all(color: t.line)),
+          child: Row(children: [
+            Expanded(
+              child: Press(
+                onTap: () => Nav.I.openComputer(c.key),
+                label: '${c.name} — open its page',
+                scale: 1,
+                onPressed: (d) => setState(() => _down = d),
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 66),
+                    child: Row(children: [
+                      AnimatedScale(
+                        scale: _down ? .92 : 1,
+                        duration: _down ? t.durPress : const Duration(milliseconds: 220),
+                        curve: _down ? Tokens.spring : t.pop,
+                        child: KeyedSubtree(key: Motion.key('disc:${c.key}'), child: OsDisc(logo: c.logo, hue: widget.hue)),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                          Text(c.name,
+                              key: Motion.key('name:${c.key}'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: display(context, rem(context, 1.0625), ls: -.17).copyWith(height: 1.15)),
+                          const SizedBox(height: 1),
+                          if (os.isNotEmpty) Text(os, style: mono(context, size: .7188, color: t.dim)),
+                          const SizedBox(height: 3),
+                          Row(children: [
+                            Flexible(child: LinkWords(tone: r.tone, words: r.words)),
+                            if (live) Text('  · ${widget.sessions == 1 ? '1 session' : '${widget.sessions} sessions'}', style: body(context, size: .75, color: t.dim)),
+                          ]),
+                        ]),
+                      ),
                     ]),
                   ),
-                ]),
+                ),
               ),
             ),
-          ),
+            const SizedBox(width: 4),
+            _Go(live: live, enabled: r.online || r.busy, label: live ? 'Rejoin the desktop on ${c.name}' : 'Start a desktop on ${c.name}', onTap: () => go(c)),
+          ]),
         ),
-        const SizedBox(width: 4),
-        _Go(live: live, enabled: r.online || r.busy, label: live ? 'Rejoin the desktop on ${c.name}' : 'Start a desktop on ${c.name}', onTap: () => go(c)),
-      ]),
+      ),
     );
   }
 }
@@ -138,6 +170,7 @@ class _Go extends StatefulWidget {
 }
 
 class _GoState extends State<_Go> with SingleTickerProviderStateMixin {
+  bool _down = false;
   late final _ring = AnimationController(vsync: this, duration: const Duration(milliseconds: 2400));
   @override
   void dispose() {
@@ -158,6 +191,8 @@ class _GoState extends State<_Go> with SingleTickerProviderStateMixin {
     return Press(
       onTap: widget.enabled ? widget.onTap : null,
       label: widget.label,
+      scale: .9,
+      onPressed: (d) => setState(() => _down = d),
       child: SizedBox(
         width: 48,
         height: 48,
@@ -187,7 +222,12 @@ class _GoState extends State<_Go> with SingleTickerProviderStateMixin {
               color: bg,
               boxShadow: widget.live && widget.enabled ? [BoxShadow(color: fade(t.accent, 30), blurRadius: 22, offset: const Offset(0, 8), spreadRadius: -10)] : null,
             ),
-            child: Padding(padding: const EdgeInsets.only(left: 2), child: Center(child: WIcon('play', size: 18, fill: true, color: fg))),
+            child: AnimatedSlide(
+              offset: Offset(_down ? 2 / 48 : 0, 0),
+              duration: const Duration(milliseconds: 220),
+              curve: t.pop,
+              child: Padding(padding: const EdgeInsets.only(left: 2), child: Center(child: WIcon('play', size: 18, fill: true, color: fg))),
+            ),
           ),
         ]),
       ),

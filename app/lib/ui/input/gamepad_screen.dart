@@ -8,6 +8,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../motion/feel.dart';
+
 import '../../wado/pad.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
@@ -74,7 +76,7 @@ class _GamepadScreenState extends State<GamepadScreen> {
   void initState() {
     super.initState();
     SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    active(true);
     Pad.I.start();
     Pad.I.onResend = g.resend;
     g.start();
@@ -85,7 +87,7 @@ class _GamepadScreenState extends State<GamepadScreen> {
     g.stop();
     Pad.I.stop();
     SystemChrome.setPreferredOrientations([]);
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    active(false);
     super.dispose();
   }
 

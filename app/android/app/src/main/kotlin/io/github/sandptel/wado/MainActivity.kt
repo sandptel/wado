@@ -3,6 +3,12 @@ package io.github.sandptel.wado
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
+import android.view.HapticFeedbackConstants
+import android.view.WindowManager
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.activity.result.contract.ActivityResultContracts
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -46,6 +52,14 @@ class MainActivity : FlutterFragmentActivity() {
                     val bytes = Inbound.read(call.argument<String>("uri")!!, contentResolver)
                     runOnUiThread { result.success(bytes) }
                 }.start()
+                "haptic" -> {
+                    window.decorView.performHapticFeedback(haptic(call.argument<String>("kind").orEmpty()))
+                    result.success(null)
+                }
+                "active" -> {
+                    active(call.argument<Boolean>("on") == true)
+                    result.success(null)
+                }
                 "shortcut" -> {
                     Shortcut.desktop(this, call.argument<String>("key").orEmpty(), call.argument<String>("title").orEmpty())
                     result.success(null)
@@ -84,6 +98,34 @@ class MainActivity : FlutterFragmentActivity() {
                 }
                 else -> result.notImplemented()
             }
+        }
+    }
+
+    /** The page's haptic kinds as the phone's own predefined effects (the old app's Haptics.kt). */
+    private fun haptic(kind: String): Int {
+        val sdk = Build.VERSION.SDK_INT
+        return when (kind) {
+            "tick" -> if (sdk >= 34) HapticFeedbackConstants.SEGMENT_FREQUENT_TICK else HapticFeedbackConstants.CLOCK_TICK
+            "tap" -> HapticFeedbackConstants.VIRTUAL_KEY
+            "claim" -> if (sdk >= 30) HapticFeedbackConstants.GESTURE_START else HapticFeedbackConstants.LONG_PRESS
+            "confirm" -> if (sdk >= 30) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.VIRTUAL_KEY
+            "reject" -> if (sdk >= 30) HapticFeedbackConstants.REJECT else HapticFeedbackConstants.LONG_PRESS
+            "toggle_on" -> if (sdk >= 34) HapticFeedbackConstants.TOGGLE_ON else HapticFeedbackConstants.CLOCK_TICK
+            "toggle_off" -> if (sdk >= 34) HapticFeedbackConstants.TOGGLE_OFF else HapticFeedbackConstants.CLOCK_TICK
+            else -> HapticFeedbackConstants.LONG_PRESS
+        }
+    }
+
+    /** A session or the touchpad is up: screen stays on, no status or navigation bar. */
+    private fun active(on: Boolean) {
+        val c = WindowCompat.getInsetsController(window, window.decorView)
+        if (on) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            c.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            c.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            c.show(WindowInsetsCompat.Type.systemBars())
         }
     }
 }

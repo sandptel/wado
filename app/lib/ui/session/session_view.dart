@@ -12,6 +12,7 @@ import '../widgets/basics.dart';
 import 'console.dart';
 import 'control_centre.dart';
 import 'input_layer.dart';
+import '../motion/feel.dart';
 
 
 void leaveToComputer() {
@@ -20,8 +21,26 @@ void leaveToComputer() {
   if (k.isNotEmpty) Nav.I.view.value = ComputerView(k);
 }
 
-class SessionView extends StatelessWidget {
+class SessionView extends StatefulWidget {
   const SessionView({super.key});
+  @override
+  State<SessionView> createState() => _SessionViewState();
+}
+
+class _SessionViewState extends State<SessionView> {
+  // Screen on, no system bars, for as long as the session is shown (js/native_feel.js `active`).
+  @override
+  void initState() {
+    super.initState();
+    active(true);
+  }
+
+  @override
+  void dispose() {
+    active(false);
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = Tok.of(context);

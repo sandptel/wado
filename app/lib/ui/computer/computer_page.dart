@@ -21,6 +21,7 @@ import 'clips.dart';
 import '../../wado/passkey.dart';
 import '../passkey/passkey_card.dart';
 import 'quick.dart';
+import '../motion/motion.dart';
 
 String uptime(int s) {
   final d = s ~/ 86400, h = s % 86400 ~/ 3600, m = s % 3600 ~/ 60;
@@ -46,6 +47,7 @@ class _ComputerPageState extends State<ComputerPage> {
     Host.I.watch(true);
     Host.I.sessionsWatch(true);
     _scroll.addListener(() {
+      Motion.pageScroll = _scroll.offset;
       final s = _scroll.offset > 40;
       if (s != _solid) setState(() => _solid = s);
     });
@@ -85,14 +87,18 @@ class _ComputerPageState extends State<ComputerPage> {
         final r = Reach.of(c);
         final off = !r.online && r.tone == 'bad';
         final host = Host.I.state.value;
+        final flight = ViewClock.of(context)?.flight ?? false;
+        var n = 0;
+        // Each section rises in after the hero, one stagger step apart (hero_flip.js `rise`).
+        Widget sx(Widget w) => Enter(delay: Enter.step(n++, base: flight ? 160 : 120), child: w);
         return Stack(children: [
           Positioned.fill(
-            child: DecoratedBox(
+            child: Enter(ms: 300, dy: 0, child: DecoratedBox(
               decoration: BoxDecoration(
                 color: t.s0,
                 gradient: RadialGradient(center: const Alignment(-.4, -1), radius: .9, colors: [fade(hue, 86), fade(hue, 100)], stops: const [0, .7]),
               ),
-            ),
+            )),
           ),
           ListView(
             controller: _scroll,
@@ -105,34 +111,31 @@ class _ComputerPageState extends State<ComputerPage> {
                     _Hero(c: c, hue: hue, r: r),
                     if (off) ...[
                       const SizedBox(height: 12),
-                      WCard(children: [
+                      sx(WCard(children: [
                         Text('${c.name} is offline', style: body(context, w: FontWeight.w600, color: t.bright)),
                         Text('It is turned off, asleep, or its wado is not running. This page fills in by itself when it is back — nothing to retry.',
                             style: body(context, size: .8125)),
-                      ]),
+                      ])),
                     ],
                     const SizedBox(height: 12),
-                    _Actions(r: r),
-                    const Running(),
-                    if (r.online && Passkey.I.view.value.state.isNotEmpty && Passkey.I.view.value.required) ...[
-                      const Sect('Passkey'),
-                      const SizedBox(height: 8),
-                      const PasskeyCard(),
-                    ],
+                    sx(_Actions(r: r)),
+                    sx(const Running()),
+                    if (r.online && Passkey.I.view.value.state.isNotEmpty && Passkey.I.view.value.required)
+                      sx(const Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Sect('Passkey'), SizedBox(height: 8), PasskeyCard()])),
                     if (!off) ...[
-                      const Sect('Now playing'),
-                      const SizedBox(height: 8),
-                      host == null ? _Empty(icon: 'music', text: 'Asking ${c.name}…') : Playing(h: host),
-                      const Sect('Quick'),
-                      const SizedBox(height: 8),
-                      host == null ? const _Empty(icon: 'sliders', text: 'Its controls show once it answers.') : Quick(h: host, name: c.name),
-                      const Sect('Clipboard'),
-                      const SizedBox(height: 8),
-                      const Clips(),
+                      sx(Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        const Sect('Now playing'),
+                        const SizedBox(height: 8),
+                        host == null ? _Empty(icon: 'music', text: 'Asking ${c.name}…') : Playing(h: host),
+                      ])),
+                      sx(Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        const Sect('Quick'),
+                        const SizedBox(height: 8),
+                        host == null ? const _Empty(icon: 'sliders', text: 'Its controls show once it answers.') : Quick(h: host, name: c.name),
+                      ])),
+                      sx(const Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Sect('Clipboard'), SizedBox(height: 8), Clips()])),
                     ],
-                    const Sect('This computer'),
-                    const SizedBox(height: 8),
-                    const _SettingsList(),
+                    sx(const Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Sect('This computer'), SizedBox(height: 8), _SettingsList()])),
                   ]),
                 ),
               ),
@@ -142,7 +145,7 @@ class _ComputerPageState extends State<ComputerPage> {
             left: 0,
             right: 0,
             top: 0,
-            child: AnimatedContainer(
+            child: Enter(delay: const Duration(milliseconds: 200), ms: 300, dy: 0, child: AnimatedContainer(
               duration: t.dur,
               height: 56 + mq.padding.top,
               padding: EdgeInsets.fromLTRB(8, mq.padding.top, 8, 0),
@@ -158,7 +161,7 @@ class _ComputerPageState extends State<ComputerPage> {
                   ),
                 ),
               ]),
-            ),
+            )),
           ),
         ]);
       },
@@ -246,46 +249,61 @@ class _HeroState extends State<_Hero> {
           ),
         );
     final explain = l.words.value;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
-      decoration: BoxDecoration(
-        color: t.s1,
-        borderRadius: BorderRadius.circular(t.r4),
-        border: Border.all(color: t.line),
-        gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [mix(t.s1, widget.hue, 24), mix(t.s1, t.base[0xE], 10)], stops: const [0, .7]),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          OsDisc(logo: c.logo, hue: widget.hue, size: 64),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(c.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: display(context, rem(context, 1.875), ls: -rem(context, 1.875) * .025)),
-              const SizedBox(height: 4),
-              Text(os.isEmpty ? c.remoteId : os, style: mono(context, color: t.dim)),
-            ]),
+    final k = c.key;
+    Widget later(Widget w) => Enter(delay: const Duration(milliseconds: 200), ms: 420, dy: 10, child: w);
+    return Stack(children: [
+      Positioned.fill(
+        child: Flip(
+          from: 'card:$k',
+          uniform: false,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: t.s1,
+              borderRadius: BorderRadius.circular(t.r4),
+              border: Border.all(color: t.line),
+              gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [mix(t.s1, widget.hue, 24), mix(t.s1, t.base[0xE], 10)], stops: const [0, .7]),
+            ),
           ),
-        ]),
-        const SizedBox(height: 16),
-        IntrinsicHeight(
-          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            cell('Link', lval, lsub, ltone, dot: true, grow: 1.25, onTap: explain.isEmpty ? null : () => setState(() => open = !open)),
-            const SizedBox(width: 8),
-            cell('Computer', cval, csub, ctone),
-            const SizedBox(width: 8),
-            cell('Sessions', sval, ssub, '', grow: .8),
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            Flip(from: 'disc:$k', child: OsDisc(logo: c.logo, hue: widget.hue, size: 64)),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Flip(
+                  from: 'name:$k',
+                  child: Text(c.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: display(context, rem(context, 1.875), ls: -rem(context, 1.875) * .025)),
+                ),
+                const SizedBox(height: 4),
+                later(Text(os.isEmpty ? c.remoteId : os, style: mono(context, color: t.dim))),
+              ]),
+            ),
           ]),
-        ),
-        AnimatedSize(
-          duration: t.durSheet,
-          curve: Tokens.spring,
-          child: open && explain.isNotEmpty
-              ? Padding(padding: const EdgeInsets.only(top: 10), child: Text(explain, style: body(context, size: .7812, height: 1.55)))
-              : const SizedBox(width: double.infinity),
-        ),
-        _Hops(),
-      ]),
-    );
+          const SizedBox(height: 16),
+          later(IntrinsicHeight(
+            child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              cell('Link', lval, lsub, ltone, dot: true, grow: 1.25, onTap: explain.isEmpty ? null : () => setState(() => open = !open)),
+              const SizedBox(width: 8),
+              cell('Computer', cval, csub, ctone),
+              const SizedBox(width: 8),
+              cell('Sessions', sval, ssub, '', grow: .8),
+            ]),
+          )),
+          AnimatedSize(
+            duration: t.durSheet,
+            curve: Tokens.spring,
+            child: open && explain.isNotEmpty
+                ? Padding(padding: const EdgeInsets.only(top: 10), child: Text(explain, style: body(context, size: .7812, height: 1.55)))
+                : const SizedBox(width: double.infinity),
+          ),
+          later(_Hops()),
+        ]),
+      ),
+    ]);
   }
 }
 

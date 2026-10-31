@@ -67,8 +67,12 @@ class Disc extends StatelessWidget {
 
 /// A button that sinks to .96 while pressed (base.css `button:active`).
 class Press extends StatefulWidget {
-  const Press({super.key, required this.child, this.onTap, this.onLongPress, this.label, this.enabled = true, this.radius});
+  const Press({super.key, required this.child, this.onTap, this.onLongPress, this.label, this.enabled = true, this.radius, this.scale = .96, this.onPressed});
   final Widget child;
+  /// How far it sinks (`.96`; `1` when a parent does the giving).
+  final double scale;
+  /// The finger is on it / has left: for parts that answer the press themselves.
+  final ValueChanged<bool>? onPressed;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
   final String? label;
@@ -80,6 +84,13 @@ class Press extends StatefulWidget {
 
 class _PressState extends State<Press> {
   bool _down = false;
+  Offset _at = Offset.zero;
+
+  void _set(bool d) {
+    if (d == _down) return;
+    setState(() => _down = d);
+    widget.onPressed?.call(d);
+  }
   @override
   Widget build(BuildContext context) {
     final t = Tok.of(context);
@@ -88,20 +99,24 @@ class _PressState extends State<Press> {
       button: true,
       enabled: on,
       label: widget.label,
-      child: GestureDetector(
+      // The sink follows the finger itself, at once (CSS :active), not the tap recogniser, which
+      // inside a scroll view reports the press 100 ms late — a quick tap would never show it.
+      child: Listener(
+        onPointerDown: on ? (e) { _at = e.localPosition; _set(true); } : null,
+        onPointerUp: on ? (_) => _set(false) : null,
+        onPointerCancel: on ? (_) => _set(false) : null,
+        onPointerMove: on && _down ? (e) { if ((e.localPosition - _at).distance > 18) _set(false); } : null,
+        child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTapDown: on ? (_) => setState(() => _down = true) : null,
-        onTapUp: on ? (_) => setState(() => _down = false) : null,
-        onTapCancel: on ? () => setState(() => _down = false) : null,
         onTap: on ? widget.onTap : null,
         onLongPress: on ? widget.onLongPress : null,
         child: AnimatedScale(
-          scale: _down ? .96 : 1,
+          scale: _down ? widget.scale : 1,
           duration: t.durPress,
           curve: Tokens.spring,
           child: Opacity(opacity: widget.enabled ? 1 : .4, child: widget.child),
         ),
-      ),
+      )),
     );
   }
 }

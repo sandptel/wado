@@ -4,6 +4,7 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../core/core_host.dart';
 import 'log.dart';
@@ -17,7 +18,11 @@ const _link = String.fromEnvironment('WADO_E2E_LINK');
 const _session = bool.fromEnvironment('WADO_E2E_SESSION');
 const _page = String.fromEnvironment('WADO_E2E_PAGE');
 
+const _slow = int.fromEnvironment('WADO_E2E_SLOW');
+
 void e2eHooks() {
+  // Slow motion, to film transitions on a software-rendered emulator frame by frame.
+  if (!kReleaseMode && _slow > 0) timeDilation = _slow.toDouble();
   if (kReleaseMode || _link.isEmpty) return;
   void go(String key) {
     rlog('e2e: open $key');
