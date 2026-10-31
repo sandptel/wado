@@ -80,13 +80,15 @@ class _ShellState extends State<Shell> with TickerProviderStateMixin {
       // heaviest frame — must not eat the start of the flight.
       _comp.value = v is SubView ? 1 : 0;
       _comp.stop();
-      WidgetsBinding.instance.addPostFrameCallback((_) => WidgetsBinding.instance.endOfFrame.then((_) {
-            if (!mounted || _key != k || _comp.status == AnimationStatus.reverse) return;
-            if (_flight) Motion.flying.value = k;
-            _comp.forward().whenComplete(() {
-              if (Motion.flying.value == k && _comp.value == 1) Motion.flying.value = null;
-            });
-          }));
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => WidgetsBinding.instance.endOfFrame.then((_) {
+          if (!mounted || _key != k || _comp.status == AnimationStatus.reverse) return;
+          if (_flight) Motion.flying.value = k;
+          _comp.forward().whenComplete(() {
+            if (Motion.flying.value == k && _comp.value == 1) Motion.flying.value = null;
+          });
+        }),
+      );
     } else if (k == null && _key != null) {
       final key = _key!;
       // Scrolled away, or the card is gone: the hero is no longer near it — fade instead.
@@ -131,24 +133,24 @@ class _ShellState extends State<Shell> with TickerProviderStateMixin {
         // What a pushed page covers: the computer's page if there is one, else home.
         final underIsComp = _key != null && _page != null && _page!.key != null;
         Widget under(Widget child, {required bool isUnder}) => AnimatedBuilder(
-                animation: sub,
-                child: child,
-                builder: (context, child) {
-                  final p = isUnder && _page != null ? sub.value : 0.0;
-                  // One shape in every state — a changed wrapper would rebuild the page under it.
-                  final hidden = p >= 1 && _sub.isCompleted;
-                  return Offstage(
-                    offstage: hidden,
-                    child: TickerMode(
-                      enabled: !hidden,
-                      child: Opacity(
-                      opacity: (1 - Curves.easeOut.transform((p * (t.reduced ? 1 : 480 / 220)).clamp(0, 1))).clamp(0, 1),
-                      child: Transform.translate(offset: Offset(t.reduced ? 0 : -.24 * w * p, 0), child: child),
-                    ),
-                    ),
-                  );
-                },
-              );
+          animation: sub,
+          child: child,
+          builder: (context, child) {
+            final p = isUnder && _page != null ? sub.value : 0.0;
+            // One shape in every state — a changed wrapper would rebuild the page under it.
+            final hidden = p >= 1 && _sub.isCompleted;
+            return Offstage(
+              offstage: hidden,
+              child: TickerMode(
+                enabled: !hidden,
+                child: Opacity(
+                  opacity: (1 - Curves.easeOut.transform((p * (t.reduced ? 1 : 480 / 220)).clamp(0, 1))).clamp(0, 1),
+                  child: Transform.translate(offset: Offset(t.reduced ? 0 : -.24 * w * p, 0), child: child),
+                ),
+              ),
+            );
+          },
+        );
         return AnnotatedRegion<SystemUiOverlayStyle>(
           value: t.light ? SystemUiOverlayStyle.dark : SystemUiOverlayStyle.light,
           child: PopScope(
@@ -167,78 +169,106 @@ class _ShellState extends State<Shell> with TickerProviderStateMixin {
             child: Scaffold(
               backgroundColor: t.s0,
               resizeToAvoidBottomInset: false,
-              body: Stack(children: [
-                // Home: covered by a computer's page (scale .94, fade), or under a settings page.
-                Positioned.fill(
-                  child: under(
-                    isUnder: !underIsComp,
-                    AnimatedBuilder(
-                      animation: _comp,
-                      child: const Zoom(child: HomeScreen()),
-                      builder: (context, child) {
-                        final p = _key == null ? 0.0 : const Interval(0, 360 / 520, curve: Tokens.spring).transform(_comp.value);
-                        final hidden = _key != null && _comp.isCompleted;
-                        return Offstage(
-                          offstage: hidden,
-                          child: TickerMode(
-                            enabled: !hidden,
-                            child: Opacity(
-                              opacity: 1 - p,
-                              child: Transform.scale(scale: t.reduced ? 1 : 1 - .06 * p, alignment: Alignment.center, child: child),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-                if (_key != null)
+              body: Stack(
+                children: [
+                  // Home: covered by a computer's page (scale .94, fade), or under a settings page.
                   Positioned.fill(
                     child: under(
-                      isUnder: underIsComp,
-                      ViewClock(
-                        a: _comp,
-                        flight: _flight,
-                        child: AnimatedBuilder(
-                          animation: comp,
-                          child: Zoom(child: ComputerPage(key: ValueKey('c:$_key'), computerKey: _key!)),
-                          builder: (context, child) {
-                            // The flight carries the hero; the rest of the page fades with it. With no
-                            // card to fly from, the whole page crossfades (360 ms in, 260 ms out).
-                            final o = _flight ? 1.0 : comp.value;
-                            return IgnorePointer(ignoring: _comp.status == AnimationStatus.reverse, child: Opacity(opacity: o.clamp(0, 1), child: child));
-                          },
-                        ),
+                      isUnder: !underIsComp,
+                      AnimatedBuilder(
+                        animation: _comp,
+                        child: const Zoom(child: HomeScreen()),
+                        builder: (context, child) {
+                          final p = _key == null ? 0.0 : const Interval(0, 360 / 520, curve: Tokens.spring).transform(_comp.value);
+                          // Under a computer's page, or under a session: off stage, not ticking, not read aloud.
+                          final hidden = (_key != null && _comp.isCompleted) || inSession;
+                          return Offstage(
+                            offstage: hidden,
+                            child: TickerMode(
+                              enabled: !hidden,
+                              child: Opacity(
+                                opacity: 1 - p,
+                                child: Transform.scale(scale: t.reduced ? 1 : 1 - .06 * p, alignment: Alignment.center, child: child),
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     ),
                   ),
-                if (_page != null)
-                  Positioned.fill(
-                    child: AnimatedBuilder(
-                      animation: sub,
-                      child: ColoredBox(
-                        color: t.s0,
-                        child: AnimatedSwitcher(
-                          duration: t.dur,
-                          child: Zoom(key: ValueKey('p:${_page!.key}:${_page!.page}'), child: SettingsPage(computerKey: _page!.key, page: _page!.page)),
+                  if (_key != null)
+                    Positioned.fill(
+                      child: _Behind(
+                        inSession,
+                        under(
+                          isUnder: underIsComp,
+                          ViewClock(
+                            a: _comp,
+                            flight: _flight,
+                            child: AnimatedBuilder(
+                              animation: comp,
+                              child: Zoom(
+                                child: ComputerPage(key: ValueKey('c:$_key'), computerKey: _key!),
+                              ),
+                              builder: (context, child) {
+                                // The flight carries the hero; the rest of the page fades with it. With no
+                                // card to fly from, the whole page crossfades (360 ms in, 260 ms out).
+                                final o = _flight ? 1.0 : comp.value;
+                                return IgnorePointer(
+                                  ignoring: _comp.status == AnimationStatus.reverse,
+                                  child: Opacity(opacity: o.clamp(0, 1), child: child),
+                                );
+                              },
+                            ),
+                          ),
                         ),
                       ),
-                      builder: (context, child) => IgnorePointer(
-                        ignoring: _sub.status == AnimationStatus.reverse,
-                        child: t.reduced
-                            ? Opacity(opacity: sub.value.clamp(0, 1), child: child)
-                            : Transform.translate(offset: Offset((1 - sub.value) * w, 0), child: child),
+                    ),
+                  if (_page != null)
+                    Positioned.fill(
+                      child: _Behind(
+                        inSession,
+                        AnimatedBuilder(
+                          animation: sub,
+                          child: ColoredBox(
+                            color: t.s0,
+                            child: AnimatedSwitcher(
+                              duration: t.dur,
+                              child: Zoom(
+                                key: ValueKey('p:${_page!.key}:${_page!.page}'),
+                                child: SettingsPage(computerKey: _page!.key, page: _page!.page),
+                              ),
+                            ),
+                          ),
+                          builder: (context, child) => IgnorePointer(
+                            ignoring: _sub.status == AnimationStatus.reverse,
+                            child: t.reduced ? Opacity(opacity: sub.value.clamp(0, 1), child: child) : Transform.translate(offset: Offset((1 - sub.value) * w, 0), child: child),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                if (inSession) const Positioned.fill(child: ConsoleView()),
-                const Positioned.fill(child: Notes()),
-                const Positioned.fill(child: ClipDock()),
-              ]),
+                  if (inSession) const Positioned.fill(child: ConsoleView()),
+                  const Positioned.fill(child: Notes()),
+                  const Positioned.fill(child: ClipDock()),
+                ],
+              ),
             ),
           ),
         );
       },
     );
   }
+}
+
+/// A page under the session: kept (its state and scroll), but off stage and not ticking. One
+/// shape whatever the flag, so the page under it never rebuilds.
+class _Behind extends StatelessWidget {
+  const _Behind(this.hidden, this.child);
+  final bool hidden;
+  final Widget child;
+  @override
+  Widget build(BuildContext context) => Offstage(
+    offstage: hidden,
+    child: TickerMode(enabled: !hidden, child: child),
+  );
 }

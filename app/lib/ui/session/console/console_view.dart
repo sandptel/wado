@@ -28,6 +28,7 @@ import '../keyboard.dart' show KeyboardSheet;
 import '../picture_input.dart';
 import 'deck.dart';
 import 'parts.dart';
+import 'readouts.dart';
 import 'stage_state.dart';
 
 /// Close whatever sheet is over the session (the control centre, the drawer); false if none was.
@@ -306,7 +307,9 @@ class _ConsoleViewState extends State<ConsoleView> with SingleTickerProviderStat
                 ),
               ),
               // The picture's input: only over the picture's own content.
-              Positioned.fromRect(rect: content, child: PictureInput(onGesture: _gesture, child: const SizedBox.expand())),
+              Positioned.fromRect(rect: content, child: PictureInput(onGesture: _gesture, onTouch: TouchMarks.touch, child: const SizedBox.expand())),
+              // The readouts keep to the picture's own corners.
+              Positioned.fromRect(rect: content, child: const Readouts()),
               if (face == Face.pad) Positioned.fill(child: IgnorePointer(child: Opacity(opacity: only, child: const DeckCursor()))),
               // ── console only: the strip, the faces, the deck ──
               if (face != Face.gamepad) only_('strip', WindowStrip(onWindowMenu: _windowMenu)),
@@ -420,6 +423,7 @@ class _ConsoleViewState extends State<ConsoleView> with SingleTickerProviderStat
               ),
               // ── no picture yet: in the picture's place ──
               Positioned.fromRect(rect: Rect.lerp(stage, L.pic, a)!, child: const Padding(padding: EdgeInsets.all(10), child: StageState())),
+              const Positioned.fill(child: TouchMarks()),
               const Positioned(left: 0, right: 0, bottom: 0, child: KeyboardSheet()),
               // ponytail: the web's drawer sits under the dock (z 4 under 10) and the dock then
               // covers its bottom row; here it sits over it, so nothing in it is hidden.

@@ -6,6 +6,7 @@ import '../../../core/core_host.dart';
 import '../../../wado/nav.dart';
 import '../../../wado/relay_link.dart';
 import '../../../wado/session.dart';
+import '../../../wado/stats.dart';
 import '../../motion/motion.dart';
 import '../../theme/look.dart';
 import '../../theme/tokens.dart';
@@ -18,14 +19,17 @@ class CcHero extends StatelessWidget {
     final t = Tok.of(context);
     final s = Session.I;
     return ListenableBuilder(
-      listenable: Listenable.merge([s.stats, s.on, s.encoder, s.stage, RelayLink.I.phase]),
+      listenable: Listenable.merge([s.stats, s.on, s.encoder, s.stage, RelayLink.I.phase, Stats.I.verdict]),
       builder: (context, _) {
         final on = s.on.value;
         final c = s.applied ?? Session.config();
         final st = s.stats.value;
         final sw = on && s.encoder.value.$1 == 'software';
-        // ponytail: ok or idle until health.js is ported; its warn/bad verdicts land with it.
-        final (verdict, tone) = on ? ('healthy', t.good) : ('not streaming', t.dim);
+        final h = Stats.I.verdict.value;
+        final (verdict, tone) = !on
+            ? ('not streaming', t.dim)
+            : switch (h.state) { 'bad' => (h.side, t.bad), 'warn' => (h.side, t.base[0xA]), _ => ('healthy', t.good) };
+        final need = h.needKbps;
         String n(double? v, [int d = 0]) => v == null || (on && v <= 0 && d == 0 && st == null) ? '—' : v.toStringAsFixed(d);
         final fpsMax = ((c['fps'] ?? 60) as num).toDouble();
         final stage = on ? s.stage.value.clamp(0, 4) : RelayLink.I.phase.value.clamp(0, 2);
@@ -85,8 +89,18 @@ class CcHero extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(child: _Meter(k: 'ping', v: n(st?.rtt), unit: 'ms', data: s.spark.ping, hi: 150, hue: t.base[0xC])),
                 const SizedBox(width: 8),
-                Expanded(child: _Meter(k: 'stream', v: st == null ? '—' : (st.kbps / 1000).toStringAsFixed(1), unit: 'Mb', data: s.spark.kbps, hi: 9600, hue: t.base[0xD])),
+                Expanded(
+                  child: _Meter(
+                    k: 'stream',
+                    v: st == null ? '—' : (st.kbps / 1000).toStringAsFixed(1),
+                    unit: need != null && need > 0 ? '/${(need / 1000).toStringAsFixed(1)} Mb' : 'Mb',
+                    data: s.spark.kbps,
+                    hi: (need ?? 8000) * 1.2,
+                    hue: t.base[0xD],
+                  ),
+                ),
               ]),
+              if (h.fix.isNotEmpty) ...[const SizedBox(height: 12), Text(h.fix, style: body(context, size: .75, color: t.text))],
             ],
             const SizedBox(height: 12),
             Row(children: [

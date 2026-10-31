@@ -60,13 +60,11 @@ class _ControlCentreState extends State<ControlCentre> with TickerProviderStateM
   void _sync() {
     if (ccOpen.value) {
       Host.I.watch(true);
-      Session.I.watchStats(true);
       Shells.I.request();
       _opened++;
       _sheet.animateTo(1, curve: Tokens.spring);
     } else {
       Host.I.watch(false);
-      Session.I.watchStats(false);
       _sheet.animateBack(0, curve: Tokens.spring).then((_) {
         if (mounted && !ccOpen.value) setState(_pages.clear);
       });

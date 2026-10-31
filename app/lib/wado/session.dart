@@ -14,6 +14,7 @@ import 'log.dart';
 import 'relay_link.dart';
 import 'multi.dart';
 import 'settings.dart';
+import 'stats.dart';
 
 const inputChannel = 'wado-input';
 const motionChannel = 'wado-motion';
@@ -25,6 +26,9 @@ class Session {
     l.on('__up', (_) => _onLinkUp());
     l.on('__down', (_) => _onDown());
     l.on('session_started', _started);
+    Stats.I.sample.addListener(_sampled);
+    // Auto bitrate moved the cap: rebuild only the encoder (autorate.js → actions::apply).
+    Stats.I.onCap = (_) => reconfigure();
     l.on('session_alive', _alive);
     l.on('session_reconfigured', _reconfigured);
     l.on('session_error', _error);
@@ -60,43 +64,6 @@ class Session {
   final stats = ValueNotifier<({double fps, double rtt, String decoder, double kbps})?>(null);
   /// The control centre's sparklines: the last 30 readings of each.
   final spark = (fps: <double>[], ping: <double>[], kbps: <double>[]);
-  Timer? _statsTimer;
-  int _lastFrames = 0, _lastBytes = 0;
-  DateTime _lastAt = DateTime.now();
-
-  void watchStats(bool on) {
-    _statsTimer?.cancel();
-    if (!on) return;
-    _statsTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
-      final p = pc;
-      if (p == null) return;
-      double fps = 0, rtt = 0, kbps = 0;
-      var dec = '';
-      for (final r in await p.getStats()) {
-        final v = r.values;
-        if (r.type == 'inbound-rtp' && v['kind'] == 'video') {
-          final n = (v['framesDecoded'] ?? 0) as num;
-          final b = num.tryParse('${v['bytesReceived'] ?? 0}') ?? 0;
-          final now = DateTime.now();
-          final dt = now.difference(_lastAt).inMilliseconds / 1000;
-          if (dt > 0 && _lastFrames > 0) fps = (n.toInt() - _lastFrames) / dt;
-          if (dt > 0 && _lastBytes > 0) kbps = (b.toInt() - _lastBytes) * 8 / 1000 / dt;
-          _lastFrames = n.toInt();
-          _lastBytes = b.toInt();
-          _lastAt = now;
-          dec = '${v['decoderImplementation'] ?? ''}';
-        }
-        if (r.type == 'candidate-pair' && (v['state'] == 'succeeded') && v['currentRoundTripTime'] != null) {
-          rtt = ((v['currentRoundTripTime'] as num) * 1000).toDouble();
-        }
-      }
-      for (final (l, x) in [(spark.fps, fps), (spark.ping, rtt), (spark.kbps, kbps)]) {
-        l.add(x);
-        if (l.length > 30) l.removeAt(0);
-      }
-      stats.value = (fps: fps, rtt: rtt, decoder: dec, kbps: kbps);
-    });
-  }
 
   /// Launch an app or command in the session (`session_launch`).
   void launch(String command) {
@@ -229,6 +196,7 @@ class Session {
       'dark': !t.light,
       'background': _desktop(t.base, s.s('accent')),
       'low_latency_audio': s.b('low_latency_audio'),
+      if (s.b('auto_bitrate') && Stats.I.rate.cap != null) 'bitrate_cap_kbps': Stats.I.rate.cap,
     };
   }
 
@@ -346,6 +314,8 @@ class Session {
     }
     final enc = (msg['info'] as Map?)?['encoder'] as Map?;
     if (enc != null) encoder.value = ((enc['mode'] ?? '') as String, (enc['pipeline'] ?? '') as String);
+    Stats.I.rate.reset();
+    _yardsticks(enc);
     on.value = true;
     _phase(3);
     rlog('session ready — encoder ${enc?['mode'] ?? '?'}');
@@ -382,6 +352,7 @@ class Session {
     final enc = (msg['info'] as Map?)?['encoder'] as Map?;
     if (enc != null) encoder.value = ((enc['mode'] ?? '') as String, (enc['pipeline'] ?? '') as String);
     rlog('session reconfigured — ${enc?['bitrate_kbps'] ?? '?'} kbps');
+    _yardsticks(enc);
     setStatus('applied');
   }
 
@@ -509,6 +480,20 @@ class Session {
 
   bool get left => _left;
 
+  void _sampled() {
+    final x = Stats.I.sample.value;
+    if (x == null) return;
+    for (final (l, v) in [(spark.fps, x.fps), (spark.ping, x.ping), (spark.kbps, x.kbps)]) {
+      l.add(v ?? 0);
+      if (l.length > 30) l.removeAt(0);
+    }
+    stats.value = (fps: x.fps ?? 0, rtt: x.ping ?? 0, decoder: '', kbps: x.kbps ?? 0);
+  }
+
+  void _yardsticks(Map? enc) {
+    if (enc != null) Stats.I.target(((enc['bitrate_kbps'] ?? 0) as num).toInt(), ((enc['fps'] ?? 0) as num).toInt());
+  }
+
   MediaStreamTrack? _audio;
 
   /// This device's own mute and volume on the computer's sound (`live::apply`).
@@ -530,6 +515,7 @@ class Session {
     pc = null;
     inputDC = motionDC = fastDC = null;
     hasVideo.value = false;
+    Stats.I.stop();
     if (_rendererReady) renderer.srcObject = null;
     p?.close();
   }
@@ -586,6 +572,7 @@ class Session {
         return;
       }
       rlog('track received — waiting for a network path');
+      Stats.I.start(p);
       if (ev.streams.isNotEmpty) renderer.srcObject = ev.streams.first;
       hasVideo.value = true;
       stagebar.value = 'Streaming (relay).';
