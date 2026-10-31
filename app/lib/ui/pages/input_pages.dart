@@ -6,8 +6,10 @@ import 'package:flutter/material.dart';
 import '../../core/core_host.dart';
 import '../../wado/host.dart';
 import '../../wado/settings.dart';
+import '../../wado/session.dart';
 import '../theme/look.dart';
 import '../widgets/basics.dart';
+import 'display_session.dart' show HeadCard;
 import '../widgets/slider.dart';
 
 const _padDefaults = <String, Object?>{
@@ -91,29 +93,34 @@ class TouchpadSettings extends StatelessWidget {
 
 class InputFeel extends StatelessWidget {
   const InputFeel({super.key});
+  // pages/input.rs `feel`: how a finger and a wheel feel on this phone.
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: Settings.I,
       builder: (context, _) {
         final s = Settings.I;
+        void apply() {
+          if (Session.I.on.value) Session.I.reconfigure();
+        }
+
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const Sect('Touch on the picture'),
-          const SizedBox(height: 8),
-          Seg(options: const [('pointer', 'Gestures'), ('touch', 'Raw touch')], value: s.s('touch_mode'), onPick: (v) => s.set('touch_mode', v)),
-          const SizedBox(height: 6),
-          Why(s.s('touch_mode') == 'touch'
-              ? 'Fingers reach the app as touch, for apps made for it.'
-              : 'Tap clicks, drag scrolls, hold right-clicks, hold and drag drags — the same in every app.'),
-          const Sect('Scrolling'),
-          const SizedBox(height: 8),
-          WCard(children: [
-            ThickSlider(label: 'Scroll speed', value: s.d('scroll_speed'), min: .1, max: 2, step: .05, shown: '${s.d('scroll_speed').toStringAsFixed(2)}×', onChange: (v) => s.set('scroll_speed', v)),
-            SwitchRow(title: 'Natural scrolling', sub: 'Content follows your finger', on: s.b('natural_scroll'), onToggle: (v) => s.set('natural_scroll', v)),
+          HeadCard(title: 'A finger is', children: [
+            Seg(options: const [('pointer', 'Gestures'), ('touch', 'Raw touch')], value: s.s('touch_mode'), onPick: (v) {
+              s.set('touch_mode', v);
+              apply();
+            }),
+            Why(s.s('touch_mode') == 'touch' ? 'Real multi-touch, for touch-native apps.' : 'Tap clicks, hold right-clicks, drag scrolls.'),
+            SwitchRow(title: 'Move windows', sub: 'Dragging moves the window under the finger', on: s.b('move_mode'), onToggle: (v) {
+              s.set('move_mode', v);
+              apply();
+            }),
           ]),
-          const Sect('Edges'),
-          const SizedBox(height: 8),
-          SwitchRow(title: 'Edge swipes', sub: 'Swipe in from the side for the dock and the control centre', on: s.b('edge_swipe'), onToggle: (v) => s.set('edge_swipe', v)),
+          const SizedBox(height: 12),
+          HeadCard(children: [
+            ThickSlider(label: 'Scroll speed', value: s.d('scroll_speed'), min: .05, max: 2, step: .05, shown: '${s.d('scroll_speed').toStringAsFixed(2)}×', onChange: (v) => s.set('scroll_speed', v)),
+            SwitchRow(title: 'Natural scroll', sub: 'Content follows the finger', on: s.b('natural_scroll'), onToggle: (v) => s.set('natural_scroll', v)),
+          ]),
         ]);
       },
     );

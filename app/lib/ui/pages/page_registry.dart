@@ -27,6 +27,7 @@ final _pages = <String, PageDef>{
   'add_computer': PageDef('Add a computer', (_) => const AddComputer()),
   'appearance': PageDef('Appearance', (_) => const Appearance()),
   'diagnostics': PageDef('Diagnostics', (_) => const Diagnostics()),
+  'logs': PageDef('Server log', (_) => const LogsPage()),
   'display_session': PageDef('Display & session', (_) => const DisplaySession()),
   'sound_devices': PageDef('Sound & devices', (_) => const SoundDevices()),
   'connection_trust': PageDef('Connection & trust', (_) => ConnectionTrust(computerKey: Nav.I.view.value.computer)),

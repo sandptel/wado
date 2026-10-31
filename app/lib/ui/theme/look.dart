@@ -31,9 +31,9 @@ class Look {
     final s = Settings.I;
     final custom = s.s('theme_custom');
     List<Color> base;
-    final parts = custom.split(RegExp(r'[,\s]+')).where((x) => x.length == 6).toList();
-    if (parts.length == 16) {
-      base = Scheme('custom', parts).colors;
+    final parts = RegExp(r'(?<![0-9a-fA-F])([0-9a-fA-F]{6})(?![0-9a-fA-F])').allMatches(custom).map((m) => m[1]!).toList();
+    if (parts.length >= 16) {
+      base = Scheme('custom', parts.sublist(0, 16)).colors;
     } else {
       base = scheme(s.s('theme')).colors;
     }
