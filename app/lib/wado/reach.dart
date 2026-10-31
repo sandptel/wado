@@ -6,11 +6,14 @@ import 'nav.dart';
 import 'online.dart';
 import 'relay_link.dart';
 import 'session.dart';
+import 'side_links.dart';
 
 class Reach {
-  const Reach({required this.tone, required this.words, required this.online, this.busy = false, this.selected = false});
+  const Reach({required this.tone, required this.words, required this.online, this.busy = false, this.selected = false, this.nolive = ''});
   final String tone; // ok · warn · off · bad
   final String words;
+  /// Online, but no seatless link to it: old_relay · old_daemon (a widget says what is missing).
+  final String nolive;
   final bool online, busy, selected;
 
   static Reach of(Computer c) {
@@ -34,6 +37,13 @@ class Reach {
         online: false,
         selected: true,
       );
+    }
+    // A light link (widgets) says more than the probe: up, or why not.
+    final side = SideLinks.I.of(c.key).state;
+    if (side == 'up') return const Reach(tone: 'ok', words: 'Online', online: true);
+    if (side == 'old_relay' || side == 'old_daemon') {
+      final n = Online.I.map.value['${c.relayUrl}|${c.remoteId}'];
+      return Reach(tone: (n ?? 0) > 0 ? 'ok' : 'off', words: (n ?? 0) > 0 ? 'Online' : 'Offline', online: (n ?? 0) > 0, nolive: side);
     }
     final n = Online.I.map.value['${c.relayUrl}|${c.remoteId}'];
     return switch (n) {

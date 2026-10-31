@@ -61,7 +61,7 @@ class Cards extends StatelessWidget {
       Press(
         onTap: () => Nav.I.openPage('add_computer', aboutComputer: false),
         label: 'Add a computer',
-        child: _Dashed(
+        child: Dashed(
           color: t.line,
           radius: t.r3,
           child: SizedBox(
@@ -236,8 +236,8 @@ class _GoState extends State<_Go> with SingleTickerProviderStateMixin {
 }
 
 /// A 1.5 px dashed border (`.ccard.add`).
-class _Dashed extends StatelessWidget {
-  const _Dashed({required this.child, required this.color, required this.radius});
+class Dashed extends StatelessWidget {
+  const Dashed({required this.child, required this.color, required this.radius});
   final Widget child;
   final Color color;
   final double radius;

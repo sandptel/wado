@@ -14,6 +14,7 @@ import '../theme/tokens.dart';
 import '../widgets/basics.dart';
 import 'cards.dart';
 import 'running.dart';
+import 'widgets.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -27,15 +28,26 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     CoreHost.I.computers.addListener(_probe);
     _probe();
+    // Widgets' light links follow the list, the selected computer and the session.
+    for (final l in _links) {
+      l.addListener(_watch);
+    }
+    _watch();
     Host.I.sessionsWatch(true);
   }
 
   @override
   void dispose() {
     CoreHost.I.computers.removeListener(_probe);
+    for (final l in _links) {
+      l.removeListener(_watch);
+    }
     Host.I.sessionsWatch(false);
     super.dispose();
   }
+
+  late final List<Listenable> _links = [Settings.I, Nav.I.view, Session.I.shown, CoreHost.I.computers];
+  void _watch() => watchLinks(session: Session.I.shown.value);
 
   void _probe() {
     final sel = Nav.I.selected;
@@ -105,6 +117,8 @@ class _HomeScreenState extends State<HomeScreen> {
               const Sect('On this phone'),
               const SizedBox(height: 8),
               const PhoneList(),
+              const SizedBox(height: 4),
+              const WidgetsSection(),
             ],
           ),
         ),

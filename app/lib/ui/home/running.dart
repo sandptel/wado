@@ -10,6 +10,7 @@ import '../../wado/multi.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
+import '../motion/motion.dart';
 import 'cards.dart';
 
 String ago(int secs) {
@@ -96,10 +97,18 @@ class _RunningState extends State<Running> {
             height: 54,
             decoration: BoxDecoration(color: t.s0, borderRadius: BorderRadius.circular(t.r2)),
             alignment: Alignment.center,
-            child: Container(
-              width: bw,
-              height: bh,
-              decoration: BoxDecoration(borderRadius: BorderRadius.circular(5), border: Border.all(color: edge, width: 2), color: fade(edge, 82)),
+            // The session's own shape, popped in (`shapein`).
+            child: Enter(
+              ms: 500,
+              dy: 0,
+              scale: .3,
+              pop: true,
+              fadeOnClose: false,
+              child: Container(
+                width: bw,
+                height: bh,
+                decoration: BoxDecoration(borderRadius: BorderRadius.circular(5), border: Border.all(color: edge, width: 2), color: fade(edge, 82)),
+              ),
             ),
           ),
           const SizedBox(width: 12),
@@ -113,7 +122,7 @@ class _RunningState extends State<Running> {
                   const SizedBox(width: 6),
                   Text('on $name', style: body(context, size: .75, w: FontWeight.w600)),
                 ]),
-                Container(width: 7, height: 7, decoration: BoxDecoration(shape: BoxShape.circle, color: live ? t.accent : t.dim)),
+                Breathe(ms: 2000, on: live, child: Container(width: 7, height: 7, decoration: BoxDecoration(shape: BoxShape.circle, color: live ? t.accent : t.dim))),
                 Text('$who · #$n', style: body(context, size: .75, color: t.dim)),
               ]),
             ]),

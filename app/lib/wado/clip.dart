@@ -24,6 +24,7 @@ import '../core/core_host.dart';
 import 'host.dart';
 import 'relay_link.dart';
 import 'settings.dart';
+import 'side_links.dart';
 
 const _os = MethodChannel('wado/os');
 const _maxText = 1 << 20;
@@ -186,6 +187,40 @@ class Clip {
     if (Platform.isAndroid) return await _os.invokeMethod<bool>('clipWrite', {'text': text}) ?? false;
     await Clipboard.setData(ClipboardData(text: text));
     return true;
+  }
+
+  /// Computer `key`'s entry `id` onto this phone (the selected one's link, or its light link).
+  Future<bool> copyFrom(String key, String id, String kind) async {
+    if (key == _key) return copy(id, kind);
+    final name = CoreHost.I.computer(key)?.name ?? 'the computer';
+    try {
+      final c = await SideLinks.I.clipFetch(key, id);
+      if (!c.mime.startsWith('text/')) {
+        say('Pictures stay on $name — copy text, or open it in Files', 'dim');
+        return false;
+      }
+      final ok = await _write(c.data);
+      if (ok) {
+        _remember(hash(utf8.encode(c.data)));
+        say('Copied to this phone from $name');
+      }
+      return ok;
+    } catch (e) {
+      say('$e'.isEmpty || '$e' == 'no answer' ? '$name did not answer' : '$e'.replaceAll('the computer', name), 'dim');
+      return false;
+    }
+  }
+
+  /// Computer `key`'s entry `id` back onto its own clipboard.
+  Future<bool> sendBackOn(String key, String id) async {
+    if (key == _key) return sendBack(id);
+    try {
+      final c = await SideLinks.I.clipFetch(key, id);
+      return SideLinks.I.send(key, {'type': 'clip_push', 'mime': c.mime, 'data': c.data});
+    } catch (_) {
+      say('${CoreHost.I.computer(key)?.name ?? 'The computer'} did not answer', 'bad');
+      return false;
+    }
   }
 
   /// Entry `id` onto this phone's clipboard; true when it took. Says what happened.

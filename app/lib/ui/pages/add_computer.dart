@@ -14,6 +14,7 @@ import '../../wado/nav.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
+import '../motion/motion.dart';
 
 const defaultRelay = 'https://wado-relay.indiasouthcentral.cloudapp.azure.com';
 const _alphabet = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
@@ -128,12 +129,13 @@ class _AddComputerState extends State<AddComputer> {
             crossAxisSpacing: 8,
             childAspectRatio: 2.6,
             children: [
-              for (final w in _words)
-                Container(
+              // The check words appear one after another — calm, not a reveal (`sasin`).
+              for (final (i, w) in _words.indexed)
+                Enter(delay: Duration(milliseconds: i * 90), ms: 480, dy: 6, fadeOnClose: false, child: Container(
                   alignment: Alignment.center,
                   decoration: BoxDecoration(color: t.s0, borderRadius: BorderRadius.circular(t.r1), border: Border.all(color: t.line)),
                   child: Text(w, style: display(context, rem(context, 1.1875))),
-                ),
+                )),
             ],
           ),
           _wait(context, t, 'Waiting for you to confirm on the computer. If the words differ, say no there.'),
@@ -226,7 +228,7 @@ class _AddComputerState extends State<AddComputer> {
   Widget _wait(BuildContext context, Tokens t, String text) => Padding(
         padding: const EdgeInsets.only(top: 10),
         child: Row(children: [
-          Container(width: 8, height: 8, decoration: BoxDecoration(shape: BoxShape.circle, color: t.base[0xA])),
+          Breathe(ms: 3200, child: Container(width: 8, height: 8, decoration: BoxDecoration(shape: BoxShape.circle, color: t.base[0xA]))),
           const SizedBox(width: 10),
           Expanded(child: Text(text, style: body(context, size: .8125, color: t.dim))),
         ]),
