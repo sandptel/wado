@@ -21,6 +21,7 @@ import io.flutter.plugin.common.MethodChannel
 import io.github.sandptel.wado.media.RemoteMedia
 import io.github.sandptel.wado.notify.Notifier
 import io.github.sandptel.wado.passkey.AuthErrors
+import io.github.sandptel.wado.push.Push
 import io.github.sandptel.wado.stay.StayConnectedService
 import io.github.sandptel.wado.passkey.Authenticator
 
@@ -120,6 +121,11 @@ class MainActivity : FlutterFragmentActivity() {
                 } else {
                     notifAnswer = { result.success(it) }
                     notifAsk.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+                "pushSubscribe" -> {
+                    Push.answer = { m -> runOnUiThread { os?.invokeMethod("pushEndpoint", m) } }
+                    Push.subscribe(this, call.argument("vapid") ?: "", call.argument("rid") ?: "")
+                    result.success(null)
                 }
                 "volumeKeys" -> {
                     volumeKeys = call.arguments == true

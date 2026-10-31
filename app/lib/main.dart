@@ -12,6 +12,7 @@ import 'wado/claude.dart';
 import 'wado/input.dart';
 import 'wado/link_state.dart';
 import 'wado/phone.dart';
+import 'wado/push.dart';
 import 'wado/pad.dart';
 import 'wado/passkey.dart';
 import 'wado/shells.dart';
@@ -37,6 +38,7 @@ Future<void> main() async {
     Claude.I;
     Link.I;
     Phone.I;
+    Push.I;
     Input.I;
     final sel = Settings.I.s('selected');
     if (sel.isNotEmpty && CoreHost.I.computer(sel) != null) RelayLink.I.dial(sel);

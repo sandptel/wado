@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart' show AppLifecycleState, WidgetsBinding;
 
 import 'host.dart';
+import 'push.dart';
 import 'relay_link.dart';
 import 'settings.dart';
 
@@ -87,6 +88,8 @@ class Phone {
         final v = (((s['volume'] ?? 0) as num) + (c.arguments as num)).clamp(0.0, 1.0);
         s['volume'] = v;
         Host.I.act({'do': 'sink_volume', 'id': s['id'], 'volume': v});
+      case 'pushEndpoint':
+        Push.I.endpoint(c.arguments as Map);
       case 'stayOff':
         Settings.I.set('stay_connected', false);
     }

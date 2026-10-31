@@ -11,6 +11,7 @@ import '../../wado/nav.dart';
 import '../../wado/relay_link.dart';
 import '../computer/quick.dart' show WifiOff;
 import '../passkey/passkey_card.dart';
+import 'push_card.dart';
 import '../theme/look.dart';
 import '../widgets/basics.dart';
 import '../widgets/fields.dart';
@@ -43,6 +44,8 @@ class ConnectionTrust extends StatelessWidget {
           const _Grants(),
           const SizedBox(height: 12),
           const PasskeyCard(),
+          const SizedBox(height: 12),
+          const PushCard(),
           const Sect('Its Wi-Fi'),
           const SizedBox(height: 8),
           const _Wifi(),

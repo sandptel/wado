@@ -57,5 +57,7 @@ dependencies {
     // The passkey authenticator (kotlin/…/passkey): Keystore keys behind the screen lock.
     implementation("androidx.biometric:biometric:1.1.0")
     implementation("androidx.media:media:1.8.0")
+    // tink-android (from flutter_secure_storage) has the same classes as the connector's tink.
+    implementation("org.unifiedpush.android:connector:3.3.5") { exclude(group = "com.google.crypto.tink", module = "tink") }
     implementation("androidx.fragment:fragment-ktx:1.9.1")
 }
