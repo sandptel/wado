@@ -296,3 +296,57 @@ class _GlideState extends State<Glide> with SingleTickerProviderStateMixin {
     );
   }
 }
+
+/// `.glyph.bump` (`@keyframes bump { 40% { scale: .7 } }`, 360 ms, the pop curve): the icon dips
+/// and pops back each time `on` changes — a toggle that answered.
+class Bump extends StatefulWidget {
+  const Bump({super.key, required this.on, required this.child});
+  final bool on;
+  final Widget child;
+  @override
+  State<Bump> createState() => _BumpState();
+}
+
+class _BumpState extends State<Bump> with SingleTickerProviderStateMixin {
+  late final _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 360));
+  @override
+  void didUpdateWidget(Bump o) {
+    super.didUpdateWidget(o);
+    if (o.on != widget.on && !Tok.of(context).reduced) _c.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+        animation: _c,
+        child: widget.child,
+        builder: (context, child) {
+          final v = _c.value;
+          if (!_c.isAnimating) return child!;
+          final s = v < .4 ? 1 - .3 * Tokens.popCurve.transform(v / .4) : .7 + .3 * Tokens.popCurve.transform((v - .4) / .6);
+          return Transform.scale(scale: s, child: child);
+        },
+      );
+}
+
+/// A cover landing over the old one (computer.css `artin`): the new comes in from 1.08 and
+/// transparent over 520 ms on the spring; the old waits underneath, then goes.
+class ArtSwap extends StatelessWidget {
+  const ArtSwap({super.key, required this.child});
+  final Widget child;
+  @override
+  Widget build(BuildContext context) => AnimatedSwitcher(
+        duration: const Duration(milliseconds: 520),
+        switchInCurve: Tokens.spring,
+        layoutBuilder: (cur, prev) => Stack(fit: StackFit.expand, children: [...prev, ?cur]),
+        transitionBuilder: (c, a) => c.key == child.key
+            ? FadeTransition(opacity: a, child: ScaleTransition(scale: Tween(begin: 1.08, end: 1.0).animate(a), child: c))
+            : c,
+        child: child,
+      );
+}

@@ -9,6 +9,7 @@ import '../../wado/host.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
+import '../motion/motion.dart';
 import 'quick.dart';
 
 String clock(int ms) {
@@ -107,15 +108,29 @@ class _PlayingState extends State<Playing> with SingleTickerProviderStateMixin {
                 boxShadow: const [BoxShadow(color: Color(0x73000000), blurRadius: 24, offset: Offset(0, 8), spreadRadius: -6)],
               ),
               child: art != null
-                  ? AnimatedSwitcher(duration: const Duration(milliseconds: 520), child: Image.memory(art, key: ValueKey(art.length), fit: BoxFit.cover, gaplessPlayback: true))
+                  ? ArtSwap(child: Image.memory(art, key: ValueKey(art.length), fit: BoxFit.cover, gaplessPlayback: true))
                   : Center(child: WIcon('music', size: 32, color: t.dim)),
             ),
             const SizedBox(width: 14),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('${p['app']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: body(context, size: .7188, w: FontWeight.w600)),
-                Text('${p['title']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: display(context, rem(context, 1.3125), ls: -.3)),
-                if ('${p['artist'] ?? ''}'.isNotEmpty) Text('${p['artist']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: body(context, size: .8125)),
+                // A new track's words swap in from 10 px below (`swapin`).
+                Enter(
+                  key: ValueKey('t${p['title']}'),
+                  ms: 320,
+                  dy: 10,
+                  fadeOnClose: false,
+                  child: Text('${p['title']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: display(context, rem(context, 1.3125), ls: -.3).copyWith(height: 1.15)),
+                ),
+                if ('${p['artist'] ?? ''}'.isNotEmpty)
+                  Enter(
+                    key: ValueKey('a${p['artist']}'),
+                    ms: 320,
+                    dy: 10,
+                    fadeOnClose: false,
+                    child: Text('${p['artist']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: body(context, size: .8125)),
+                  ),
               ]),
             ),
           ]),
@@ -179,7 +194,8 @@ class _PlayingState extends State<Playing> with SingleTickerProviderStateMixin {
                 height: 52,
                 decoration: BoxDecoration(shape: BoxShape.circle, color: t.bright),
                 alignment: Alignment.center,
-                child: WIcon(playing ? 'pause' : 'play', fill: true, color: t.s0),
+                // The glyph swaps with a pop: the new one comes in from .4 (`glyphin`).
+                child: Enter(key: ValueKey(playing), ms: 260, dy: 0, scale: .4, pop: true, fadeOnClose: false, child: WIcon(playing ? 'pause' : 'play', fill: true, color: t.s0)),
               ),
             ),
             IconBtn('next-f', label: 'Next', color: t.bright, onTap: p['can_next'] == true ? () => media(bus, {'op': 'next'}) : null),

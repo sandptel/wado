@@ -97,6 +97,18 @@ class Multi {
     l.dial(k, takeover: true);
   }
 
+  /// A new session while this daemon already has one (sessions.rs `new` + `freshDaemon`): leave
+  /// its seat and redial with no daemon asked for, so the relay hands over an idle one.
+  void startAnother() {
+    final l = RelayLink.I;
+    final here = l.pool.value.instance;
+    if (Host.I.sessions.value.any((x) => x['instance'] == here) && l.key != null) {
+      if (l.remoteId.isNotEmpty) RelayLink.rememberInstance(l.remoteId, '');
+      l.dial(l.key!, force: true);
+    }
+    Session.I.start();
+  }
+
   // ── multi.js ──
 
   /// Back to this device's own seat.

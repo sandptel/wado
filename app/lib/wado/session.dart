@@ -152,14 +152,33 @@ class Session {
     _wait = null;
   }
 
+  /// A phone (shortest side under 600 logical px), as viewport.js `isPhone`.
+  static bool get phone {
+    final view = ui.PlatformDispatcher.instance.views.first;
+    return view.display.size.shortestSide / view.devicePixelRatio < 600;
+  }
+
+  /// viewport.js `reportScreen`: the panel in real pixels, the way round the session will be.
+  /// A phone at rest is held upright, so a session started without thinking would give desktop
+  /// apps a 360 px-wide screen: "auto" is landscape on a phone, native everywhere else. The
+  /// output's size is fixed at Start (invariant #8), so this is the one moment the choice exists.
+  static (int, int) screen() {
+    final view = ui.PlatformDispatcher.instance.views.first;
+    final d = view.display.size;
+    var (w, h) = (d.width.round(), d.height.round());
+    final pref = Settings.I.s('orientation');
+    final land = pref == 'landscape' ? true : (pref == 'portrait' ? false : (phone ? true : w >= h));
+    if ((land && h > w) || (!land && w > h)) (w, h) = (h, w);
+    return (w, h);
+  }
+
   /// The config the web client sends (cfg.rs `build`).
   static Map<String, dynamic> config() {
     final s = Settings.I;
     final view = ui.PlatformDispatcher.instance.views.first;
-    final px = view.physicalSize;
-    final phone = view.physicalSize.shortestSide / view.devicePixelRatio < 600;
+    final (sw, sh) = screen();
     var res = s.s('res');
-    if (res.isEmpty) res = defaultRes(px.width.round(), px.height.round());
+    if (res.isEmpty) res = defaultRes(sw, sh);
     int w, h;
     if (res == 'custom') {
       w = s.i('custom_w');
@@ -481,6 +500,9 @@ class Session {
 
   bool get left => _left;
 
+  /// The config last sent to the running session (Apply compares against it).
+  Map<String, dynamic>? get applied => _config;
+
   void _closePc() {
     final p = pc;
     pc = null;
@@ -490,7 +512,25 @@ class Session {
     p?.close();
   }
 
-  Future<void> negotiate() async {
+  /// "Play on this phone" with no session running (host.js `listenStart`): a peer connection
+  /// carrying the computer's sound alone. With a session, its own connection carries the sound.
+  bool listening = false;
+  Future<void> listen() async {
+    if (on.value || !RelayLink.I.up.value || pc?.connectionState == RTCPeerConnectionState.RTCPeerConnectionStateConnected) return;
+    try {
+      await negotiate(audioOnly: true);
+    } catch (e) {
+      rlog('listen failed: $e');
+    }
+  }
+
+  void listenStop() {
+    if (listening) _closePc();
+    listening = false;
+  }
+
+  Future<void> negotiate({bool audioOnly = false}) async {
+    listening = audioOnly;
     if (!_rendererReady) {
       await renderer.initialize();
       _rendererReady = true;
@@ -506,8 +546,8 @@ class Session {
       'continualGatheringPolicy': 'gather_continually',
     });
     pc = p;
-    await p.addTransceiver(kind: RTCRtpMediaType.RTCRtpMediaTypeVideo, init: RTCRtpTransceiverInit(direction: TransceiverDirection.RecvOnly));
-    if (Settings.I.b('stream_sound')) {
+    if (!audioOnly) await p.addTransceiver(kind: RTCRtpMediaType.RTCRtpMediaTypeVideo, init: RTCRtpTransceiverInit(direction: TransceiverDirection.RecvOnly));
+    if (audioOnly || Settings.I.b('stream_sound')) {
       await p.addTransceiver(kind: RTCRtpMediaType.RTCRtpMediaTypeAudio, init: RTCRtpTransceiverInit(direction: TransceiverDirection.RecvOnly));
     }
     inputDC = await p.createDataChannel(inputChannel, RTCDataChannelInit()..ordered = true);

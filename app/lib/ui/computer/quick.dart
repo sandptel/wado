@@ -7,6 +7,7 @@ import '../../wado/nav.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
+import '../motion/motion.dart';
 import '../widgets/slider.dart';
 
 /// The default output (ui/host.rs `speaker`).
@@ -177,7 +178,7 @@ class QTile extends StatelessWidget {
             height: 40,
             decoration: BoxDecoration(color: on ? fade(t.onAccent, 84) : t.s3, borderRadius: BorderRadius.circular(on ? 20 : t.r2)),
             alignment: Alignment.center,
-            child: WIcon(icon, color: fg),
+            child: Bump(on: on, child: WIcon(icon, color: fg)),
           ),
           const SizedBox(height: 10),
           Text(title, style: body(context, size: .8125, w: FontWeight.w600, color: fg)),
