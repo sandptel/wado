@@ -197,3 +197,102 @@ class _EnterState extends State<Enter> with SingleTickerProviderStateMixin {
     );
   }
 }
+
+/// `@keyframes breathe { 50% { opacity: .35 } }` — something alive, ease-in-out, forever. Still
+/// when motion is off.
+class Breathe extends StatefulWidget {
+  const Breathe({super.key, required this.child, this.ms = 2400, this.delay = 0, this.low = .35, this.on = true});
+  final Widget child;
+  final int ms, delay;
+  final double low;
+  final bool on;
+  @override
+  State<Breathe> createState() => _BreatheState();
+}
+
+class _BreatheState extends State<Breathe> with SingleTickerProviderStateMixin {
+  late final _c = AnimationController(vsync: this, duration: Duration(milliseconds: widget.ms));
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(Duration(milliseconds: widget.delay), () {
+      if (mounted && widget.on) _c.repeat();
+    });
+  }
+
+  @override
+  void didUpdateWidget(Breathe o) {
+    super.didUpdateWidget(o);
+    if (widget.on && !_c.isAnimating) _c.repeat();
+    if (!widget.on) _c.stop();
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (Tok.of(context).still || !widget.on) return widget.child;
+    return AnimatedBuilder(
+      animation: _c,
+      child: widget.child,
+      builder: (context, child) {
+        final v = _c.value;
+        final p = Curves.easeInOut.transform(v < .5 ? v * 2 : 2 - v * 2);
+        return Opacity(opacity: 1 - (1 - widget.low) * p, child: child);
+      },
+    );
+  }
+}
+
+/// FLIP for a list (cliphost.js `clipFlip`): a keyed item that moved — a pin lifting it, a new
+/// one pushing it down, a filter — glides from where it was to where it is (380 ms, the spring).
+class Glide extends StatefulWidget {
+  const Glide({super.key, required this.child});
+  final Widget child;
+  @override
+  State<Glide> createState() => _GlideState();
+}
+
+class _GlideState extends State<Glide> with SingleTickerProviderStateMixin {
+  late final _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 380));
+  double? _y;
+  double _from = 0;
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  void _check() {
+    if (!mounted) return;
+    final ro = context.findRenderObject();
+    if (ro is! RenderBox || !ro.hasSize) return;
+    // Where it is in its scroll view's content, not on the glass: scrolling is not a move.
+    final scroll = Scrollable.maybeOf(context)?.context.findRenderObject();
+    final y = ro.localToGlobal(Offset.zero, ancestor: scroll is RenderBox ? scroll : null).dy + (Scrollable.maybeOf(context)?.position.pixels ?? 0);
+    final was = _y;
+    _y = y;
+    if (was == null || (was - y).abs() < 1 || Tok.of(context).still) return;
+    // From where it is drawn now (mid-glide, if one runs) to its new place.
+    _from = was - y + (_c.isAnimating ? _from * (1 - Tokens.spring.transform(_c.value)) : 0);
+    _c.forward(from: 0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _check());
+    return AnimatedBuilder(
+      animation: _c,
+      child: widget.child,
+      builder: (context, child) {
+        if (!_c.isAnimating) return child!;
+        return Transform.translate(offset: Offset(0, _from * (1 - Tokens.spring.transform(_c.value))), child: child);
+      },
+    );
+  }
+}

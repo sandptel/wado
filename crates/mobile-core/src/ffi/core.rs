@@ -92,7 +92,12 @@ impl WadoCore {
 
     /// The next event, waiting for one.
     pub async fn next_event(&self) -> CoreEvent {
-        event::event(self.core.next_event().await)
+        loop {
+            // Rooms are the Flutter app's (it opens them); this app never does.
+            if let Some(e) = event::event(self.core.next_event().await) {
+                return e;
+            }
+        }
     }
 }
 

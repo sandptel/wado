@@ -6,7 +6,7 @@ import '../../core/core_host.dart';
 import '../../wado/host.dart';
 import '../../wado/nav.dart';
 import '../../wado/relay_link.dart';
-import '../../wado/session.dart';
+import '../../wado/multi.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
@@ -36,26 +36,8 @@ Map<String, dynamic>? best(List<Map<String, dynamic>> list) {
   return l.first;
 }
 
-/// sessions.js `sessionAct`: resume or stop a session, re-dialling its daemon if it is another.
-void sessionAct(String instance, String kind) {
-  final l = RelayLink.I;
-  void act() {
-    if (kind == 'resume') {
-      Session.I.start();
-    } else {
-      l.send({'type': 'session_stop'});
-      Future.delayed(const Duration(milliseconds: 800), Host.I.sessionsGet);
-    }
-  }
-
-  if (instance == l.pool.value.instance && l.up.value) {
-    act();
-    return;
-  }
-  // ponytail: a session on another daemon of the pool resumes through the seat's own routing;
-  // instance-sticky redial (rememberInstance) comes with multi-daemon pools.
-  act();
-}
+/// sessions.js `sessionAct` (wado/multi.dart).
+void sessionAct(String instance, String kind) => Multi.I.sessionAct(instance, kind);
 
 void joinBest() {
   final s = best(Host.I.sessions.value);

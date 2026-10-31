@@ -53,9 +53,22 @@ pub fn seat_pair(relay: &str, rid: &str, client_key: &str, name: &str) -> String
     join(relay, rid, client_key, name) + "&pair=1"
 }
 
-/// The seat, as the web client's main link; `takeover` only on a person's tap.
-pub fn seat(relay: &str, rid: &str, client_key: &str, name: &str, takeover: bool) -> String {
-    join(relay, rid, client_key, name) + if takeover { "&takeover=1" } else { "" }
+/// The seat, as the web client's main link; `instance` sticks to one daemon of the pool (empty:
+/// any); `takeover` only on a person's tap.
+pub fn seat(
+    relay: &str,
+    rid: &str,
+    client_key: &str,
+    name: &str,
+    instance: &str,
+    takeover: bool,
+) -> String {
+    let want = if instance.is_empty() {
+        String::new()
+    } else {
+        format!("&instance={}", enc(instance))
+    };
+    join(relay, rid, client_key, name) + &want + if takeover { "&takeover=1" } else { "" }
 }
 
 /// A seatless control room.

@@ -21,6 +21,9 @@ import 'clips.dart';
 import '../../wado/passkey.dart';
 import '../passkey/passkey_card.dart';
 import 'quick.dart';
+import 'actions.dart';
+import 'sessions.dart';
+import 'claude.dart';
 import '../motion/motion.dart';
 
 String uptime(int s) {
@@ -118,8 +121,11 @@ class _ComputerPageState extends State<ComputerPage> {
                       ])),
                     ],
                     const SizedBox(height: 12),
-                    sx(_Actions(r: r)),
-                    sx(const Running()),
+                    sx(ActionTiles(r: r)),
+                    sx(Sessions(r: r)),
+                    // Claude's cards come over the selected computer's own link.
+                    if (r.selected && !off && ((Host.I.config.value?['grants'] as Map?)?['shells'] ?? true) == true)
+                      sx(const Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Sect('Claude'), SizedBox(height: 8), ClaudeSection()])),
                     if (r.online && Passkey.I.view.value.state.isNotEmpty && Passkey.I.view.value.required)
                       sx(const Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Sect('Passkey'), SizedBox(height: 8), PasskeyCard()])),
                     if (!off) ...[
@@ -133,9 +139,9 @@ class _ComputerPageState extends State<ComputerPage> {
                         const SizedBox(height: 8),
                         host == null ? const _Empty(icon: 'sliders', text: 'Its controls show once it answers.') : Quick(h: host, name: c.name),
                       ])),
-                      sx(const Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Sect('Clipboard'), SizedBox(height: 8), Clips()])),
                     ],
                     sx(const Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Sect('This computer'), SizedBox(height: 8), _SettingsList()])),
+                    if (!off) sx(const Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Sect('Clipboard'), SizedBox(height: 8), Clips()])),
                   ]),
                 ),
               ),
@@ -326,120 +332,6 @@ class _Hops extends StatelessWidget {
         ],
       ]),
     );
-  }
-}
-
-class _Actions extends StatelessWidget {
-  const _Actions({required this.r});
-  final Reach r;
-
-  void desktop() {
-    final running = Host.I.sessions.value.isNotEmpty;
-    final seat = RelayLink.I.seatBusy.value;
-    if (seat != null && seat.idle == true) {
-      Session.I.start();
-    } else if (r.busy) {
-      RelayLink.I.takeover();
-      Session.I.start();
-    } else if (running) {
-      joinBest();
-    } else {
-      Session.I.start();
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Tok.of(context);
-    final list = Host.I.sessions.value;
-    final running = list.isNotEmpty;
-    final off = !r.online;
-    final cfg = Host.I.config.value;
-    final g = cfg?['grants'] as Map<String, dynamic>?;
-    final filesOk = g == null || g['files'] != 'none';
-    final shellOk = (g == null || g['shells'] != false) && (cfg == null || cfg['shells'] != false);
-    final seat = RelayLink.I.seatBusy.value;
-    final idleElsewhere = r.busy && seat?.idle == true;
-    String deskSub;
-    if (idleElsewhere) {
-      deskSub = 'Use it here — ${seat!.holder.isEmpty ? 'your other device' : seat.holder} is connected, nothing running';
-    } else if (r.busy) {
-      deskSub = 'In use on another device';
-    } else if (running) {
-      final apps = list.expand((s) => (s['apps'] as List? ?? [])).map((a) => short('$a')).toList();
-      deskSub = switch (apps.length) { 0 => 'Rejoin · empty desktop', 1 => 'Rejoin · ${apps[0]}', _ => 'Rejoin · ${apps[0]} and ${apps.length - 1} more' };
-    } else {
-      deskSub = "Start at this screen's size";
-    }
-    Widget act({required String icon, required String title, required String sub, required VoidCallback? onTap, bool primary = false, String? badge, bool fill = false}) {
-      final fg = primary ? t.onAccent : t.bright;
-      return Press(
-        onTap: onTap,
-        label: title,
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 104),
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-          decoration: BoxDecoration(
-            color: primary ? t.accent : t.s2,
-            borderRadius: BorderRadius.circular(t.r3),
-            boxShadow: primary && onTap != null ? [BoxShadow(color: fade(t.accent, 72), blurRadius: 30, offset: const Offset(0, 10))] : null,
-          ),
-          child: Stack(children: [
-            Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: primary ? fade(t.onAccent, 84) : t.s3,
-                  borderRadius: primary ? BorderRadius.circular(21) : BorderRadius.circular(t.r2),
-                ),
-                alignment: Alignment.center,
-                child: WIcon(icon, color: fg, fill: fill),
-              ),
-              const SizedBox(height: 14),
-              Text(title, style: display(context, rem(context, 1.0625), color: fg, ls: -.17)),
-              const SizedBox(height: 2),
-              Text(sub, style: body(context, size: .75, color: primary ? fade(t.onAccent, 20) : t.dim)),
-            ]),
-            if (badge != null)
-              Positioned(
-                top: 0,
-                right: 0,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(color: primary ? fade(t.onAccent, 82) : t.s3, borderRadius: BorderRadius.circular(999)),
-                  child: Text(badge, style: mono(context, size: .6875, w: FontWeight.w600, color: primary ? t.onAccent : t.bright)),
-                ),
-              ),
-          ]),
-        ),
-      );
-    }
-
-    final input = r.online && (g == null || g['input'] == true);
-    final tiles = [
-      act(
-        icon: 'play',
-        fill: true,
-        title: 'Desktop',
-        sub: deskSub,
-        primary: true,
-        badge: running && !r.busy ? 'running' : (r.busy && !idleElsewhere ? 'take over' : null),
-        onTap: off && !r.busy ? null : desktop,
-      ),
-      act(icon: 'phone', title: 'Virtual input', sub: input ? 'Touchpad · Keyboard · Gamepad' : 'Gamepad works · touchpad needs a grant', onTap: off ? null : () => Nav.I.openPage('input')),
-      act(icon: 'folder', title: 'Files', sub: filesOk ? 'Browse, send, download' : 'Not allowed for this phone', onTap: off || !filesOk ? null : () => Nav.I.openPage('files')),
-      act(icon: 'term', title: 'Shell', sub: shellOk ? 'A terminal, no video' : 'Not allowed for this phone', onTap: off || !shellOk ? null : () => Nav.I.openPage('shells')),
-    ];
-    return LayoutBuilder(builder: (context, box) {
-      final two = box.maxWidth >= 2 * 136 + 8;
-      if (!two) return Column(children: [for (final x in tiles) Padding(padding: const EdgeInsets.only(bottom: 8), child: x)]);
-      return Column(children: [
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: tiles[0]), const SizedBox(width: 8), Expanded(child: tiles[1])]),
-        const SizedBox(height: 8),
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: tiles[2]), const SizedBox(width: 8), Expanded(child: tiles[3])]),
-      ]);
-    });
   }
 }
 

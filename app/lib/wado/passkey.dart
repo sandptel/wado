@@ -111,6 +111,11 @@ class Passkey {
 
   /// Unlock (or add a passkey first), then run `then`.
   void go({VoidCallback? then}) {
+    // Already unlocked (or not asked for here): the action goes at once (passkeyThen).
+    if (view.value.unlocked || (view.value.state.isNotEmpty && !view.value.required)) {
+      then?.call();
+      return;
+    }
     if (view.value.busy) return;
     _then = then;
     _wanted = DateTime.now();

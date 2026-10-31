@@ -1,3 +1,4 @@
+import 'dart:convert';
 // The relay **link** to the selected computer (port of js/relay_link.js + js/seat.js): one seat,
 // kept up and redialled by the core; each opened message handed to whoever registered for its
 // type. Synthetic types, as the web: "__up" (secure and ready), "__down", "__waiting",
@@ -5,6 +6,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../core/core_host.dart';
+import 'settings.dart';
 import 'log.dart';
 
 typedef Handler = void Function(Map<String, dynamic> msg);
@@ -58,15 +60,60 @@ class RelayLink {
     }
   }
 
+  /// The session's daemon when this link is a joined room (`multi.js` `_relayRoom`), else null.
+  String? view;
+
+  /// Which daemon of the pool to ask for, per Remote ID (relay_link.js `rememberInstance`):
+  /// per-device routing state, never a setting a person chose.
+  static String instanceFor(String rid) {
+    try {
+      return ((jsonDecode(Settings.I.s('instances').isEmpty ? '{}' : Settings.I.s('instances')) as Map)[rid] ?? '') as String;
+    } catch (_) {
+      return '';
+    }
+  }
+
+  static void rememberInstance(String rid, String instance) {
+    Map m;
+    try {
+      m = jsonDecode(Settings.I.s('instances').isEmpty ? '{}' : Settings.I.s('instances')) as Map;
+    } catch (_) {
+      m = {};
+    }
+    m[rid] = instance;
+    Settings.I.set('instances', jsonEncode(m));
+  }
+
+  String get remoteId => _rid;
+  String get _rid => (CoreHost.I.computer(key ?? '')?.remoteId ?? '').replaceAll(RegExp(r'[\s-]'), '');
+
   /// Dial the seat on computer `key` (idempotent), keeping it up until [drop].
-  bool dial(String key, {bool takeover = false}) {
-    if (this.key == key && _room != null && !takeover) return true;
+  bool dial(String key, {bool takeover = false, bool force = false}) {
+    if (this.key == key && _room != null && !takeover && !force && view == null) return true;
     drop(silent: true);
     this.key = key;
+    view = null;
     takenOver = false;
-    final id = CoreHost.I.open(key, 'seat', RoomSink(onState: _state, onMsg: _msg, onRelay: _relay), takeover: takeover);
+    final rid = (CoreHost.I.computer(key)?.remoteId ?? '').replaceAll(RegExp(r'[\s-]'), '');
+    final id = CoreHost.I.open(key, 'seat', RoomSink(onState: _state, onMsg: _msg, onRelay: _relay), takeover: takeover, instance: instanceFor(rid));
     if (id == null) {
       this.key = null;
+      return false;
+    }
+    _room = id;
+    phase.value = 1;
+    return true;
+  }
+
+  /// Re-dial as a joined room on exactly `instance` (seatless, strict): one more participant.
+  bool dialView(String key, String instance) {
+    drop(silent: true);
+    this.key = key;
+    view = instance;
+    takenOver = false;
+    final id = CoreHost.I.open(key, 'view', RoomSink(onState: _state, onMsg: _msg, onRelay: _relay), instance: instance);
+    if (id == null) {
+      view = null;
       return false;
     }
     _room = id;
@@ -106,6 +153,8 @@ class RelayLink {
     final st = s['state'] as String;
     if (st == 'open') {
       if (!up.value) {
+        // A joined room says what it is first (relay_link.js): the daemon serves it as a viewer.
+        if (view != null && _room != null) CoreHost.I.send(_room!, {'type': 'room_hello', 'kind': 'view'});
         up.value = true;
         phase.value = 3;
         seatBusy.value = null;
@@ -163,6 +212,7 @@ class RelayLink {
         );
         caps.value = ((m['caps'] ?? []) as List).cast<String>();
         final inst = (m['instance_id'] ?? '') as String;
+        if (inst.isNotEmpty && view == null && _rid.isNotEmpty) rememberInstance(_rid, inst);
         final boot = (m['boot_id'] ?? '') as String;
         if (boot.isNotEmpty) {
           final was = _boot[inst];

@@ -15,6 +15,8 @@ import 'theme/look.dart';
 import 'theme/tokens.dart';
 import 'motion/feel.dart';
 import 'motion/motion.dart';
+import 'widgets/notes.dart';
+import 'widgets/clip_dock.dart';
 
 class Shell extends StatefulWidget {
   const Shell({super.key});
@@ -218,6 +220,8 @@ class _ShellState extends State<Shell> with TickerProviderStateMixin {
                     ),
                   ),
                 if (inSession) const Positioned.fill(child: SessionView()),
+                const Positioned.fill(child: Notes()),
+                const Positioned.fill(child: ClipDock()),
               ]),
             ),
           ),

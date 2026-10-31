@@ -123,9 +123,10 @@ class _PressState extends State<Press> {
 
 /// `.sect`: a small uppercase section head, with an optional action on the right.
 class Sect extends StatelessWidget {
-  const Sect(this.title, {super.key, this.action, this.onAction, this.margin = const EdgeInsets.fromLTRB(4, 8, 4, 0)});
+  const Sect(this.title, {super.key, this.action, this.onAction, this.trailing, this.margin = const EdgeInsets.fromLTRB(4, 8, 4, 0)});
   final String title;
   final String? action;
+  final Widget? trailing;
   final VoidCallback? onAction;
   final EdgeInsets margin;
   @override
@@ -142,6 +143,7 @@ class Sect extends StatelessWidget {
           ),
           if (action != null)
             Press(onTap: onAction, child: Text(action!, style: body(context, size: .8125, w: FontWeight.w600, color: t.accent))),
+          ?trailing,
         ]),
       ),
     );

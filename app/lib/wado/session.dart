@@ -12,6 +12,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import '../ui/theme/look.dart';
 import 'log.dart';
 import 'relay_link.dart';
+import 'multi.dart';
 import 'settings.dart';
 
 const inputChannel = 'wado-input';
@@ -279,6 +280,8 @@ class Session {
   }
 
   void _onLinkUp() {
+    // A joined room is multi.dart's: it says join / take over / end itself.
+    if (RelayLink.I.view != null) return;
     if (on.value && (!_wanted || _config == null)) {
       _resuming = true;
       rlog('link back — taking back the session this page joined');
@@ -359,6 +362,8 @@ class Session {
     final why = (msg['message'] ?? 'unknown') as String;
     if (RegExp('could not understand that message', caseSensitive: false).hasMatch(why)) {
       rlog('the daemon did not understand one of our messages (it is older than this client): $why');
+      // A speed test or a "new session" question it cannot answer: go on without one.
+      Multi.I.abortTest();
       return;
     }
     if (_resuming) {
@@ -372,6 +377,8 @@ class Session {
       _ask();
       return;
     }
+    // A join, take over or end refused on a joined room says so and goes home.
+    if (Multi.I.error(why)) return;
     _phase(2, why);
     setStatus('relay: session error — $why');
     startFailed.value++;
@@ -390,6 +397,33 @@ class Session {
       _closePc();
       shown.value = false;
     }
+  }
+
+  /// Wanted and shown, waiting for an answer someone else asks for (a join, a resume elsewhere).
+  void prepare() {
+    _config = config();
+    _wanted = true;
+    _left = false;
+    shown.value = true;
+    _phase(0);
+  }
+
+  /// Rejoin the session on this link's daemon (sessions.js `act("resume")`).
+  void resume() {
+    prepare();
+    _resuming = true;
+    _armWait('change');
+    RelayLink.I.send({'type': 'session_rejoin'});
+  }
+
+  /// Stop watching without telling the computer anything (multi.js `stopStream`).
+  void dropStream() {
+    _clearWait();
+    _wanted = false;
+    _resuming = false;
+    _closePc();
+    on.value = false;
+    shown.value = false;
   }
 
   /// A running session was found: take it back.

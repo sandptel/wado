@@ -1,7 +1,11 @@
 package io.github.sandptel.wado
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipDescription
+import android.content.ClipboardManager
 import android.content.Intent
+import android.os.PersistableBundle
 import android.content.pm.PackageManager
 import android.os.Build
 import android.view.HapticFeedbackConstants
@@ -52,6 +56,24 @@ class MainActivity : FlutterFragmentActivity() {
                     val bytes = Inbound.read(call.argument<String>("uri")!!, contentResolver)
                     runOnUiThread { result.success(bytes) }
                 }.start()
+                // The phone's clipboard: read only while in front (Android's rule), and a copy a
+                // password manager marked sensitive is said to be — clip_share never sends it.
+                "clipRead" -> {
+                    val cm = getSystemService(ClipboardManager::class.java)
+                    val clip = runCatching { cm.primaryClip }.getOrNull()
+                    val text = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString()
+                    val sensitive = Build.VERSION.SDK_INT >= 33 &&
+                        clip?.description?.extras?.getBoolean(ClipDescription.EXTRA_IS_SENSITIVE) == true
+                    result.success(text?.let { mapOf("text" to it, "sensitive" to sensitive) })
+                }
+                "clipWrite" -> {
+                    val cm = getSystemService(ClipboardManager::class.java)
+                    val clip = ClipData.newPlainText("wado", call.argument<String>("text").orEmpty())
+                    if (call.argument<Boolean>("sensitive") == true) {
+                        clip.description.extras = PersistableBundle().apply { putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true) }
+                    }
+                    result.success(runCatching { cm.setPrimaryClip(clip) }.isSuccess)
+                }
                 "haptic" -> {
                     window.decorView.performHapticFeedback(haptic(call.argument<String>("kind").orEmpty()))
                     result.success(null)

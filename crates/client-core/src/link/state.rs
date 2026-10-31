@@ -146,7 +146,8 @@ pub enum Room {
     Control,
     /// The seat, as the web client's main link (`relay_link.js`); `takeover` asks for it on the
     /// first dial only (a person's tap).
-    Seat { takeover: bool },
+    /// `instance` asks for that daemon of the pool (a session to resume there); empty: any.
+    Seat { takeover: bool, instance: String },
     /// A joined session's room on exactly this daemon instance (`multi.js`).
     View { instance: String },
 }
@@ -202,7 +203,7 @@ const REQUIRED_CAPS: [&str; 2] = ["control", "room_strict"];
 
 impl Link {
     pub fn new(cfg: LinkCfg, identity: Arc<Identity>, pin: Option<Pin>) -> Link {
-        let cfg_takeover = matches!(cfg.room, Room::Seat { takeover: true });
+        let cfg_takeover = matches!(cfg.room, Room::Seat { takeover: true, .. });
         let mut seed = [0u8; 8];
         let _ = ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), &mut seed);
         Link {
@@ -256,8 +257,8 @@ impl Link {
         match &self.cfg.room {
             Room::Control => url::control(r, id, k, n),
             Room::View { instance } => url::view(r, id, k, n, instance),
-            Room::Seat { .. } => {
-                let u = url::seat(r, id, k, n, self.takeover);
+            Room::Seat { instance, .. } => {
+                let u = url::seat(r, id, k, n, instance, self.takeover);
                 self.takeover = false;
                 u
             }
@@ -574,7 +575,10 @@ mod tests {
     fn seat_link(takeover: bool) -> Link {
         Link::new(
             LinkCfg {
-                room: Room::Seat { takeover },
+                room: Room::Seat {
+                    takeover,
+                    instance: String::new(),
+                },
                 ..LinkCfg::new("1", "https://relay.example", "1", "Phone")
             },
             Arc::new(Identity::ephemeral()),

@@ -194,8 +194,11 @@ fn outcome(o: Outcome) -> OpOutcome {
     }
 }
 
-pub fn event(e: ev::CoreEvent) -> CoreEvent {
-    match e {
+pub fn event(e: ev::CoreEvent) -> Option<CoreEvent> {
+    Some(match e {
+        ev::CoreEvent::RoomState { .. }
+        | ev::CoreEvent::RoomMsg { .. }
+        | ev::CoreEvent::RoomRelay { .. } => return None,
         ev::CoreEvent::Computers { list } => CoreEvent::Computers {
             list: list.into_iter().map(computer).collect(),
         },
@@ -216,7 +219,7 @@ pub fn event(e: ev::CoreEvent) -> CoreEvent {
             op,
             outcome: outcome(o),
         },
-    }
+    })
 }
 
 #[cfg(test)]
@@ -234,7 +237,7 @@ mod tests {
                 "1:1".into(),
             ),
         });
-        let CoreEvent::Link { key, link } = e else {
+        let Some(CoreEvent::Link { key, link }) = e else {
             panic!()
         };
         assert_eq!(key, "1");

@@ -116,7 +116,7 @@ impl AppCore {
     #[frb(sync)]
     pub fn open_room(&self, key: String, kind: String, instance: String, takeover: bool) -> String {
         let room = match kind.as_str() {
-            "seat" => Room::Seat { takeover },
+            "seat" => Room::Seat { takeover, instance },
             "view" => Room::View { instance },
             _ => Room::Control,
         };
