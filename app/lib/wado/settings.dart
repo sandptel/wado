@@ -65,6 +65,7 @@ const defaults = <String, Object>{
   'console_face': 'auto',
   'console_open': 'console',
   'pad_coach_seen': false,
+  'gpad_layout': 'xbox',
   'stay_connected': false,
   'volume_keys': true,
   'pad_marks_off': false,

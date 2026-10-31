@@ -1,7 +1,7 @@
 // The gamepad (port of js/gpad/send_pad.js + the Standard layout): a controller on the computer,
 // one per phone, sessionless over the pad link — `game_on`, `btn {code, down}`, and `axes`
 // frames (sticks ±32767, triggers 0..255) resent every 100 ms while a stick is off centre.
-// Landscape, two sticks, a D-pad, A B X Y, shoulders and triggers, Back · Guide · Start.
+// The controls come from the chosen layout (gpad_layouts.dart), placed for the way the phone is held.
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -12,7 +12,9 @@ import '../motion/feel.dart';
 
 import '../../core/core_host.dart';
 import '../../wado/nav.dart';
+import '../../wado/gpad_layouts.dart';
 import '../../wado/pad.dart';
+import '../../wado/settings.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
@@ -23,6 +25,9 @@ const _code = {
 };
 
 class _Game {
+  /// A gamepad that sends nothing: thumbnails.
+  static final idle = _Game()..quiet = true;
+  bool quiet = false;
   int _seq = 0;
   final axes = <String, double>{'lx': 0, 'ly': 0, 'rx': 0, 'ry': 0, 'lt': 0, 'rt': 0};
   final held = <String>{};
@@ -49,6 +54,7 @@ class _Game {
   }
 
   void button(String b, bool down) {
+    if (quiet) return;
     if (!_code.containsKey(b)) return;
     down ? held.add(b) : held.remove(b);
     Pad.I.send({'k': 'btn', 'code': _code[b], 'down': down});
@@ -56,6 +62,7 @@ class _Game {
   }
 
   void axis(String k, double v) {
+    if (quiet) return;
     axes[k] = v;
     Pad.I.send(_frame(), lossy: true);
     _keep?.cancel();
@@ -78,7 +85,6 @@ class _GamepadScreenState extends State<GamepadScreen> {
   @override
   void initState() {
     super.initState();
-    SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
     active(true);
     Pad.I.start();
     Pad.I.onResend = g.resend;
@@ -94,15 +100,27 @@ class _GamepadScreenState extends State<GamepadScreen> {
   void dispose() {
     g.stop();
     Pad.I.stop();
-    SystemChrome.setPreferredOrientations([]);
     active(false);
     super.dispose();
   }
+
+  void _pick() => showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Tok.of(context).s0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Tok.of(context).r4))),
+        builder: (c) => _Picker(onPick: (id) {
+          Settings.I.set('gpad_layout', id);
+          Navigator.pop(c);
+          setState(() {});
+        }),
+      );
 
   @override
   Widget build(BuildContext context) {
     final t = Tok.of(context);
     final name = CoreHost.I.computer(Nav.I.selected)?.name ?? 'the computer';
+    final layout = layoutById(Settings.I.s('gpad_layout'));
     return Scaffold(
       backgroundColor: t.s0,
       body: DecoratedBox(
@@ -110,61 +128,49 @@ class _GamepadScreenState extends State<GamepadScreen> {
         decoration: BoxDecoration(gradient: RadialGradient(center: const Alignment(0, 1.4), radius: 1.2, colors: [fade(t.accent, 94), fade(t.accent, 100)])),
         child: SafeArea(
           child: LayoutBuilder(builder: (context, box) {
-            final h = box.maxHeight, w = box.maxWidth;
-            final u = math.min(h / 5.2, w / 9);
+            final size = box.biggest;
+            final o = orient(size);
             return Stack(children: [
-              // Shoulders (pills) and triggers (rounded).
-              Positioned(left: u * .5, top: u * .25, child: Row(children: [_Btn(g, 'lt', 'LT', u * 1.25, u * .75), SizedBox(width: u * .3), _Btn(g, 'lb', 'LB', u * 1.25, u * .68, pill: true)])),
-              Positioned(right: u * .5, top: u * .25, child: Row(children: [_Btn(g, 'rb', 'RB', u * 1.25, u * .68, pill: true), SizedBox(width: u * .3), _Btn(g, 'rt', 'RT', u * 1.25, u * .75)])),
-              // Left stick, D-pad.
-              Positioned(left: u * .75, top: h * .35, child: _Stick(g, 'lx', 'ly', 'l3', 'L', u * 1.9)),
-              Positioned(left: u * 2.9, bottom: u * .45, child: _Dpad(g, u * 2.2)),
-              // Right: face buttons, right stick.
-              Positioned(right: u * .5, top: h * .33, child: _Face(g, u * 2.95)),
-              Positioned(right: u * 3.75, bottom: u * .55, child: _Stick(g, 'rx', 'ry', 'r3', 'R', u * 1.9)),
-              // Back · Guide · Start.
-              Positioned(
-                left: 0,
-                right: 0,
-                top: h * .32,
-                child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  _Btn(g, 'back', '', u * .95, u * .66, pill: true, small: true, icon: 'copy'),
-                  SizedBox(width: u * .22),
-                  _Btn(g, 'guide', '', u * .95, u * .66, pill: true, small: true, icon: 'house'),
-                  SizedBox(width: u * .22),
-                  _Btn(g, 'start', '≡', u * .95, u * .66, pill: true, small: true),
-                ]),
-              ),
-              // The bar: close, which computer, which player.
+              Positioned.fill(child: GpadView(layout: layout, g: g, o: o, k: 1)),
+              // The bar: close, which computer, which player; the layouts.
               Positioned(
                 top: 8,
                 left: 0,
                 right: 0,
                 child: Center(
-                  child: Container(
-                    height: 52,
-                    padding: const EdgeInsets.fromLTRB(4, 4, 12, 4),
-                    decoration: BoxDecoration(color: fade(t.s1, 10), borderRadius: BorderRadius.circular(999)),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      IconBtn('x', label: 'Close gamepad', color: t.bright, onTap: () => Navigator.of(context).maybePop()),
-                      const SizedBox(width: 6),
-                      ListenableBuilder(
-                        listenable: Pad.I.state,
-                        builder: (context, _) {
-                          final s = Pad.I.state.value;
-                          return Container(width: 8, height: 8, decoration: BoxDecoration(shape: BoxShape.circle, color: s == 'direct' ? t.good : (s == 'relayed' ? t.warn : t.dim)));
-                        },
-                      ),
-                      const SizedBox(width: 8),
-                      Text(name, style: body(context, size: .9375, w: FontWeight.w600, color: t.bright)),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                        decoration: BoxDecoration(color: fade(t.accent, 80), borderRadius: BorderRadius.circular(8)),
-                        child: Text('P$_player', style: mono(context, size: .8125, w: FontWeight.w600, color: t.accent)),
-                      ),
-                    ]),
-                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Container(
+                      height: 52,
+                      padding: const EdgeInsets.fromLTRB(4, 4, 12, 4),
+                      decoration: BoxDecoration(color: fade(t.s1, 10), borderRadius: BorderRadius.circular(999)),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        IconBtn('x', label: 'Close gamepad', color: t.bright, onTap: () => Navigator.of(context).maybePop()),
+                        const SizedBox(width: 6),
+                        ListenableBuilder(
+                          listenable: Pad.I.state,
+                          builder: (context, _) {
+                            final s = Pad.I.state.value;
+                            return Container(width: 8, height: 8, decoration: BoxDecoration(shape: BoxShape.circle, color: s == 'direct' ? t.good : (s == 'relayed' ? t.warn : t.dim)));
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                        Text(name, style: body(context, size: .9375, w: FontWeight.w600, color: t.bright)),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                          decoration: BoxDecoration(color: fade(t.accent, 80), borderRadius: BorderRadius.circular(8)),
+                          child: Text('P$_player', style: mono(context, size: .8125, w: FontWeight.w600, color: t.accent)),
+                        ),
+                      ]),
+                    ),
+                    const SizedBox(width: 10),
+                    Container(
+                      height: 52,
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(color: fade(t.s1, 10), borderRadius: BorderRadius.circular(999)),
+                      child: IconBtn('apps', label: 'Layouts', color: t.bright, onTap: _pick),
+                    ),
+                  ]),
                 ),
               ),
               // What went wrong, under the bar (`.gperr`).
@@ -194,16 +200,104 @@ class _GamepadScreenState extends State<GamepadScreen> {
   }
 }
 
+/// A layout drawn into its box: each control at its place. `g` null: a still thumbnail.
+class GpadView extends StatelessWidget {
+  const GpadView({super.key, required this.layout, required this.o, required this.k, this.g});
+  final GLayout layout;
+  final String o;
+  final double k;
+  final _Game? g;
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, box) {
+      final at = place(layout, o, k, box.biggest);
+      return IgnorePointer(
+        ignoring: g == null,
+        child: Stack(children: [
+          for (final c in layout.controls) Positioned.fromRect(rect: at[c.id]!, child: _Control(c: c, layout: layout, g: g ?? _Game.idle)),
+        ]),
+      );
+    });
+  }
+}
+
+/// The face buttons' colours (`labels: colors`) and the shapes' (`labels: shapes`).
+Color? _tint(Tokens t, GLayout l, GControl c) {
+  if (c.kind != 'btn' || l.labels == 'letters') return null;
+  return switch (c.bind) { 'a' => t.base[l.labels == 'shapes' ? 0xD : 0xB], 'b' => t.base[8], 'x' => t.base[l.labels == 'shapes' ? 0xE : 0xD], 'y' => t.base[l.labels == 'shapes' ? 0xC : 0xA], _ => null };
+}
+
+class _Control extends StatelessWidget {
+  const _Control({required this.c, required this.layout, required this.g});
+  final GControl c;
+  final GLayout layout;
+  final _Game g;
+  @override
+  Widget build(BuildContext context) {
+    final t = Tok.of(context);
+    return LayoutBuilder(builder: (context, box) {
+      final w = box.maxWidth, h = box.maxHeight;
+      switch (c.kind) {
+        case 'stick':
+          return _Stick(g, c.bind == 'rs' ? 'rx' : 'lx', c.bind == 'rs' ? 'ry' : 'ly', c.bind == 'rs' ? 'r3' : 'l3', c.label, w);
+        case 'dpad':
+          return _Dpad(g, w, eight: c.dir == 8);
+        case 'pedal':
+          return _Pedal(g: g, bind: c.bind, label: c.label, w: w, h: h);
+        case 'slider':
+          return _Steer(g: g, w: w, h: h);
+      }
+      final tint = _tint(t, layout, c);
+      final radius = switch (c.kind) { 'small' || 'bumper' => 999.0, 'trig' => t.r2, _ => layout.shape == 'round' ? t.r2 : 999.0 };
+      Widget? glyph;
+      if (layout.labels == 'shapes' && c.kind == 'btn' && tint != null) glyph = CustomPaint(size: Size.square(h * .38), painter: _Shape(c.bind, tint));
+      return _Btn(g, c.bind, c.label, w, h, radius: radius, small: c.kind == 'small', color: tint, icon: c.word ? null : c.icon, glyph: glyph);
+    });
+  }
+}
+
+/// △ ○ ✕ □, drawn.
+class _Shape extends CustomPainter {
+  _Shape(this.bind, this.c);
+  final String bind;
+  final Color c;
+  @override
+  void paint(Canvas canvas, Size s) {
+    final p = Paint()
+      ..color = c
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = s.width * .1
+      ..strokeJoin = StrokeJoin.round
+      ..strokeCap = StrokeCap.round;
+    final r = Rect.fromLTWH(s.width * .1, s.height * .1, s.width * .8, s.height * .8);
+    switch (bind) {
+      case 'y':
+        canvas.drawPath(Path()..addPolygon([r.topCenter + Offset(0, s.height * .05), r.bottomRight, r.bottomLeft], true), p);
+      case 'b':
+        canvas.drawCircle(r.center, r.width / 2, p);
+      case 'a':
+        canvas.drawLine(r.topLeft, r.bottomRight, p);
+        canvas.drawLine(r.topRight, r.bottomLeft, p);
+      default:
+        canvas.drawRect(r.deflate(s.width * .04), p);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_Shape o) => o.c != c || o.bind != bind;
+}
+
 /// `.gpc`: a control's face — filled, tinted by its colour for the face buttons, and sinking
 /// into that colour while held.
 class _Btn extends StatefulWidget {
-  const _Btn(this.g, this.bind, this.label, this.w, this.h, {this.round = false, this.pill = false, this.small = false, this.color, this.icon});
+  const _Btn(this.g, this.bind, this.label, this.w, this.h, {required this.radius, this.small = false, this.color, this.icon, this.glyph});
   final _Game g;
   final String bind, label;
-  final double w, h;
-  final bool round, pill, small;
+  final double w, h, radius;
+  final bool small;
   final Color? color;
   final String? icon;
+  final Widget? glyph;
   @override
   State<_Btn> createState() => _BtnState();
 }
@@ -233,108 +327,90 @@ class _BtnState extends State<_Btn> {
         duration: t.durPress,
         child: AnimatedContainer(
           duration: t.durPress,
-          width: widget.w,
-          height: widget.h,
           alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: down ? Color.lerp(t.s2, widget.color ?? t.bright, .55) : rest,
-            borderRadius: BorderRadius.circular(widget.round || widget.pill ? 999 : t.r2),
-          ),
-          child: widget.icon != null
-              ? WIcon(widget.icon!, size: widget.h * .5, color: fg)
-              : Text(widget.label, style: TextStyle(fontFamily: Tokens.body, fontWeight: FontWeight.w700, fontSize: widget.h * (widget.small ? .4 : .3), letterSpacing: widget.h * .012, color: fg)),
+          decoration: BoxDecoration(color: down ? Color.lerp(t.s2, widget.color ?? t.bright, .55) : rest, borderRadius: BorderRadius.circular(widget.radius)),
+          child: widget.glyph ??
+              (widget.icon != null
+                  ? WIcon(widget.icon!, size: widget.h * .5, color: fg)
+                  : Text(widget.label, maxLines: 1, style: TextStyle(fontFamily: Tokens.body, fontWeight: FontWeight.w700, fontSize: widget.h * (widget.small ? .27 : .3), letterSpacing: widget.h * .012, color: fg))),
         ),
       ),
     );
   }
 }
 
-class _Face extends StatelessWidget {
-  const _Face(this.g, this.s);
+/// `.gpdp`: one cross — the finger's direction from the hub presses the arms it points at
+/// (four ways, or eight when diagonals are allowed).
+class _Dpad extends StatefulWidget {
+  const _Dpad(this.g, this.s, {this.eight = false});
   final _Game g;
   final double s;
+  final bool eight;
   @override
-  Widget build(BuildContext context) {
-    final t = Tok.of(context);
-    final b = s * .34;
-    return SizedBox(
-      width: s,
-      height: s,
-      child: Stack(children: [
-        Positioned(top: 0, left: (s - b) / 2, child: _Btn(g, 'y', 'Y', b, b, round: true, color: t.base[0xA])),
-        Positioned(bottom: 0, left: (s - b) / 2, child: _Btn(g, 'a', 'A', b, b, round: true, color: t.base[0xB])),
-        Positioned(left: 0, top: (s - b) / 2, child: _Btn(g, 'x', 'X', b, b, round: true, color: t.base[0xD])),
-        Positioned(right: 0, top: (s - b) / 2, child: _Btn(g, 'b', 'B', b, b, round: true, color: t.base[8])),
-      ]),
-    );
-  }
+  State<_Dpad> createState() => _DpadState();
 }
 
-/// `.gpdp`: one cross — four arms around a hub, each arm its own button with its triangle.
-class _Dpad extends StatelessWidget {
-  const _Dpad(this.g, this.s);
-  final _Game g;
-  final double s;
+class _DpadState extends State<_Dpad> {
+  final _on = <String>{};
+
+  void _at(Offset p) {
+    final c = Offset(widget.s / 2, widget.s / 2), d = p - c;
+    final next = <String>{};
+    if (d.distance > widget.s * .1) {
+      final a = math.atan2(d.dy, d.dx);
+      final sector = ((a / (math.pi / 4)).round() + 8) % 8; // 0 right, 2 down, 4 left, 6 up
+      if (widget.eight) {
+        next.addAll(const [['dr'], ['dr', 'dd'], ['dd'], ['dd', 'dl'], ['dl'], ['dl', 'du'], ['du'], ['du', 'dr']][sector]);
+      } else {
+        next.add(d.dx.abs() > d.dy.abs() ? (d.dx > 0 ? 'dr' : 'dl') : (d.dy > 0 ? 'dd' : 'du'));
+      }
+    }
+    for (final b in _on.difference(next)) {
+      widget.g.button(b, false);
+    }
+    for (final b in next.difference(_on)) {
+      widget.g.button(b, true);
+    }
+    setState(() => _on
+      ..clear()
+      ..addAll(next));
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = Tok.of(context);
-    final a = s * .34, o = s * .33;
+    final s = widget.s, a = s * .34, o = s * .33;
     final r = Radius.circular(t.r1), k = const Radius.circular(4);
-    return SizedBox(
-      width: s,
-      height: s,
-      child: Stack(children: [
-        Positioned(left: o, top: o, width: a, height: a, child: ColoredBox(color: t.s2.withValues(alpha: .92))),
-        Positioned(left: o, top: 0, child: _Arm(g, 'du', a, BorderRadius.only(topLeft: r, topRight: r, bottomLeft: k, bottomRight: k), 0)),
-        Positioned(left: o, bottom: 0, child: _Arm(g, 'dd', a, BorderRadius.only(bottomLeft: r, bottomRight: r, topLeft: k, topRight: k), 2)),
-        Positioned(left: 0, top: o, child: _Arm(g, 'dl', a, BorderRadius.only(topLeft: r, bottomLeft: r, topRight: k, bottomRight: k), 3)),
-        Positioned(right: 0, top: o, child: _Arm(g, 'dr', a, BorderRadius.only(topRight: r, bottomRight: r, topLeft: k, bottomLeft: k), 1)),
-      ]),
-    );
-  }
-}
-
-class _Arm extends StatefulWidget {
-  const _Arm(this.g, this.bind, this.s, this.radius, this.quarter);
-  final _Game g;
-  final String bind;
-  final double s;
-  final BorderRadius radius;
-  /// Which way its triangle points: 0 up, 1 right, 2 down, 3 left.
-  final int quarter;
-  @override
-  State<_Arm> createState() => _ArmState();
-}
-
-class _ArmState extends State<_Arm> {
-  bool down = false;
-  void _set(bool d) {
-    if (d == down) return;
-    setState(() => down = d);
-    widget.g.button(widget.bind, d);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Tok.of(context);
-    return Listener(
-      onPointerDown: (_) => _set(true),
-      onPointerUp: (_) => _set(false),
-      onPointerCancel: (_) => _set(false),
-      child: AnimatedScale(
-        scale: down ? .94 : 1,
+    Widget arm(String id, BorderRadius radius, int q) {
+      final on = _on.contains(id);
+      return AnimatedScale(
+        scale: on ? .94 : 1,
         duration: t.durPress,
         child: Container(
-          width: widget.s,
-          height: widget.s,
-          decoration: BoxDecoration(color: down ? Color.lerp(t.s2, t.accent, .7) : t.s2, borderRadius: widget.radius),
-          child: Center(
-            child: RotatedBox(
-              quarterTurns: widget.quarter,
-              child: CustomPaint(size: Size.square(widget.s * .4), painter: _Tri(down ? t.onAccent : t.dim)),
-            ),
-          ),
+          width: a,
+          height: a,
+          decoration: BoxDecoration(color: on ? Color.lerp(t.s2, t.accent, .7) : t.s2, borderRadius: radius),
+          child: Center(child: RotatedBox(quarterTurns: q, child: CustomPaint(size: Size.square(a * .4), painter: _Tri(on ? t.onAccent : t.dim)))),
         ),
+      );
+    }
+
+    return Listener(
+      behavior: HitTestBehavior.opaque,
+      onPointerDown: (e) => _at(e.localPosition),
+      onPointerMove: (e) => _at(e.localPosition),
+      onPointerUp: (_) => _at(Offset(s / 2, s / 2)),
+      onPointerCancel: (_) => _at(Offset(s / 2, s / 2)),
+      child: SizedBox(
+        width: s,
+        height: s,
+        child: Stack(children: [
+          Positioned(left: o, top: o, width: a, height: a, child: ColoredBox(color: t.s2.withValues(alpha: .92))),
+          Positioned(left: o, top: 0, child: arm('du', BorderRadius.only(topLeft: r, topRight: r, bottomLeft: k, bottomRight: k), 0)),
+          Positioned(left: o, bottom: 0, child: arm('dd', BorderRadius.only(bottomLeft: r, bottomRight: r, topLeft: k, topRight: k), 2)),
+          Positioned(left: 0, top: o, child: arm('dl', BorderRadius.only(topLeft: r, bottomLeft: r, topRight: k, bottomRight: k), 3)),
+          Positioned(right: 0, top: o, child: arm('dr', BorderRadius.only(topRight: r, bottomRight: r, topLeft: k, bottomLeft: k), 1)),
+        ]),
       ),
     );
   }
@@ -407,8 +483,6 @@ class _StickState extends State<_Stick> {
         widget.g.button(widget.click, false);
       },
       child: Container(
-        width: s,
-        height: s,
         decoration: BoxDecoration(shape: BoxShape.circle, color: fade(t.s2, 30), border: Border.all(color: t.line, width: 1.5)),
         child: Center(
           child: Transform.translate(
@@ -419,10 +493,151 @@ class _StickState extends State<_Stick> {
               height: s * .46,
               alignment: Alignment.center,
               decoration: BoxDecoration(shape: BoxShape.circle, color: on ? Color.lerp(t.s3, t.accent, .6) : t.s3, border: Border.all(color: fade(t.bright, 70), width: 1.5)),
-              child: Text(widget.letter, style: body(context, size: .75, w: FontWeight.w700, color: on ? t.onAccent : t.dim)),
+              child: Text(widget.letter, style: TextStyle(fontFamily: Tokens.body, fontSize: s * .1, fontWeight: FontWeight.w700, color: on ? t.onAccent : t.dim)),
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// `.gpc[data-kind=pedal]`: an analog trigger — how far up the finger is, the fill and the axis.
+class _Pedal extends StatefulWidget {
+  const _Pedal({required this.g, required this.bind, required this.label, required this.w, required this.h});
+  final _Game g;
+  final String bind, label;
+  final double w, h;
+  @override
+  State<_Pedal> createState() => _PedalState();
+}
+
+class _PedalState extends State<_Pedal> {
+  double v = 0;
+  void _at(double y) {
+    final nv = (1 - y / widget.h).clamp(0.0, 1.0);
+    if ((nv > 0) != (v > 0)) widget.g.button(widget.bind, nv > 0);
+    setState(() => v = nv);
+    widget.g.axis(widget.bind, nv);
+  }
+
+  void _end() {
+    if (v > 0) widget.g.button(widget.bind, false);
+    setState(() => v = 0);
+    widget.g.axis(widget.bind, 0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Tok.of(context);
+    return Listener(
+      onPointerDown: (e) => _at(e.localPosition.dy),
+      onPointerMove: (e) => _at(e.localPosition.dy),
+      onPointerUp: (_) => _end(),
+      onPointerCancel: (_) => _end(),
+      child: Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(color: t.s2, borderRadius: BorderRadius.circular(t.r3)),
+        child: Stack(children: [
+          Positioned(left: 0, right: 0, bottom: 0, height: widget.h * v, child: ColoredBox(color: fade(t.accent, 70))),
+          Positioned(top: 14, left: 0, right: 0, child: Center(child: Opacity(opacity: .6, child: WIcon('up', size: 24, color: t.bright)))),
+          Positioned(left: 0, right: 0, bottom: 12, child: Text(widget.label.toUpperCase(), textAlign: TextAlign.center, style: TextStyle(fontFamily: Tokens.body, fontWeight: FontWeight.w700, fontSize: widget.h * .1, letterSpacing: 1, color: t.bright))),
+        ]),
+      ),
+    );
+  }
+}
+
+/// `.gpc[data-kind=slider]`: steering — the finger's place along it is the left stick's x.
+class _Steer extends StatefulWidget {
+  const _Steer({required this.g, required this.w, required this.h});
+  final _Game g;
+  final double w, h;
+  @override
+  State<_Steer> createState() => _SteerState();
+}
+
+class _SteerState extends State<_Steer> {
+  double x = 0;
+  void _at(double px) {
+    setState(() => x = ((px / widget.w) * 2 - 1).clamp(-1.0, 1.0));
+    widget.g.axis('lx', x);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Tok.of(context);
+    final tw = widget.w * .3;
+    return Listener(
+      onPointerDown: (e) => _at(e.localPosition.dx),
+      onPointerMove: (e) => _at(e.localPosition.dx),
+      onPointerUp: (_) => _at(widget.w / 2),
+      onPointerCancel: (_) => _at(widget.w / 2),
+      child: Container(
+        decoration: BoxDecoration(color: fade(t.s2, 30), borderRadius: BorderRadius.circular(999), border: Border.all(color: t.line, width: 1.5)),
+        child: Stack(children: [
+          Positioned(
+            left: (widget.w - tw) / 2 + x * (widget.w - tw) / 2,
+            top: widget.h * .1,
+            width: tw,
+            height: widget.h * .8,
+            child: Container(decoration: BoxDecoration(color: x != 0 ? Color.lerp(t.s3, t.accent, .6) : t.s3, borderRadius: BorderRadius.circular(999))),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+/// The layouts (picker.js): each drawn small, the one in use ringed.
+class _Picker extends StatelessWidget {
+  const _Picker({required this.onPick});
+  final ValueChanged<String> onPick;
+  @override
+  Widget build(BuildContext context) {
+    final t = Tok.of(context);
+    final now = layoutById(Settings.I.s('gpad_layout')).id;
+    final o = orient(MediaQuery.sizeOf(context));
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Center(child: Container(width: 38, height: 5, margin: const EdgeInsets.only(bottom: 12), decoration: BoxDecoration(color: t.s3, borderRadius: BorderRadius.circular(3)))),
+          Text('Layouts', style: display(context, rem(context, 1.25))),
+          const SizedBox(height: 12),
+          Flexible(
+            child: SingleChildScrollView(
+              child: LayoutBuilder(builder: (context, box) {
+                final cols = box.maxWidth > 700 ? 4 : (box.maxWidth > 420 ? 3 : 2);
+                final w = (box.maxWidth - 10 * (cols - 1)) / cols;
+                final th = Size(w - 16, (w - 16) * (o == 'l' ? 370 / 824 : 824 / 370) * (o == 'l' ? 1 : .5));
+                return Wrap(spacing: 10, runSpacing: 10, children: [
+                  for (final l in layouts)
+                    Press(
+                      onTap: () => onPick(l.id),
+                      label: '${l.name}: ${l.sub}',
+                      child: Container(
+                        width: w,
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(color: t.s1, borderRadius: BorderRadius.circular(t.r3), border: Border.all(color: l.id == now ? t.accent : Colors.transparent, width: 2)),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Container(
+                            width: th.width,
+                            height: th.height,
+                            decoration: BoxDecoration(color: t.s0, borderRadius: BorderRadius.circular(t.r2)),
+                            child: GpadView(layout: l, o: o, k: thumbK(o, th)),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(l.name, style: body(context, w: FontWeight.w600, color: t.bright)),
+                          Text(l.sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: body(context, size: .75, color: t.dim)),
+                        ]),
+                      ),
+                    ),
+                ]);
+              }),
+            ),
+          ),
+        ]),
       ),
     );
   }

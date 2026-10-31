@@ -56,6 +56,7 @@ const iconPaths = <String, String>{
   'rotate': 'M9 3h6a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM2 9a8 8 0 0 1 4-6M22 15a8 8 0 0 1-4 6M2 9l3 .5M22 15l-3-.5',
   'trackpad': 'M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM3 15h18M12 15v5',
   'folder': 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
+  'menu': 'M4 7h16M4 12h16M4 17h16',
   'house': 'M4 11 12 4l8 7M6 9.5V20h12V9.5',
   'home': 'M12 6a6 6 0 1 0 0 12a6 6 0 1 0 0-12z',
   'pin': 'M12 17v5M9 4h6M10 4v6l-3 4h10l-3-4V4',
