@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show AppLifecycleListener;
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../ui/theme/look.dart';
@@ -24,6 +25,9 @@ const fastChannel = 'wado-fast';
 class Session {
   Session._() {
     final l = RelayLink.I;
+    // The cheapest large win in the stack (lifecycle.js): a hidden app still receives RTP and
+    // throws it away, so tell the daemon to stop rendering for it until it is back.
+    AppLifecycleListener(onHide: () => _visible(false), onShow: () => _visible(true));
     l.on('__up', (_) => _onLinkUp());
     l.on('__down', (_) => _onDown());
     l.on('session_started', _started);
@@ -480,6 +484,12 @@ class Session {
   }
 
   bool get left => _left;
+
+  void _visible(bool v) {
+    if (!on.value || pc == null) return;
+    rlog('app is now ${v ? 'visible' : 'hidden'}');
+    RelayLink.I.send({'type': 'viewer_visible', 'visible': v});
+  }
 
   void _sampled() {
     final x = Stats.I.sample.value;
