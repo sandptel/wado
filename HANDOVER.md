@@ -4,6 +4,32 @@ Everything built in the October run is merged on `main` and tagged **v0.0.4**. T
 starting point for picking the remaining work up **one item at a time**. Read `CLAUDE.md` first
 (invariants, hazards), then this file, then the item's linked spec, plan or log.
 
+## 0. The Flutter app ("wado next") — ported in one session on `2026-10-31`
+
+The web client was ported to Flutter over the Rust core in one long session; build, pins and
+testing are in `docs/app.md`. It installs beside the old app (`io.github.sandptel.wado.next`) and
+is a new device: pair each computer once.
+
+**Verified headless (Linux and the Android emulator, against a throwaway relay and release
+daemon):** pairing; the seat link; a session at the phone's own shape (720×1600) with live video,
+input channels open and steady frames; the Pocket Console; the touchpad link going direct (4 ms
+round trip, compact frames); a live shell; Files with places and recent. **Not verified on a real
+phone yet:** the passkey prompt (Keystore + fingerprint), the QR scanner, video decode on
+hardware, and the relay over the internet.
+
+**Not ported yet** (each was a web feature; pick them up one at a time):
+1. Home widgets and side links (quick controls for computers that are not selected).
+2. Push notifications, "Stay connected" in the background, the MediaSession.
+3. The Claude card.
+4. Gamepad layouts and the editor; touchpad variants; the Keyboard and Gamepad settings pages.
+5. Joining someone else's session as a view room (`multi.js`), presence and ghost pointers.
+6. Lane hints, the link test, `wado://` pairing links opening the app, "Send to computer".
+7. Viewer kinds: PDF, audio/video playback, rendered markdown, archives (they offer a download).
+8. Session input: pinch, edge swipes and window drag (tap, scroll, right-click and drag work; raw
+   touch works).
+9. Uploads read the whole file into memory first.
+10. iOS, iPadOS and macOS builds (Linux builds and runs).
+
 ## 1. Where things are
 
 | | |
