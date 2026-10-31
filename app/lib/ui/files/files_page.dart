@@ -117,10 +117,9 @@ class _FilesPageState extends State<FilesPage> {
     final pick = await FilePicker.pickFiles();
     if (pick.isEmpty || _path == null) return;
     for (final f in pick) {
-      final data = await f.readAsBytes();
       setState(() => _jobs['↑ ${f.name}'] = 0);
       try {
-        await upload(_path!, f.name, data, progress: (p) => setState(() => _jobs['↑ ${f.name}'] = p));
+        await uploadStream(_path!, f.name, await f.xFile.length(), () => f.xFile.openRead(), progress: (p) => setState(() => _jobs['↑ ${f.name}'] = p));
       } catch (e) {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Couldn't send ${f.name}: $e")));
       }

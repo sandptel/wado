@@ -251,11 +251,17 @@ class Files {
 
 /// Upload one file (files_xfer.js): `put` → bytes in chunks under a buffer ceiling → `put_end`
 /// with its SHA-256. Progress 0..1. Throws "exists" when the name is taken and `clash` is fail.
-Future<String> upload(String dir, String name, Uint8List data, {String clash = 'rename', void Function(double)? progress}) async {
+Future<String> upload(String dir, String name, Uint8List data, {String clash = 'rename', void Function(double)? progress}) =>
+    uploadStream(dir, name, data.length, () => Stream.value(data), clash: clash, progress: progress);
+
+/// The same, read as it goes: a file of any size never sits in memory whole. `read` opens the
+/// file from its start; a resumed upload hashes the part the computer already has and sends the
+/// rest.
+Future<String> uploadStream(String dir, String name, int size, Stream<List<int>> Function() read, {String clash = 'rename', void Function(double)? progress}) async {
   final f = Files.I;
   final started = Completer<Map<String, dynamic>>();
   final ended = Completer<void>();
-  final id = f.stream('put', {'dir': dir, 'name': name, 'size': data.length, 'clash': clash}, (m) {
+  final id = f.stream('put', {'dir': dir, 'name': name, 'size': size, 'clash': clash}, (m) {
     if (!started.isCompleted) {
       started.complete(m);
       return false;
@@ -270,18 +276,24 @@ Future<String> upload(String dir, String name, Uint8List data, {String clash = '
   final put = await started.future;
   if ((put['err'] ?? '') != '') throw Exception(put['err']);
   const chunk = 16 * 1024;
-  var pos = (put['offset'] ?? 0) as int;
+  final from = (put['offset'] ?? 0) as int;
   final sha = sha256Sink();
-  if (pos > 0) sha.add(data.sublist(0, pos));
-  while (pos < data.length) {
-    final end = (pos + chunk).clamp(0, data.length);
-    final part = Uint8List.sublistView(data, pos, end);
-    sha.add(part);
-    f.bytes(id, part);
-    pos = end;
-    progress?.call(pos / data.length);
-    // Let the channel drain: a phone's radio is slower than this loop.
-    if (pos % (chunk * 16) == 0) await Future.delayed(const Duration(milliseconds: 8));
+  var pos = 0, sent = 0;
+  await for (final block in read()) {
+    for (var i = 0; i < block.length; i += chunk) {
+      final part = Uint8List.fromList(block.sublist(i, (i + chunk).clamp(0, block.length)));
+      sha.add(part);
+      final end = pos + part.length;
+      // What the computer already has is hashed, not sent again.
+      if (end > from) {
+        f.bytes(id, pos >= from ? part : Uint8List.sublistView(part, from - pos));
+        sent += end - (pos > from ? pos : from);
+        progress?.call(end / (size == 0 ? 1 : size));
+        // Let the channel drain: a phone's radio is slower than this loop.
+        if (sent % (chunk * 16) < chunk) await Future.delayed(const Duration(milliseconds: 8));
+      }
+      pos = end;
+    }
   }
   final hex = sha.close();
   final done = await f.req('put_end', {'xfer': id, 'sha256': hex});
