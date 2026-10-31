@@ -8,8 +8,8 @@ starting point for picking the remaining work up **one item at a time**. Read `C
 
 The web client was ported to Flutter over the Rust core; build, pins and testing are in
 `docs/app.md`. It installs beside the old app (`io.github.sandptel.wado.next`) and is a new device:
-pair each computer once. Latest build: `~/Downloads/wado-next-0.2.0-release.apk` (arm64, Impeller,
-debug-key signed like 0.1.0, so it installs over it).
+pair each computer once. Latest build: `~/Downloads/wado-next-0.3.0-release.apk` (arm64, Impeller,
+debug-key signed like 0.1.0 and 0.2.0, so it installs over them).
 
 **The user's reports on 0.1.0, and where they stand:**
 - *QR pairing does not work* — fixed: the camera permission is asked when the scanner opens, the
@@ -34,13 +34,30 @@ bypass), volume keys (they would change the host's real sound), anything on a re
 stayed disabled on "Connecting…"); pages under a session kept ticking and exposed their semantics;
 the stats reader read Android's µs timestamps as ms.
 
-**Not ported yet:** the gamepad editor (move, resize, restyle controls — `gpad/edit.js`,
-`inspector.js`, `place.js` deck packing); the touchpad's gesture glyphs and in-pad gesture settings;
-the latency breakdown readout and lane hints; Record and Take mouse tiles; the file manager's
-overview (categories, selection); iOS/iPadOS/macOS. Since the first write-up: the touchpad's quick
-actions (rail, bar, confirm disc, chooser), the gamepad's seven layouts with a picker (also the
-console's Gamepad face), the Screenshot tile, the reconnecting overlay, and back stepping through
-the control centre's pages are in.
+**The user's reports on 0.2.0, and where they stand (0.3.0):**
+- *The app drawer does not work* — the list now waits for a slow answer (big icon lists take
+  seconds over the relay lane), asks again once, keeps the last list per computer, draws SVG icons,
+  and no longer filters everything out behind a `weston-terminal` default command.
+- *Touchpad/gamepad/other sections can only be switched, not put away* — tapping the face that is
+  showing puts the deck away; the picture takes its room (centred when it cannot grow).
+- *The UI stutters* — measured on the emulator with a slow-frame logger (debug/profile only): build
+  time was ~0, the frames were raster. Cut per-frame work: looping animations on their own layers,
+  data-URI pictures decoded once, one stats read shared by badge and verdict, settings written once
+  they settle, the console rebuilding only for its own settings. **Not measured on a real phone.**
+- *The picture does not fit the console* — a session started with the default Shape is now sized to
+  the console's picture room, so it fills it edge to edge (Decision Log `2026-10-31`).
+
+**Ported since 0.2.0:** latency breakdown (input round trip + the daemon's stage timings, chips along
+the picture's foot); lane hints (files, shell); Record tile; touchpad gesture hints and phone
+gestures (edge swipes, four-finger tap, two-finger hold — assigned in Touchpad settings); the files
+overview (search, categories, recent, folders, storage, results, long-press selection); the gamepad
+editor (select, drag on a grid, size, hide, mirror, undo; per layout and orientation, on the phone).
+Also fixed: End on the computer page popped "Join the session first" for the page's side requests.
+**Still not ported:** Take mouse (no pointer capture on Android); the gamepad editor's Look/Behave
+tabs (shape, style, stick modes) and Save as; iOS/iPadOS/macOS. **Not exercised on the rig:** the
+shell lane hint and the files overview (no shell or files grant on the test device, none granted;
+the overview has a widget test), phone gestures and multi-finger hints (adb cannot do several
+fingers; unit tests cover them).
 Decisions taken without asking, for review: a landscape session in a portrait console puts the
 input faces in a row over the deck (the web overlaps them with Rotate — the web still does); the
 app drawer sits over the dock (the web's dock covers its bottom row); the default tiles swap Take
