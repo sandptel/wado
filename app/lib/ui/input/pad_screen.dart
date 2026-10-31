@@ -1,26 +1,38 @@
-// The touchpad (port of pad_ui.js + pad_touch.js + pad_why.js + pad.css): a full-screen
-// surface whose fingers go to the computer as a real multi-touch touchpad (libinput does the
-// pointer, scrolling and gestures there). A ring under each finger. The keys rail beside it, the
-// phone keyboard on demand, and the honest why-card when the computer says no.
+// The touchpad (port of pad_ui.js, pad_orient.js and pad.css): the phone as the computer's own
+// multi-touch touchpad. Held sideways (the default), the keys rail stands beside the surface — the
+// link pill on top, the modifiers and keys, Type, settings — and Close sits in the surface's corner.
+// Upright, or while typing, the head is on top and the keys and the text box below. The honest
+// why-card sits over the surface when the computer says no; the passkey sheet comes first when the
+// computer asks for one.
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../wado/nav.dart';
 import '../../wado/pad.dart';
+import '../../wado/passkey.dart';
 import '../../wado/relay_link.dart';
-import '../../wado/settings.dart';
+import '../motion/feel.dart';
+import '../motion/motion.dart';
+import '../pages/input_pages.dart' show TouchpadSettings;
 import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
 import 'gamepad_screen.dart';
-import '../motion/feel.dart';
-import '../passkey/passkey_card.dart';
+import 'pad/pad_keys.dart';
+import 'pad/pad_surface.dart';
 
 void openPad(BuildContext context, {bool keyboard = false}) {
-  Navigator.of(context).push(PageRouteBuilder(
-    opaque: true,
-    transitionDuration: Tok.of(context).durSheet,
-    pageBuilder: (_, a, _) => FadeTransition(opacity: a, child: PadScreen(keyboard: keyboard)),
-  ));
+  final nav = Navigator.of(context);
+  final dur = Tok.of(context).durSheet;
+  Passkey.I.ask('pad', then: () => nav.push(PageRouteBuilder(
+        opaque: true,
+        transitionDuration: dur,
+        // `tpin`: up 16 px and in.
+        pageBuilder: (_, a, _) => FadeTransition(
+          opacity: a,
+          child: SlideTransition(position: Tween(begin: const Offset(0, .02), end: Offset.zero).animate(CurvedAnimation(parent: a, curve: Tokens.spring)), child: PadScreen(keyboard: keyboard)),
+        ),
+      )));
 }
 
 void openGamepad(BuildContext context) {
@@ -39,9 +51,8 @@ class PadScreen extends StatefulWidget {
 }
 
 class _PadScreenState extends State<PadScreen> {
-  final _rings = <int, Offset>{};
-  late bool _kb = widget.keyboard;
-  final _mods = <String>{};
+  late bool _typing = widget.keyboard || TouchpadSettings.prefs()['keyboard'] == true;
+  bool _why = false;
   final _field = TextEditingController(text: '​');
   final _focus = FocusNode();
 
@@ -51,207 +62,268 @@ class _PadScreenState extends State<PadScreen> {
     active(true);
     Pad.I.start();
     PadTouch.I.attach();
-    if (_kb) WidgetsBinding.instance.addPostFrameCallback((_) => _focus.requestFocus());
+    _orient();
+    if (_typing) WidgetsBinding.instance.addPostFrameCallback((_) => _focus.requestFocus());
   }
 
   @override
   void dispose() {
+    PadMods.I.releaseAll();
     PadTouch.I.detach();
     Pad.I.stop();
     active(false);
+    SystemChrome.setPreferredOrientations(const []);
     super.dispose();
   }
 
+  bool get _landscapePref => TouchpadSettings.prefs()['landscape'] != false;
+
+  /// Sideways unless typing or asked otherwise (`pad_orient.js`); a phone can turn for real here.
+  void _orient() {
+    SystemChrome.setPreferredOrientations(_landscapePref && !_typing ? const [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight] : const []);
+  }
+
+  void _type(bool on) {
+    setState(() => _typing = on);
+    _orient();
+    on ? WidgetsBinding.instance.addPostFrameCallback((_) => _focus.requestFocus()) : _focus.unfocus();
+  }
+
   void _typed(String v) {
-    final mods = _mods.toList();
     if (v.isEmpty) {
       PadKeys.key('backspace');
     } else {
       final s = v.replaceAll('​', '');
       if (s.length == 1) {
-        PadKeys.char(s, mods);
+        PadKeys.char(s, PadMods.I.take());
       } else if (s.isNotEmpty) {
         PadKeys.text(s);
       }
-      if (mods.isNotEmpty) setState(_mods.clear);
     }
     _field.value = const TextEditingValue(text: '​', selection: TextSelection.collapsed(offset: 1));
   }
 
+  void _settings() => showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Tok.of(context).s0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Tok.of(context).r4))),
+        builder: (c) => FractionallySizedBox(
+          heightFactor: .85,
+          child: SingleChildScrollView(padding: const EdgeInsets.all(16), child: const TouchpadSettings()),
+        ),
+      ).whenComplete(() {
+        _orient();
+        if (mounted) setState(() {});
+      });
+
   @override
   Widget build(BuildContext context) {
     final t = Tok.of(context);
-    final marks = Settings.I.b('pad_marks_off') == false;
+    final mq = MediaQuery.of(context);
+    final landscape = !_typing && mq.size.width > mq.size.height;
+    final rail = '${TouchpadSettings.prefs()['rail'] ?? 'keys'}';
+    final marks = TouchpadSettings.prefs()['marks'] != false;
+    final pad = EdgeInsets.fromLTRB(12 + mq.padding.left, 10 + mq.padding.top, 12 + mq.padding.right, 12 + mq.padding.bottom);
+    final surface = ValueListenableBuilder(
+      valueListenable: Pad.I.error,
+      builder: (context, err, _) => PadSurface(
+        marks: marks,
+        overlay: err == null || err.isEmpty ? null : Positioned(left: 12, right: landscape ? 64 : 12, top: 12, child: _WhyCard(err: err)),
+      ),
+    );
+    final close = IconBtn('x', label: 'Close trackpad', color: t.bright, onTap: () => Navigator.of(context).maybePop());
+    final gear = IconBtn('sliders', label: 'Trackpad settings', color: t.text, onTap: _settings);
+    final whyText = _why ? _Why(state: Pad.I.state.value) : null;
     return Scaffold(
       backgroundColor: t.s0,
-      body: SafeArea(
-        child: Column(children: [
-          // Top: back, link chip.
-          SizedBox(
-            height: 48,
-            child: Row(children: [
-              IconBtn('left', label: 'Back', color: t.bright, onTap: () => Navigator.of(context).maybePop()),
-              Expanded(child: Text('Touchpad', style: display(context, rem(context, 1)))),
-              ListenableBuilder(
-                listenable: Listenable.merge([Pad.I.state, Pad.I.rtt]),
-                builder: (context, _) {
-                  final s = Pad.I.state.value;
-                  final r = Pad.I.rtt.value;
-                  final c = s == 'direct' ? t.good : (s == 'relayed' ? t.warn : t.dim);
-                  return Container(
-                    margin: const EdgeInsets.only(right: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(color: t.s1, borderRadius: BorderRadius.circular(999), border: Border.all(color: fade(c, 60))),
-                    child: Row(children: [
-                      Container(width: 8, height: 8, decoration: BoxDecoration(shape: BoxShape.circle, color: c)),
-                      const SizedBox(width: 6),
-                      Text('${s == 'direct' ? 'Direct' : s == 'relayed' ? 'Relayed' : 'Off'}${r != null ? ' · $r ms' : ''}', style: body(context, size: .75, w: FontWeight.w600, color: t.bright)),
-                    ]),
-                  );
-                },
-              ),
-              IconBtn('kbd', label: 'Keyboard', color: _kb ? t.accent : t.bright, onTap: () {
-                setState(() => _kb = !_kb);
-                _kb ? _focus.requestFocus() : _focus.unfocus();
-              }),
-            ]),
-          ),
-          // The surface.
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-              child: ValueListenableBuilder(
-                valueListenable: Pad.I.error,
-                builder: (context, err, _) {
-                  if (err != null && err.isNotEmpty) return _WhyCard(err: err);
-                  return LayoutBuilder(builder: (context, box) {
-                    final w = box.maxWidth, h = box.maxHeight;
-                    final dpr = MediaQuery.of(context).devicePixelRatio;
-                    PadTouch.I.size((w * dpr).round(), (h * dpr).round());
-                    return Listener(
-                      behavior: HitTestBehavior.opaque,
-                      onPointerDown: (e) {
-                        PadTouch.I.down(e.pointer, e.localPosition.dx, e.localPosition.dy, w, h);
-                        if (marks) setState(() => _rings[e.pointer] = e.localPosition);
-                      },
-                      onPointerMove: (e) {
-                        PadTouch.I.move(e.pointer, e.localPosition.dx, e.localPosition.dy, w, h);
-                        if (marks) setState(() => _rings[e.pointer] = e.localPosition);
-                      },
-                      onPointerUp: (e) {
-                        PadTouch.I.up(e.pointer);
-                        if (marks) setState(() => _rings.remove(e.pointer));
-                      },
-                      onPointerCancel: (e) {
-                        PadTouch.I.up(e.pointer);
-                        setState(() => _rings.remove(e.pointer));
-                      },
-                      child: CustomPaint(
-                        painter: _Surface(t, _rings.values.toList()),
-                        child: const SizedBox.expand(),
+      resizeToAvoidBottomInset: true,
+      body: Padding(
+        padding: pad,
+        child: landscape
+            ? Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                if (rail != 'none')
+                  SizedBox(
+                    width: 120,
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      _Pill(stacked: true, onTap: () => setState(() => _why = !_why)),
+                      const SizedBox(height: 8),
+                      Expanded(
+                        child: ShaderMask(
+                          shaderCallback: (r) => const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.black, Colors.black, Colors.transparent], stops: [0, .93, 1]).createShader(r),
+                          blendMode: BlendMode.dstIn,
+                          child: const SingleChildScrollView(padding: EdgeInsets.only(bottom: 14), child: PadKeysGrid()),
+                        ),
                       ),
-                    );
-                  });
-                },
-              ),
-            ),
-          ),
-          // The keys rail.
-          _KeysRail(mods: _mods, onMods: () => setState(() {})),
-          if (_kb)
-            SizedBox(
-              height: 1,
-              child: Opacity(
-                opacity: 0,
-                child: TextField(controller: _field, focusNode: _focus, autocorrect: true, onChanged: _typed, onSubmitted: (_) {
-                  PadKeys.key('enter');
-                  _focus.requestFocus();
-                }),
-              ),
-            ),
-        ]),
+                      const SizedBox(height: 8),
+                      Enter(delay: const Duration(milliseconds: 8 * 26), ms: 420, dy: 0, dx: -14, scale: .94, fadeOnClose: false, child: _TypeBtn(onTap: () => _type(true))),
+                      const SizedBox(height: 8),
+                      Center(child: gear),
+                    ]),
+                  ),
+                if (rail != 'none') const SizedBox(width: 12),
+                Expanded(
+                  child: Stack(children: [
+                    Positioned.fill(child: surface),
+                    if (rail == 'none') Positioned(left: 6, top: 6, child: _Pill(onTap: () => setState(() => _why = !_why))),
+                    Positioned(
+                      right: 6,
+                      top: 6,
+                      child: Container(decoration: BoxDecoration(color: fade(t.s2, 30), shape: BoxShape.circle), child: close),
+                    ),
+                    if (whyText != null) Positioned(left: 10, bottom: 10, child: _Floating(child: whyText)),
+                  ]),
+                ),
+              ])
+            : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                SizedBox(
+                  height: 44,
+                  child: Row(children: [
+                    _Pill(onTap: () => setState(() => _why = !_why)),
+                    const Spacer(),
+                    gear,
+                    close,
+                  ]),
+                ),
+                if (whyText != null) Padding(padding: const EdgeInsets.fromLTRB(4, 10, 4, 0), child: whyText),
+                const SizedBox(height: 10),
+                Expanded(child: surface),
+                if (_typing) ...[
+                  const SizedBox(height: 10),
+                  const PadKeysRow(),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _field,
+                    focusNode: _focus,
+                    autocorrect: true,
+                    minLines: 1,
+                    maxLines: 1,
+                    textInputAction: TextInputAction.newline,
+                    onChanged: _typed,
+                    onSubmitted: (_) {
+                      PadKeys.key('enter');
+                      _focus.requestFocus();
+                    },
+                    style: body(context, size: 1, color: t.bright),
+                    decoration: InputDecoration(
+                      hintText: 'Type here — it goes to the computer',
+                      hintStyle: body(context, size: 1, color: t.dim),
+                      filled: true,
+                      fillColor: t.s1,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(t.r2), borderSide: BorderSide(color: t.line)),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(t.r2), borderSide: BorderSide(color: t.line)),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 10),
+                Btn(_typing ? 'Hide keyboard' : 'Keyboard', icon: 'kbd', onTap: () => _type(!_typing)),
+              ]),
       ),
     );
   }
 }
 
-class _Surface extends CustomPainter {
-  _Surface(this.t, this.rings);
-  final Tokens t;
-  final List<Offset> rings;
-  @override
-  void paint(Canvas canvas, Size s) {
-    final r = RRect.fromRectAndRadius(Offset.zero & s, Radius.circular(t.r4));
-    canvas.drawRRect(r, Paint()..color = t.s1);
-    // A quiet dot texture.
-    final dot = Paint()..color = fade(t.bright, 94);
-    for (var y = 24.0; y < s.height; y += 28) {
-      for (var x = 24.0; x < s.width; x += 28) {
-        canvas.drawCircle(Offset(x, y), 1.1, dot);
-      }
-    }
-    canvas.drawRRect(r, Paint()
-      ..style = PaintingStyle.stroke
-      ..color = t.line);
-    for (final p in rings) {
-      canvas.drawCircle(p, 30, Paint()..color = fade(t.accent, 80));
-      canvas.drawCircle(p, 30, Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2
-        ..color = t.accent);
-    }
-  }
-
-  @override
-  bool shouldRepaint(_Surface o) => true;
-}
-
-class _KeysRail extends StatelessWidget {
-  const _KeysRail({required this.mods, required this.onMods});
-  final Set<String> mods;
-  final VoidCallback onMods;
+/// The link pill: Direct, Relayed or Connecting, with the round trip; tap for what it means.
+class _Pill extends StatelessWidget {
+  const _Pill({required this.onTap, this.stacked = false});
+  final VoidCallback onTap;
+  final bool stacked;
   @override
   Widget build(BuildContext context) {
     final t = Tok.of(context);
-    Widget key(String label, VoidCallback onTap, {bool on = false}) => Expanded(
-          child: Padding(
-            padding: const EdgeInsets.all(3),
-            child: Press(
-              onTap: onTap,
-              label: label,
-              child: Container(
-                height: 44,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(color: on ? t.accent : t.s2, borderRadius: BorderRadius.circular(t.r1)),
-                child: Text(label, style: body(context, size: .8125, w: FontWeight.w600, color: on ? t.onAccent : t.bright)),
-              ),
-            ),
+    return ListenableBuilder(
+      listenable: Listenable.merge([Pad.I.state, Pad.I.rtt, Pad.I.error]),
+      builder: (context, _) {
+        final s = Pad.I.state.value;
+        final r = Pad.I.rtt.value;
+        final tone = s == 'direct' ? t.good : (s == 'relayed' ? t.warn : t.dim);
+        final words = s == 'direct' ? 'Direct' : (s == 'relayed' ? 'Relayed' : ((Pad.I.error.value ?? '').isEmpty ? 'Connecting…' : 'Not connected'));
+        final rtt = r == null ? '' : '$r ms';
+        final dot = Breathe(on: s == 'relayed', child: Container(width: 8, height: 8, decoration: BoxDecoration(shape: BoxShape.circle, color: tone)));
+        return Press(
+          onTap: onTap,
+          label: words,
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 44),
+            padding: EdgeInsets.symmetric(horizontal: stacked ? 8 : 12, vertical: stacked ? 4 : 0),
+            decoration: BoxDecoration(color: fade(t.s1, 12), borderRadius: BorderRadius.circular(999), border: Border.all(color: fade(tone, 60))),
+            child: stacked
+                ? Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                      dot,
+                      const SizedBox(width: 7),
+                      Flexible(child: Text(words, textAlign: TextAlign.center, style: body(context, size: .8125, w: FontWeight.w600, color: t.bright))),
+                    ]),
+                    if (rtt.isNotEmpty) Text(rtt, style: mono(context, size: .6875, color: t.dim)),
+                  ])
+                : Row(mainAxisSize: MainAxisSize.min, children: [
+                    dot,
+                    const SizedBox(width: 7),
+                    Text(words, style: body(context, size: .8125, w: FontWeight.w600, color: t.bright)),
+                    if (rtt.isNotEmpty) Text(' · $rtt', style: mono(context, size: .6875, color: t.dim)),
+                  ]),
           ),
         );
-    Widget mod(String name, String label) => key(label, () {
-          mods.contains(name) ? mods.remove(name) : mods.add(name);
-          onMods();
-        }, on: mods.contains(name));
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(5, 0, 5, 6),
-      child: Column(children: [
-        Row(children: [
-          key('Esc', () => PadKeys.key('escape')),
-          key('Tab', () => PadKeys.key('tab', mods.toList())),
-          mod('ctrl', 'Ctrl'),
-          mod('alt', 'Alt'),
-          mod('super', 'Super'),
-          mod('shift', 'Shift'),
+      },
+    );
+  }
+}
+
+class _Why extends StatelessWidget {
+  const _Why({required this.state});
+  final String state;
+  @override
+  Widget build(BuildContext context) {
+    final t = Tok.of(context);
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 360),
+      child: Text(
+        switch (state) {
+          'direct' => 'Touches go straight to the computer over your network.',
+          'relayed' => "No direct path to the computer — touches go through wado's relay, so expect some delay.",
+          _ => 'Connecting to the computer…',
+        },
+        style: body(context, size: .7812, color: t.text).copyWith(height: 1.45),
+      ),
+    );
+  }
+}
+
+/// A note floated over the landscape surface's corner.
+class _Floating extends StatelessWidget {
+  const _Floating({required this.child});
+  final Widget child;
+  @override
+  Widget build(BuildContext context) {
+    final t = Tok.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(color: t.s2, borderRadius: BorderRadius.circular(t.r2), boxShadow: const [BoxShadow(color: Color(0xAA000000), blurRadius: 50, offset: Offset(0, 18), spreadRadius: -20)]),
+      child: child,
+    );
+  }
+}
+
+/// `.tptype`: the accent Type button.
+class _TypeBtn extends StatelessWidget {
+  const _TypeBtn({required this.onTap});
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) {
+    final t = Tok.of(context);
+    return Press(
+      onTap: onTap,
+      scale: .94,
+      label: 'Type on the computer',
+      child: Container(
+        height: 48,
+        decoration: BoxDecoration(color: t.accent, borderRadius: BorderRadius.circular(t.r2)),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          WIcon('kbd', size: 20, color: t.onAccent),
+          const SizedBox(width: 8),
+          Text('Type', style: body(context, w: FontWeight.w600, color: t.onAccent)),
         ]),
-        Row(children: [
-          key('←', () => PadKeys.key('left', mods.toList())),
-          key('↑', () => PadKeys.key('up', mods.toList())),
-          key('↓', () => PadKeys.key('down', mods.toList())),
-          key('→', () => PadKeys.key('right', mods.toList())),
-          key('Del', () => PadKeys.key('delete', mods.toList())),
-          key('⏎', () => PadKeys.key('enter', mods.toList())),
-        ]),
-      ]),
+      ),
     );
   }
 }
@@ -263,34 +335,42 @@ class _WhyCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Tok.of(context);
     final w = padWhy(err);
-    if (w.cause == 'locked' || w.cause == 'no-passkey') {
-      return SingleChildScrollView(
-        child: PasskeyCard(need: 'The touchpad', onUnlocked: () {
-          Pad.I.stop();
-          Pad.I.start();
-        }),
-      );
+    void retry() {
+      Pad.I.stop();
+      Pad.I.start();
     }
-    return SingleChildScrollView(
-      child: WCard(children: [
-        Text(w.title, style: display(context, rem(context, 1.125))),
-        Text(w.body, style: body(context)),
-        for (final c in w.cmds)
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: t.s0, borderRadius: BorderRadius.circular(t.r1)),
-            child: Row(children: [
-              Expanded(child: SelectableText(c, style: mono(context, color: t.bright))),
-              IconBtn('copy', label: 'Copy', onTap: () => Clipboard.setData(ClipboardData(text: c))),
+
+    if (w.cause == 'locked' || w.cause == 'no-passkey') {
+      // The computer wants the passkey: the sheet asks, and the pad starts again once it is open.
+      return WCard(children: [
+        Text(w.title, style: display(context, rem(context, 1.0625))),
+        Btn('Unlock', primary: true, icon: 'lock', onTap: () => Passkey.I.ask('pad', then: retry)),
+      ]);
+    }
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * .6),
+      child: SingleChildScrollView(
+        child: WCard(alert: true, children: [
+          Text(w.title, style: body(context, size: .9375, w: FontWeight.w600, color: t.bright)),
+          Text(w.body, style: body(context, size: .8125)),
+          for (final c in w.cmds)
+            Row(children: [
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(color: t.s0, borderRadius: BorderRadius.circular(t.r2)),
+                  child: SelectableText(c, style: mono(context, size: .75, color: t.bright)),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Btn('Copy', expand: false, onTap: () => Clipboard.setData(ClipboardData(text: c))),
             ]),
-          ),
-        if (w.alt.isNotEmpty) Why(w.alt),
-        Btn('Try again', primary: true, onTap: () {
-          Pad.I.stop();
-          Pad.I.start();
-        }),
-        if (!RelayLink.I.up.value) const Why('The link to the computer is down — it reconnects by itself.', tone: 'bad'),
-      ]),
+          if (w.alt.isNotEmpty) Text(w.alt, style: body(context, size: .75, color: t.dim)),
+          Btn('Try again', expand: false, onTap: retry),
+          if (!RelayLink.I.up.value) const Why('The link to the computer is down — it reconnects by itself.', tone: 'bad'),
+          if (Nav.I.selected.isEmpty) const SizedBox.shrink(),
+        ]),
+      ),
     );
   }
 }
