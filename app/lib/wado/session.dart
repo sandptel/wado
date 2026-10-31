@@ -57,9 +57,11 @@ class Session {
   final windows = ValueNotifier<List<Map<String, dynamic>>>([]);
   final workspace = ValueNotifier<int>(1);
   /// fps, round trip (ms), decoder, from the picture's stats (stats.js).
-  final stats = ValueNotifier<({double fps, double rtt, String decoder})?>(null);
+  final stats = ValueNotifier<({double fps, double rtt, String decoder, double kbps})?>(null);
+  /// The control centre's sparklines: the last 30 readings of each.
+  final spark = (fps: <double>[], ping: <double>[], kbps: <double>[]);
   Timer? _statsTimer;
-  int _lastFrames = 0;
+  int _lastFrames = 0, _lastBytes = 0;
   DateTime _lastAt = DateTime.now();
 
   void watchStats(bool on) {
@@ -68,16 +70,19 @@ class Session {
     _statsTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
       final p = pc;
       if (p == null) return;
-      double fps = 0, rtt = 0;
+      double fps = 0, rtt = 0, kbps = 0;
       var dec = '';
       for (final r in await p.getStats()) {
         final v = r.values;
         if (r.type == 'inbound-rtp' && v['kind'] == 'video') {
           final n = (v['framesDecoded'] ?? 0) as num;
+          final b = num.tryParse('${v['bytesReceived'] ?? 0}') ?? 0;
           final now = DateTime.now();
           final dt = now.difference(_lastAt).inMilliseconds / 1000;
           if (dt > 0 && _lastFrames > 0) fps = (n.toInt() - _lastFrames) / dt;
+          if (dt > 0 && _lastBytes > 0) kbps = (b.toInt() - _lastBytes) * 8 / 1000 / dt;
           _lastFrames = n.toInt();
+          _lastBytes = b.toInt();
           _lastAt = now;
           dec = '${v['decoderImplementation'] ?? ''}';
         }
@@ -85,7 +90,11 @@ class Session {
           rtt = ((v['currentRoundTripTime'] as num) * 1000).toDouble();
         }
       }
-      stats.value = (fps: fps, rtt: rtt, decoder: dec);
+      for (final (l, x) in [(spark.fps, fps), (spark.ping, rtt), (spark.kbps, kbps)]) {
+        l.add(x);
+        if (l.length > 30) l.removeAt(0);
+      }
+      stats.value = (fps: fps, rtt: rtt, decoder: dec, kbps: kbps);
     });
   }
 
@@ -500,6 +509,16 @@ class Session {
 
   bool get left => _left;
 
+  MediaStreamTrack? _audio;
+
+  /// This device's own mute and volume on the computer's sound (`live::apply`).
+  void applyAudio() {
+    final a = _audio;
+    if (a == null) return;
+    a.enabled = !Settings.I.b('muted');
+    Helper.setVolume(Settings.I.d('volume'), a);
+  }
+
   /// The running session's fractional scale (input_units.js `outputScale`): a divisor, so 1 at least.
   double get outputScale => ((_config?['scale'] as num?)?.toDouble() ?? 1).clamp(.1, 10);
 
@@ -561,7 +580,11 @@ class Session {
       ..ordered = false
       ..maxRetransmits = 0);
     p.onTrack = (ev) {
-      if (ev.track.kind == 'audio') return;
+      if (ev.track.kind == 'audio') {
+        _audio = ev.track;
+        applyAudio();
+        return;
+      }
       rlog('track received — waiting for a network path');
       if (ev.streams.isNotEmpty) renderer.srcObject = ev.streams.first;
       hasVideo.value = true;

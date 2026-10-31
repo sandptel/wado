@@ -279,9 +279,8 @@ class WsBar extends StatelessWidget {
               label: 'Workspace $n',
               child: Container(
                 constraints: BoxConstraints(minWidth: b, minHeight: b),
-                alignment: Alignment.center,
                 decoration: BoxDecoration(color: on ? t.accent : t.s2, borderRadius: BorderRadius.circular(999)),
-                child: Text('$n', style: mono(context, size: .8125, w: FontWeight.w700, color: on ? t.onAccent : t.dim)),
+                child: Center(widthFactor: 1, heightFactor: 1, child: Text('$n', style: mono(context, size: .8125, w: FontWeight.w700, color: on ? t.onAccent : t.dim))),
               ),
             );
         Widget icon(Map<String, dynamic> w) {

@@ -1,9 +1,11 @@
-// Quick tiles (port of ui/pages/tiles.rs): which tiles the control centre shows, in order.
+// Quick tiles (port of ui/pages/tiles.rs): which tiles the control centre shows, in order — the
+// shown ones with up, down and remove, the rest with add, and a way back to the default eight.
 import 'package:flutter/material.dart';
 
 import '../../wado/settings.dart';
-import '../session/control_centre.dart';
+import '../session/cc/tiles.dart';
 import '../theme/look.dart';
+import '../theme/tokens.dart';
 import '../widgets/basics.dart';
 
 class TilesPage extends StatelessWidget {
@@ -14,25 +16,45 @@ class TilesPage extends StatelessWidget {
       listenable: Settings.I,
       builder: (context, _) {
         final t = Tok.of(context);
-        final on = Settings.I.get<List<String>>('tiles');
+        final pool = tilePool((_) {});
+        final byId = {for (final x in pool) x.id: x};
+        final list = shownTiles();
+        final spare = pool.where((x) => !list.contains(x.id)).toList();
+        void put(List<String> l) => Settings.I.set('tiles', l);
+        Widget btn(String icon, String label, VoidCallback? tap) => Press(
+              onTap: tap,
+              label: label,
+              child: SizedBox(width: 40, height: 40, child: Center(child: WIcon(icon, color: tap == null ? fade(t.dim, 60) : t.dim))),
+            );
+        Widget row(TileDef d, List<Widget> acts) => ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 48),
+              child: Row(children: [
+                Disc(child: WIcon(d.icon, color: t.accent)),
+                const SizedBox(width: 10),
+                Expanded(child: Text(d.label, style: body(context, w: FontWeight.w600, color: t.bright))),
+                ...acts,
+              ]),
+            );
+        Widget head(String s) => Text(s, style: body(context, w: FontWeight.w600, color: t.bright));
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const Why('Tap to add or take away; they show in the order you add them.'),
-          const SizedBox(height: 8),
-          ListBox(children: [
-            for (final e in tileSpecs.entries)
-              Press(
-                onTap: () => Settings.I.set('tiles', on.contains(e.key) ? on.where((x) => x != e.key).toList() : [...on, e.key]),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  child: Row(children: [
-                    WIcon(e.value.$1, color: on.contains(e.key) ? t.accent : t.dim),
-                    const SizedBox(width: 12),
-                    Expanded(child: Text(e.value.$2, style: body(context, color: t.bright))),
-                    if (on.contains(e.key)) Text('${on.indexOf(e.key) + 1}', style: mono(context, color: t.accent)),
-                  ]),
-                ),
-              ),
+          WCard(children: [
+            head('Shown'),
+            for (var i = 0; i < list.length; i++)
+              row(byId[list[i]]!, [
+                btn('up', 'Move up', i == 0 ? null : () => put([...list]..[i] = list[i - 1]..[i - 1] = list[i])),
+                btn('down', 'Move down', i + 1 == list.length ? null : () => put([...list]..[i] = list[i + 1]..[i + 1] = list[i])),
+                btn('x', 'Remove', () => put([...list]..removeAt(i))),
+              ]),
           ]),
+          if (spare.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            WCard(children: [
+              head('More tiles'),
+              for (final d in spare) row(d, [btn('plus', 'Add', () => put([...list, d.id]))]),
+            ]),
+          ],
+          const SizedBox(height: 12),
+          Btn('Reset to the default eight', onTap: () => put(tileDefaults)),
         ]);
       },
     );

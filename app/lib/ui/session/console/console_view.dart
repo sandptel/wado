@@ -22,12 +22,20 @@ import '../../motion/feel.dart';
 import '../../theme/look.dart';
 import '../../theme/tokens.dart';
 import '../../widgets/basics.dart';
-import '../control_centre.dart';
+import '../cc/control_centre.dart';
+import '../drawer.dart';
 import '../keyboard.dart' show KeyboardSheet;
 import '../picture_input.dart';
 import 'deck.dart';
 import 'parts.dart';
 import 'stage_state.dart';
+
+/// Close whatever sheet is over the session (the control centre, the drawer); false if none was.
+bool closeSheets() {
+  if (ccOpen.value) return !(ccOpen.value = false);
+  if (drawerOpen.value) return !(drawerOpen.value = false);
+  return false;
+}
 
 /// `x` of the way from `lo` to `hi`, clamped: one segment of the morph.
 double _ph(double x, double lo, double hi) => ((x - lo) / (hi - lo)).clamp(0.0, 1.0);
@@ -112,7 +120,9 @@ class _ConsoleViewState extends State<ConsoleView> with SingleTickerProviderStat
 
   void _gesture(String action) {
     switch (action) {
-      case 'app-drawer' || 'control-centre':
+      case 'app-drawer':
+        openDrawer();
+      case 'control-centre':
         openControlCentre(context);
       case 'keyboard':
         KeyboardSheet.toggle(context);
@@ -129,6 +139,7 @@ class _ConsoleViewState extends State<ConsoleView> with SingleTickerProviderStat
 
   /// `W.back`: close the keyboard first, then the session's own Back.
   void back() {
+    if (closeSheets()) return;
     if (KeyboardSheet.open.value) return KeyboardSheet.toggle(context);
     Session.I.window('back');
   }
@@ -341,7 +352,7 @@ class _ConsoleViewState extends State<ConsoleView> with SingleTickerProviderStat
               fly(
                 (s) => Offset((vw - s.width) / 2, dockBottom - s.height),
                 (s) => L.nav == Flow.grid ? Offset(slot('nav').left + (slot('nav').width - s.width) / 2, slot('nav').top) : slotAt('nav', s, centreX: true),
-                pill(_Nav(grid: !_cockpit && L.nav == Flow.grid, onApps: () => openControlCentre(context), onBack: back)),
+                pill(_Nav(grid: !_cockpit && L.nav == Flow.grid, onApps: () => drawerOpen.value ? drawerOpen.value = false : openDrawer(), onBack: back)),
                 opacity: _l(dockO, 1, a),
               ),
               fly(
@@ -403,6 +414,10 @@ class _ConsoleViewState extends State<ConsoleView> with SingleTickerProviderStat
               // ── no picture yet: in the picture's place ──
               Positioned.fromRect(rect: Rect.lerp(stage, L.pic, a)!, child: const Padding(padding: EdgeInsets.all(10), child: StageState())),
               const Positioned(left: 0, right: 0, bottom: 0, child: KeyboardSheet()),
+              // ponytail: the web's drawer sits under the dock (z 4 under 10) and the dock then
+              // covers its bottom row; here it sits over it, so nothing in it is hidden.
+              const Positioned.fill(child: AppDrawer()),
+              const Positioned.fill(child: ControlCentre()),
             ]),
           );
         },

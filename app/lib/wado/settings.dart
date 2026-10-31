@@ -49,7 +49,7 @@ const defaults = <String, Object>{
   'radius': 'round',
   'motion': 'full',
   'accent': '0D',
-  'tiles': <String>['awake', 'keyboard', 'touchpad', 'files', 'shell', 'resync', 'maximize', 'close'],
+  'tiles': <String>['kbd', 'sound', 'playhere', 'pcmute', 'wifi', 'bluetooth', 'pcawake', 'fullscreen'],
   'selected': '',
   'widgets': <Object>[],
   'keep_awake': true,

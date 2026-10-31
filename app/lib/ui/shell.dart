@@ -156,6 +156,7 @@ class _ShellState extends State<Shell> with TickerProviderStateMixin {
             onPopInvokedWithResult: (did, _) {
               if (did) return;
               if (inSession) {
+                if (closeSheets()) return;
                 Session.I.leave();
                 final k = Nav.I.selected;
                 if (k.isNotEmpty) Nav.I.view.value = ComputerView(k);
