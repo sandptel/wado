@@ -197,6 +197,7 @@ class _ControlCentreState extends State<ControlCentre> with TickerProviderStateM
             Expanded(child: Text(title.toUpperCase(), style: body(context, size: .6875, w: FontWeight.w600, color: t.dim).copyWith(letterSpacing: 1.1))),
             Press(
               onTap: onTap,
+              label: '$action: ${title.toLowerCase()}',
               child: SizedBox(height: 32, child: Center(child: Text(action, style: body(context, size: .8125, w: FontWeight.w600, color: onTap == null ? t.dim : t.accent)))),
             ),
           ]),

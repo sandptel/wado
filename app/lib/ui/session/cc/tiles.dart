@@ -2,6 +2,10 @@
 // shows, what a tap does, which page a long-press opens. A table rather than a widget per tile: a
 // tile is four facts and an action.
 import 'package:flutter/material.dart';
+import '../../../wado/log.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../../../wado/clip.dart';
 import '../../../wado/host.dart';
@@ -77,8 +81,9 @@ List<TileDef> tilePool(void Function(String page) open) => [
       TileDef('clipboard', 'clip', 'Paste here', ('Phone clipboard → session', ''), (_) => Clip.I.sendPhone(), needsSession: true),
       TileDef('dnd', 'bell', 'Do not disturb', ('Notifications pop up', 'Shade only'), (_) => _flip('dnd'), on: () => Settings.I.b('dnd')),
       TileDef('screenshot', 'camera', 'Screenshot', ('Save the picture', ''), (_) => screenshot(), needsSession: true),
+      TileDef('record', 'record', 'Record', ('Save a video', 'Recording · tap to stop'), (_) => Recorder.I.toggle(), on: () => Recorder.I.on.value, needsSession: true),
       TileDef('resync', 'refresh', 'Resync', ('New connection, same apps', ''), (_) => Session.I.negotiate(), needsSession: true),
-      // ponytail: Record and Take mouse stay web-only — no MediaRecorder, no pointer lock here yet.
+      // ponytail: Take mouse stays web-only — Flutter offers no pointer capture on Android.
     ];
 
 /// The tiles this device shows, in order: the saved list minus ids no longer in the pool.
@@ -98,7 +103,7 @@ class TileGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     final pool = {for (final t in tilePool(open)) t.id: t};
     return ListenableBuilder(
-      listenable: Listenable.merge([Settings.I, Host.I.state, Session.I.on, KeyboardSheet.open]),
+      listenable: Listenable.merge([Settings.I, Host.I.state, Session.I.on, KeyboardSheet.open, Recorder.I.on]),
       builder: (context, _) {
         final tiles = [for (final id in shownTiles()) if (pool[id] != null) pool[id]!];
         return LayoutBuilder(builder: (context, box) {
@@ -166,4 +171,46 @@ Future<void> screenshot() async {
   final now = DateTime.now();
   String two(int n) => n.toString().padLeft(2, '0');
   await keepOnPhone('wado-${now.year}${two(now.month)}${two(now.day)}-${two(now.hour)}${two(now.minute)}${two(now.second)}.png', png.asUint8List());
+}
+
+/// Record (capture.js `recordToggle`): the picture — and the sound playing here — to an MP4 on
+/// this phone, handed to the share sheet when it stops. Stops by itself when the picture ends.
+class Recorder {
+  Recorder._() {
+    Session.I.hasVideo.addListener(() {
+      if (!Session.I.hasVideo.value && on.value) toggle();
+    });
+  }
+  static final I = Recorder._();
+  final on = ValueNotifier(false);
+  MediaRecorder? _r;
+  String _path = '';
+
+  Future<void> toggle() async {
+    if (on.value) {
+      on.value = false;
+      final r = _r;
+      _r = null;
+      try {
+        await r?.stop();
+        await SharePlus.instance.share(ShareParams(files: [XFile(_path, mimeType: 'video/mp4')]));
+      } catch (e) {
+        rlog('recording did not save: $e');
+      }
+      return;
+    }
+    final v = Session.I.renderer.srcObject?.getVideoTracks().firstOrNull;
+    if (v == null) return;
+    final now = DateTime.now();
+    String two(int n) => n.toString().padLeft(2, '0');
+    _path = '${(await getTemporaryDirectory()).path}/wado-${now.year}${two(now.month)}${two(now.day)}-${two(now.hour)}${two(now.minute)}${two(now.second)}.mp4';
+    final r = MediaRecorder();
+    try {
+      await r.start(_path, videoTrack: v, audioChannel: RecorderAudioChannel.OUTPUT);
+      _r = r;
+      on.value = true;
+    } catch (e) {
+      rlog('recording did not start: $e');
+    }
+  }
 }

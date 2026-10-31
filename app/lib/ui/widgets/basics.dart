@@ -146,7 +146,7 @@ class Sect extends StatelessWidget {
                 style: TextStyle(fontFamily: Tokens.body, fontSize: rem(context, .6875), fontWeight: FontWeight.w600, letterSpacing: rem(context, .6875) * .1, color: t.dim)),
           ),
           if (action != null)
-            Press(onTap: onAction, child: Text(action!, style: body(context, size: .8125, w: FontWeight.w600, color: t.accent))),
+            Press(onTap: onAction, label: '$action: ${title.toLowerCase()}', child: Text(action!, style: body(context, size: .8125, w: FontWeight.w600, color: t.accent))),
           ?trailing,
         ]),
       ),
