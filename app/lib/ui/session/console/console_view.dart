@@ -34,7 +34,7 @@ import 'stage_state.dart';
 
 /// Close whatever sheet is over the session (the control centre, the drawer); false if none was.
 bool closeSheets() {
-  if (ccOpen.value) return !(ccOpen.value = false);
+  if (ccOpen.value) return ccBack() || !(ccOpen.value = false);
   if (drawerOpen.value) return !(drawerOpen.value = false);
   return false;
 }

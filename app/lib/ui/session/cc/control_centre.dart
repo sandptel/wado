@@ -27,6 +27,9 @@ final ccOpen = ValueNotifier<bool>(false);
 
 void openControlCentre(BuildContext context) => ccOpen.value = true;
 
+/// Back inside the sheet: a pushed page goes back one; false when the root is showing.
+bool Function() ccBack = () => false;
+
 /// The two list pages of the root's settings list, pushed like any other.
 const _thisComputer = 'cc:this_computer', _onThisPhone = 'cc:on_this_phone';
 const _aboutComputer = {_thisComputer, 'display_session', 'input', 'sound_devices', 'connection_trust', 'files', 'shells'};
@@ -47,6 +50,11 @@ class _ControlCentreState extends State<ControlCentre> with TickerProviderStateM
   void initState() {
     super.initState();
     ccOpen.addListener(_sync);
+    ccBack = () {
+      if (_pages.isEmpty) return false;
+      _back();
+      return true;
+    };
   }
 
   @override
@@ -248,7 +256,7 @@ class _ControlCentreState extends State<ControlCentre> with TickerProviderStateM
             Expanded(child: Btn('Resync', icon: 'refresh', onTap: s.on.value ? s.negotiate : null)),
             const SizedBox(width: 8),
             Expanded(
-              child: Btn('Leave running', icon: 'home', onTap: s.on.value
+              child: Btn('Leave running', icon: 'house', onTap: s.on.value
                   ? () {
                       _close();
                       leaveToComputer();

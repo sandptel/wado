@@ -11,6 +11,7 @@ import '../../computer/quick.dart' show speaker;
 import '../../theme/look.dart';
 import '../../theme/tokens.dart';
 import '../../widgets/basics.dart';
+import '../../files/files_page.dart' show keepOnPhone;
 import '../keyboard.dart';
 
 class TileDef {
@@ -75,9 +76,9 @@ List<TileDef> tilePool(void Function(String page) open) => [
       TileDef('awake', 'sun', 'Keep awake', ('Screen may sleep', 'Screen stays on'), (_) => _flip('keep_awake'), on: () => Settings.I.b('keep_awake')),
       TileDef('clipboard', 'clip', 'Paste here', ('Phone clipboard → session', ''), (_) => Clip.I.sendPhone(), needsSession: true),
       TileDef('dnd', 'bell', 'Do not disturb', ('Notifications pop up', 'Shade only'), (_) => _flip('dnd'), on: () => Settings.I.b('dnd')),
+      TileDef('screenshot', 'camera', 'Screenshot', ('Save the picture', ''), (_) => screenshot(), needsSession: true),
       TileDef('resync', 'refresh', 'Resync', ('New connection, same apps', ''), (_) => Session.I.negotiate(), needsSession: true),
-      // ponytail: Screenshot, Record and Take mouse stay web-only — no gallery writer, no
-      // MediaRecorder, no pointer lock here yet. Add them with those.
+      // ponytail: Record and Take mouse stay web-only — no MediaRecorder, no pointer lock here yet.
     ];
 
 /// The tiles this device shows, in order: the saved list minus ids no longer in the pool.
@@ -155,4 +156,14 @@ class _Tile extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The picture as it is now, as a PNG, handed to the phone (the share sheet saves or sends it).
+Future<void> screenshot() async {
+  final v = Session.I.renderer.srcObject?.getVideoTracks().firstOrNull;
+  if (v == null) return;
+  final png = await v.captureFrame();
+  final now = DateTime.now();
+  String two(int n) => n.toString().padLeft(2, '0');
+  await keepOnPhone('wado-${now.year}${two(now.month)}${two(now.day)}-${two(now.hour)}${two(now.minute)}${two(now.second)}.png', png.asUint8List());
 }
