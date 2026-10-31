@@ -18,6 +18,8 @@ import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
 import 'gamepad_screen.dart';
+import '../../wado/pad_actions.dart';
+import 'pad/pad_actions_ui.dart';
 import 'pad/pad_keys.dart';
 import 'pad/pad_surface.dart';
 
@@ -63,6 +65,7 @@ class _PadScreenState extends State<PadScreen> {
     Pad.I.start();
     PadTouch.I.attach();
     _orient();
+    PadActions.I.refresh();
     if (_typing) WidgetsBinding.instance.addPostFrameCallback((_) => _focus.requestFocus());
   }
 
@@ -152,7 +155,7 @@ class _PadScreenState extends State<PadScreen> {
                         child: ShaderMask(
                           shaderCallback: (r) => const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.black, Colors.black, Colors.transparent], stops: [0, .93, 1]).createShader(r),
                           blendMode: BlendMode.dstIn,
-                          child: const SingleChildScrollView(padding: EdgeInsets.only(bottom: 14), child: PadKeysGrid()),
+                          child: SingleChildScrollView(padding: const EdgeInsets.only(bottom: 14), child: rail == 'actions' ? const PadActionList(bar: false) : const PadKeysGrid()),
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -186,6 +189,7 @@ class _PadScreenState extends State<PadScreen> {
                   ]),
                 ),
                 if (whyText != null) Padding(padding: const EdgeInsets.fromLTRB(4, 10, 4, 0), child: whyText),
+                if (rail == 'actions') ...[const SizedBox(height: 10), const PadActionList(bar: true)],
                 const SizedBox(height: 10),
                 Expanded(child: surface),
                 if (_typing) ...[

@@ -1,14 +1,18 @@
 // Settings for the input surfaces: Touchpad (port of computer/input/touchpad.rs + pad_prefs.js —
 // typed in the computer's config under `device "<this phone>" { trackpad { … } }`), and this
 // phone's Input feel for the session (pages/input.rs).
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../../core/core_host.dart';
 import '../../wado/host.dart';
+import '../../wado/pad_actions.dart';
 import '../../wado/settings.dart';
 import '../../wado/session.dart';
 import '../theme/look.dart';
 import '../widgets/basics.dart';
+import '../widgets/icon_paths.dart';
 import 'display_session.dart' show HeadCard;
 import '../widgets/slider.dart';
 
@@ -28,7 +32,7 @@ class TouchpadSettings extends StatelessWidget {
 
   static void set(String field, Object? v) {
     final key = 'device.${CoreHost.I.clientKey}.trackpad.${field.replaceAll('_', '-')}';
-    Host.I.configSet(key, v is bool ? (v ? 'true' : 'false') : v);
+    Host.I.configSet(key, v is bool ? (v ? 'true' : 'false') : (v is List ? jsonEncode(v) : v));
     final cfg = Host.I.config.value;
     if (cfg != null) {
       Host.I.config.value = {...cfg, 'trackpad': {...prefs(), field: v}};
@@ -57,6 +61,9 @@ class TouchpadSettings extends StatelessWidget {
             Seg(options: const [('keys', 'Keys'), ('actions', 'Quick actions'), ('none', 'Nothing')], value: '${p['rail']}', onPick: (v) => set('rail', v)),
             SwitchRow(title: 'Open with the keyboard up', sub: 'The pad shrinks to a strip above it', on: b('keyboard'), onToggle: (v) => set('keyboard', v)),
           ]),
+          const Sect('Quick actions'),
+          const SizedBox(height: 8),
+          _QuickActions(rail: '${p['rail']}'),
           Row(children: [const Expanded(child: Sect('Pointer and scrolling')), if (hypr) WhenBadge(When.host)]),
           const SizedBox(height: 8),
           WCard(children: [
@@ -141,5 +148,54 @@ class AboutPage extends StatelessWidget {
       const SizedBox(height: 8),
       Btn('Open-source licences', onTap: () => showLicensePage(context: context, applicationName: 'wado next')),
     ]);
+  }
+}
+
+/// The touchpad's quick actions (pad_settings.js `quickSection`): the chosen ones in order with
+/// up and down, then everything else the computer offers, by group.
+class _QuickActions extends StatelessWidget {
+  const _QuickActions({required this.rail});
+  final String rail;
+  @override
+  Widget build(BuildContext context) {
+    final t = Tok.of(context);
+    return ListenableBuilder(
+      listenable: Listenable.merge([PadActions.I.list, PadActions.I.denied]),
+      builder: (context, _) {
+        final all = PadActions.I.list.value;
+        if (PadActions.I.denied.value.isNotEmpty) return WCard(children: [Why(PadActions.I.denied.value)]);
+        if (all.isEmpty) {
+          PadActions.I.refresh();
+          return const WCard(children: [Why('Asking the computer what it can do…')]);
+        }
+        final quick = (TouchpadSettings.prefs()['quick'] as List?)?.cast<String>() ?? const ['workspace-prev', 'workspace-next', 'fullscreen', 'play-pause'];
+        final chosen = [for (final id in quick.toSet()) if (PadActions.I.byId(id) != null) PadActions.I.byId(id)!];
+        final ids = [for (final a in chosen) '${a['id']}'];
+        void put(List<String> q) => TouchpadSettings.set('quick', q);
+        Widget row(Map<String, dynamic> a, bool on, int i) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(children: [
+                WIcon(iconPaths.containsKey(a['icon']) ? '${a['icon']}' : 'dots', color: t.accent),
+                const SizedBox(width: 12),
+                Expanded(child: Text('${a['name'] ?? a['id']}', style: body(context, w: FontWeight.w600, color: t.bright))),
+                if (on) ...[
+                  IconBtn('up', label: 'Move up: ${a['name']}', onTap: i == 0 ? null : () => put([...ids]..[i] = ids[i - 1]..[i - 1] = ids[i])),
+                  IconBtn('down', label: 'Move down: ${a['name']}', onTap: i == ids.length - 1 ? null : () => put([...ids]..[i] = ids[i + 1]..[i + 1] = ids[i])),
+                ],
+                Sw(on: on, label: '${a['name']}', onChanged: (v) => put(v ? [...ids, '${a['id']}'] : ids.where((x) => x != a['id']).toList())),
+              ]),
+            );
+        final groups = <String, List<Map<String, dynamic>>>{};
+        for (final a in all) {
+          if (!ids.contains(a['id'])) (groups['${a['group'] ?? 'More'}'] ??= []).add(a);
+        }
+        Widget head(String s) => Padding(padding: const EdgeInsets.only(top: 6, bottom: 4), child: Text(s, style: body(context, size: .75, w: FontWeight.w600, color: t.dim)));
+        return WCard(children: [
+          if (chosen.isNotEmpty) head(rail == 'actions' ? 'On the rail, in this order' : 'Chosen, in this order'),
+          for (var i = 0; i < chosen.length; i++) row(chosen[i], true, i),
+          for (final g in groups.entries) ...[head(g.key), for (final a in g.value) row(a, false, 0)],
+        ]);
+      },
+    );
   }
 }

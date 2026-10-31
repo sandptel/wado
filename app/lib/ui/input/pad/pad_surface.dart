@@ -10,6 +10,7 @@ import '../../../wado/settings.dart';
 import '../../theme/look.dart';
 import '../../theme/tokens.dart';
 import '../../widgets/basics.dart';
+import 'pad_actions_ui.dart';
 import 'pad_coach.dart';
 
 class _Finger {
@@ -93,6 +94,7 @@ class _PadSurfaceState extends State<PadSurface> with SingleTickerProviderStateM
             if (widget.marks)
               CustomPaint(painter: _Feel(t, {for (final e in _down.entries) e.key: e.value}, List.of(_lifts), _sw.elapsedMilliseconds, rem(context, .75))),
             const PadCoach(),
+            const PadConfirm(),
             ?widget.overlay,
           ]),
         ),
