@@ -9,8 +9,10 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../wado/files.dart';
+import '../../wado/lane.dart';
 import '../theme/look.dart';
 import '../widgets/basics.dart';
+import '../widgets/lane_card.dart';
 import 'viewer.dart';
 
 String fmtSize(num b) {
@@ -118,11 +120,16 @@ class _FilesPageState extends State<FilesPage> {
     if (pick.isEmpty || _path == null) return;
     for (final f in pick) {
       setState(() => _jobs['↑ ${f.name}'] = 0);
+      Lane.I.transfer(1, lane: Files.I.lane);
       try {
-        await uploadStream(_path!, f.name, await f.xFile.length(), () => f.xFile.openRead(), progress: (p) => setState(() => _jobs['↑ ${f.name}'] = p));
+        await uploadStream(_path!, f.name, await f.xFile.length(), () => f.xFile.openRead(), progress: (p) {
+          Lane.I.moved();
+          setState(() => _jobs['↑ ${f.name}'] = p);
+        });
       } catch (e) {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Couldn't send ${f.name}: $e")));
       }
+      Lane.I.transfer(-1, lane: Files.I.lane);
       setState(() => _jobs.remove('↑ ${f.name}'));
     }
     _go(_path!);
@@ -131,12 +138,17 @@ class _FilesPageState extends State<FilesPage> {
   Future<void> _download(Map<String, dynamic> e) async {
     final name = '${e['name']}';
     setState(() => _jobs['↓ $name'] = 0);
+    Lane.I.transfer(1, lane: Files.I.lane);
     try {
-      final bytes = await Files.I.get(_join(name), progress: (p) => setState(() => _jobs['↓ $name'] = p));
+      final bytes = await Files.I.get(_join(name), progress: (p) {
+          Lane.I.moved();
+          setState(() => _jobs['↓ $name'] = p);
+        });
       await keepOnPhone(name, bytes);
     } catch (err) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Couldn't download $name: $err")));
     }
+    Lane.I.transfer(-1, lane: Files.I.lane);
     setState(() => _jobs.remove('↓ $name'));
   }
 
@@ -204,9 +216,12 @@ class _FilesPageState extends State<FilesPage> {
           IconBtn('share', label: 'Send from this phone', color: t.accent, onTap: _path == null ? null : _upload),
         ]),
       ),
-      ValueListenableBuilder(
-        valueListenable: Files.I.laneNote,
-        builder: (context, n, _) => n.isEmpty ? const SizedBox.shrink() : Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 0), child: Why(n, tone: 'host')),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        child: LaneCard(spot: 'files', onRetry: () {
+          Files.I.close();
+          _start();
+        }),
       ),
       for (final j in _jobs.entries)
         Padding(

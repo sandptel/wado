@@ -10,6 +10,7 @@ import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
+import 'lane.dart';
 import 'log.dart';
 import 'relay_link.dart';
 
@@ -57,13 +58,13 @@ class Files {
   Future<Map<String, dynamic>>? _connecting;
   Completer<Map<String, dynamic>>? _answer;
   final _handlers = <int, _H>{};
-  final laneNote = ValueNotifier<String>('');
 
   void _lost(String why) {
     if (_pc == null && !ready) return;
     rlog('files: link lost — $why');
     ready = false;
     lane = false;
+    Lane.I.files(lane: false);
     _pc?.close();
     _pc = null;
     _dc = null;
@@ -78,7 +79,7 @@ class Files {
   void close() => _lost('closed');
 
   void _reply(Map<String, dynamic> m) {
-    if (m['lane'] == true) laneNote.value = (m['err'] ?? '') as String;
+    if (m['lane'] == true) Lane.I.files(lane: lane, refusal: (m['err'] ?? '') as String);
     final h = _handlers[m['id']];
     if (h != null && h.msg(m)) _handlers.remove(m['id']);
   }
@@ -94,7 +95,7 @@ class Files {
       ready = false;
       rethrow;
     }
-    laneNote.value = 'Files are on the relay’s limited lane: small files only, until a direct path is found.';
+    Lane.I.files(lane: true);
     return info!;
   }
 
@@ -162,7 +163,7 @@ class Files {
     }
     ready = true;
     info = await req('hello');
-    laneNote.value = '';
+    Lane.I.files(lane: false);
     rlog('files: open — access ${info?['access']}');
     return info!;
   }

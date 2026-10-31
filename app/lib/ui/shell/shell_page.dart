@@ -10,6 +10,7 @@ import '../passkey/passkey_card.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
+import '../widgets/lane_card.dart';
 
 TerminalTheme termTheme(Tokens t) => TerminalTheme(
       cursor: t.base[5],
@@ -98,6 +99,8 @@ class _ShellPageState extends State<ShellPage> {
             Padding(padding: const EdgeInsets.all(12), child: PasskeyCard(need: 'The shell', onUnlocked: () => s.request()))
           else if (s.refused.value.isNotEmpty)
             Padding(padding: const EdgeInsets.all(12), child: WCard(alert: true, children: [Text(s.refused.value, style: body(context, color: t.bright))])),
+          // Shells always ride the relay: a big dump arrives at its pace, and says so.
+          const Padding(padding: EdgeInsets.fromLTRB(12, 8, 12, 0), child: LaneCard(spot: 'shell')),
           Expanded(
             child: id == 0
                 ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(list.isEmpty ? 'No shell open on this computer for this phone. Tap New.' : '', style: body(context, color: t.dim))))

@@ -17,6 +17,7 @@ import 'wado/input.dart';
 import 'wado/link_state.dart';
 import 'wado/phone.dart';
 import 'wado/push.dart';
+import 'wado/lane.dart';
 import 'wado/latency.dart';
 import 'ui/pages/diagnostics.dart' show readout;
 import 'wado/pad.dart';
@@ -45,6 +46,7 @@ Future<void> main() async {
     Link.I;
     Phone.I;
     Push.I;
+    Lane.I;
     Latency.I.wanted = () => readout('latency');
     Input.I;
     final sel = Settings.I.s('selected');
