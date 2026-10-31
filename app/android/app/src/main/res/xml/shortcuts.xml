@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The app icon's long-press menu: the same four doors as the web app's manifest shortcuts,
+     each on the last used computer (links/DeepLinks.kt). A dynamic one naming that computer is
+     added at run time (shortcuts/Shortcuts.kt). -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="trackpad"
+        android:enabled="true"
+        android:icon="@drawable/sc_trackpad"
+        android:shortcutShortLabel="@string/sc_trackpad"
+        android:shortcutLongLabel="@string/sc_trackpad_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="io.github.sandptel.wado.next"
+            android:targetClass="io.github.sandptel.wado.MainActivity"
+            android:data="wado://go/trackpad" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="files"
+        android:enabled="true"
+        android:icon="@drawable/sc_files"
+        android:shortcutShortLabel="@string/sc_files"
+        android:shortcutLongLabel="@string/sc_files_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="io.github.sandptel.wado.next"
+            android:targetClass="io.github.sandptel.wado.MainActivity"
+            android:data="wado://go/files" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="shell"
+        android:enabled="true"
+        android:icon="@drawable/sc_shell"
+        android:shortcutShortLabel="@string/sc_shell"
+        android:shortcutLongLabel="@string/sc_shell_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="io.github.sandptel.wado.next"
+            android:targetClass="io.github.sandptel.wado.MainActivity"
+            android:data="wado://go/shell" />
+    </shortcut>
+</shortcuts>

@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 
 import 'ui/shell.dart';
+import 'ui/share/inbound.dart';
 import 'wado/passkey.dart';
 import 'ui/theme/look.dart';
 
@@ -15,6 +16,7 @@ class WadoApp extends StatelessWidget {
       valueListenable: Look.I.tokens,
       builder: (context, t, _) => MaterialApp(
         title: 'wado',
+        navigatorKey: rootNav,
         debugShowCheckedModeBanner: false,
         theme: Look.themeData(t),
         builder: (context, child) => Listener(

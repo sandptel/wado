@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sc_trackpad">Trackpad</string>
+    <string name="sc_trackpad_long">Your last computer\'s touchpad</string>
+    <string name="sc_files">Files</string>
+    <string name="sc_files_long">Your last computer\'s files</string>
+    <string name="sc_shell">Shell</string>
+    <string name="sc_shell_long">A terminal on your last computer</string>
+    <string name="sc_session">Desktop</string>
+    <string name="sc_session_on">Desktop on %1$s</string>
+</resources>

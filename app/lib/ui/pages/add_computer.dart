@@ -32,6 +32,8 @@ String formatCode(String input) {
 
 class AddComputer extends StatefulWidget {
   const AddComputer({super.key});
+  /// A pairing link that opened the app (ui/share/inbound.dart): paired as soon as the page is up.
+  static String? pending;
   @override
   State<AddComputer> createState() => _AddComputerState();
 }
@@ -59,6 +61,12 @@ class _AddComputerState extends State<AddComputer> {
       });
       if (_step == 'done') Nav.I.openComputer(e['key'] as String);
     });
+    final link = AddComputer.pending;
+    AddComputer.pending = null;
+    if (link != null) {
+      _link.text = link;
+      _start(CoreHost.I.pair(link));
+    }
   }
 
   @override
@@ -152,6 +160,14 @@ class _AddComputerState extends State<AddComputer> {
           Btn('Scan the QR code', primary: true, icon: 'camera', onTap: busy
               ? null
               : () async {
+                  if (Platform.isAndroid && await const MethodChannel('wado/os').invokeMethod<bool>('camera') != true) {
+                    setState(() {
+                      _step = 'failed';
+                      _why = 'wado next needs the camera to read the QR. Allow it in the app\'s settings, or paste the link.';
+                    });
+                    return;
+                  }
+                  if (!context.mounted) return;
                   final link = await Navigator.of(context).push<String>(MaterialPageRoute(builder: (_) => const _Scan()));
                   if (link != null && link.isNotEmpty) {
                     _link.text = link;
@@ -217,9 +233,16 @@ class _AddComputerState extends State<AddComputer> {
       );
 }
 
-/// The camera, reading the computer's pairing QR (zxing-cpp; nothing leaves the phone).
-class _Scan extends StatelessWidget {
+/// The camera, reading the computer's pairing QR (zxing-cpp; nothing leaves the phone). The QR
+/// may be a terminal's half-blocks, light on dark or dark on light: try hard, both ways round.
+class _Scan extends StatefulWidget {
   const _Scan();
+  @override
+  State<_Scan> createState() => _ScanState();
+}
+
+class _ScanState extends State<_Scan> {
+  bool _done = false;
   @override
   Widget build(BuildContext context) => Scaffold(
         backgroundColor: Colors.black,
@@ -227,9 +250,15 @@ class _Scan extends StatelessWidget {
         body: ReaderWidget(
           codeFormat: Format.qrCode,
           showGallery: false,
+          tryHarder: true,
+          tryInverted: true,
+          cropPercent: .8,
+          scanDelay: const Duration(milliseconds: 250),
           onScan: (code) {
             final t = code.text;
-            if (code.isValid && t != null && (t.contains('pair=') || t.startsWith('wado:'))) Navigator.of(context).pop(t);
+            if (_done || !code.isValid || t == null || !(t.contains('pair=') || t.startsWith('wado:'))) return;
+            _done = true;
+            Navigator.of(context).pop(t);
           },
         ),
       );

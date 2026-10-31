@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'app.dart';
 import 'core/core_host.dart';
+import 'ui/share/inbound.dart';
 import 'ui/theme/look.dart';
 import 'wado/e2e.dart';
 import 'wado/host.dart';
@@ -34,4 +35,5 @@ Future<void> main() async {
     failure = e;
   }
   runApp(WadoApp(failure: failure));
+  if (failure == null) Inbound.start();
 }
