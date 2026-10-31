@@ -34,10 +34,13 @@ bypass), volume keys (they would change the host's real sound), anything on a re
 stayed disabled on "Connecting…"); pages under a session kept ticking and exposed their semantics;
 the stats reader read Android's µs timestamps as ms.
 
-**Not ported yet:** gamepad layouts and the editor; the touchpad's quick-actions rail, gesture
-glyphs, confirm disc and its own settings sheet (the Touchpad settings page opens instead); the
-latency breakdown readout, the reconnecting overlay and lane hints; Screenshot, Record and Take
-mouse tiles; the file manager's overview (categories, selection); iOS/iPadOS/macOS.
+**Not ported yet:** the gamepad editor (move, resize, restyle controls — `gpad/edit.js`,
+`inspector.js`, `place.js` deck packing); the touchpad's gesture glyphs and in-pad gesture settings;
+the latency breakdown readout and lane hints; Record and Take mouse tiles; the file manager's
+overview (categories, selection); iOS/iPadOS/macOS. Since the first write-up: the touchpad's quick
+actions (rail, bar, confirm disc, chooser), the gamepad's seven layouts with a picker (also the
+console's Gamepad face), the Screenshot tile, the reconnecting overlay, and back stepping through
+the control centre's pages are in.
 Decisions taken without asking, for review: a landscape session in a portrait console puts the
 input faces in a row over the deck (the web overlaps them with Rotate — the web still does); the
 app drawer sits over the dock (the web's dock covers its bottom row); the default tiles swap Take
