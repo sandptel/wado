@@ -4,31 +4,45 @@ Everything built in the October run is merged on `main` and tagged **v0.0.4**. T
 starting point for picking the remaining work up **one item at a time**. Read `CLAUDE.md` first
 (invariants, hazards), then this file, then the item's linked spec, plan or log.
 
-## 0. The Flutter app ("wado next") — ported in one session on `2026-10-31`
+## 0. The Flutter app ("wado next") — ported `2026-10-31`, fidelity pass the same day
 
-The web client was ported to Flutter over the Rust core in one long session; build, pins and
-testing are in `docs/app.md`. It installs beside the old app (`io.github.sandptel.wado.next`) and
-is a new device: pair each computer once.
+The web client was ported to Flutter over the Rust core; build, pins and testing are in
+`docs/app.md`. It installs beside the old app (`io.github.sandptel.wado.next`) and is a new device:
+pair each computer once. Latest build: `~/Downloads/wado-next-0.2.0-release.apk` (arm64, Impeller,
+debug-key signed like 0.1.0, so it installs over it).
 
-**Verified headless (Linux and the Android emulator, against a throwaway relay and release
-daemon):** pairing; the seat link; a session at the phone's own shape (720×1600) with live video,
-input channels open and steady frames; the Pocket Console; the touchpad link going direct (4 ms
-round trip, compact frames); a live shell; Files with places and recent. **Not verified on a real
-phone yet:** the passkey prompt (Keystore + fingerprint), the QR scanner, video decode on
-hardware, and the relay over the internet.
+**The user's reports on 0.1.0, and where they stand:**
+- *QR pairing does not work* — fixed: the camera permission is asked when the scanner opens, the
+  decoder is hardened, and `wado://` / `https://…/wado` links open the app straight into pairing.
+- *Animations and design feel like a cheap copy of the web UI; UI quirks missing* — worked through
+  screen by screen against the web (fixture screenshots side by side): navigation motion (hero
+  flip, recede, push/drift), the computer page, every settings page, home widgets, the **Pocket
+  Console** session (console ↔ cockpit morph, dock, rail, workspaces, window sheet, link badge,
+  people chip, decks), the control centre, the app drawer, the passkey sheet, the touchpad, the
+  gamepad, readouts and health over the picture, presence pointers.
 
-**Not ported yet** (each was a web feature; pick them up one at a time):
-1. Home widgets and side links (quick controls for computers that are not selected).
-2. Push notifications, "Stay connected" in the background, the MediaSession.
-3. The Claude card.
-4. Gamepad layouts and the editor; touchpad variants; the Keyboard and Gamepad settings pages.
-5. Joining someone else's session as a view room (`multi.js`), presence and ghost pointers.
-6. Lane hints, the link test, `wado://` pairing links opening the app, "Send to computer".
-7. Viewer kinds: PDF, audio/video playback, rendered markdown, archives (they offer a download).
-8. Session input: pinch, edge swipes and window drag (tap, scroll, right-click and drag work; raw
-   touch works).
-9. Uploads read the whole file into memory first.
-10. iOS, iPadOS and macOS builds (Linux builds and runs).
+**Verified on the Android emulator against a throwaway relay + release daemon:** pairing and the
+QR path; the console and cockpit and the morph between them; the control centre (live meters,
+tiles, pushed pages); the drawer; readouts, health verdict, autorate log lines; `viewer_visible`
+pausing the daemon's rendering when the app is hidden; Stay connected (foreground service and its
+notification); the push card up to the distributor ("no UnifiedPush app" said plainly).
+**Not exercised:** Files and the viewer (the test device has no files grant, and none was granted),
+the touchpad link itself (behind the passkey; its layout was checked with a local, uncommitted gate
+bypass), volume keys (they would change the host's real sound), anything on a real phone.
+
+**Found along the way:** home cards were a `const` widget and never rebuilt on link changes (Start
+stayed disabled on "Connecting…"); pages under a session kept ticking and exposed their semantics;
+the stats reader read Android's µs timestamps as ms.
+
+**Not ported yet:** gamepad layouts and the editor; the touchpad's quick-actions rail, gesture
+glyphs, confirm disc and its own settings sheet (the Touchpad settings page opens instead); the
+latency breakdown readout, the reconnecting overlay and lane hints; Screenshot, Record and Take
+mouse tiles; the file manager's overview (categories, selection); iOS/iPadOS/macOS.
+Decisions taken without asking, for review: a landscape session in a portrait console puts the
+input faces in a row over the deck (the web overlaps them with Rotate — the web still does); the
+app drawer sits over the dock (the web's dock covers its bottom row); the default tiles swap Take
+mouse for Computer awake; UnifiedPush's connector excludes JVM `tink` (flutter_secure_storage
+brings `tink-android`).
 
 ## 1. Where things are
 
