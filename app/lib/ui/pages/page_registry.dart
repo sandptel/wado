@@ -7,6 +7,7 @@ import 'add_computer.dart';
 import 'appearance.dart';
 import 'diagnostics.dart';
 import 'input_pages.dart';
+import 'tiles.dart';
 import 'display_session.dart';
 import 'sound_devices.dart';
 import 'connection_trust.dart';
@@ -31,6 +32,7 @@ final _pages = <String, PageDef>{
   'connection_trust': PageDef('Connection & trust', (_) => ConnectionTrust(computerKey: Nav.I.view.value.computer)),
   'trackpad': PageDef('Touchpad', (_) => const TouchpadSettings()),
   'input_feel': PageDef('Input feel', (_) => const InputFeel()),
+  'tiles': PageDef('Quick tiles', (_) => const TilesPage()),
   'about': PageDef('About', (_) => const AboutPage()),
   'input': PageDef('Virtual input', (_) => const InputHub()),
   'shells': PageDef('Shell', (_) => const ShellPage(), fullBleed: true),

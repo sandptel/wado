@@ -98,7 +98,12 @@ async fn ceremony(
     );
     let mut t = match tokio::time::timeout(DIAL, connector.connect(&u)).await {
         Ok(Ok(t)) => t,
-        _ => {
+        Ok(Err(e)) => {
+            return failed(format!(
+                "Can't reach the computer's relay. Check the connection and try again. ({e})"
+            ))
+        }
+        Err(_) => {
             return failed("Can't reach the computer's relay. Check the connection and try again.")
         }
     };

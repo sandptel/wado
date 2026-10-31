@@ -1,6 +1,8 @@
 // Debug-only test hooks (scripts/app-e2e-rig.mjs): pair from a link and start a session without
 // a person, so the whole path — pairing, seat link, session, picture — runs headless. Ignored in
 // release builds.
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 
 import '../core/core_host.dart';
@@ -46,6 +48,16 @@ void e2eHooks() {
     }
   }
 
+  // Reachability from Dart, to tell the platform's networking from the core's.
+  final u = Uri.tryParse(Uri.decodeFull(_link).replaceAll(RegExp(r'.*relay='), '').split('&').first);
+  if (u != null && u.host.isNotEmpty) {
+    Socket.connect(u.host, u.port, timeout: const Duration(seconds: 5))
+        .then((s) {
+          rlog('e2e: dart reaches ${u.host}:${u.port}');
+          s.destroy();
+        })
+        .catchError((Object e) => rlog('e2e: dart cannot reach ${u.host}:${u.port}: $e'));
+  }
   final have = CoreHost.I.computers.value;
   if (have.isNotEmpty) return go(have.first.key);
   final op = CoreHost.I.pair(_link);

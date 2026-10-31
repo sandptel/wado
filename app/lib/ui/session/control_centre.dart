@@ -16,6 +16,7 @@ import '../shell/shell_page.dart';
 import '../theme/look.dart';
 import '../widgets/basics.dart';
 import '../widgets/slider.dart';
+import '../pages/display_session.dart';
 import 'input_layer.dart';
 import 'session_view.dart';
 
@@ -111,17 +112,8 @@ class _ControlCentreState extends State<ControlCentre> {
             crossAxisSpacing: 8,
             childAspectRatio: .95,
             children: [
-              _Tile(icon: 'eye', label: 'Awake', on: h?['awake'] == true, onTap: () => Host.I.act({'do': 'keep_awake', 'on': h?['awake'] != true})),
-              _Tile(icon: 'kbd', label: 'Keyboard', onTap: () {
-                Navigator.pop(context);
-                KeyboardSheet.toggle(context);
-              }),
-              _Tile(icon: 'trackpad', label: 'Touchpad', onTap: () => openPad(context)),
-              _Tile(icon: 'folder', label: 'Files', onTap: () => _push(context, 'Files', const FilesPage())),
-              _Tile(icon: 'term', label: 'Shell', onTap: () => _push(context, 'Shell', const ShellPage())),
-              _Tile(icon: 'refresh', label: 'Resync', onTap: () => s.negotiate()),
-              _Tile(icon: 'max', label: 'Maximize', onTap: () => s.window('maximize')),
-              _Tile(icon: 'x', label: 'Close app', onTap: () => s.window('close')),
+              for (final id in Settings.I.get<List<String>>('tiles'))
+                if (tileSpecs[id] != null) _Tile(icon: tileSpecs[id]!.$1, label: tileSpecs[id]!.$2, on: id == 'awake' && h?['awake'] == true, onTap: () => _tap(context, id, h)),
             ],
           ),
           const Sect('Workspaces'),
@@ -248,6 +240,48 @@ class _ControlCentreState extends State<ControlCentre> {
         ]);
       },
     );
+  }
+}
+
+/// Every tile the control centre can show (ui/cc/tiles/pool.rs), by id: icon, label.
+const tileSpecs = <String, (String, String)>{
+  'awake': ('eye', 'Awake'),
+  'keyboard': ('kbd', 'Keyboard'),
+  'touchpad': ('trackpad', 'Touchpad'),
+  'files': ('folder', 'Files'),
+  'shell': ('term', 'Shell'),
+  'resync': ('refresh', 'Resync'),
+  'maximize': ('max', 'Maximize'),
+  'close': ('x', 'Close app'),
+  'sound': ('sound', 'Mute'),
+  'settings': ('sliders', 'Settings'),
+};
+
+void _tap(BuildContext context, String id, Map<String, dynamic>? h) {
+  final s = Session.I;
+  switch (id) {
+    case 'awake':
+      Host.I.act({'do': 'keep_awake', 'on': h?['awake'] != true});
+    case 'keyboard':
+      Navigator.pop(context);
+      KeyboardSheet.toggle(context);
+    case 'touchpad':
+      openPad(context);
+    case 'files':
+      _push(context, 'Files', const FilesPage());
+    case 'shell':
+      _push(context, 'Shell', const ShellPage());
+    case 'resync':
+      s.negotiate();
+    case 'maximize':
+      s.window('maximize');
+    case 'close':
+      s.window('close');
+    case 'sound':
+      final sp = h == null ? null : speaker(h);
+      if (sp != null) Host.I.act({'do': 'sink_mute', 'id': sp['id'], 'muted': sp['muted'] != true});
+    case 'settings':
+      _push(context, 'Display & session', const SingleChildScrollView(padding: EdgeInsets.all(16), child: DisplaySession()));
   }
 }
 
