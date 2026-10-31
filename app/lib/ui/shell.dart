@@ -17,6 +17,7 @@ import 'motion/feel.dart';
 import 'motion/motion.dart';
 import 'widgets/notes.dart';
 import 'widgets/clip_dock.dart';
+import 'widgets/zoom.dart';
 
 class Shell extends StatefulWidget {
   const Shell({super.key});
@@ -129,17 +130,22 @@ class _ShellState extends State<Shell> with TickerProviderStateMixin {
         final sub = CurvedAnimation(parent: _sub, curve: Tokens.spring, reverseCurve: Tokens.spring.flipped);
         // What a pushed page covers: the computer's page if there is one, else home.
         final underIsComp = _key != null && _page != null && _page!.key != null;
-        Widget under(Widget child, {required bool isUnder}) => !isUnder || _page == null
-            ? child
-            : AnimatedBuilder(
+        Widget under(Widget child, {required bool isUnder}) => AnimatedBuilder(
                 animation: sub,
                 child: child,
                 builder: (context, child) {
-                  final p = sub.value;
-                  if (p >= 1 && _sub.isCompleted) return Offstage(child: child);
-                  return Opacity(
-                    opacity: (1 - Curves.easeOut.transform((_sub.value * (t.reduced ? 1 : 480 / 220)).clamp(0, 1))).clamp(0, 1),
-                    child: Transform.translate(offset: Offset(t.reduced ? 0 : -.24 * w * p, 0), child: child),
+                  final p = isUnder && _page != null ? sub.value : 0.0;
+                  // One shape in every state — a changed wrapper would rebuild the page under it.
+                  final hidden = p >= 1 && _sub.isCompleted;
+                  return Offstage(
+                    offstage: hidden,
+                    child: TickerMode(
+                      enabled: !hidden,
+                      child: Opacity(
+                      opacity: (1 - Curves.easeOut.transform((p * (t.reduced ? 1 : 480 / 220)).clamp(0, 1))).clamp(0, 1),
+                      child: Transform.translate(offset: Offset(t.reduced ? 0 : -.24 * w * p, 0), child: child),
+                    ),
+                    ),
                   );
                 },
               );
@@ -167,14 +173,19 @@ class _ShellState extends State<Shell> with TickerProviderStateMixin {
                     isUnder: !underIsComp,
                     AnimatedBuilder(
                       animation: _comp,
-                      child: const HomeScreen(),
+                      child: const Zoom(child: HomeScreen()),
                       builder: (context, child) {
-                        if (_key == null) return child!;
-                        final p = const Interval(0, 360 / 520, curve: Tokens.spring).transform(_comp.value);
-                        if (_comp.isCompleted) return Offstage(child: child);
-                        return Opacity(
-                          opacity: 1 - p,
-                          child: Transform.scale(scale: t.reduced ? 1 : 1 - .06 * p, alignment: Alignment.center, child: child),
+                        final p = _key == null ? 0.0 : const Interval(0, 360 / 520, curve: Tokens.spring).transform(_comp.value);
+                        final hidden = _key != null && _comp.isCompleted;
+                        return Offstage(
+                          offstage: hidden,
+                          child: TickerMode(
+                            enabled: !hidden,
+                            child: Opacity(
+                              opacity: 1 - p,
+                              child: Transform.scale(scale: t.reduced ? 1 : 1 - .06 * p, alignment: Alignment.center, child: child),
+                            ),
+                          ),
                         );
                       },
                     ),
@@ -189,7 +200,7 @@ class _ShellState extends State<Shell> with TickerProviderStateMixin {
                         flight: _flight,
                         child: AnimatedBuilder(
                           animation: comp,
-                          child: ComputerPage(key: ValueKey('c:$_key'), computerKey: _key!),
+                          child: Zoom(child: ComputerPage(key: ValueKey('c:$_key'), computerKey: _key!)),
                           builder: (context, child) {
                             // The flight carries the hero; the rest of the page fades with it. With no
                             // card to fly from, the whole page crossfades (360 ms in, 260 ms out).
@@ -208,7 +219,7 @@ class _ShellState extends State<Shell> with TickerProviderStateMixin {
                         color: t.s0,
                         child: AnimatedSwitcher(
                           duration: t.dur,
-                          child: SettingsPage(key: ValueKey('p:${_page!.key}:${_page!.page}'), computerKey: _page!.key, page: _page!.page),
+                          child: Zoom(key: ValueKey('p:${_page!.key}:${_page!.page}'), child: SettingsPage(computerKey: _page!.key, page: _page!.page)),
                         ),
                       ),
                       builder: (context, child) => IgnorePointer(

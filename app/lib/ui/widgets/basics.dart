@@ -8,11 +8,15 @@ import '../theme/look.dart';
 import '../theme/tokens.dart';
 import 'icon_paths.dart';
 
-/// 1rem in logical px: 16 × the text size (base.css `html { font-size }`).
+/// The phone's own font size, read once at the root before Flutter's own text scaling is turned
+/// off there (app.dart): the text size is applied here, exactly once.
+double deviceText = 1;
+
+/// 1rem in logical px: 16 × the text size (base.css `html { font-size }`): the person's, or the
+/// phone's own when following it.
 double rem(BuildContext c, double r) {
   final t = Settings.I.d('text_scale');
-  final scale = t > 0 ? t : MediaQuery.textScalerOf(c).scale(16) / 16;
-  return r * 16 * scale;
+  return r * 16 * (t > 0 ? t : deviceText);
 }
 
 TextStyle body(BuildContext c, {double size = .875, FontWeight w = FontWeight.w400, Color? color, double height = 1.45}) =>
