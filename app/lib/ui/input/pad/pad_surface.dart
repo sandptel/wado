@@ -2,12 +2,14 @@
 // to the computer as a real multi-touch touchpad; here each one lands as a ring that pops in with a
 // soft halo, two are joined by a line with a midpoint, three or more show their count, and an
 // accent glow follows their centre. A lift ripples the ring out.
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show Ticker;
 
 import '../../../wado/pad.dart';
+import '../../../wado/pad_gestures.dart';
 import '../../../wado/pad_hints.dart';
 import '../../../wado/settings.dart';
 import '../../theme/look.dart';
@@ -74,8 +76,26 @@ class _PadSurfaceState extends State<PadSurface> with SingleTickerProviderStateM
     return h;
   }
 
+  /// Claimed gestures' pulses: the action's icon where it happened.
+  final _pulses = <(String, Offset, Key)>[];
+  StreamSubscription? _fired;
+
+  @override
+  void initState() {
+    super.initState();
+    _fired = PadGestures.I.fired.stream.listen((f) {
+      final p = (f.icon, f.at, UniqueKey());
+      setState(() => _pulses.add(p));
+      Future.delayed(const Duration(milliseconds: 320), () {
+        if (mounted) setState(() => _pulses.remove(p));
+      });
+    });
+  }
+
   @override
   void dispose() {
+    _fired?.cancel();
+    PadGestures.I.reset();
     _tick.dispose();
     super.dispose();
   }
@@ -94,7 +114,7 @@ class _PadSurfaceState extends State<PadSurface> with SingleTickerProviderStateM
       return Listener(
         behavior: HitTestBehavior.opaque,
         onPointerDown: (e) {
-          PadTouch.I.down(e.pointer, e.localPosition.dx, e.localPosition.dy, w, h);
+          if (PadGestures.I.down(e.pointer, e.localPosition, Size(w, h))) PadTouch.I.down(e.pointer, e.localPosition.dx, e.localPosition.dy, w, h);
           _down[e.pointer] = _Finger(e.localPosition, _sw.elapsedMilliseconds);
           _restart();
           _solo = _down.length == 1;
@@ -103,7 +123,7 @@ class _PadSurfaceState extends State<PadSurface> with SingleTickerProviderStateM
           setState(() {});
         },
         onPointerMove: (e) {
-          PadTouch.I.move(e.pointer, e.localPosition.dx, e.localPosition.dy, w, h);
+          if (PadGestures.I.move(e.pointer, e.localPosition, Size(w, h))) PadTouch.I.move(e.pointer, e.localPosition.dx, e.localPosition.dy, w, h);
           _down[e.pointer]?.at = e.localPosition;
           if (widget.marks) setState(() {});
         },
@@ -126,6 +146,49 @@ class _PadSurfaceState extends State<PadSurface> with SingleTickerProviderStateM
             ),
             if (widget.marks)
               CustomPaint(painter: _Feel(t, {for (final e in _down.entries) e.key: e.value}, List.of(_lifts), _sw.elapsedMilliseconds, rem(context, .75), _hint())),
+            // `.tpedge`: an accent glow along the edge being swiped from, brighter once it fires.
+            ValueListenableBuilder(
+              valueListenable: PadGestures.I.edgeGlow,
+              builder: (context, g, _) => g == null
+                  ? const SizedBox.shrink()
+                  : Positioned(
+                      left: g.side == 'edge-left' ? 0 : null,
+                      right: g.side == 'edge-right' ? 0 : null,
+                      top: g.y - 90,
+                      width: 28,
+                      height: 180,
+                      child: IgnorePointer(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: RadialGradient(
+                              center: Alignment(g.side == 'edge-left' ? -1 : 1, 0),
+                              radius: 1.6,
+                              colors: [t.accent.withValues(alpha: (.25 + .5 * g.p).clamp(0, 1)), t.accent.withValues(alpha: 0)],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+            ),
+            for (final (icon, at, key) in _pulses)
+              Positioned(
+                key: key,
+                left: at.dx - 28,
+                top: at.dy - 28,
+                child: IgnorePointer(
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0, end: 1),
+                    duration: const Duration(milliseconds: 320),
+                    builder: (context, v, child) => Opacity(opacity: 1 - v, child: Transform.scale(scale: .7 + .6 * Curves.easeOut.transform(v), child: child)),
+                    child: Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(shape: BoxShape.circle, color: fade(t.accent, 70), border: Border.all(color: t.accent, width: 2)),
+                      child: Center(child: WIcon(icon, color: t.accent)),
+                    ),
+                  ),
+                ),
+              ),
             const PadCoach(),
             const PadConfirm(),
             ?widget.overlay,
@@ -136,7 +199,7 @@ class _PadSurfaceState extends State<PadSurface> with SingleTickerProviderStateM
   }
 
   void _lift(int id) {
-    PadTouch.I.up(id);
+    if (PadGestures.I.up(id)) PadTouch.I.up(id);
     final f = _down.remove(id);
     if (f != null) _lifts.add((f.at, _sw.elapsedMilliseconds));
     _solo = false;

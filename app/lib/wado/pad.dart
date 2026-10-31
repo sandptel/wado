@@ -280,6 +280,16 @@ class PadTouch {
     if (_fingers.remove(pointer) != null) _changed();
   }
 
+  /// Lift these fingers on the computer (one empty-of-them frame); what the phone does with them
+  /// next is not the computer's business (pad_gestures claims).
+  void drop(Iterable<int> pointers) {
+    var any = false;
+    for (final p in pointers) {
+      any = _fingers.remove(p) != null || any;
+    }
+    if (any) _changed();
+  }
+
   void size(int w, int h) {
     if ((w, h) == _size) return;
     _size = (w, h);

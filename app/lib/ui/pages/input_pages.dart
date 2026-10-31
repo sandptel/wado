@@ -12,6 +12,7 @@ import '../../wado/settings.dart';
 import '../../wado/session.dart';
 import '../theme/look.dart';
 import '../widgets/basics.dart';
+import '../widgets/fields.dart';
 import '../widgets/icon_paths.dart';
 import 'display_session.dart' show HeadCard;
 import '../widgets/slider.dart';
@@ -91,6 +92,9 @@ class TouchpadSettings extends StatelessWidget {
               Settings.I.set('pad_marks_off', !v);
             }),
           ]),
+          const Sect('Phone gestures'),
+          const SizedBox(height: 8),
+          const _Gestures(),
           if (Host.I.config.value == null) Padding(padding: const EdgeInsets.only(top: 8), child: Text('Saved on the computer once it answers.', style: body(context, size: .75, color: t.dim))),
         ]);
       },
@@ -194,6 +198,50 @@ class _QuickActions extends StatelessWidget {
           if (chosen.isNotEmpty) head(rail == 'actions' ? 'On the rail, in this order' : 'Chosen, in this order'),
           for (var i = 0; i < chosen.length; i++) row(chosen[i], true, i),
           for (final g in groups.entries) ...[head(g.key), for (final a in g.value) row(a, false, 0)],
+        ]);
+      },
+    );
+  }
+}
+
+/// pad_settings.js `gestureSection`: wado's own gestures, each off until it is given one of the
+/// computer's actions, and how far they go.
+class _Gestures extends StatelessWidget {
+  const _Gestures();
+  static const _all = [('edge-left', 'Swipe in from the left edge'), ('edge-right', 'Swipe in from the right edge'), ('four-tap', 'Tap with four fingers'), ('two-hold', 'Hold two fingers still')];
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: Listenable.merge([PadActions.I.list, PadActions.I.denied]),
+      builder: (context, _) {
+        final p = TouchpadSettings.prefs();
+        final mine = (p['gestures'] as Map?) ?? const {};
+        final acts = PadActions.I.list.value;
+        return WCard(children: [
+          const Why("Off unless you pick one. Your computer's own touchpad gestures always come first."),
+          if (acts.isNotEmpty)
+            for (final (g, words) in _all)
+              Choice(
+                label: words,
+                value: '${mine[g] ?? ''}',
+                options: [('', 'Off'), for (final a in acts) ('${a['id']}', '${a['name']}')],
+                onPick: (v) {
+                  // Each its own key (`trackpad.gestures.<name>`); empty turns it off.
+                  Host.I.configSet('device.${CoreHost.I.clientKey}.trackpad.gestures.$g', v);
+                  final cfg = Host.I.config.value;
+                  if (cfg != null) Host.I.config.value = {...cfg, 'trackpad': {...p, 'gestures': {...mine, g: v}}};
+                },
+              )
+          else
+            Why(PadActions.I.denied.value.isNotEmpty ? PadActions.I.denied.value : 'Open the touchpad once to see what this computer offers.'),
+          Choice(
+            label: 'How far a gesture goes',
+            value: '${p['gesture_distance']}',
+            options: const [('short', 'Short'), ('medium', 'Medium'), ('long', 'Long')],
+            onPick: (v) => TouchpadSettings.set('gesture_distance', v),
+          ),
+          const Why("wado's own edge swipes and holds only. The computer's three- and four-finger gestures are its own."),
         ]);
       },
     );
