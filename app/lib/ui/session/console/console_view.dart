@@ -115,7 +115,7 @@ class _ConsoleViewState extends State<ConsoleView> with TickerProviderStateMixin
       _wake();
     }
     // Only what this view draws from: a volume slider elsewhere must not rebuild the console.
-    final mine = [for (final k in const ['cockpit', 'console_face', 'console_deck', 'rail', 'ws_bar', 'dock_pin', 'ui_size']) Settings.I.get<Object?>(k)].join('|');
+    final mine = [for (final k in const ['cockpit', 'console_face', 'console_deck', 'rail', 'ws_bar', 'dock_pin', 'ui_size', 'gpad_layout', 'gpad_edits']) Settings.I.get<Object?>(k)].join('|');
     if (mine == _mine) return;
     _mine = mine;
     setState(() {});

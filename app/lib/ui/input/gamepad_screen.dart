@@ -12,12 +12,14 @@ import '../motion/feel.dart';
 
 import '../../core/core_host.dart';
 import '../../wado/nav.dart';
+import '../../wado/gpad_edits.dart';
 import '../../wado/gpad_layouts.dart';
 import '../../wado/pad.dart';
 import '../../wado/settings.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
+import 'gpad_editor.dart';
 
 const _code = {
   'a': 0x130, 'b': 0x131, 'x': 0x133, 'y': 0x134, 'lb': 0x136, 'rb': 0x137, 'lt': 0x138, 'rt': 0x139, //
@@ -104,6 +106,8 @@ class _GamepadScreenState extends State<GamepadScreen> {
     super.dispose();
   }
 
+  bool _editing = false;
+
   void _pick() => showModalBottomSheet(
         context: context,
         isScrollControlled: true,
@@ -130,6 +134,7 @@ class _GamepadScreenState extends State<GamepadScreen> {
           child: LayoutBuilder(builder: (context, box) {
             final size = box.biggest;
             final o = orient(size);
+            if (_editing) return GpadEditor(layout: layout, o: o, onDone: () => setState(() => _editing = false));
             return Stack(children: [
               Positioned.fill(child: GpadView(layout: layout, g: g, o: o, k: 1)),
               // The bar: close, which computer, which player; the layouts.
@@ -168,7 +173,10 @@ class _GamepadScreenState extends State<GamepadScreen> {
                       height: 52,
                       padding: const EdgeInsets.all(4),
                       decoration: BoxDecoration(color: fade(t.s1, 10), borderRadius: BorderRadius.circular(999)),
-                      child: IconBtn('apps', label: 'Layouts', color: t.bright, onTap: _pick),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        IconBtn('edit', label: 'Edit this layout', color: t.bright, onTap: () => setState(() => _editing = true)),
+                        IconBtn('apps', label: 'Layouts', color: t.bright, onTap: _pick),
+                      ]),
                     ),
                   ]),
                 ),
@@ -202,19 +210,29 @@ class _GamepadScreenState extends State<GamepadScreen> {
 
 /// A layout drawn into its box: each control at its place. `g` null: a still thumbnail.
 class GpadView extends StatelessWidget {
-  const GpadView({super.key, required this.layout, required this.o, required this.k, this.g});
+  const GpadView({super.key, required this.layout, required this.o, required this.k, this.g, this.tweaks, this.editing = false});
   final GLayout layout;
   final String o;
   final double k;
   final _Game? g;
+  /// The editor's changes; null: the saved ones.
+  final Tweaks? tweaks;
+  /// Being edited: hidden controls stay, faint, so they can be brought back.
+  final bool editing;
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (context, box) {
-      final at = place(layout, o, k, box.biggest);
+      final tw = tweaks ?? tweaksFor(layout.id, o);
+      final at = placeTweaked(layout, o, k, box.biggest, tw);
       return IgnorePointer(
-        ignoring: g == null,
+        ignoring: g == null || editing,
         child: Stack(children: [
-          for (final c in layout.controls) Positioned.fromRect(rect: at[c.id]!, child: _Control(c: c, layout: layout, g: g ?? _Game.idle)),
+          for (final c in layout.controls)
+            if (tw[c.id]?.hide != true || editing)
+              Positioned.fromRect(
+                rect: at[c.id]!,
+                child: Opacity(opacity: tw[c.id]?.hide == true ? .3 : 1, child: _Control(c: c, layout: layout, g: g ?? _Game.idle)),
+              ),
         ]),
       );
     });

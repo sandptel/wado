@@ -69,6 +69,8 @@ const defaults = <String, Object>{
   'console_deck': true,
   'pad_coach_seen': false,
   'gpad_layout': 'xbox',
+  // The gamepad editor's changes: {"<layout>:<l|p>": {"<control>": [dx, dy, scale, hidden]}}.
+  'gpad_edits': '{}',
   'stay_connected': false,
   'volume_keys': true,
   'pad_marks_off': false,
