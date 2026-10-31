@@ -7,12 +7,12 @@ import 'package:flutter/services.dart';
 
 import '../../../wado/host.dart';
 import '../../../wado/input.dart';
-import '../../../wado/pad.dart';
 import '../../../wado/session.dart';
 import '../../motion/motion.dart';
 import '../../theme/look.dart';
 import '../../theme/tokens.dart';
 import '../../widgets/basics.dart';
+import '../../input/gamepad_screen.dart' show GpadLive;
 import '../keyboard.dart' show KeyboardSheet;
 
 /// The pointer the Touchpad face moves, normalised over the picture; null when the face is away.
@@ -579,56 +579,9 @@ class _NpMini extends StatelessWidget {
 
 // ── Gamepad ─────────────────────────────────────────────────────────────────────────────
 
-/// The Gamepad face: a compact controller in the pad's box (the pad link's gamepad).
-class GameFace extends StatefulWidget {
+/// The Gamepad face: the chosen layout, live, in the pad's box (the pad link's gamepad).
+class GameFace extends StatelessWidget {
   const GameFace({super.key});
   @override
-  State<GameFace> createState() => _GameFaceState();
-}
-
-class _GameFaceState extends State<GameFace> {
-  @override
-  void initState() {
-    super.initState();
-    if (Pad.I.state.value == 'off') Pad.I.start();
-    Pad.I.send({'k': 'game_on'});
-  }
-
-  @override
-  void dispose() {
-    Pad.I.send({'k': 'game_off'});
-    super.dispose();
-  }
-
-  void _btn(int code, bool down) {
-    Pad.I.send({'k': 'btn', 'code': code, 'down': down});
-    if (down) HapticFeedback.lightImpact();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Tok.of(context);
-    Widget b(String label, int code, Color c) => Listener(
-          onPointerDown: (_) => _btn(code, true),
-          onPointerUp: (_) => _btn(code, false),
-          onPointerCancel: (_) => _btn(code, false),
-          child: Container(
-            width: 52,
-            height: 52,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(shape: BoxShape.circle, color: t.s2, border: Border.all(color: fade(c, 40), width: 1.5)),
-            child: Text(label, style: TextStyle(fontFamily: Tokens.display, fontWeight: FontWeight.w700, fontSize: 17, color: c)),
-          ),
-        );
-    Widget cluster(List<Widget> four) => Column(mainAxisSize: MainAxisSize.min, children: [
-          four[0],
-          Row(mainAxisSize: MainAxisSize.min, children: [four[1], const SizedBox(width: 52), four[2]]),
-          four[3],
-        ]);
-    // Left groups left, right groups right (W.gpadPlace.deck).
-    return Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-      cluster([b('▲', 0x220, t.bright), b('◀', 0x222, t.bright), b('▶', 0x223, t.bright), b('▼', 0x221, t.bright)]),
-      cluster([b('Y', 0x134, t.base[0xA]), b('X', 0x133, t.base[0xD]), b('B', 0x131, t.base[8]), b('A', 0x130, t.base[0xB])]),
-    ]);
-  }
+  Widget build(BuildContext context) => const GpadLive();
 }

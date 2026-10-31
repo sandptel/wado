@@ -642,3 +642,38 @@ class _Picker extends StatelessWidget {
     );
   }
 }
+
+/// The chosen layout as a live gamepad in any box — the console's Gamepad face. It turns the
+/// pad link's gamepad on while shown, and scales the layout down to fit (never up).
+class GpadLive extends StatefulWidget {
+  const GpadLive({super.key});
+  @override
+  State<GpadLive> createState() => _GpadLiveState();
+}
+
+class _GpadLiveState extends State<GpadLive> {
+  final g = _Game();
+  @override
+  void initState() {
+    super.initState();
+    if (Pad.I.state.value == 'off') Pad.I.start();
+    Pad.I.onResend = g.resend;
+    g.start();
+  }
+
+  @override
+  void dispose() {
+    g.stop();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, box) {
+      final size = box.biggest;
+      final o = orient(size);
+      final k = math.min(1.0, thumbK(o, size));
+      return GpadView(layout: layoutById(Settings.I.s('gpad_layout')), o: o, k: k, g: g);
+    });
+  }
+}
