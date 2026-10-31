@@ -13,6 +13,7 @@ import '../ui/theme/look.dart';
 import 'log.dart';
 import 'relay_link.dart';
 import 'multi.dart';
+import 'presence.dart';
 import 'settings.dart';
 import 'stats.dart';
 
@@ -516,6 +517,7 @@ class Session {
     inputDC = motionDC = fastDC = null;
     hasVideo.value = false;
     Stats.I.stop();
+    Presence.I.clear();
     if (_rendererReady) renderer.srcObject = null;
     p?.close();
   }
@@ -565,6 +567,12 @@ class Session {
     fastDC = await p.createDataChannel(fastChannel, RTCDataChannelInit()
       ..ordered = false
       ..maxRetransmits = 0);
+    // The other devices' pointers (presence.js): unordered, never retransmitted — a late
+    // position is a wrong one.
+    final ghosts = await p.createDataChannel('wado-presence', RTCDataChannelInit()
+      ..ordered = false
+      ..maxRetransmits = 0);
+    ghosts.onMessage = (m) => Presence.I.message(m.text);
     p.onTrack = (ev) {
       if (ev.track.kind == 'audio') {
         _audio = ev.track;

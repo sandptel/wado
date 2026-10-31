@@ -14,6 +14,7 @@ import 'package:flutter/foundation.dart';
 
 import 'host.dart';
 import 'log.dart';
+import 'presence.dart';
 import 'relay_link.dart';
 import 'session.dart';
 
@@ -204,6 +205,7 @@ class Multi {
   void _participants(Map<String, dynamic> m) {
     list.value = [for (final p in (m['list'] as List? ?? [])) Map<String, dynamic>.from(p as Map)];
     you.value = (m['you'] ?? 0) as int;
+    Presence.I.roster(list.value, you.value);
     final who = (m['who'] ?? '') as String;
     final me = list.value.where((p) => p['id'] == you.value).firstOrNull;
     if (who.isEmpty || (me != null && me['name'] == who && m['event'] != 'left')) return;

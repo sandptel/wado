@@ -27,6 +27,7 @@ import '../drawer.dart';
 import '../keyboard.dart' show KeyboardSheet;
 import '../picture_input.dart';
 import 'deck.dart';
+import 'ghosts.dart';
 import 'parts.dart';
 import 'readouts.dart';
 import 'stage_state.dart';
@@ -308,6 +309,7 @@ class _ConsoleViewState extends State<ConsoleView> with SingleTickerProviderStat
               ),
               // The picture's input: only over the picture's own content.
               Positioned.fromRect(rect: content, child: PictureInput(onGesture: _gesture, onTouch: TouchMarks.touch, child: const SizedBox.expand())),
+              const Positioned.fill(child: Ghosts()),
               // The readouts keep to the picture's own corners.
               Positioned.fromRect(rect: content, child: const Readouts()),
               if (face == Face.pad) Positioned.fill(child: IgnorePointer(child: Opacity(opacity: only, child: const DeckCursor()))),
