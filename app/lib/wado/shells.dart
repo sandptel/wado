@@ -35,12 +35,18 @@ class Shells {
     });
     l.on('pty_exit', (m) => terms[m['id']]?.write('\r\n\x1b[2m[exited — close this tab, or open another]\x1b[0m\r\n'));
     l.on('__up', (_) => request());
+    l.on('session_error', (m) {
+      final why = '${m['message'] ?? ''}';
+      if (why.startsWith('no shells:')) refused.value = why.substring(10).trim();
+    });
   }
   static final I = Shells._();
 
   final shells = ValueNotifier<List<Map<String, dynamic>>>([]);
   final hosts = ValueNotifier<List<String>>([]);
   final active = ValueNotifier<int>(0);
+  /// The computer said no (not allowed, turned off), in its words.
+  final refused = ValueNotifier<String>('');
   final mods = ValueNotifier<(bool, bool)>((false, false)); // ctrl, alt
   final terms = <int, Terminal>{};
   final _size = <int, (int, int)>{};
@@ -71,6 +77,7 @@ class Shells {
 
   void request() => RelayLink.I.send({'type': 'shells_request'});
   void open([String? host]) {
+    refused.value = '';
     final s = _size[active.value] ?? (80, 24);
     RelayLink.I.send({'type': 'pty_open', 'cols': s.$1, 'rows': s.$2, 'host': host});
   }

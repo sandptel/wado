@@ -5,6 +5,8 @@ import 'package:xterm/xterm.dart';
 
 import '../../wado/relay_link.dart';
 import '../../wado/shells.dart';
+import '../../wado/passkey.dart';
+import '../passkey/passkey_card.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
@@ -53,7 +55,7 @@ class _ShellPageState extends State<ShellPage> {
     final t = Tok.of(context);
     final s = Shells.I;
     return ListenableBuilder(
-      listenable: Listenable.merge([s.shells, s.active, s.mods, RelayLink.I.up]),
+      listenable: Listenable.merge([s.shells, s.active, s.mods, s.refused, RelayLink.I.up, Passkey.I.view]),
       builder: (context, _) {
         final list = s.shells.value;
         final id = s.active.value;
@@ -92,6 +94,10 @@ class _ShellPageState extends State<ShellPage> {
               ),
             ]),
           ),
+          if (Passkey.I.view.value.state.isNotEmpty && Passkey.I.view.value.required && !Passkey.I.view.value.unlocked)
+            Padding(padding: const EdgeInsets.all(12), child: PasskeyCard(need: 'The shell', onUnlocked: () => s.request()))
+          else if (s.refused.value.isNotEmpty)
+            Padding(padding: const EdgeInsets.all(12), child: WCard(alert: true, children: [Text(s.refused.value, style: body(context, color: t.bright))])),
           Expanded(
             child: id == 0
                 ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(list.isEmpty ? 'No shell open on this computer for this phone. Tap New.' : '', style: body(context, color: t.dim))))

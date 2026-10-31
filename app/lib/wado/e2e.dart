@@ -7,16 +7,31 @@ import '../core/core_host.dart';
 import 'log.dart';
 import 'nav.dart';
 import 'relay_link.dart';
+import 'pad.dart';
 import 'session.dart';
+import 'shells.dart';
 
 const _link = String.fromEnvironment('WADO_E2E_LINK');
 const _session = bool.fromEnvironment('WADO_E2E_SESSION');
+const _page = String.fromEnvironment('WADO_E2E_PAGE');
 
 void e2eHooks() {
   if (kReleaseMode || _link.isEmpty) return;
   void go(String key) {
     rlog('e2e: open $key');
     Nav.I.openComputer(key);
+    if (_page.isNotEmpty) {
+      Future.delayed(const Duration(seconds: 4), () {
+        Nav.I.openPage(_page);
+        if (_page == 'shells') Future.delayed(const Duration(seconds: 2), () => Shells.I.open());
+        if (_page == 'input') {
+          Pad.I.state.addListener(() => rlog('e2e: pad ${Pad.I.state.value}'));
+          Pad.I.rtt.addListener(() => rlog('e2e: pad rtt ${Pad.I.rtt.value} ms bin ${Pad.I.bin}'));
+          Pad.I.error.addListener(() => rlog('e2e: pad error ${Pad.I.error.value}'));
+          Pad.I.start();
+        }
+      });
+    }
     if (!_session) return;
     void up(Map<String, dynamic> _) {
       RelayLink.I.off('__up', up);
