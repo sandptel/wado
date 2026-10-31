@@ -196,3 +196,37 @@ class _Card extends StatelessWidget {
     );
   }
 }
+
+/// The network changed under a running picture (reconnecting.rs): the stage dims and says so,
+/// never taking a touch.
+class Reconnecting extends StatelessWidget {
+  const Reconnecting({super.key});
+  @override
+  Widget build(BuildContext context) {
+    final t = Tok.of(context);
+    return IgnorePointer(
+      child: ListenableBuilder(
+        listenable: Listenable.merge([Link.I.now, Session.I.on, Session.I.hasVideo]),
+        builder: (context, _) {
+          final on = Session.I.on.value && Session.I.hasVideo.value && Link.I.now.value.state == 'reconnecting';
+          return AnimatedOpacity(
+            opacity: on ? 1 : 0,
+            duration: t.dur,
+            child: !on
+                ? const SizedBox.expand()
+                : ColoredBox(
+                    color: const Color(0x59000000),
+                    child: Center(
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: t.base[7], backgroundColor: fade(t.base[7], 70))),
+                        const SizedBox(width: 10),
+                        Text('Reconnecting…', style: body(context, size: 1, w: FontWeight.w600, color: t.base[7])),
+                      ]),
+                    ),
+                  ),
+          );
+        },
+      ),
+    );
+  }
+}
