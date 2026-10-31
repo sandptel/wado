@@ -1,8 +1,10 @@
 // This device's settings (port of state.rs `Settings` + persist.rs): one JSON blob, saved on any
 // change. Defaults are the web client's. Profiles are not here: the core holds saved computers.
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show AppLifecycleListener;
 import 'package:shared_preferences/shared_preferences.dart';
 
 const defaults = <String, Object>{
@@ -23,7 +25,7 @@ const defaults = <String, Object>{
   'keyframe': '',
   'isolate_apps': true,
   'x_server': false,
-  'command': 'weston-terminal',
+  'command': '',
   'recent': <String>[],
   'show_hidden': false,
   'move_mode': false,
@@ -64,6 +66,7 @@ const defaults = <String, Object>{
   'cockpit': false,
   'console_face': 'auto',
   'console_open': 'console',
+  'console_deck': true,
   'pad_coach_seen': false,
   'gpad_layout': 'xbox',
   'stay_connected': false,
@@ -110,7 +113,20 @@ class Settings extends ChangeNotifier {
   void set(String k, Object? v) {
     if (_v[k] == v) return;
     _v[k] = v;
-    _p?.setString('wado.settings', jsonEncode(_v));
+    // Written once things settle: a slider sets on every tick, and encoding every setting each
+    // time was work done on the frame.
+    _flush;
+    _save?.cancel();
+    _save = Timer(const Duration(milliseconds: 400), () => _p?.setString('wado.settings', jsonEncode(_v)));
     notifyListeners();
   }
+
+  Timer? _save;
+  // ignore: unused_field
+  late final _flush = AppLifecycleListener(onHide: () {
+    if (_save?.isActive ?? false) {
+      _save!.cancel();
+      _p?.setString('wado.settings', jsonEncode(_v));
+    }
+  });
 }

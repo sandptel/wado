@@ -15,6 +15,7 @@ import '../../motion/motion.dart';
 import '../../theme/look.dart';
 import '../../theme/tokens.dart';
 import '../../widgets/basics.dart';
+import '../../widgets/data_image.dart';
 
 /// `.barbtn`: a round 44 (or 40 on the rail) button.
 class BarBtn extends StatelessWidget {
@@ -241,10 +242,12 @@ class AppGlyph extends StatelessWidget {
     final t = Tok.of(context);
     final src = iconOf(w);
     if (src != null && src.startsWith('data:')) {
-      try {
-        return Image.memory(UriData.parse(src).contentAsBytes(), width: size, height: size, gaplessPlayback: true);
-      } catch (_) {}
+      return DataPicture(src, size: size, fallback: _letter(context, t));
     }
+    return _letter(context, t);
+  }
+
+  Widget _letter(BuildContext context, Tokens t) {
     return Container(
       width: size,
       height: size,
@@ -488,7 +491,8 @@ class _WinBtnState extends State<_WinBtn> {
 /// A desktop has no Touchpad.
 class FacesSwitch extends StatelessWidget {
   const FacesSwitch({super.key, required this.active, required this.flow, required this.touch, required this.onPick});
-  final Face active;
+  /// Null: the deck is put away, no face lit.
+  final Face? active;
   final Flow flow;
   final bool touch;
   final ValueChanged<Face> onPick;
@@ -500,7 +504,7 @@ class FacesSwitch extends StatelessWidget {
       final on = f == active;
       return Press(
         onTap: () => onPick(f),
-        label: f.label,
+        label: on ? 'Put away the ${f.label}' : f.label,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 360),
           curve: Tokens.spring,

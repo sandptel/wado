@@ -6,7 +6,6 @@
 // Motion: entries rise in on the spring with a stagger; neighbours glide (FLIP) when the list
 // changes; a copy just made arrives with an accent ring that fades; a tap's tick pops in, a refused
 // one shakes once; a deleted entry folds away while it shrinks and fades.
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
@@ -18,6 +17,7 @@ import '../motion/motion.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
+import '../widgets/data_image.dart';
 
 String ago(int seen) {
   if (seen == 0) return '';
@@ -341,7 +341,7 @@ class _TileState extends State<_Tile> with SingleTickerProviderStateMixin {
                         color: t.s2,
                         child: widget.img == null
                             ? null
-                            : Enter(ms: 480, dy: 0, scale: 1.04, fadeOnClose: false, child: Image.memory(base64Decode(widget.img!.split(',').last), fit: BoxFit.cover, width: double.infinity, gaplessPlayback: true)),
+                            : Enter(ms: 480, dy: 0, scale: 1.04, fadeOnClose: false, child: Image(image: dataImage(widget.img!)!, fit: BoxFit.cover, width: double.infinity, gaplessPlayback: true)),
                       ),
                     ),
                     const SizedBox(height: 4),

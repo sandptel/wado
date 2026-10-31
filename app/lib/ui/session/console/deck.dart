@@ -12,6 +12,7 @@ import '../../motion/motion.dart';
 import '../../theme/look.dart';
 import '../../theme/tokens.dart';
 import '../../widgets/basics.dart';
+import '../../widgets/data_image.dart';
 import '../../input/gamepad_screen.dart' show GpadLive;
 import '../keyboard.dart' show KeyboardSheet;
 
@@ -544,11 +545,8 @@ class _NpMini extends StatelessWidget {
     final t = Tok.of(context);
     final art = p['art'] as String?;
     Widget cover = Container(width: 36, height: 36, alignment: Alignment.center, decoration: BoxDecoration(color: t.s3, borderRadius: BorderRadius.circular(8)), child: WIcon('play', size: 16, color: t.dim, fill: true));
-    if (art != null && art.startsWith('data:')) {
-      try {
-        cover = ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.memory(UriData.parse(art).contentAsBytes(), width: 36, height: 36, fit: BoxFit.cover, gaplessPlayback: true));
-      } catch (_) {}
-    }
+    final ai = dataImage(art);
+    if (ai != null) cover = ClipRRect(borderRadius: BorderRadius.circular(8), child: Image(image: ai, width: 36, height: 36, fit: BoxFit.cover, gaplessPlayback: true));
     return Semantics(
       label: 'Now playing on the computer',
       child: Container(

@@ -207,7 +207,8 @@ class _GoState extends State<_Go> with SingleTickerProviderStateMixin {
         height: 48,
         child: Stack(alignment: Alignment.center, clipBehavior: Clip.none, children: [
           if (widget.live && widget.enabled)
-            AnimatedBuilder(
+            // Its own layer: the pulse runs for as long as the session does.
+            RepaintBoundary(child: AnimatedBuilder(
               animation: _ring,
               builder: (context, _) {
                 final p = (_ring.value / .6).clamp(0.0, 1.0);
@@ -221,7 +222,7 @@ class _GoState extends State<_Go> with SingleTickerProviderStateMixin {
                   ),
                 );
               },
-            ),
+            )),
           AnimatedContainer(
             duration: t.dur,
             width: 48,

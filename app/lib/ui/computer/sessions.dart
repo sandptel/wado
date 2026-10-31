@@ -624,7 +624,7 @@ class _TrackState extends State<_Track> with SingleTickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final t = Tok.of(context);
-    return ClipRRect(
+    return RepaintBoundary(child: ClipRRect(
       borderRadius: BorderRadius.circular(999),
       child: Container(
         height: 8,
@@ -654,6 +654,6 @@ class _TrackState extends State<_Track> with SingleTickerProviderStateMixin {
           );
         }),
       ),
-    );
+    ));
   }
 }

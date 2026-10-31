@@ -233,19 +233,22 @@ class _BreatheState extends State<Breathe> with SingleTickerProviderStateMixin {
     super.dispose();
   }
 
+  /// `breathe`: down to `low` and back, eased, as an opacity layer — no rebuild per frame.
+  late final _o = _c.drive(Tween<double>(begin: 1, end: widget.low).chain(CurveTween(curve: const _Tri())));
+
   @override
   Widget build(BuildContext context) {
     if (Tok.of(context).still || !widget.on) return widget.child;
-    return AnimatedBuilder(
-      animation: _c,
-      child: widget.child,
-      builder: (context, child) {
-        final v = _c.value;
-        final p = Curves.easeInOut.transform(v < .5 ? v * 2 : 2 - v * 2);
-        return Opacity(opacity: 1 - (1 - widget.low) * p, child: child);
-      },
-    );
+    // Its own layer: a dot breathing forever must not repaint the page around it every frame.
+    return RepaintBoundary(child: FadeTransition(opacity: _o, child: widget.child));
   }
+}
+
+/// Up and back down, eased both ways (`@keyframes breathe { 50% { … } }`).
+class _Tri extends Curve {
+  const _Tri();
+  @override
+  double transformInternal(double t) => Curves.easeInOut.transform(t < .5 ? t * 2 : 2 - t * 2);
 }
 
 /// FLIP for a list (cliphost.js `clipFlip`): a keyed item that moved — a pin lifting it, a new

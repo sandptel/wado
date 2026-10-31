@@ -24,6 +24,7 @@ import '../motion/motion.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
+import '../widgets/data_image.dart';
 import '../widgets/slider.dart';
 import 'cards.dart' show hues, Dashed;
 import 'home_screen.dart' show LinkWords;
@@ -505,7 +506,7 @@ class _Media extends StatelessWidget {
           height: 52,
           clipBehavior: ui.Clip.antiAlias,
           decoration: BoxDecoration(color: t.s2, borderRadius: BorderRadius.circular(t.r1), boxShadow: const [BoxShadow(color: Color(0x40000000), blurRadius: 14, offset: Offset(0, 4))]),
-          child: art == null || !art.contains(',') ? Center(child: WIcon('music', color: t.dim)) : ArtSwap(child: Image.memory(UriData.parse(art).contentAsBytes(), key: ValueKey(art.length), fit: BoxFit.cover, gaplessPlayback: true)),
+          child: art == null || dataImage(art) == null ? Center(child: WIcon('music', color: t.dim)) : ArtSwap(child: Image(image: dataImage(art)!, key: ValueKey(art.length), fit: BoxFit.cover, gaplessPlayback: true)),
         ),
         const SizedBox(width: 12),
         Expanded(

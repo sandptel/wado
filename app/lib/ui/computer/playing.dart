@@ -1,6 +1,5 @@
 // Now playing (port of ui/computer/playing.rs + computer.css .np): art, app, title, artist, a
 // running progress bar you can scrub, and the transport. Several players: a row each to pick.
-import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -9,6 +8,7 @@ import '../../wado/host.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
+import '../widgets/data_image.dart';
 import '../motion/motion.dart';
 import 'quick.dart';
 
@@ -18,14 +18,8 @@ String clock(int ms) {
 }
 
 Uint8List? dataUrl(String? u) {
-  if (u == null) return null;
-  final i = u.indexOf('base64,');
-  if (i < 0) return null;
-  try {
-    return base64Decode(u.substring(i + 7));
-  } catch (_) {
-    return null;
-  }
+  if (u == null || !u.contains('base64,')) return null;
+  return dataImage(u)?.bytes;
 }
 
 class Playing extends StatefulWidget {
@@ -108,7 +102,7 @@ class _PlayingState extends State<Playing> with SingleTickerProviderStateMixin {
                 boxShadow: const [BoxShadow(color: Color(0x73000000), blurRadius: 24, offset: Offset(0, 8), spreadRadius: -6)],
               ),
               child: art != null
-                  ? ArtSwap(child: Image.memory(art, key: ValueKey(art.length), fit: BoxFit.cover, gaplessPlayback: true))
+                  ? ArtSwap(child: Image(image: dataImage(p['art'] as String?) ?? dataImage(p['icon'] as String?) ?? MemoryImage(art), key: ValueKey(art.length), fit: BoxFit.cover, gaplessPlayback: true))
                   : Center(child: WIcon('music', size: 32, color: t.dim)),
             ),
             const SizedBox(width: 14),

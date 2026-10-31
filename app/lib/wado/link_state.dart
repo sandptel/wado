@@ -9,6 +9,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import 'relay_link.dart';
 import 'session.dart';
+import 'stats.dart';
 
 class LinkNow {
   const LinkNow({this.state = 'offline', this.path = '', this.rtt, this.why = '', this.nat = '', this.turn = false});
@@ -96,7 +97,8 @@ class Link {
   bool _turn = false;
 
   Future<({String path, int? rtt})?> _path(RTCPeerConnection pc) async {
-    final st = await pc.getStats();
+    final fresh = DateTime.now().difference(Stats.I.readAt).inMilliseconds < 2500;
+    final st = fresh ? Stats.I.reports : await pc.getStats();
     final byId = {for (final r in st) r.id: r};
     StatsReport? pair;
     for (final r in st) {

@@ -22,6 +22,10 @@ class Stats {
   static final I = Stats._();
 
   final sample = ValueNotifier<Sample?>(null);
+  /// The last reports read, and when: the link badge reads its path from these rather than
+  /// asking the peer connection for all of them again.
+  List<StatsReport> reports = const [];
+  DateTime readAt = DateTime(0);
   final verdict = ValueNotifier<Verdict>(const Verdict('ok', 'connecting'));
   final judge = Health();
   final rate = Autorate();
@@ -56,6 +60,8 @@ class Stats {
       } catch (_) {
         return;
       }
+      reports = st;
+      readAt = DateTime.now();
       double? fps, ping, jbuf, kbps, jitter, dec, avail;
       num? lost, precv, dropped, recv;
       for (final r in st) {

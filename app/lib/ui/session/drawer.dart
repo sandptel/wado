@@ -4,18 +4,21 @@
 // shows what is hidden (NoDisplay entries, and entries no icon theme draws).
 import 'package:flutter/material.dart';
 
-import '../../wado/relay_link.dart';
+import '../../wado/apps.dart';
+import '../../core/core_host.dart';
+import '../../wado/nav.dart';
 import '../../wado/session.dart';
 import '../../wado/settings.dart';
 import '../theme/look.dart';
 import '../widgets/basics.dart';
+import '../widgets/data_image.dart';
 
 final drawerOpen = ValueNotifier<bool>(false);
 
 /// Open the drawer, asking again for the list: it says which apps are running *now*.
 void openDrawer() {
   drawerOpen.value = true;
-  RelayLink.I.send({'type': 'apps_request'});
+  Apps.I.request();
 }
 
 bool _listable(Map<String, dynamic> a) => a['hidden'] != true && a['icon'] != null;
@@ -40,7 +43,8 @@ class AppDrawer extends StatefulWidget {
 
 class _AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixin {
   late final _a = AnimationController(vsync: this, duration: const Duration(milliseconds: 220));
-  late final _box = TextEditingController(text: Settings.I.s('command'));
+  // The first default filled the box with a command and hid every app behind it: it opens empty.
+  late final _box = TextEditingController(text: Settings.I.s('command') == 'weston-terminal' ? '' : Settings.I.s('command'));
 
   @override
   void initState() {
@@ -94,7 +98,7 @@ class _AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMix
             boxShadow: const [BoxShadow(color: Color(0x59000000), blurRadius: 24, offset: Offset(0, -8))],
           ),
           child: ListenableBuilder(
-            listenable: Listenable.merge([Session.I.apps, Settings.I, _box]),
+            listenable: Listenable.merge([Session.I.apps, Settings.I, _box, Apps.I.asking]),
             builder: (context, _) {
               final apps = Session.I.apps.value;
               final q = _box.text.trim().toLowerCase();
@@ -107,7 +111,7 @@ class _AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMix
                   apps.firstWhere((a) => a['exec'] == c, orElse: () => {'name': c, 'exec': c}),
               ];
               final eye = hidden ? 'Show only applications' : 'Show everything installed ($buried more)';
-              Widget bar(String glyph, String label, bool on, VoidCallback? tap) => Press(
+              Widget bar(String icon, String label, bool on, VoidCallback? tap) => Press(
                     onTap: tap,
                     label: label,
                     child: Opacity(
@@ -115,7 +119,7 @@ class _AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMix
                       child: Container(
                         width: 44,
                         decoration: BoxDecoration(color: on ? t.accent : null, borderRadius: BorderRadius.circular(999)),
-                        child: Center(child: Text(glyph, style: TextStyle(fontSize: 18, color: on ? t.onAccent : t.text))),
+                        child: Center(child: WIcon(icon, size: 20, color: on ? t.onAccent : t.text)),
                       ),
                     ),
                   );
@@ -162,9 +166,9 @@ class _AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMix
                       ),
                     ),
                     const SizedBox(width: 6),
-                    bar('👁', eye, hidden, buried == 0 && !hidden ? null : () => Settings.I.set('show_hidden', !hidden)),
+                    bar('eye', eye, hidden, buried == 0 && !hidden ? null : () => Settings.I.set('show_hidden', !hidden)),
                     const SizedBox(width: 6),
-                    bar('▶\uFE0E', 'Run', false, _box.text.trim().isEmpty ? null : _go),
+                    bar('play', 'Run', false, _box.text.trim().isEmpty ? null : _go),
                   ]),
                 ),
                 Flexible(
@@ -176,13 +180,22 @@ class _AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMix
                         grid(recent),
                         _label(context, 'All apps'),
                       ],
-                      if (matches.isEmpty)
+                      if (matches.isEmpty && apps.isEmpty && Apps.I.asking.value)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 2),
+                          child: Row(children: [
+                            SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: t.accent)),
+                            const SizedBox(width: 10),
+                            Expanded(child: Text('Asking ${CoreHost.I.computer(Nav.I.selected)?.name ?? 'the computer'} for its apps…', style: body(context, size: .8125, color: t.dim))),
+                          ]),
+                        )
+                      else if (matches.isEmpty)
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 2),
                           child: Text(
                             apps.isEmpty
-                                ? 'No application list from the server — ▶ still runs whatever you type.'
-                                : (buried > 0 ? 'Nothing here matches — 👁 searches everything installed too. ▶ runs what you typed.' : 'Nothing matches. ▶ still runs what you typed.'),
+                                ? 'No application list from the server — Run still runs whatever you type.'
+                                : (buried > 0 ? 'Nothing here matches — the eye searches everything installed too. Run runs what you typed.' : 'Nothing matches. Run still runs what you typed.'),
                             style: body(context, size: .8125, color: t.dim),
                           ),
                         )
@@ -219,11 +232,7 @@ class _Tile extends StatelessWidget {
       decoration: BoxDecoration(color: t.base[2], borderRadius: BorderRadius.circular(12)),
       child: Center(child: Text(name.isEmpty ? '' : name[0].toUpperCase(), style: TextStyle(fontSize: (mq.size.width * .05).clamp(16, 22), color: t.base[4]))),
     );
-    if (icon != null && icon.startsWith('data:')) {
-      try {
-        img = Image.memory(UriData.parse(icon).contentAsBytes(), fit: BoxFit.contain, gaplessPlayback: true);
-      } catch (_) {}
-    }
+    img = DataPicture(icon, fallback: img);
     return Press(
       onTap: () => onTap(exec),
       onLongPress: () => onHold(exec),

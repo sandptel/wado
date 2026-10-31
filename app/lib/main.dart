@@ -1,4 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
+
+import 'wado/log.dart';
 
 import 'app.dart';
 import 'core/core_host.dart';
@@ -47,5 +51,14 @@ Future<void> main() async {
     failure = e;
   }
   runApp(WadoApp(failure: failure));
+  // Profile and debug builds: every frame over budget, with where its time went (build is this
+  // app's Dart; raster is drawing). Release builds never pay for it.
+  if (!kReleaseMode) {
+    SchedulerBinding.instance.addTimingsCallback((ts) {
+      for (final f in ts) {
+        if (f.totalSpan.inMilliseconds > 24) rlog('slow frame ${f.totalSpan.inMilliseconds} ms — build ${f.buildDuration.inMilliseconds}, raster ${f.rasterDuration.inMilliseconds}');
+      }
+    });
+  }
   if (failure == null) Inbound.start();
 }

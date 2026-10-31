@@ -217,6 +217,10 @@ class _DotState extends State<_Dot> with SingleTickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     widget.pulse ? (_c.isAnimating ? null : _c.repeat()) : _c.stop();
+    return RepaintBoundary(child: _pulse());
+  }
+
+  Widget _pulse() {
     return AnimatedBuilder(
       animation: _c,
       builder: (context, _) => Opacity(

@@ -87,7 +87,7 @@ Rect fit(Rect room, double aspect) {
 }
 
 /// The console arrangement.
-ConsoleLayout console({required double vw, required double vh, EdgeInsets inset = EdgeInsets.zero, double outW = 0, double outH = 0, required Form form, required Face face}) {
+ConsoleLayout console({required double vw, required double vh, EdgeInsets inset = EdgeInsets.zero, double outW = 0, double outH = 0, required Form form, required Face face, bool deck = true}) {
   vw = math.max(vw, 1);
   vh = math.max(vh, 1);
   final sa = inset;
@@ -108,13 +108,20 @@ ConsoleLayout console({required double vw, required double vh, EdgeInsets inset 
       final top = tab ? 48.0 : 40.0;
       const strip = 44.0;
       final dock = tab ? 56.0 : 52.0;
-      final deckMin = tab ? 150.0 : 88.0;
+      // The deck put away: its height goes to the picture (an upright session grows into it).
+      final deckMin = !deck ? 0.0 : (tab ? 150.0 : 88.0);
       final yTop = sa.top + e;
-      final availH = vh - yTop - top - g - (g + strip + g + deckMin + g) - dock - e - sa.bottom;
       final availW = vw - sa.left - sa.right - 2 * e - 2 * rail - 2 * g;
-      // Width-bound on a phone: the leftover height goes to the deck, not a dead band.
-      var p = fit(Rect.fromLTWH(sa.left + e + rail + g, yTop + top + g, availW, math.max(availH, 40)), aspect);
-      p = Rect.fromLTWH(p.left, yTop + top + g, p.width, p.height);
+      Rect pick(double reserve) {
+        final availH = vh - yTop - top - g - (g + strip + g + (deck ? deckMin + g : 0) + reserve) - dock - e - sa.bottom;
+        // Width-bound on a phone: the leftover height goes to the deck, not a dead band.
+        final r = fit(Rect.fromLTWH(sa.left + e + rail + g, yTop + top + g, availW, math.max(availH, 40)), aspect);
+        return Rect.fromLTWH(r.left, yTop + top + g, r.width, r.height);
+      }
+
+      var p = pick(0);
+      // With no deck, a picture too short for the rail's faces still needs room for their row.
+      if (!deck && p.height < 52 + _btn + 8 + 4 * _btn + 3 * 6.0) p = pick(_btn + g);
       final left = sa.left + e;
       final innerW = vw - sa.left - sa.right - 2 * e;
       put('band', Rect.fromLTWH(left, yTop, innerW, top));
@@ -152,9 +159,9 @@ ConsoleLayout console({required double vw, required double vh, EdgeInsets inset 
         put('faces', Rect.fromLTWH(left + (innerW - fw) / 2, deckY, fw, _btn));
         deckY += _btn + g;
       }
-      final deck = Rect.fromLTWH(left, deckY, innerW, math.max(dy - g - deckY, deckMin));
-      put('deck', deck);
-      put('pad', deck);
+      final d = Rect.fromLTWH(left, deckY, innerW, math.max(dy - g - deckY, deckMin));
+      deck ? put('deck', d) : hide('deck', d);
+      deck ? put('pad', d) : hide('pad', d);
       pic = p;
       ws = Flow.col;
       nav = Flow.row;
@@ -192,7 +199,8 @@ ConsoleLayout console({required double vw, required double vh, EdgeInsets inset 
         const fw = 4 * _btn + 3 * 2.0;
         put('faces', Rect.fromLTWH(p.right - _btn - 8 - fw, sy, fw, _btn));
         hide('deck', Rect.fromLTWH(xr, y0, col, colB - y0));
-        put('pad', Rect.fromLTWH(left, y0, innerW, colB - y0));
+        final pad = Rect.fromLTWH(left, y0, innerW, colB - y0);
+        deck ? put('pad', pad) : hide('pad', pad);
         faces = Flow.row;
         nav = Flow.row;
       } else {
@@ -205,9 +213,9 @@ ConsoleLayout console({required double vw, required double vh, EdgeInsets inset 
         put('more', Rect.fromLTWH(xl + col / 2 + 2, y0 + _btn + 6, 0, _btn));
         put('faces', Rect.fromLTWH(xl, y0 + 2 * _btn + 18, col, 2 * _btn + 6));
         put('full', Rect.fromLTWH(xl, colB - _btn, col, _btn));
-        final deck = Rect.fromLTWH(xr, y0, col, colB - y0);
-        put('deck', deck);
-        put('pad', deck);
+        final d = Rect.fromLTWH(xr, y0, col, colB - y0);
+        deck ? put('deck', d) : hide('deck', d);
+        deck ? put('pad', d) : hide('pad', d);
         faces = Flow.grid;
         nav = Flow.grid;
       }
@@ -241,9 +249,9 @@ ConsoleLayout console({required double vw, required double vh, EdgeInsets inset 
       putR('more', Rect.fromLTWH(rightGap, sy, 0, _btn));
       const fw = 3 * _btn + 2 * 4.0;
       put('faces', Rect.fromLTWH(ax + asm - 54 - 10 - fw, sy, fw, _btn));
-      final deck = Rect.fromLTWH(p.right + g, p.top - 6, col, p.height + 12);
-      gp ? hide('deck', deck) : put('deck', deck);
-      put('pad', deck);
+      final d = Rect.fromLTWH(p.right + g, p.top - 6, col, p.height + 12);
+      gp || !deck ? hide('deck', d) : put('deck', d);
+      deck ? put('pad', d) : hide('pad', d);
       pic = p;
       ws = Flow.col;
       nav = Flow.row;
@@ -257,3 +265,21 @@ ConsoleLayout console({required double vw, required double vh, EdgeInsets inset 
   put('pic', pic);
   return ConsoleLayout(form: form, face: face, pic: pic, tx: pic.left - k * content.left, ty: pic.top - k * content.top, k: k, slots: s, ws: ws, nav: nav, faces: faces, deckCol: deckCol);
 }
+
+/// Between two arrangements of the same console (the deck going away or coming back).
+ConsoleLayout lerpLayout(ConsoleLayout a, ConsoleLayout b, double t) => ConsoleLayout(
+      form: b.form,
+      face: b.face,
+      pic: Rect.lerp(a.pic, b.pic, t)!,
+      tx: a.tx + (b.tx - a.tx) * t,
+      ty: a.ty + (b.ty - a.ty) * t,
+      k: a.k + (b.k - a.k) * t,
+      slots: {
+        for (final e in b.slots.entries)
+          e.key: Slot(a.slots[e.key] == null ? e.value.r : Rect.lerp(a.slots[e.key]!.r, e.value.r, t)!, right: e.value.right, shown: e.value.shown),
+      },
+      ws: b.ws,
+      nav: b.nav,
+      faces: b.faces,
+      deckCol: b.deckCol,
+    );

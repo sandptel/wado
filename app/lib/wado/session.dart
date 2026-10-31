@@ -11,6 +11,7 @@ import 'package:flutter/widgets.dart' show AppLifecycleListener;
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../ui/theme/look.dart';
+import 'apps.dart';
 import 'log.dart';
 import 'relay_link.dart';
 import 'multi.dart';
@@ -290,7 +291,7 @@ class Session {
       return;
     }
     if (!_wanted || _config == null) return;
-    if (apps.value.isEmpty) RelayLink.I.send({'type': 'apps_request'});
+    if (apps.value.isEmpty) Apps.I.request();
     if (on.value) {
       _resuming = true;
       rlog('link back — checking whether the session survived');

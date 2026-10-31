@@ -210,8 +210,10 @@ class _DotState extends State<_Dot> with SingleTickerProviderStateMixin {
   }
 
   @override
-  Widget build(BuildContext context) => FadeTransition(
-        opacity: Tween(begin: 1.0, end: .35).animate(CurvedAnimation(parent: _c, curve: Tokens.spring)),
-        child: Container(width: 8, height: 8, decoration: BoxDecoration(shape: BoxShape.circle, color: widget.color)),
+  Widget build(BuildContext context) => RepaintBoundary(
+        child: FadeTransition(
+          opacity: Tween(begin: 1.0, end: .35).animate(CurvedAnimation(parent: _c, curve: Tokens.spring)),
+          child: Container(width: 8, height: 8, decoration: BoxDecoration(shape: BoxShape.circle, color: widget.color)),
+        ),
       );
 }

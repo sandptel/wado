@@ -49,9 +49,13 @@ class ConsoleView extends StatefulWidget {
   State<ConsoleView> createState() => _ConsoleViewState();
 }
 
-class _ConsoleViewState extends State<ConsoleView> with SingleTickerProviderStateMixin {
+class _ConsoleViewState extends State<ConsoleView> with TickerProviderStateMixin {
   /// 1 = console, 0 = cockpit.
   late final _arr = AnimationController(vsync: this, value: _opensFull ? 0 : 1);
+  /// The deck going away or coming back: from the arrangement shown to the new one.
+  late final _lay = AnimationController(vsync: this, duration: const Duration(milliseconds: 420));
+  ConsoleLayout? _from, _shown;
+  bool _deck = Settings.I.b('console_deck');
   bool _cockpit = _opensFull;
 
   /// A session opens in the arrangement this device asked for (`console { open }`).
@@ -85,6 +89,7 @@ class _ConsoleViewState extends State<ConsoleView> with SingleTickerProviderStat
     if (Pad.I.state.value != 'off') Pad.I.stop();
     SystemChrome.setPreferredOrientations(const []);
     _arr.dispose();
+    _lay.dispose();
     super.dispose();
   }
 
@@ -94,6 +99,12 @@ class _ConsoleViewState extends State<ConsoleView> with SingleTickerProviderStat
   }
 
   void _settings() {
+    final d = Settings.I.b('console_deck');
+    if (d != _deck) {
+      _deck = d;
+      _from = _shown;
+      _lay.forward(from: 0);
+    }
     final c = Settings.I.b('cockpit');
     if (c != _cockpit) {
       _cockpit = c;
@@ -103,8 +114,14 @@ class _ConsoleViewState extends State<ConsoleView> with SingleTickerProviderStat
       _orient();
       _wake();
     }
+    // Only what this view draws from: a volume slider elsewhere must not rebuild the console.
+    final mine = [for (final k in const ['cockpit', 'console_face', 'console_deck', 'rail', 'ws_bar', 'dock_pin', 'ui_size']) Settings.I.get<Object?>(k)].join('|');
+    if (mine == _mine) return;
+    _mine = mine;
     setState(() {});
   }
+
+  String _mine = '';
 
   /// The cockpit holds the phone the way the picture is; the console lets it turn.
   void _orient() {
@@ -158,9 +175,13 @@ class _ConsoleViewState extends State<ConsoleView> with SingleTickerProviderStat
     Session.I.reconfigure();
   }
 
-  void _face(Face f) {
+  /// A face: its deck. The face already showing again: the deck goes away, and the picture takes
+  /// its room; any face brings a deck back.
+  void _face(Face f, Face showing) {
+    if (f == showing && _deck) return Settings.I.set('console_deck', false);
     final id = switch (f) { Face.pad => 'touchpad', Face.keys => 'keys', Face.quick => 'quick', Face.gamepad => 'gamepad' };
     Settings.I.set('console_face', id);
+    Settings.I.set('console_deck', true);
   }
 
   void _windowMenu(int id) {
@@ -180,7 +201,7 @@ class _ConsoleViewState extends State<ConsoleView> with SingleTickerProviderStat
     final form = Form.of(size, touch: true);
     final pref = switch (Settings.I.s('console_face')) { 'touchpad' => 'pad', final s => s };
     final face = Face.resolve(pref, form);
-    final L = console(vw: vw, vh: vh, inset: sa, outW: outW, outH: outH, form: form, face: face);
+    final target = console(vw: vw, vh: vh, inset: sa, outW: outW, outH: outH, form: form, face: face, deck: _deck);
     final stage = Offset.zero & size;
     final c0 = fit(stage, outW > 0 && outH > 0 ? outW / outH : vw / vh);
     final railSide = Settings.I.s('rail');
@@ -190,8 +211,11 @@ class _ConsoleViewState extends State<ConsoleView> with SingleTickerProviderStat
     return ColoredBox(
       color: Tokens.stage,
       child: AnimatedBuilder(
-        animation: _arr,
+        animation: Listenable.merge([_arr, _lay]),
         builder: (context, _) {
+          final from = _from;
+          final L = _lay.isAnimating && from != null ? lerpLayout(from, target, Tokens.spring.transform(_lay.value)) : target;
+          _shown = L;
           final a = _arr.value;
           final toConsole = !_cockpit;
           // The plates and the console-only controls: in from 30% of the run, out by 38%.
@@ -318,7 +342,7 @@ class _ConsoleViewState extends State<ConsoleView> with SingleTickerProviderStat
               if (face != Face.gamepad) only_('strip', WindowStrip(onWindowMenu: _windowMenu)),
               only_(
                 'faces',
-                Align(alignment: Alignment.topCenter, child: FacesSwitch(active: face, flow: L.faces, touch: form.touch, onPick: _face)),
+                Align(alignment: Alignment.topCenter, child: FacesSwitch(active: _deck ? face : null, flow: L.faces, touch: form.touch, onPick: (f) => _face(f, face))),
               ),
               if (face == Face.gamepad)
                 only_('pad', const GameFace())
@@ -397,7 +421,7 @@ class _ConsoleViewState extends State<ConsoleView> with SingleTickerProviderStat
               fly(
                 (s) => railAt(0, s),
                 (s) => slotAt('faces', s, centreY: false),
-                IgnorePointer(ignoring: a > .5, child: _RailFace(face: face, touch: form.touch, onPick: _face)),
+                IgnorePointer(ignoring: a > .5, child: _RailFace(face: face, touch: form.touch, onPick: (f) => _face(f, face))),
                 opacity: _l(railOpacity, 0, a),
               ),
               fly(
