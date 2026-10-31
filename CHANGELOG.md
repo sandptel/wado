@@ -19,6 +19,19 @@
 - Computers report `ID_LIKE` (`os_like`), so derivatives get their parent's logo; the sessions list
   is served on control rooms, so a phone sees what runs without taking the seat.
 
+## Unreleased
+
+### The app, natively (Flutter) — "wado next"
+
+- A native app over the Rust client core, ported screen for screen from the web client: home with
+  OS logos, pairing (QR, link or typed code), the computer page (link, now playing, quick
+  controls, clipboard, passkey), the session (live picture, the Pocket Console with Touchpad,
+  Keys, Quick and Gamepad faces, the control centre, apps, windows, workspaces), Virtual input
+  (touchpad on its own link, keyboard, gamepad — no session needed), Files, Shells, and the
+  settings pages. Installs beside the old app; pair it once.
+- The core can open the web client's rooms itself (seat, control, view) and hands their messages
+  over unchanged.
+
 ## v0.0.4 — `2026-10-30`
 
 The phone becomes the computer's touchpad, keyboard and gamepad; pairing by code only; the
