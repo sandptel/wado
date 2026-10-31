@@ -2,7 +2,6 @@
 // connecting and no-picture states drawn in the stage itself with Leave and Retry, and the dock.
 // Back (or ○) leaves the session running and goes to the computer's page.
 import 'package:flutter/material.dart';
-import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../../wado/nav.dart';
 import '../../wado/relay_link.dart';
@@ -10,8 +9,10 @@ import '../../wado/session.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
+import 'console.dart';
 import 'control_centre.dart';
 import 'input_layer.dart';
+
 
 void leaveToComputer() {
   Session.I.leave();
@@ -32,12 +33,8 @@ class SessionView extends StatelessWidget {
         builder: (context, _) {
           final pic = s.hasVideo.value;
           return Stack(children: [
-            if (pic)
-              Positioned.fill(
-                child: InputLayer(child: RTCVideoView(s.renderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitContain)),
-              ),
-            if (!pic) Positioned.fill(child: _Connecting(t: t)),
-            const Positioned(right: 8, bottom: 8, child: Dock()),
+            if (pic) const Positioned.fill(child: Console()),
+            if (!pic) ...[Positioned.fill(child: _Connecting(t: t)), const Positioned(right: 8, bottom: 8, child: Dock())],
           ]);
         },
       ),

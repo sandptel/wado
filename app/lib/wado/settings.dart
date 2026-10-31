@@ -61,6 +61,9 @@ const defaults = <String, Object>{
   'text_scale': 0.0, // 0 = follow the phone
   'ui_size': 'cozy',
   'debug_master': true,
+  'cockpit': false,
+  'console_face': 'keys',
+  'pad_marks_off': false,
 };
 
 class Settings extends ChangeNotifier {
@@ -81,6 +84,14 @@ class Settings extends ChangeNotifier {
 
   T get<T>(String k) {
     final v = _v[k] ?? defaults[k];
+    // A key nobody wrote and with no default reads as its type's empty value, never a crash.
+    if (v == null) {
+      if (T == bool) return false as T;
+      if (T == String) return '' as T;
+      if (T == int) return 0 as T;
+      if (T == double) return 0.0 as T;
+      return <String>[] as T;
+    }
     if (T == double && v is int) return v.toDouble() as T;
     if (v is List && v is! List<String> && <String>[] is T) return v.cast<String>() as T;
     return v as T;
