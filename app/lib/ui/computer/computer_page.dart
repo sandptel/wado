@@ -341,7 +341,7 @@ class _SettingsList extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = Settings.I;
     final q = switch (s.s('quality')) { 'reactivity' => 'Reactive', 'quality' => 'Sharp', 'custom' => 'Custom', _ => 'Balanced' };
-    final res = s.s('res').isEmpty ? 'Fit this screen' : s.s('res').replaceAll('x', '×');
+    final res = s.s('res').isEmpty ? 'Fit the console' : s.s('res').replaceAll('x', '×');
     final h = Host.I.state.value;
     String sound = "The computer's sound and Bluetooth";
     if (h != null) {

@@ -174,6 +174,12 @@ class Multi {
 
   /// A join, take over or end refused on a joined room: say why, and go home. True: handled.
   bool error(String why) {
+    // The computer page's own asks (Claude, push, the network) refused on the short-lived room
+    // link: not about the join, take over or end, so nothing to say.
+    if (RelayLink.I.view != null && (why == 'join the session first' || why.startsWith('not on a joined session'))) {
+      rlog('joined room refused a side request: $why');
+      return true;
+    }
     if (_room == null || Session.I.on.value) return false;
     ask.value = Ask('multi', why.isEmpty ? why : why[0].toUpperCase() + why.substring(1), [('OK', true, home)]);
     busy.value = ('', '');

@@ -78,4 +78,13 @@ void main() {
       }
     }
   });
+
+  test('a session shaped like the slot fills the console edge to edge', () {
+    for (final (w, h, inset) in const [(412.0, 915.0, EdgeInsets.fromLTRB(0, 40, 0, 24)), (915.0, 412.0, EdgeInsets.fromLTRB(40, 0, 24, 0)), (800.0, 1280.0, EdgeInsets.zero)]) {
+      final room = pictureRoom(w, h, inset);
+      final l = console(vw: w, vh: h, inset: inset, outW: room.width, outH: room.height, form: Form.of(Size(w, h)), face: Face.pad);
+      expect(l.pic.width, closeTo(room.width, .5));
+      expect(l.pic.height, closeTo(room.height, .5));
+    }
+  });
 }

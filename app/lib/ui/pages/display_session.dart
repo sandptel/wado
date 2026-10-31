@@ -74,9 +74,11 @@ class _DisplaySessionState extends State<DisplaySession> {
         // The shapes worth a chip: this device's exact sizes, then the catalog's same-way ones.
         final device = Session.resOptions(sw, sh);
         final (same, turned) = res.grouped(sw, sh, device);
-        final chips = [for (final v in device) (v, 'fits exactly', true), for (final (v, l) in same.take(3)) (v, res.short(l), false)];
+        // The default fills the console's picture; the screen's own sizes fill full screen.
+        final fit = Session.fitRes();
+        final chips = [(fit, 'fits the console', true), for (final v in device) if (v != fit) (v, 'fits full screen', true), for (final (v, l) in same.take(3)) (v, res.short(l), false)];
         var now = s.s('res');
-        if (now.isEmpty) now = Session.defaultRes(sw, sh);
+        if (now.isEmpty) now = fit;
         final inChips = chips.any((c) => c.$1 == now);
         final showMore = _more || !inChips;
         final wh = res.parseWh(now);
@@ -102,15 +104,15 @@ class _DisplaySessionState extends State<DisplaySession> {
             SizedBox(
               height: 96,
               child: ListView(scrollDirection: Axis.horizontal, children: [
-                for (final (v, sub, exact) in chips) _Shape(v: v, sub: sub, exact: exact, on: v == now, onTap: () => s.set('res', v)),
+                for (final (v, sub, exact) in chips) _Shape(v: v, sub: sub, exact: exact, on: v == now, onTap: () => s.set('res', v == fit ? '' : v)),
                 _Shape(v: 'more', sub: 'every size', exact: false, on: showMore, more: true, onTap: () => setState(() => _more = !_more)),
               ]),
             ),
             if (showMore) ...[
               _Pick(
                 value: now,
-                groups: [('This screen', [for (final v in device) (v, v.replaceAll('x', ' × '))]), ('Same way round', same), ('Turned', turned)],
-                onPick: (v) => s.set('res', v),
+                groups: [('The console', [(fit, fit.replaceAll('x', ' × '))]), ('Full screen', [for (final v in device) (v, v.replaceAll('x', ' × '))]), ('Same way round', same), ('Turned', turned)],
+                onPick: (v) => s.set('res', v == fit ? '' : v),
               ),
               if (now == 'custom')
                 Row(children: [

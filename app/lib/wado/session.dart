@@ -7,11 +7,14 @@ import 'dart:convert';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart' show EdgeInsets;
 import 'package:flutter/widgets.dart' show AppLifecycleListener;
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../ui/theme/look.dart';
 import 'apps.dart';
+import 'console_layout.dart' show pictureRoom;
+import 'latency.dart';
 import 'log.dart';
 import 'relay_link.dart';
 import 'multi.dart';
@@ -158,9 +161,8 @@ class Session {
   static Map<String, dynamic> config() {
     final s = Settings.I;
     final view = ui.PlatformDispatcher.instance.views.first;
-    final (sw, sh) = screen();
     var res = s.s('res');
-    if (res.isEmpty) res = defaultRes(sw, sh);
+    if (res.isEmpty) res = fitRes();
     int w, h;
     if (res == 'custom') {
       w = s.i('custom_w');
@@ -229,6 +231,25 @@ class Session {
     }
     if (out.isEmpty) out.add('${sw.clamp(16, 1 << 30) & ~1}x${sh.clamp(16, 1 << 30) & ~1}');
     return out;
+  }
+
+  /// The default shape: the console's picture room, the way round the session will be, so the
+  /// picture fills it edge to edge (full screen letterboxes a little instead). 720 on the short side.
+  static String fitRes() {
+    final view = ui.PlatformDispatcher.instance.views.first;
+    final (sw, sh) = screen();
+    final k = view.devicePixelRatio;
+    final p = view.viewPadding;
+    var inset = EdgeInsets.fromLTRB(p.left / k, p.top / k, p.right / k, p.bottom / k);
+    // Held the other way round from the session: the bars turn with the phone.
+    // ponytail: a quarter turn of today's insets (the status bar's side goes left), not the OS's own.
+    final held = view.physicalSize;
+    if ((held.width >= held.height) != (sw >= sh)) inset = EdgeInsets.fromLTRB(inset.top, inset.left, inset.bottom, inset.right);
+    final room = pictureRoom(sw / k, sh / k, inset);
+    if (room.width < 1 || room.height < 1) return defaultRes(sw, sh);
+    final a = room.width / room.height;
+    final (w, h) = a >= 1 ? ((720 * a).round() & ~1, 720) : (720, (720 / a).round() & ~1);
+    return '${w}x$h';
   }
 
   /// res/device.rs `default_value`: the 720p option, else the first that fits.
@@ -528,6 +549,7 @@ class Session {
     inputDC = motionDC = fastDC = null;
     hasVideo.value = false;
     Stats.I.stop();
+    Latency.I.stop();
     Presence.I.clear();
     if (_rendererReady) renderer.srcObject = null;
     p?.close();
@@ -572,6 +594,7 @@ class Session {
       await p.addTransceiver(kind: RTCRtpMediaType.RTCRtpMediaTypeAudio, init: RTCRtpTransceiverInit(direction: TransceiverDirection.RecvOnly));
     }
     inputDC = await p.createDataChannel(inputChannel, RTCDataChannelInit()..ordered = true);
+    Latency.I.attach(inputDC!);
     motionDC = await p.createDataChannel(motionChannel, RTCDataChannelInit()
       ..ordered = true
       ..maxRetransmits = 0);

@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show Ticker;
 
 import '../../../wado/health.dart';
+import '../../../wado/latency.dart';
 import '../../../wado/session.dart';
 import '../../../wado/settings.dart';
 import '../../../wado/stats.dart';
@@ -43,7 +44,7 @@ class Readouts extends StatelessWidget {
     final s = Session.I;
     return IgnorePointer(
       child: ListenableBuilder(
-        listenable: Listenable.merge([Settings.I, Stats.I.sample, Stats.I.verdict, s.on, s.encoder, s.stagebar]),
+        listenable: Listenable.merge([Settings.I, Stats.I.sample, Stats.I.verdict, s.on, s.encoder, s.stagebar, Latency.I.timing, Latency.I.inputMs]),
         builder: (context, _) {
           if (!s.on.value) return const SizedBox.shrink();
           final narrow = MediaQuery.sizeOf(context).width < 520;
@@ -53,6 +54,8 @@ class Readouts extends StatelessWidget {
             if (fps) x?.fps == null ? '— fps' : '${x!.fps!.round()} fps',
             if (ping) x?.ping == null ? '— ms' : '${x!.ping!.round()} ms',
             if (ping && x?.jbuf != null) '${x!.jbuf!.round()} ms buf',
+            // What a finger feels: tap → daemon → back.
+            if (ping && Latency.I.inputMs.value != null) '${Latency.I.inputMs.value!.round()} ms input',
           ].join(' · ');
           final badge = _badge(s.encoder.value.$2);
           final pill = bar || fps || ping;
@@ -112,6 +115,8 @@ class Readouts extends StatelessWidget {
                   ),
                 if (readout('health') && pillW != null) const SizedBox(height: 6),
                 if (pillW != null) Align(alignment: Alignment.topRight, child: pillW),
+                const Spacer(),
+                if (readout('latency') && Latency.I.timing.value != null) _Breakdown(t: Latency.I.timing.value!, x: x, narrow: narrow),
               ],
             ),
           );
@@ -322,4 +327,57 @@ class _MarksPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_MarksPainter o) => true;
+}
+
+/// `#wado-latency`: one chip per stage along the picture's foot, values in a fixed column so the
+/// one that grew is the one that moves. Drops on the server and on this device are two readings.
+class _Breakdown extends StatelessWidget {
+  const _Breakdown({required this.t, required this.x, required this.narrow});
+  final Map<String, dynamic> t;
+  final Sample? x;
+  final bool narrow;
+  @override
+  Widget build(BuildContext context) {
+    final k = Tok.of(context);
+    final size = rem(context, narrow ? .625 : .6875);
+    String n(Object? v) => v is num ? v.toStringAsFixed(1) : '—';
+    final stages = <(String, String, bool)>[
+      ('capture', n(t['capture_ms']), false),
+      ('encode', n(t['encode_ms']), false),
+      ('queue', n(t['queue_ms']), false),
+      ('tick', n(t['tick_ms']), false),
+      ('net', n(x?.ping == null ? null : x!.ping! / 2), false),
+      ('buf', n(x?.jbuf), false),
+      ('decode', n(x?.dec), false),
+      ('input', n(Latency.I.inputMs.value), false),
+      ('dropped', '${t['dropped'] ?? 0}', true),
+      ('device drop', '${n(x?.decodeDropPct)}%', true),
+    ];
+    final mono = TextStyle(fontFamily: Tokens.mono, fontSize: size, fontFeatures: const [FontFeature.tabularFigures()]);
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.symmetric(horizontal: narrow ? 8 : 12, vertical: narrow ? 4 : 6),
+      decoration: BoxDecoration(color: const Color(0x99000000), borderRadius: BorderRadius.circular(k.r1)),
+      // One line, scrolled sideways: a short picture has no room for rows.
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(children: [
+        for (final (name, v, note) in stages)
+          Container(
+            margin: EdgeInsets.only(right: narrow ? 4 : 6),
+            padding: EdgeInsets.symmetric(horizontal: narrow ? 5 : 7, vertical: 1),
+            decoration: BoxDecoration(color: k.base[1], borderRadius: BorderRadius.circular(10), border: Border.all(color: k.base[2])),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Text(name, style: mono.copyWith(color: k.base[3])),
+              SizedBox(width: narrow ? 3 : 5),
+              ConstrainedBox(
+                constraints: BoxConstraints(minWidth: size * (narrow ? 2.6 : 3.2)),
+                child: Text(v, textAlign: TextAlign.right, style: mono.copyWith(color: note ? k.base[0xA] : k.base[0xC])),
+              ),
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
 }

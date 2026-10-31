@@ -87,6 +87,15 @@ Rect fit(Rect room, double aspect) {
 }
 
 /// The console arrangement.
+/// The picture's room in the console with its deck out — what a session sized to fill it would
+/// measure (a very wide picture is width-bound, a very tall one height-bound).
+Size pictureRoom(double vw, double vh, EdgeInsets inset) {
+  final form = Form.of(Size(vw, vh));
+  final w = console(vw: vw, vh: vh, inset: inset, outW: 1e4, outH: 1, form: form, face: Face.pad).pic.width;
+  final h = console(vw: vw, vh: vh, inset: inset, outW: 1, outH: 1e4, form: form, face: Face.pad).pic.height;
+  return Size(w, h);
+}
+
 ConsoleLayout console({required double vw, required double vh, EdgeInsets inset = EdgeInsets.zero, double outW = 0, double outH = 0, required Form form, required Face face, bool deck = true}) {
   vw = math.max(vw, 1);
   vh = math.max(vh, 1);
@@ -116,7 +125,9 @@ ConsoleLayout console({required double vw, required double vh, EdgeInsets inset 
         final availH = vh - yTop - top - g - (g + strip + g + (deck ? deckMin + g : 0) + reserve) - dock - e - sa.bottom;
         // Width-bound on a phone: the leftover height goes to the deck, not a dead band.
         final r = fit(Rect.fromLTWH(sa.left + e + rail + g, yTop + top + g, availW, math.max(availH, 40)), aspect);
-        return Rect.fromLTWH(r.left, yTop + top + g, r.width, r.height);
+        // With the deck put away there is nothing to hand the leftover to: centre the picture in it.
+        final drop = deck ? 0.0 : math.max(0.0, availH - r.height) / 2;
+        return Rect.fromLTWH(r.left, yTop + top + g + drop, r.width, r.height);
       }
 
       var p = pick(0);
