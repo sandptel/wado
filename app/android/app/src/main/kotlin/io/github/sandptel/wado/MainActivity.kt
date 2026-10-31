@@ -52,6 +52,17 @@ class MainActivity : FlutterFragmentActivity() {
                     result.success(Inbound.of(intent, contentResolver))
                     intent = Intent() // answered once: a recreated activity does not replay it
                 }
+                // A file from the computer, opened in this phone's own app for its kind (a PDF in
+                // the PDF app, a video in the player): the viewer's "Opens in your … app".
+                "view" -> try {
+                    val f = java.io.File(call.argument<String>("path")!!)
+                    val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.files", f)
+                    startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, call.argument<String>("mime"))
+                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+                    result.success(true)
+                } catch (_: android.content.ActivityNotFoundException) {
+                    result.success(false)
+                }
                 "read" -> Thread {
                     val bytes = Inbound.read(call.argument<String>("uri")!!, contentResolver)
                     runOnUiThread { result.success(bytes) }
