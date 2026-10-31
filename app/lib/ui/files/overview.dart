@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../wado/files.dart';
 import '../theme/look.dart';
+import '../motion/motion.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
 import 'files_page.dart' show fmtSize, fmtWhen, iconFor;
@@ -72,8 +73,10 @@ class _FilesOverviewState extends State<FilesOverview> {
           physics: const NeverScrollableScrollPhysics(),
           childAspectRatio: 1.25,
           children: [
-            for (final (name, kind, icon, hue) in cats) _Cat(name: name, icon: icon, hue: t.base[hue], onTap: () => widget.onFind(name, kind: kind)),
-            if (dl != null) _Cat(name: 'Downloads', icon: 'down', hue: t.base[0xB], onTap: () => widget.onGo('${dl['path']}')),
+            // A micro cascade: 30 ms apart, the six in well under 200 ms.
+            for (final (i, (name, kind, icon, hue)) in cats.indexed)
+              Enter(delay: Duration(milliseconds: 30 * i), ms: 360, dy: 10, child: _Cat(name: name, icon: icon, hue: t.base[hue], onTap: () => widget.onFind(name, kind: kind))),
+            if (dl != null) Enter(delay: Duration(milliseconds: 30 * cats.length), ms: 360, dy: 10, child: _Cat(name: 'Downloads', icon: 'down', hue: t.base[0xB], onTap: () => widget.onGo('${dl['path']}'))),
           ],
         ),
       ),
@@ -129,9 +132,15 @@ class _FilesOverviewState extends State<FilesOverview> {
                   Text('${fmtSize(free)} free', style: body(context, size: .75, color: t.dim)),
                 ]),
                 const SizedBox(height: 6),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(999),
-                  child: LinearProgressIndicator(value: pct.toDouble(), minHeight: 6, color: pct > .9 ? t.bad : t.accent, backgroundColor: t.s2),
+                // The bar fills to how full the disk is as it arrives — progress, so it decelerates.
+                TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0, end: pct.toDouble()),
+                  duration: t.durSheet,
+                  curve: Tokens.spring,
+                  builder: (context, v, _) => ClipRRect(
+                    borderRadius: BorderRadius.circular(999),
+                    child: LinearProgressIndicator(value: v, minHeight: 6, color: pct > .9 ? t.bad : t.accent, backgroundColor: t.s2),
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Text('${fmtSize(used)} of ${fmtSize(total)} used', style: body(context, size: .6875, color: t.dim)),
@@ -181,8 +190,8 @@ class _Chip extends StatelessWidget {
       onTap: onTap,
       label: name,
       child: Container(
-        height: 40,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
+        height: 44,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
         decoration: BoxDecoration(color: t.s2, borderRadius: BorderRadius.circular(999)),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           WIcon(icon, size: 16, color: t.base[0xA]),

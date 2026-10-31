@@ -23,6 +23,8 @@ void main() {
     await tester.pumpWidget(MaterialApp(
       home: Material(child: TokensScope(tokens: Look.I.tokens.value, child: FilesOverview(quick: quick, onGo: (_) {}, onOpen: (_) {}, onFind: (t, {kind = '', query = ''}) => found = kind, onRecent: () {}))),
     ));
+    // The categories cascade in and the storage bars fill: let them land.
+    await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     await tester.tap(find.text('Videos'));
     expect(found, 'video');

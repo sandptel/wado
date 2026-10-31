@@ -100,7 +100,7 @@ class _ShellPageState extends State<ShellPage> {
           else if (s.refused.value.isNotEmpty)
             Padding(padding: const EdgeInsets.all(12), child: WCard(alert: true, children: [Text(s.refused.value, style: body(context, color: t.bright))])),
           // Shells always ride the relay: a big dump arrives at its pace, and says so.
-          const Padding(padding: EdgeInsets.fromLTRB(12, 8, 12, 0), child: LaneCard(spot: 'shell')),
+          const LaneCard(spot: 'shell', margin: EdgeInsets.fromLTRB(12, 8, 12, 0)),
           Expanded(
             child: id == 0
                 ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(list.isEmpty ? 'No shell open on this computer for this phone. Tap New.' : '', style: body(context, color: t.dim))))

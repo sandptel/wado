@@ -6,6 +6,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -283,9 +284,19 @@ class _FilesPageState extends State<FilesPage> {
         Container(
           padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
           decoration: BoxDecoration(color: t.s0, border: Border(bottom: BorderSide(color: t.line))),
-          child: _sel.isNotEmpty
+          // The selection's bar takes over the title bar: it rises 6 px into place while the
+          // title sinks away, so the swap reads as one surface changing role.
+          child: AnimatedSwitcher(
+            duration: t.dur,
+            switchInCurve: Tokens.spring,
+            switchOutCurve: Curves.easeIn,
+            transitionBuilder: (child, a) => FadeTransition(
+              opacity: a,
+              child: SlideTransition(position: Tween(begin: Offset(0, child.key == const ValueKey('sel') ? .25 : -.25), end: Offset.zero).animate(a), child: child),
+            ),
+            child: _sel.isNotEmpty
               // The selection's bar: how many, and what can be done to all of them.
-              ? Row(children: [
+              ? Row(key: const ValueKey('sel'), children: [
                   IconBtn('x', label: 'Clear the selection', color: t.bright, onTap: () => setState(_sel.clear)),
                   Expanded(child: Text('${_sel.length} selected', style: body(context, w: FontWeight.w600, color: t.bright))),
                   IconBtn('down', label: 'Download to this phone', color: t.bright, onTap: () async {
@@ -302,7 +313,7 @@ class _FilesPageState extends State<FilesPage> {
                     _refresh();
                   }),
                 ])
-              : Row(children: [
+              : Row(key: const ValueKey('title'), children: [
                   if (_view == 'home')
                     Padding(padding: const EdgeInsets.fromLTRB(8, 0, 4, 0), child: WIcon('folder', color: t.base[0xA]))
                   else
@@ -325,13 +336,15 @@ class _FilesPageState extends State<FilesPage> {
                     IconBtn('share', label: 'Send from this phone', color: t.accent, onTap: _path == null ? null : _upload),
                   ],
                 ]),
+          ),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          child: LaneCard(spot: 'files', onRetry: () {
+        LaneCard(
+          spot: 'files',
+          margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          onRetry: () {
             Files.I.close();
             _start();
-          }),
+          },
         ),
         for (final j in _jobs.entries)
           Padding(
@@ -371,15 +384,29 @@ class _FilesPageState extends State<FilesPage> {
     final isDir = e['dir'] == true;
     final hue = isDir ? t.base[0xA] : t.base[0xD];
     final parent = where && path.contains('/') ? path.substring(0, path.lastIndexOf('/')) : '';
-    return Press(
+    return Semantics(
+      selected: on,
+      child: Press(
       onTap: () => _sel.isNotEmpty ? _toggle(e) : (isDir ? _go(path) : openViewer(context, path, e)),
-      onLongPress: () => _toggle(e),
+      onLongPress: () {
+        HapticFeedback.selectionClick();
+        _toggle(e);
+      },
       label: '${e['name']}${on ? ', selected' : ''}',
-      child: Container(
-        color: on ? fade(t.accent, 88) : null,
+      child: AnimatedContainer(
+        duration: t.durPress,
+        curve: Tokens.spring,
+        color: on ? fade(t.accent, 88) : fade(t.accent, 100),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(children: [
-          Disc(hue: on ? t.accent : hue, child: WIcon(on ? 'check' : iconFor(e), color: on ? t.accent : hue)),
+          // Picked: the kind's icon gives way to a check that pops in (and back without the pop).
+          AnimatedSwitcher(
+            duration: t.dur,
+            switchInCurve: t.pop,
+            switchOutCurve: Curves.easeIn,
+            transitionBuilder: (child, a) => ScaleTransition(scale: Tween(begin: .6, end: 1.0).animate(a), child: FadeTransition(opacity: a, child: child)),
+            child: Disc(key: ValueKey(on), hue: on ? t.accent : hue, child: WIcon(on ? 'check' : iconFor(e), color: on ? t.accent : hue)),
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -390,6 +417,7 @@ class _FilesPageState extends State<FilesPage> {
           ),
           if (_sel.isEmpty) IconBtn('dots', label: 'More', onTap: () => _menu(e)),
         ]),
+      ),
       ),
     );
   }

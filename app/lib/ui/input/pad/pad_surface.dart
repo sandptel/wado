@@ -46,7 +46,8 @@ class _PadSurfaceState extends State<PadSurface> with SingleTickerProviderStateM
     _lifts.removeWhere((l) => now - l.$2 > 140);
     // A lone finger keeps ticking until its hold ring has filled.
     final holding = _solo && _down.length == 1 && now - _since < holdMs + holdFillMs + 50;
-    final busy = _lifts.isNotEmpty || holding || _down.values.any((f) => now - f.born < 220);
+    final fading = _hintKind != null && now - _hintAt < 140;
+    final busy = _lifts.isNotEmpty || holding || fading || _down.values.any((f) => now - f.born < 220);
     if (!busy) _tick.stop();
     setState(() {});
   });
@@ -73,8 +74,17 @@ class _PadSurfaceState extends State<PadSurface> with SingleTickerProviderStateM
       if (_locked != null && h?.kind != _locked) h = null;
     }
     if (h?.kind == 'hold' && !_solo) h = null;
+    // A new kind of gesture fades in from here; the same one carries on where it was.
+    if (h?.kind != _hintKind) {
+      _hintKind = h?.kind;
+      _hintAt = _sw.elapsedMilliseconds;
+      if (h != null) _wake();
+    }
     return h;
   }
+
+  String? _hintKind;
+  int _hintAt = 0;
 
   /// Claimed gestures' pulses: the action's icon where it happened.
   final _pulses = <(String, Offset, Key)>[];
@@ -145,7 +155,7 @@ class _PadSurfaceState extends State<PadSurface> with SingleTickerProviderStateM
               ),
             ),
             if (widget.marks)
-              CustomPaint(painter: _Feel(t, {for (final e in _down.entries) e.key: e.value}, List.of(_lifts), _sw.elapsedMilliseconds, rem(context, .75), _hint())),
+              CustomPaint(painter: _Feel(t, {for (final e in _down.entries) e.key: e.value}, List.of(_lifts), _sw.elapsedMilliseconds, rem(context, .75), _hint(), _hintAt)),
             // `.tpedge`: an accent glow along the edge being swiped from, brighter once it fires.
             ValueListenableBuilder(
               valueListenable: PadGestures.I.edgeGlow,
@@ -210,13 +220,15 @@ class _PadSurfaceState extends State<PadSurface> with SingleTickerProviderStateM
 }
 
 class _Feel extends CustomPainter {
-  _Feel(this.t, this.down, this.lifts, this.now, this.chipSize, this.hint);
+  _Feel(this.t, this.down, this.lifts, this.now, this.chipSize, this.hint, this.hintAt);
   final Tokens t;
   final Map<int, _Finger> down;
   final List<(Offset, int)> lifts;
   final int now;
   final double chipSize;
   final PadHint? hint;
+  /// When this kind of hint appeared: it fades in over 120 ms (micro-feedback, ease-out).
+  final int hintAt;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -264,7 +276,8 @@ class _Feel extends CustomPainter {
   /// `.tpg`: arrows leading past the fingers (scroll, swipe), or out and in along the pinch's line,
   /// or a held finger's ring filling; and a label, trailing behind or under them.
   void _hint(Canvas canvas, PadHint h) {
-    final a = t.accent;
+    final shown = t.reduced ? 1.0 : Curves.easeOut.transform(((now - hintAt) / 120).clamp(0.0, 1.0));
+    final a = t.accent.withValues(alpha: shown);
     final chev = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.5
@@ -281,7 +294,7 @@ class _Feel extends CustomPainter {
       canvas.translate(at.dx, at.dy);
       canvas.rotate(angle);
       for (var i = 0; i < count; i++) {
-        canvas.drawPath(v.shift(Offset(i * 10.0, 0)), chev..color = a.withValues(alpha: .45 + .55 * (i + 1) / count));
+        canvas.drawPath(v.shift(Offset(i * 10.0, 0)), chev..color = a.withValues(alpha: shown * (.45 + .55 * (i + 1) / count)));
       }
       canvas.restore();
     }
@@ -311,9 +324,13 @@ class _Feel extends CustomPainter {
       text: TextSpan(text: label, style: TextStyle(fontSize: chipSize, fontWeight: FontWeight.w600, color: t.bright)),
       textDirection: TextDirection.ltr,
     )..layout();
-    final r = Rect.fromCenter(center: h.at + off, width: tp.width + 20, height: tp.height + 10);
-    canvas.drawRRect(RRect.fromRectAndRadius(r, const Radius.circular(999)), Paint()..color = Color.alphaBlend(fade(a, 82), t.s2));
+    // The label settles from 90% as it fades in, so it arrives rather than blinks on.
+    final k = .9 + .1 * shown;
+    final r = Rect.fromCenter(center: h.at + off, width: (tp.width + 20) * k, height: (tp.height + 10) * k);
+    canvas.saveLayer(r.inflate(2), Paint()..color = Color.fromRGBO(0, 0, 0, shown));
+    canvas.drawRRect(RRect.fromRectAndRadius(r, const Radius.circular(999)), Paint()..color = Color.alphaBlend(fade(t.accent, 82), t.s2));
     tp.paint(canvas, r.center - Offset(tp.width / 2, tp.height / 2));
+    canvas.restore();
   }
 
   /// `.tpfinger`: a 44 px ring, a solid core and a soft fill.

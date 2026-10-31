@@ -10,8 +10,10 @@ import '../theme/tokens.dart';
 import 'basics.dart';
 
 class LaneCard extends StatefulWidget {
-  const LaneCard({super.key, required this.spot, this.onRetry});
+  const LaneCard({super.key, required this.spot, this.onRetry, this.margin = EdgeInsets.zero});
   final String spot;
+  /// Around the card only while it shows, so a hidden one leaves no gap.
+  final EdgeInsets margin;
   final VoidCallback? onRetry;
   @override
   State<LaneCard> createState() => _LaneCardState();
@@ -27,12 +29,32 @@ class _LaneCardState extends State<LaneCard> {
       listenable: Listenable.merge([Lane.I.hints, Link.I.now]),
       builder: (context, _) {
         final detail = Lane.I.hints.value[widget.spot];
-        if (detail == null || detail == _dismissed) return const SizedBox.shrink();
-        final w = laneWords(widget.spot, Link.I.now.value, detail);
-        final c = t.base[0xA];
-        return Semantics(
+        final shown = detail != null && detail != _dismissed;
+        // In: it unfolds and drops 8 px into place, decelerating; out: faster, accelerating, so
+        // what was under it is not kept waiting.
+        return AnimatedSwitcher(
+          duration: t.dur,
+          reverseDuration: Duration(milliseconds: t.dur.inMilliseconds * 2 ~/ 3),
+          switchInCurve: Tokens.spring,
+          switchOutCurve: Curves.easeIn,
+          transitionBuilder: (child, a) => SizeTransition(
+            sizeFactor: a,
+            alignment: Alignment.topCenter,
+            child: FadeTransition(opacity: a, child: SlideTransition(position: Tween(begin: const Offset(0, -.08), end: Offset.zero).animate(a), child: child)),
+          ),
+          child: shown ? KeyedSubtree(key: ValueKey(detail), child: _card(context, t, detail)) : const SizedBox(width: double.infinity),
+        );
+      },
+    );
+  }
+
+  Widget _card(BuildContext context, Tokens t, String detail) {
+    final w = laneWords(widget.spot, Link.I.now.value, detail);
+    final c = t.base[0xA];
+    return Semantics(
           liveRegion: true,
           child: Container(
+            margin: widget.margin,
             padding: const EdgeInsets.fromLTRB(14, 10, 6, 12),
             decoration: BoxDecoration(color: Color.alphaBlend(fade(c, 90), t.s1), borderRadius: BorderRadius.circular(t.r3), border: Border.all(color: fade(c, 55))),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -47,7 +69,5 @@ class _LaneCardState extends State<LaneCard> {
             ]),
           ),
         );
-      },
-    );
   }
 }

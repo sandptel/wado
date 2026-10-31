@@ -105,18 +105,24 @@ class _GpadEditorState extends State<GpadEditor> {
             ),
           ),
         // The strip: what can be done to the selection, then to the whole layout — at the top
-        // when the selection is low, so it never covers what is being changed.
-        Positioned(
-          left: 8,
-          right: 8,
-          bottom: low ? null : 8,
-          top: low ? 8 : null,
-          child: Center(
+        // when the selection is low, so it never covers what is being changed. It glides there
+        // rather than jumping, and the selection's row unfolds into it.
+        Positioned.fill(
+          child: AnimatedAlign(
+            duration: t.durSheet,
+            curve: Tokens.spring,
+            alignment: low ? Alignment.topCenter : Alignment.bottomCenter,
+            child: Padding(
+            padding: const EdgeInsets.all(8),
             child: Container(
               constraints: const BoxConstraints(maxWidth: 720),
               padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
               decoration: BoxDecoration(color: fade(t.s1, 6), borderRadius: BorderRadius.circular(t.r4), border: Border.all(color: t.line)),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
+              child: AnimatedSize(
+                duration: t.dur,
+                curve: Tokens.spring,
+                alignment: low ? Alignment.topCenter : Alignment.bottomCenter,
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
                 if (sel != null)
                   Row(children: [
                     Expanded(
@@ -143,18 +149,29 @@ class _GpadEditorState extends State<GpadEditor> {
                     _Toggle(icon: 'layers', label: 'Move together', on: _together, onTap: () => setState(() => _together = !_together)),
                     _Toggle(icon: 'eye', label: sel.hide ? 'Show' : 'Hide', on: sel.hide, onTap: () => _commit(_t, {..._t, for (final id in _ids) id: (_t[id] ?? const Tweak()).copy(hide: !sel.hide)})),
                   ]),
-                SingleChildScrollView(
+                // Done never scrolls away; the rest scrolls beside it on a narrow phone.
+                Row(children: [
+                  Expanded(
+                    child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    // Moving without dragging (WCAG 2.5.7): 8 px a tap, the grid's own step.
+                    if (sel != null)
+                      for (final (icon, name, d) in const [('left', 'Nudge left', Offset(-8, 0)), ('up', 'Nudge up', Offset(0, -8)), ('down', 'Nudge down', Offset(0, 8)), ('right', 'Nudge right', Offset(8, 0))])
+                        IconBtn(icon, label: name, color: t.bright, onTap: () => _commit(_t, moved(_t, _ids, d, size))),
                     TextButton(onPressed: _undo.isEmpty ? null : () => _step(_undo, _redo), child: const Text('Undo')),
                     TextButton(onPressed: _redo.isEmpty ? null : () => _step(_redo, _undo), child: const Text('Redo')),
                     TextButton(onPressed: () => _commit(_t, mirrored(widget.layout, widget.o, 1, size, _t)), child: const Text('Mirror')),
                     TextButton(onPressed: _t.isEmpty ? null : () => _commit(_t, {}), child: const Text('Reset')),
-                    const SizedBox(width: 8),
-                    Btn('Done', primary: true, expand: false, onTap: widget.onDone),
                   ]),
-                ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Btn('Done', primary: true, expand: false, onTap: widget.onDone),
+                ]),
               ]),
+              ),
+            ),
             ),
           ),
         ),
