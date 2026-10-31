@@ -9,6 +9,7 @@ import android.os.PersistableBundle
 import android.content.pm.PackageManager
 import android.os.Build
 import android.view.HapticFeedbackConstants
+import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -17,7 +18,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import io.github.sandptel.wado.media.RemoteMedia
+import io.github.sandptel.wado.notify.Notifier
 import io.github.sandptel.wado.passkey.AuthErrors
+import io.github.sandptel.wado.stay.StayConnectedService
 import io.github.sandptel.wado.passkey.Authenticator
 
 /**
@@ -35,11 +39,36 @@ class MainActivity : FlutterFragmentActivity() {
         cameraAnswer = null
     }
 
+    // Android 13+: notifications need asking, from the page that turns them on.
+    private var notifAnswer: ((Boolean) -> Unit)? = null
+    private val notifAsk = registerForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        notifAnswer?.invoke(ok)
+        notifAnswer = null
+    }
+
     private var os: MethodChannel? = null
+    private val notifier by lazy { Notifier(this).also { it.createChannels() } }
+    private val media by lazy { RemoteMedia(this) { op, ms -> os?.invokeMethod("media", mapOf("op" to op, "ms" to ms)) } }
+    /** Volume keys drive the computer's volume while wado is in front, when Dart says there is one. */
+    private var volumeKeys = false
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (volumeKeys && (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN)) {
+            os?.invokeMethod("volume", if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) 0.05 else -0.05)
+            return true
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
+    /** A notification's tap or button (Notifier.ACTION), as Dart reads it. */
+    private fun notifyAction(i: Intent): Map<String, String>? = if (i.action != Notifier.ACTION) null else mapOf(
+        "kind" to (i.getStringExtra("kind") ?: ""), "id" to (i.getStringExtra("id") ?: ""), "action" to (i.getStringExtra("action") ?: ""),
+    )
 
     // A new intent while running goes straight to Dart; the launching one waits until Dart asks.
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        notifyAction(intent)?.let { os?.invokeMethod("notifyAction", it); return }
         Inbound.of(intent, contentResolver)?.let { os?.invokeMethod("intent", it) }
     }
 
@@ -49,7 +78,7 @@ class MainActivity : FlutterFragmentActivity() {
         os!!.setMethodCallHandler { call, result ->
             when (call.method) {
                 "intent" -> {
-                    result.success(Inbound.of(intent, contentResolver))
+                    result.success(notifyAction(intent)?.let { mapOf("notifyAction" to it) } ?: Inbound.of(intent, contentResolver))
                     intent = Intent() // answered once: a recreated activity does not replay it
                 }
                 // A file from the computer, opened in this phone's own app for its kind (a PDF in
@@ -62,6 +91,39 @@ class MainActivity : FlutterFragmentActivity() {
                     result.success(true)
                 } catch (_: android.content.ActivityNotFoundException) {
                     result.success(false)
+                }
+                "notify" -> {
+                    @Suppress("UNCHECKED_CAST")
+                    notifier.show(call.argument("kind")!!, call.argument("id")!!, call.argument("title") ?: "", call.argument("body") ?: "",
+                        (call.argument<List<Map<String, String>>>("actions") ?: emptyList()))
+                    result.success(null)
+                }
+                "notifyClear" -> {
+                    notifier.clear(call.argument("kind")!!, call.argument("id")!!)
+                    result.success(null)
+                }
+                "nowPlaying" -> {
+                    notifier
+                    media.update(call.arguments as? Map<String, Any?> ?: emptyMap())
+                    result.success(null)
+                }
+                "stay" -> {
+                    notifier
+                    StayConnectedService.onStop = { runOnUiThread { os?.invokeMethod("stayOff", null) } }
+                    StayConnectedService.sync(this, call.arguments == true)
+                    result.success(null)
+                }
+                "notifications" -> if (Build.VERSION.SDK_INT < 33 ||
+                    checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+                ) {
+                    result.success(true)
+                } else {
+                    notifAnswer = { result.success(it) }
+                    notifAsk.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+                "volumeKeys" -> {
+                    volumeKeys = call.arguments == true
+                    result.success(null)
                 }
                 "read" -> Thread {
                     val bytes = Inbound.read(call.argument<String>("uri")!!, contentResolver)

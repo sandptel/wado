@@ -8,6 +8,7 @@ import 'appearance.dart';
 import 'diagnostics.dart';
 import 'input_pages.dart';
 import 'tiles.dart';
+import 'background.dart';
 import 'display_session.dart';
 import 'sound_devices.dart';
 import 'connection_trust.dart';
@@ -34,6 +35,7 @@ final _pages = <String, PageDef>{
   'trackpad': PageDef('Touchpad', (_) => const TouchpadSettings()),
   'input_feel': PageDef('Input feel', (_) => const InputFeel()),
   'tiles': PageDef('Quick tiles', (_) => const TilesPage()),
+  'background': PageDef('Notifications & background', (_) => const BackgroundPage()),
   'about': PageDef('About', (_) => const AboutPage()),
   'input': PageDef('Virtual input', (_) => const InputHub()),
   'shells': PageDef('Shell', (_) => const ShellPage(), fullBleed: true),

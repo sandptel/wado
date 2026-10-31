@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/core_host.dart';
 import '../../wado/nav.dart';
+import '../../wado/phone.dart';
 import '../../wado/session.dart';
 import '../home/cards.dart' show go;
 import '../input/pad_screen.dart';
@@ -21,7 +22,10 @@ class Inbound {
   static Future<void> start() async {
     if (!Platform.isAndroid) return;
     os.setMethodCallHandler((c) async {
-      if (c.method == 'intent') handle(Map<String, dynamic>.from(c.arguments as Map));
+      if (c.method == 'intent') return handle(Map<String, dynamic>.from(c.arguments as Map));
+      // A notification's tap opened wado: being in front is the whole of it for now.
+      if (c.method == 'notifyAction') return;
+      await Phone.I.call(c);
     });
     var last = '';
     void follow() {
@@ -46,6 +50,7 @@ class Inbound {
   }
 
   static void handle(Map<String, dynamic> m) {
+    if (m['notifyAction'] != null) return;
     if (m['kind'] == 'share') return SendSheet.show(SharePayload.of(m));
     final url = (m['url'] ?? '') as String;
     final u = Uri.tryParse(url);

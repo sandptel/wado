@@ -80,6 +80,11 @@
         <!-- Impeller everywhere; test builds for the emulator turn it off (-Pimpeller=false): its
              emulated GLES crashes qemu itself under Impeller on some pages (Skia does not). -->
         <meta-data android:name="io.flutter.embedding.android.EnableImpeller" android:value="${impeller}" />
+        <!-- "Stay connected" (off by default): a foreground service holding the light links. -->
+        <service
+            android:name=".stay.StayConnectedService"
+            android:exported="false"
+            android:foregroundServiceType="remoteMessaging" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

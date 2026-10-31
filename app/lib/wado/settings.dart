@@ -64,6 +64,8 @@ const defaults = <String, Object>{
   'cockpit': false,
   'console_face': 'auto',
   'console_open': 'console',
+  'stay_connected': false,
+  'volume_keys': true,
   'pad_marks_off': false,
 };
 

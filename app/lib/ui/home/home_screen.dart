@@ -150,6 +150,7 @@ class PhoneList extends StatelessWidget {
       NavRow(icon: 'palette', hue: '0A', title: 'Appearance', sub: look, onOpen: () => Nav.I.openPage('appearance', aboutComputer: false)),
       NavRow(icon: 'hand', hue: '0C', title: 'Input feel', sub: input, onOpen: () => Nav.I.openPage('input_feel', aboutComputer: false)),
       NavRow(icon: 'apps', hue: '0E', title: 'Quick tiles', sub: tiles, onOpen: () => Nav.I.openPage('tiles', aboutComputer: false)),
+      NavRow(icon: 'bell', hue: '0B', title: 'Notifications & background', sub: Settings.I.b('stay_connected') ? 'Staying connected' : 'Volume keys · notifications', onOpen: () => Nav.I.openPage('background', aboutComputer: false)),
       NavRow(icon: 'pulse', hue: '08', title: 'Diagnostics', sub: 'Readouts · health · server log', onOpen: () => Nav.I.openPage('diagnostics', aboutComputer: false)),
     ]);
   }
