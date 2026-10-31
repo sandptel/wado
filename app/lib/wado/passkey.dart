@@ -41,6 +41,11 @@ class Passkey {
       _settle();
       final err = (s['error'] ?? '') as String;
       view.value = PasskeyView(state: s, busy: false, note: err, approve: s['unlocked'] == true ? null : view.value.approve);
+      if (s['unlocked'] == true && need.value.isNotEmpty) {
+        // The sheet says so for a moment, then goes (`cheer`).
+        opened.value++;
+        need.value = '';
+      }
       if (s['unlocked'] == true) {
         final f = _then;
         _then = null;
@@ -109,6 +114,24 @@ class Passkey {
     return true;
   }
 
+  /// What the step-up sheet is up for: shell · pad · files · allow · claude · new · again ·
+  /// paired · add; empty when it is down.
+  final need = ValueNotifier<String>('');
+  /// Bumped on each unlock the sheet asked for.
+  final opened = ValueNotifier<int>(0);
+
+  /// An action that needs the passkey (`W.passkeyNeed`): runs at once when unlocked, otherwise
+  /// raises the sheet, which says what it is for and runs `then` once it is unlocked.
+  void ask(String why, {VoidCallback? then}) {
+    if (view.value.unlocked || (view.value.state.isNotEmpty && !view.value.required)) {
+      then?.call();
+      return;
+    }
+    _then = then;
+    view.value = PasskeyView(state: view.value.state, approve: view.value.approve);
+    need.value = why;
+  }
+
   /// Unlock (or add a passkey first), then run `then`.
   void go({VoidCallback? then}) {
     // Already unlocked (or not asked for here): the action goes at once (passkeyThen).
@@ -117,7 +140,7 @@ class Passkey {
       return;
     }
     if (view.value.busy) return;
-    _then = then;
+    if (then != null) _then = then;
     _wanted = DateTime.now();
     _say(busy: true, note: '');
     _ask({'type': 'passkey_begin', 'purpose': view.value.registered ? 'unlock' : 'register'});
@@ -134,6 +157,7 @@ class Passkey {
     if (native) _ch.invokeMethod('cancel', {'id': _seq});
     if (view.value.approve?['state'] == 'waiting') RelayLink.I.send({'type': 'passkey_approve_cancel'});
     _then = null;
+    need.value = '';
     view.value = PasskeyView(state: view.value.state);
   }
 
@@ -157,7 +181,11 @@ class Passkey {
 
   /// Ask someone at the computer to let this phone in (passkey_approve.js).
   void approveOnComputer() {
+    // The sheet stays up, saying it waits for the computer; the action still runs on yes.
+    final keep = need.value, then = _then;
     cancel();
+    need.value = keep;
+    _then = then;
     if (!RelayLink.I.send({'type': 'passkey_approve'})) {
       _say(note: 'Not connected to the computer right now — try again when it is back.');
       return;

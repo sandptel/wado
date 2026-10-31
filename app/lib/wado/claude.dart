@@ -27,17 +27,17 @@ class Claude {
 
   void answer(String session, String ask, bool allow) {
     void go() => _send({'type': 'claude_answer', 'session': session, 'ask': ask, 'allow': allow});
-    allow ? Passkey.I.go(then: go) : go();
+    allow ? Passkey.I.ask('allow', then: go) : go();
   }
 
-  void open(String session) => Passkey.I.go(then: () {
+  void open(String session) => Passkey.I.ask('claude', then: () {
         _send({'type': 'claude_open', 'session': session});
         shell.value++;
       });
 
   void folders(String path) => _send({'type': 'claude_dirs_get', 'path': path});
 
-  void start(String dir) => Passkey.I.go(then: () {
+  void start(String dir) => Passkey.I.ask('new', then: () {
         _send({'type': 'claude_new', 'dir': dir});
         shell.value++;
       });

@@ -7,7 +7,7 @@ import '../../wado/passkey.dart';
 import '../theme/look.dart';
 import '../widgets/basics.dart';
 
-String _stayWords(String stay, bool leave) => switch (stay) {
+String stayWords(String stay, bool leave) => switch (stay) {
       'lock' => leave ? 'It stays unlocked until you lock it, or leave the app.' : 'It stays unlocked until you lock it.',
       '1h' => leave ? 'It locks again after 1 hour without use, and whenever you leave the app.' : 'It locks again after 1 hour without use.',
       '8h' => leave ? 'It locks again after 8 hours without use, and whenever you leave the app.' : 'It locks again after 8 hours without use.',
@@ -40,7 +40,7 @@ class PasskeyCard extends StatelessWidget {
             ]),
             Text('Stay unlocked', style: body(context, size: .75, color: t.dim)),
             Seg(options: const [('15m', '15 min'), ('1h', '1 hour'), ('8h', '8 hours'), ('lock', 'Until I lock')], value: stay, onPick: (s) => p.stay(s)),
-            Why(_stayWords(stay, leave)),
+            Why(stayWords(stay, leave)),
             SwitchRow(title: 'Lock when I leave the app', sub: 'Going to another app or the home screen locks it at once.', on: leave, onToggle: (b) => p.stay(stay, lockOnLeave: b)),
           ]);
         }

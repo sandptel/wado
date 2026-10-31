@@ -10,6 +10,7 @@ import '../wado/session.dart';
 import 'computer/computer_page.dart';
 import 'home/home_screen.dart';
 import 'pages/pages.dart';
+import 'passkey/passkey_sheet.dart';
 import 'session/console/console_view.dart';
 import 'theme/look.dart';
 import 'theme/tokens.dart';
@@ -249,6 +250,7 @@ class _ShellState extends State<Shell> with TickerProviderStateMixin {
                     ),
                   if (inSession) const Positioned.fill(child: ConsoleView()),
                   const Positioned.fill(child: Notes()),
+                const Positioned.fill(child: PasskeySheet()),
                   const Positioned.fill(child: ClipDock()),
                 ],
               ),

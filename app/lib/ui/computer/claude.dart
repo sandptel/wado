@@ -77,7 +77,7 @@ class _ClaudeSectionState extends State<ClaudeSection> {
             _Empty('No Claude sessions on $name right now.'),
           for (final c in sessions) Padding(padding: const EdgeInsets.only(top: 8), child: ClaudeCard(key: ValueKey(c['id']), c: c)),
           const SizedBox(height: 10),
-          Btn('New Claude session', icon: 'plus', onTap: () => Passkey.I.go(then: () => _pick(context, name))),
+          Btn('New Claude session', icon: 'plus', onTap: () => Passkey.I.ask('new', then: () => _pick(context, name))),
           if (st['tmux'] != true) ...[
             const SizedBox(height: 8),
             Text("tmux isn't installed on $name, so a new session lives in a wado shell and ends with it. With tmux it keeps running, and you can attach at the desk.",
