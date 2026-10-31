@@ -10,6 +10,7 @@ import '../theme/tokens.dart';
 import '../widgets/basics.dart';
 import '../widgets/slider.dart';
 import 'display_session.dart' show HeadCard;
+import 'dock_switcher.dart';
 
 const _textMin = 85, _textMax = 150, _textStep = 5;
 
@@ -164,6 +165,9 @@ class _AppearanceState extends State<Appearance> {
             if (s.s('theme_custom').trim().isNotEmpty)
               Why(customOk ? 'Applied — 16 colours parsed.' : 'Not applied — could not find 16 colours.', tone: customOk ? 'ok' : 'bad'),
           ]),
+          const Sect('Dock & switcher'),
+          const SizedBox(height: 8),
+          const DockSwitcher(),
         ]);
       },
     );

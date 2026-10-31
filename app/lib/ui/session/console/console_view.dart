@@ -49,8 +49,15 @@ class ConsoleView extends StatefulWidget {
 
 class _ConsoleViewState extends State<ConsoleView> with SingleTickerProviderStateMixin {
   /// 1 = console, 0 = cockpit.
-  late final _arr = AnimationController(vsync: this, value: Settings.I.b('cockpit') ? 0 : 1);
-  bool _cockpit = Settings.I.b('cockpit');
+  late final _arr = AnimationController(vsync: this, value: _opensFull ? 0 : 1);
+  bool _cockpit = _opensFull;
+
+  /// A session opens in the arrangement this device asked for (`console { open }`).
+  static bool get _opensFull {
+    final full = Settings.I.s('console_open') == 'full';
+    if (Settings.I.b('cockpit') != full) WidgetsBinding.instance.addPostFrameCallback((_) => Settings.I.set('cockpit', full));
+    return full;
+  }
   bool _idle = false;
   Timer? _idleT;
 
@@ -113,7 +120,7 @@ class _ConsoleViewState extends State<ConsoleView> with SingleTickerProviderStat
   void _wake() {
     _idleT?.cancel();
     if (_idle) setState(() => _idle = false);
-    if (_cockpit) _idleT = Timer(const Duration(seconds: 2), () => mounted ? setState(() => _idle = true) : null);
+    if (_cockpit && !Settings.I.b('dock_pin')) _idleT = Timer(const Duration(seconds: 2), () => mounted ? setState(() => _idle = true) : null);
   }
 
   void _toggle() => Settings.I.set('cockpit', !_cockpit);

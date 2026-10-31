@@ -62,7 +62,8 @@ const defaults = <String, Object>{
   'ui_size': 'cozy',
   'debug_master': true,
   'cockpit': false,
-  'console_face': 'keys',
+  'console_face': 'auto',
+  'console_open': 'console',
   'pad_marks_off': false,
 };
 
