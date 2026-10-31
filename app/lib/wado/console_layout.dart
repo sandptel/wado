@@ -128,7 +128,10 @@ ConsoleLayout console({required double vw, required double vh, EdgeInsets inset 
       put('rotate', Rect.fromLTWH(cxr, p.top + 4, _btn, _btn));
       put('kbd', Rect.fromLTWH(cxr, p.top + 52, _btn, _btn));
       const fh = 4 * _btn + 3 * 6.0;
-      put('faces', Rect.fromLTWH(cxr, p.bottom - 4 - fh, _btn, fh));
+      // A landscape session in a portrait console leaves the picture shorter than the rail's
+      // three controls: the faces then lead the deck as a row instead of overlapping Rotate.
+      final facesRow = p.height < 52 + _btn + 8 + fh;
+      if (!facesRow) put('faces', Rect.fromLTWH(cxr, p.bottom - 4 - fh, _btn, fh));
       // The chin: the focused window's strip, the bezel's full width.
       final sy = p.bottom + g;
       final stripR = Rect.fromLTWH(xl, sy, xr + rail - xl, strip);
@@ -143,14 +146,19 @@ ConsoleLayout console({required double vw, required double vh, EdgeInsets inset 
       put('nav', Rect.fromLTWH(navX, by, math.max(navR - navX, 0), _btn));
       putR('more', Rect.fromLTWH(sa.right + e + 2, by, 0, _btn));
       // The deck takes whatever is left.
-      final deckY = gp ? sy : sy + strip + g;
+      var deckY = gp ? sy : sy + strip + g;
+      if (facesRow) {
+        const fw = 4 * _btn + 3 * 2.0;
+        put('faces', Rect.fromLTWH(left + (innerW - fw) / 2, deckY, fw, _btn));
+        deckY += _btn + g;
+      }
       final deck = Rect.fromLTWH(left, deckY, innerW, math.max(dy - g - deckY, deckMin));
       put('deck', deck);
       put('pad', deck);
       pic = p;
       ws = Flow.col;
       nav = Flow.row;
-      faces = Flow.col;
+      faces = facesRow ? Flow.row : Flow.col;
       deckCol = false;
     case Form.land || Form.tland:
       final tab = form == Form.tland;

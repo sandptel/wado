@@ -21,6 +21,14 @@ void main() {
     expect(l.deckCol, isFalse);
   });
 
+  test('a landscape session in a portrait console puts the faces over the deck', () {
+    final l = at(412, 915, Form.port, Face.keys, ow: 2400, oh: 1080);
+    final f = l['faces']!.r, deck = l['deck']!.r;
+    expect(l.faces, Flow.row);
+    expect(f.top >= l['strip']!.r.bottom && deck.top >= f.bottom, isTrue);
+    expect(f.top > l['kbd']!.r.bottom, isTrue);
+  });
+
   test('a taller phone gets a bigger deck, not a dead band', () {
     final s = at(390, 860, Form.port, Face.pad, ow: 1080, oh: 2340), t = at(390, 940, Form.port, Face.pad, ow: 1080, oh: 2340);
     expect((s.pic.width - t.pic.width).abs() < .6, isTrue);

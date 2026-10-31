@@ -500,6 +500,9 @@ class Session {
 
   bool get left => _left;
 
+  /// The running session's fractional scale (input_units.js `outputScale`): a divisor, so 1 at least.
+  double get outputScale => ((_config?['scale'] as num?)?.toDouble() ?? 1).clamp(.1, 10);
+
   /// The config last sent to the running session (Apply compares against it).
   Map<String, dynamic>? get applied => _config;
 

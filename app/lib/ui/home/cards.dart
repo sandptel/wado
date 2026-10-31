@@ -6,6 +6,9 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../../core/core_host.dart';
 import '../../wado/host.dart';
 import '../../wado/nav.dart';
+import '../../wado/online.dart';
+import '../../wado/relay_link.dart';
+import '../../wado/side_links.dart';
 import '../../wado/reach.dart';
 import '../../wado/session.dart';
 import '../theme/look.dart';
@@ -48,7 +51,13 @@ void go(Computer c) {
 class Cards extends StatelessWidget {
   const Cards({super.key});
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ListenableBuilder(
+        // What [Reach.of] reads: a const child of home would otherwise keep its first words.
+        listenable: Listenable.merge([CoreHost.I.computers, RelayLink.I.up, RelayLink.I.words, RelayLink.I.seatBusy, Online.I.map, SideLinks.I.state, Host.I.sessions, Session.I.on, Session.I.stage]),
+        builder: (context, _) => _build(context),
+      );
+
+  Widget _build(BuildContext context) {
     final t = Tok.of(context);
     final list = CoreHost.I.computers.value;
     final sel = Nav.I.selected;

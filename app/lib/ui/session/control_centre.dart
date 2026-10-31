@@ -17,8 +17,8 @@ import '../theme/look.dart';
 import '../widgets/basics.dart';
 import '../widgets/slider.dart';
 import '../pages/display_session.dart';
-import 'input_layer.dart';
-import 'session_view.dart';
+import 'keyboard.dart';
+import 'console/stage_state.dart' show leaveToComputer;
 
 void openControlCentre(BuildContext context) {
   final t = Tok.of(context);
