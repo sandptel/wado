@@ -104,6 +104,12 @@ class Session {
   final renderer = RTCVideoRenderer();
   final hasVideo = ValueNotifier<bool>(false);
   bool _rendererReady = false;
+  Future<void>? _warming;
+
+  /// The video renderer's native side holds the main thread — where Dart runs on Android — for
+  /// 140-380 ms, once per run (measured on the emulator). Paid while the app sits still, not in the
+  /// middle of a session coming up.
+  Future<void> warm() => _warming ??= renderer.initialize().then((_) => _rendererReady = true);
 
   RTCPeerConnection? pc;
   RTCDataChannel? inputDC, motionDC, fastDC;
@@ -574,10 +580,7 @@ class Session {
 
   Future<void> negotiate({bool audioOnly = false}) async {
     listening = audioOnly;
-    if (!_rendererReady) {
-      await renderer.initialize();
-      _rendererReady = true;
-    }
+    await warm();
     _closePc();
     final p = await createPeerConnection({
       'iceServers': [

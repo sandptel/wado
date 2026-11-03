@@ -17,6 +17,7 @@ import '../../theme/tokens.dart';
 import '../../widgets/basics.dart';
 import 'pad_actions_ui.dart';
 import 'pad_coach.dart';
+import '../../motion/feel.dart';
 
 class _Finger {
   _Finger(this.at, this.born) : from = at;
@@ -94,6 +95,7 @@ class _PadSurfaceState extends State<PadSurface> with SingleTickerProviderStateM
   void initState() {
     super.initState();
     _fired = PadGestures.I.fired.stream.listen((f) {
+      feel('claim');
       final p = (f.icon, f.at, UniqueKey());
       setState(() => _pulses.add(p));
       Future.delayed(const Duration(milliseconds: 320), () {
@@ -119,8 +121,9 @@ class _PadSurfaceState extends State<PadSurface> with SingleTickerProviderStateM
     final t = Tok.of(context);
     return LayoutBuilder(builder: (context, box) {
       final w = box.maxWidth, h = box.maxHeight;
-      final dpr = MediaQuery.devicePixelRatioOf(context);
-      PadTouch.I.size((w * dpr).round(), (h * dpr).round());
+      // In logical px, as the web's CSS px: the computer divides them by `px-per-mm` into the
+      // touchpad's size in mm, which libinput's gesture and thumb rules are measured in.
+      PadTouch.I.size(w.round(), h.round());
       return Listener(
         behavior: HitTestBehavior.opaque,
         onPointerDown: (e) {
@@ -212,6 +215,9 @@ class _PadSurfaceState extends State<PadSurface> with SingleTickerProviderStateM
     if (PadGestures.I.up(id)) PadTouch.I.up(id);
     final f = _down.remove(id);
     if (f != null) _lifts.add((f.at, _sw.elapsedMilliseconds));
+    // One finger down and up quickly, staying put: the computer reads a click, and the hand feels
+    // one (native_feel.js). The tap itself is libinput's; this only mirrors it.
+    if (f != null && _solo && _down.isEmpty && _sw.elapsedMilliseconds - f.born < 180 && (f.at - f.from).distance < 10) feel('tap');
     _solo = false;
     _restart();
     _wake();

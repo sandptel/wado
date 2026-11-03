@@ -3,7 +3,6 @@
 // slider grows or shrinks it (a group spreads around its centre; never under 44 px); Hide, Mirror,
 // Undo / Redo (60 steps), Reset. Every change is saved as it is made (gpad_edits.dart).
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../wado/gpad_edits.dart';
 import '../../wado/gpad_layouts.dart';
@@ -11,6 +10,7 @@ import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
 import '../widgets/slider.dart';
+import '../motion/feel.dart';
 import 'gamepad_screen.dart' show GpadView;
 
 class GpadEditor extends StatefulWidget {
@@ -74,7 +74,7 @@ class _GpadEditorState extends State<GpadEditor> {
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: () {
-                HapticFeedback.selectionClick();
+                feel('tick');
                 setState(() => _sel = c.id);
               },
               onPanStart: (_) {

@@ -24,6 +24,7 @@ import 'package:flutter/material.dart';
 import '../../wado/host.dart';
 import '../../wado/input.dart';
 import '../../wado/settings.dart';
+import '../motion/feel.dart';
 
 const _holdMs = 500, _move = 8.0, _doubleMs = 300, _doubleR = 24.0, _pinchCommit = .12;
 const _swipeMin = 60.0, _edge = 14.0, _edgeSwipe = 70.0;
@@ -127,7 +128,10 @@ class _PictureInputState extends State<PictureInput> {
     final custom = Host.I.config.value?['gestures'];
     const dflt = {'up': 'app-drawer', 'down': 'control-centre', 'left': 'back', 'right': 'focus-next'};
     final action = custom is Map && custom['swipe-3-$dir'] != null ? '${custom['swipe-3-$dir']}' : dflt[dir]!;
-    if (action != 'none') widget.onGesture(action);
+    if (action != 'none') {
+      feel('claim');
+      widget.onGesture(action);
+    }
     return true;
   }
 
@@ -227,7 +231,9 @@ class _PictureInputState extends State<PictureInput> {
         _drag('down', e.position);
       } else {
         ng.hold = Timer(const Duration(milliseconds: _holdMs), () {
-          if (g == ng && ng.state == 'pending') ng.state = 'held';
+          if (g != ng || ng.state != 'pending') return;
+          ng.state = 'held';
+          feel('tap'); // a long press: lifting now is a right click
         });
         _motion(e.position); // hover only: never needs retracting
         ng.ticket = I.ask(e.position);
@@ -371,6 +377,7 @@ class _PictureInputState extends State<PictureInput> {
         ng.hold = Timer(const Duration(milliseconds: _holdMs), () {
           if (g != ng || ng.state != 'tap') return;
           ng.state = 'held';
+          feel('tap');
           I.send({'t': 'cancel_touch', 'id': ng.id & 0xffffffff});
         });
       }

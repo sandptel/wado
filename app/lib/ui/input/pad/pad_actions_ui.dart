@@ -10,6 +10,7 @@ import '../../theme/look.dart';
 import '../../theme/tokens.dart';
 import '../../widgets/basics.dart';
 import '../../widgets/icon_paths.dart';
+import '../../motion/feel.dart';
 import '../../pages/input_pages.dart' show TouchpadSettings;
 
 /// What the confirm disc shows: the action and whether it worked.
@@ -71,6 +72,7 @@ class _ActState extends State<_Act> with TickerProviderStateMixin {
 
   Future<void> _run() async {
     if (_st == 'run') return;
+    feel('tick');
     final t0 = DateTime.now();
     setState(() => _st = 'run');
     _spin.repeat();
@@ -80,6 +82,7 @@ class _ActState extends State<_Act> with TickerProviderStateMixin {
     if (wait > 0) await Future.delayed(Duration(milliseconds: wait));
     if (!mounted) return;
     _spin.stop();
+    feel(res.ok ? 'confirm' : 'reject');
     setState(() => _st = res.ok ? 'ok' : 'bad');
     _mark.forward(from: 0);
     padConfirm.value = (a: widget.a, ok: res.ok, n: ++_n);

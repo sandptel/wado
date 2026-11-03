@@ -6,10 +6,11 @@ import 'package:flutter/services.dart';
 
 const _os = MethodChannel('wado/os');
 
-/// tick · tap · claim · confirm · reject · toggle_on · toggle_off · heavy
-void feel(String kind) {
+/// tick · tap · claim · confirm · reject · toggle_on · toggle_off · heavy; or a plain pulse of
+/// `ms` (the gamepad's strength).
+void feel(String kind, {int ms = 0}) {
   if (Platform.isAndroid) {
-    _os.invokeMethod('haptic', {'kind': kind});
+    _os.invokeMethod('haptic', {'kind': kind, 'ms': ms});
   } else {
     HapticFeedback.selectionClick();
   }

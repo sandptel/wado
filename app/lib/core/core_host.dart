@@ -4,6 +4,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -11,6 +12,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../bridge/api/core.dart';
+import '../wado/log.dart';
 import '../bridge/frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart' show ExternalLibrary;
 
@@ -100,8 +102,47 @@ class CoreHost {
     return null;
   }
 
+  /// Events still waiting behind a big one being read off the main thread.
+  Future<void> _behind = Future.value();
+  int _waiting = 0;
+
   void _on(String raw) {
+    // A big message (the apps list with its icons is ~900 KB) is read on another isolate: decoded
+    // here it held the screen 41 ms on the emulator, as a session came up. Everything after it
+    // waits its turn, so order holds.
+    if (raw.length < _big && _waiting == 0) return _handle(raw, _read(raw));
+    _waiting++;
+    _behind = _behind
+        .then((_) async => _handle(raw, raw.length < _big ? _read(raw) : await _readAway(raw)))
+        .catchError((Object e) => rlog('core: event dropped — $e'))
+        .whenComplete(() => _waiting--);
+  }
+
+  static const _big = 64 * 1024;
+
+  /// Static, so the closure sent to the isolate carries nothing but `raw`.
+  static Future<Map<String, dynamic>> _readAway(String raw) => Isolate.run(() => _read(raw));
+
+  /// The event, with a room message's own JSON read too (`msg`).
+  static Map<String, dynamic> _read(String raw) {
     final e = jsonDecode(raw) as Map<String, dynamic>;
+    if (e['json'] is String) e['msg'] = jsonDecode(e['json'] as String);
+    return e;
+  }
+
+  void _handle(String raw, Map<String, dynamic> e) {
+    final sw = Stopwatch()..start();
+    String? what;
+    try {
+      what = _dispatch(e);
+    } finally {
+      // A message that holds the screen up: which one, how big — for Diagnostics.
+      if (sw.elapsedMilliseconds > 16) rlog('core: ${e['t']} ${what ?? ''} (${raw.length} B) held the app ${sw.elapsedMilliseconds} ms');
+    }
+  }
+
+  /// The room message's own type, when it is one.
+  String? _dispatch(Map<String, dynamic> e) {
     switch (e['t']) {
       case 'computers':
         computers.value = (e['list'] as List).map((x) => Computer(x as Map<String, dynamic>)).toList();
@@ -110,13 +151,16 @@ class CoreHost {
       case 'room_msg':
         final r = _rooms[e['id']];
         if (r != null) {
-          final m = jsonDecode(e['json'] as String);
-          if (m is Map<String, dynamic>) r.onMsg(m);
+          final m = e['msg'];
+          if (m is Map<String, dynamic>) {
+            r.onMsg(m);
+            return '${m['type']}';
+          }
         }
       case 'room_relay':
         final r = _rooms[e['id']];
         if (r != null) {
-          final m = jsonDecode(e['json'] as String);
+          final m = e['msg'];
           if (m is Map<String, dynamic>) r.onRelay(m);
         }
       case 'pair':
@@ -124,6 +168,7 @@ class CoreHost {
       case 'answer':
         _answers.add(e);
     }
+    return null;
   }
 
   /// Open a room: `kind` seat | control | view. Null if the computer is not saved here.

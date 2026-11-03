@@ -6,7 +6,6 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -18,6 +17,7 @@ import '../widgets/basics.dart';
 import '../widgets/lane_card.dart';
 import 'overview.dart';
 import 'viewer.dart';
+import '../motion/feel.dart';
 
 String fmtSize(num b) {
   if (b < 1024) return '$b B';
@@ -389,7 +389,7 @@ class _FilesPageState extends State<FilesPage> {
       child: Press(
       onTap: () => _sel.isNotEmpty ? _toggle(e) : (isDir ? _go(path) : openViewer(context, path, e)),
       onLongPress: () {
-        HapticFeedback.selectionClick();
+        feel('tick');
         _toggle(e);
       },
       label: '${e['name']}${on ? ', selected' : ''}',

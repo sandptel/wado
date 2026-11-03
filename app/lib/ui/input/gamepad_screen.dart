@@ -6,7 +6,6 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../motion/feel.dart';
 
@@ -60,7 +59,7 @@ class _Game {
     if (!_code.containsKey(b)) return;
     down ? held.add(b) : held.remove(b);
     Pad.I.send({'k': 'btn', 'code': _code[b], 'down': down});
-    if (down) HapticFeedback.lightImpact();
+    if (down) feel('tap', ms: 10); // the web's "medium" (gpad/input.js)
   }
 
   void axis(String k, double v) {
@@ -470,6 +469,7 @@ class _StickState extends State<_Stick> {
     final r = widget.s / 2;
     var d = p - Offset(r, r);
     if (d.distance > r) d = d / d.distance * r;
+    if (!on) feel('tap', ms: 10); // grabbed
     setState(() {
       knob = d;
       on = true;

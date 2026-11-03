@@ -19,7 +19,6 @@ import 'dart:async';
 import 'dart:ui' show Offset, Size;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart' show HapticFeedback;
 
 import 'host.dart';
 import 'pad.dart';
@@ -68,7 +67,6 @@ class PadGestures {
   }
 
   void _fire(Map<String, dynamic> action, Offset at) {
-    HapticFeedback.mediumImpact();
     fired.add((icon: '${action['icon'] ?? 'bolt'}', at: at));
     PadActions.I.run('${action['id']}');
   }

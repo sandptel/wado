@@ -7,6 +7,7 @@ import '../../wado/settings.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
 import 'icon_paths.dart';
+import '../motion/feel.dart';
 
 /// The phone's own font size, read once at the root before Flutter's own text scaling is turned
 /// off there (app.dart): the text size is applied here, exactly once.
@@ -113,7 +114,12 @@ class _PressState extends State<Press> {
         child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: on ? widget.onTap : null,
-        onLongPress: on ? widget.onLongPress : null,
+        onLongPress: on && widget.onLongPress != null
+            ? () {
+                feel('tap'); // the web's long-press buzz
+                widget.onLongPress!();
+              }
+            : null,
         child: AnimatedScale(
           scale: _down ? widget.scale : 1,
           duration: t.durPress,

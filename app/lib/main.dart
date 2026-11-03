@@ -56,6 +56,8 @@ Future<void> main() async {
   } catch (e) {
     failure = e;
   }
+  // Under the splash, where holding the main thread shows nothing (`Session.warm`).
+  if (failure == null) await Session.I.warm().catchError((_) {});
   runApp(WadoApp(failure: failure));
   // Every frame over budget, with where its time went (build is this app's Dart; raster is
   // drawing) — in Diagnostics' log, so a stutter on a phone can be pointed at. Release builds
@@ -68,11 +70,11 @@ Future<void> main() async {
     final late = beat.elapsedMilliseconds - 250;
     beat.reset();
     // Only in front: a phone that froze the app in the background is not a stutter.
-    if (late > 150 && WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) rlog('main thread held ${late + 250} ms');
+    if (late > (kReleaseMode ? 150 : 30) && WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) rlog('main thread held ${late + 250} ms');
   });
   SchedulerBinding.instance.addTimingsCallback((ts) {
     for (final f in ts) {
-      if (f.totalSpan.inMilliseconds > over) rlog('slow frame ${f.totalSpan.inMilliseconds} ms — build ${f.buildDuration.inMilliseconds}, raster ${f.rasterDuration.inMilliseconds}');
+      if (f.totalSpan.inMilliseconds > over) rlog('slow frame ${f.totalSpan.inMilliseconds} ms — build ${f.buildDuration.inMilliseconds}, raster ${f.rasterDuration.inMilliseconds}, waited ${f.vsyncOverhead.inMilliseconds}');
     }
   });
   if (failure == null) Inbound.start();

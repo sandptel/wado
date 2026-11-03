@@ -6,6 +6,9 @@ import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.content.Intent
 import android.os.PersistableBundle
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.content.pm.PackageManager
 import android.os.Build
 import android.view.HapticFeedbackConstants
@@ -154,7 +157,7 @@ class MainActivity : FlutterFragmentActivity() {
                     result.success(runCatching { cm.setPrimaryClip(clip) }.isSuccess)
                 }
                 "haptic" -> {
-                    window.decorView.performHapticFeedback(haptic(call.argument<String>("kind").orEmpty()))
+                    buzz(call.argument<String>("kind").orEmpty(), call.argument<Int>("ms") ?: 0)
                     result.success(null)
                 }
                 "active" -> {
@@ -200,6 +203,38 @@ class MainActivity : FlutterFragmentActivity() {
                 else -> result.notImplemented()
             }
         }
+    }
+
+    private val vibrator: Vibrator? by lazy {
+        if (Build.VERSION.SDK_INT >= 31) getSystemService(VibratorManager::class.java)?.defaultVibrator
+        else @Suppress("DEPRECATION") getSystemService(Vibrator::class.java)
+    }
+
+    /**
+     * The motor itself, as the web's `navigator.vibrate` drove it: `performHapticFeedback` goes
+     * quiet with the system's touch feedback off, and its ticks are too faint to feel on many
+     * phones — the app's haptics went unnoticed. A length (`ms`, the gamepad's strength) is a
+     * plain pulse; a kind is the phone's own predefined effect.
+     */
+    private fun buzz(kind: String, ms: Int) {
+        val v = vibrator
+        if (v == null || !v.hasVibrator()) {
+            window.decorView.performHapticFeedback(haptic(kind))
+            return
+        }
+        val e = when {
+            ms > 0 -> VibrationEffect.createOneShot(ms.toLong(), VibrationEffect.DEFAULT_AMPLITUDE)
+            Build.VERSION.SDK_INT >= 29 -> VibrationEffect.createPredefined(
+                when (kind) {
+                    "tick", "toggle_off" -> VibrationEffect.EFFECT_TICK
+                    "claim", "heavy" -> VibrationEffect.EFFECT_HEAVY_CLICK
+                    "reject" -> VibrationEffect.EFFECT_DOUBLE_CLICK
+                    else -> VibrationEffect.EFFECT_CLICK
+                },
+            )
+            else -> VibrationEffect.createOneShot(if (kind == "tick") 6 else if (kind == "claim" || kind == "heavy") 20 else 12, VibrationEffect.DEFAULT_AMPLITUDE)
+        }
+        v.vibrate(e)
     }
 
     /** The page's haptic kinds as the phone's own predefined effects (the old app's Haptics.kt). */

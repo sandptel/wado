@@ -3,7 +3,6 @@
 // picture in landscape. Every face drives **the session** over the input channel the picture
 // already uses — never the trackpad's own link, which drives the computer's own desktop.
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../../wado/host.dart';
 import '../../../wado/input.dart';
@@ -13,6 +12,7 @@ import '../../theme/look.dart';
 import '../../theme/tokens.dart';
 import '../../widgets/basics.dart';
 import '../../widgets/data_image.dart';
+import '../../motion/feel.dart';
 import '../../input/gamepad_screen.dart' show GpadLive;
 import '../keyboard.dart' show KeyboardSheet;
 
@@ -163,6 +163,7 @@ class _PadFaceState extends State<PadFace> {
           child: _Zone(
             label: label,
             onDown: () {
+              feel('tick');
               _held.add(b);
               I.now({'t': 'button', ..._pt, 'button': b, 'pressed': true});
             },
@@ -435,7 +436,7 @@ class _Key extends StatelessWidget {
     final locked = st == 'locked', latched = st == 'latched';
     return Press(
       onTap: () {
-        HapticFeedback.selectionClick();
+        feel('tick');
         onTap();
       },
       scale: .92,

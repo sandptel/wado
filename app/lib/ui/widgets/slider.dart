@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
 import 'basics.dart';
+import '../motion/feel.dart';
 
 class ThickSlider extends StatefulWidget {
   const ThickSlider({
@@ -46,7 +47,22 @@ class _ThickSliderState extends State<ThickSlider> {
     return v.clamp(widget.min, widget.max);
   }
 
+  /// The detent the value last sat in: -1 at the low end, `n + 1` at the high end.
+  int? _notch;
+
+  /// A tick under the finger at each tick mark (or every tenth), a tap at either end — the steps
+  /// are felt, not only seen.
+  void _detent(double v) {
+    final n = widget.ticks > 0 ? widget.ticks : 10;
+    final span = widget.max - widget.min;
+    final f = span.abs() < 1e-9 ? 0.0 : ((v - widget.min) / span).clamp(0.0, 1.0);
+    final k = f <= 0 ? -1 : (f >= 1 ? n + 1 : (f * n).floor());
+    if (_notch != null && k != _notch) feel(k == -1 || k == n + 1 ? 'tap' : 'tick');
+    _notch = k;
+  }
+
   void _set(double v) {
+    _detent(v);
     setState(() {
       _mine = v;
       _base = widget.value;
@@ -71,7 +87,14 @@ class _ThickSliderState extends State<ThickSlider> {
           final w = box.maxWidth;
           return GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onHorizontalDragStart: widget.disabled ? null : (d) => setState(() => _grab = true),
+            onHorizontalDragStart: widget.disabled
+                ? null
+                : (d) {
+                    _notch = null;
+                    _detent(_v);
+                    feel('tick');
+                    setState(() => _grab = true);
+                  },
             onHorizontalDragUpdate: widget.disabled ? null : (d) => _set(_at(d.localPosition.dx, w)),
             onHorizontalDragEnd: widget.disabled
                 ? null

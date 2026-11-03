@@ -3,13 +3,13 @@
 // off, so Super + drag moves a window) — and Esc, Tab and the arrows go out wrapped in what is
 // latched. Shown as the landscape rail's two-column grid, or the portrait row over the keyboard.
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../../wado/pad.dart';
 import '../../motion/motion.dart';
 import '../../theme/look.dart';
 import '../../theme/tokens.dart';
 import '../../widgets/basics.dart';
+import '../../motion/feel.dart';
 
 class PadMods {
   PadMods._();
@@ -74,7 +74,7 @@ class PadKey extends StatelessWidget {
     final locked = st == 'locked', latched = st == 'latched';
     return Press(
       onTap: () {
-        HapticFeedback.selectionClick();
+        feel('tick');
         onTap();
       },
       scale: .92,
