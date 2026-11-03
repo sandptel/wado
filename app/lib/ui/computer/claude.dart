@@ -135,7 +135,7 @@ class ClaudeCard extends StatelessWidget {
     final dot = switch (state) { 'working' => t.accent, 'permission' => t.base[0xA], 'done' => t.good, _ => t.dim };
     final id = '${c['id']}';
     Widget dotW = Container(width: 10, height: 10, decoration: BoxDecoration(shape: BoxShape.circle, color: dot));
-    if (state == 'working') dotW = Breathe(ms: 1600, child: dotW);
+    if (state == 'working') dotW = Breathe(ms: 1600, cycles: 0, child: dotW);
     if (state == 'done') dotW = Enter(ms: 220, dy: 0, scale: 0, pop: true, fadeOnClose: false, child: dotW);
     return Opacity(
       opacity: state == 'ended' ? .62 : 1,

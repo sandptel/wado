@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -56,14 +57,23 @@ Future<void> main() async {
     failure = e;
   }
   runApp(WadoApp(failure: failure));
-  // Profile and debug builds: every frame over budget, with where its time went (build is this
-  // app's Dart; raster is drawing). Release builds never pay for it.
-  if (!kReleaseMode) {
-    SchedulerBinding.instance.addTimingsCallback((ts) {
-      for (final f in ts) {
-        if (f.totalSpan.inMilliseconds > 24) rlog('slow frame ${f.totalSpan.inMilliseconds} ms — build ${f.buildDuration.inMilliseconds}, raster ${f.rasterDuration.inMilliseconds}');
-      }
-    });
-  }
+  // Every frame over budget, with where its time went (build is this app's Dart; raster is
+  // drawing) — in Diagnostics' log, so a stutter on a phone can be pointed at. Release builds
+  // keep only the freezes (over 100 ms); the timings come batched and cost next to nothing.
+  final over = kReleaseMode ? 100 : 24;
+  // A frozen screen with no frame to time: this app's Dart held up (a big message, a sync call).
+  // ponytail: a 250 ms tick; a finer one costs wake-ups for no better answer.
+  final beat = Stopwatch()..start();
+  Timer.periodic(const Duration(milliseconds: 250), (_) {
+    final late = beat.elapsedMilliseconds - 250;
+    beat.reset();
+    // Only in front: a phone that froze the app in the background is not a stutter.
+    if (late > 150 && WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) rlog('main thread held ${late + 250} ms');
+  });
+  SchedulerBinding.instance.addTimingsCallback((ts) {
+    for (final f in ts) {
+      if (f.totalSpan.inMilliseconds > over) rlog('slow frame ${f.totalSpan.inMilliseconds} ms — build ${f.buildDuration.inMilliseconds}, raster ${f.rasterDuration.inMilliseconds}');
+    }
+  });
   if (failure == null) Inbound.start();
 }

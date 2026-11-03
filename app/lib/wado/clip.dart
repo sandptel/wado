@@ -67,8 +67,10 @@ class Clip {
           f(null);
         }
       }
-      final k = '$_key ${id ?? m['hash'] ?? ''}';
-      if (_heldSaid.add(k)) say(_onIt((m['message'] ?? '') as String), 'dim');
+      // Only a new copy is said, once. An entry's answer (a thumbnail coming into view, one per
+      // picture in the history) is said when it is tapped (`copy`), never by itself.
+      if ((id ?? '').isNotEmpty) return;
+      if (_heldSaid.add('$_key ${m['hash'] ?? ''}')) say(_onIt((m['message'] ?? '') as String), 'dim');
     });
     l.on('clip_pushed', (m) {
       if (_acks.remove(m['hash']) != null) say('Sent to $_name');

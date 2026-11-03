@@ -16,7 +16,7 @@ class ClipDock extends StatelessWidget {
   Widget build(BuildContext context) {
     final mq = MediaQuery.of(context);
     return IgnorePointer(
-      child: ListenableBuilder(
+      child: RepaintBoundary(child: ListenableBuilder(
         listenable: Listenable.merge([Clip.I.said, Session.I.shown]),
         builder: (context, _) {
           final s = Clip.I.said.value;
@@ -28,7 +28,7 @@ class ClipDock extends StatelessWidget {
             ),
           );
         },
-      ),
+      )),
     );
   }
 }
@@ -68,7 +68,9 @@ class _SaidState extends State<_Said> with SingleTickerProviderStateMixin {
           ),
         );
       },
-      child: Container(
+      // Its own layer: the pill's 2.8 s of motion moves a cached picture, and never repaints the
+      // page under it.
+      child: RepaintBoundary(child: Container(
         constraints: const BoxConstraints(minHeight: 40, maxWidth: 440),
         padding: const EdgeInsets.fromLTRB(8, 6, 16, 6),
         decoration: BoxDecoration(
@@ -95,7 +97,7 @@ class _SaidState extends State<_Said> with SingleTickerProviderStateMixin {
           const SizedBox(width: 8),
           Flexible(child: Text(s.text, style: body(context, size: .8438, w: FontWeight.w600, color: t.bright))),
         ]),
-      ),
+      )),
     );
   }
 }

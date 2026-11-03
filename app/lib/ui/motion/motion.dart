@@ -198,12 +198,15 @@ class _EnterState extends State<Enter> with SingleTickerProviderStateMixin {
   }
 }
 
-/// `@keyframes breathe { 50% { opacity: .35 } }` — something alive, ease-in-out, forever. Still
-/// when motion is off.
+/// `@keyframes breathe { 50% { opacity: .35 } }` — something alive, ease-in-out. Ambient
+/// breathing runs `cycles` times and rests at full opacity: a loop that never ends keeps the whole
+/// screen redrawing every frame for as long as it shows (measured: 90+ frames in 3 s on an idle
+/// page). `cycles: 0` is for something in progress (connecting, testing, working), for as long as
+/// `on`. Still when motion is off.
 class Breathe extends StatefulWidget {
-  const Breathe({super.key, required this.child, this.ms = 2400, this.delay = 0, this.low = .35, this.on = true});
+  const Breathe({super.key, required this.child, this.ms = 2400, this.delay = 0, this.low = .35, this.on = true, this.cycles = 3});
   final Widget child;
-  final int ms, delay;
+  final int ms, delay, cycles;
   final double low;
   final bool on;
   @override
@@ -212,19 +215,27 @@ class Breathe extends StatefulWidget {
 
 class _BreatheState extends State<Breathe> with SingleTickerProviderStateMixin {
   late final _c = AnimationController(vsync: this, duration: Duration(milliseconds: widget.ms));
+  void _run() => _c.repeat(count: widget.cycles == 0 ? null : widget.cycles).whenComplete(() {
+        if (mounted) _c.value = 0; // rests at full opacity
+      });
+
   @override
   void initState() {
     super.initState();
     Future.delayed(Duration(milliseconds: widget.delay), () {
-      if (mounted && widget.on) _c.repeat();
+      if (mounted && widget.on) _run();
     });
   }
 
   @override
   void didUpdateWidget(Breathe o) {
     super.didUpdateWidget(o);
-    if (widget.on && !_c.isAnimating) _c.repeat();
-    if (!widget.on) _c.stop();
+    // Again only when it is switched back on — not on every rebuild of what holds it.
+    if (widget.on && !o.on) _run();
+    if (!widget.on) {
+      _c.stop();
+      _c.value = 0;
+    }
   }
 
   @override

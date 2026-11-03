@@ -181,6 +181,7 @@ class _Go extends StatefulWidget {
 class _GoState extends State<_Go> with SingleTickerProviderStateMixin {
   bool _down = false;
   late final _ring = AnimationController(vsync: this, duration: const Duration(milliseconds: 2400));
+  bool _pulsed = false;
   @override
   void dispose() {
     _ring.dispose();
@@ -191,8 +192,13 @@ class _GoState extends State<_Go> with SingleTickerProviderStateMixin {
   Widget build(BuildContext context) {
     final t = Tok.of(context);
     if (widget.live && widget.enabled && !t.still) {
-      if (!_ring.isAnimating) _ring.repeat();
+      // Three pulses when it goes live, then still (a forever loop redraws the screen each frame).
+      if (!_pulsed) {
+        _pulsed = true;
+        _ring.repeat(count: 3).whenComplete(() => mounted ? _ring.value = 0 : null);
+      }
     } else {
+      _pulsed = false;
       _ring.stop();
     }
     final bg = !widget.enabled ? t.s2 : (widget.live ? t.accent : fade(t.accent, 82));
@@ -207,7 +213,7 @@ class _GoState extends State<_Go> with SingleTickerProviderStateMixin {
         height: 48,
         child: Stack(alignment: Alignment.center, clipBehavior: Clip.none, children: [
           if (widget.live && widget.enabled)
-            // Its own layer: the pulse runs for as long as the session does.
+            // Its own layer; three pulses, then it rests as a ring that says the session is live.
             RepaintBoundary(child: AnimatedBuilder(
               animation: _ring,
               builder: (context, _) {

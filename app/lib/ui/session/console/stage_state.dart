@@ -41,6 +41,7 @@ class HopBar extends StatelessWidget {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Breathe(
               ms: 1200,
+              cycles: 0,
               on: i == on && !stopped,
               child: AnimatedContainer(
                 duration: t.dur,

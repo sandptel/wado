@@ -182,6 +182,7 @@ class _Dot extends StatefulWidget {
 
 class _DotState extends State<_Dot> with SingleTickerProviderStateMixin {
   late final _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200));
+  bool _ran = false;
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -196,8 +197,13 @@ class _DotState extends State<_Dot> with SingleTickerProviderStateMixin {
 
   void _sync() {
     if (widget.breathe && !Tok.of(context).still) {
-      if (!_c.isAnimating) _c.repeat(reverse: true);
+      // Three breaths, then still: a loop that never ends redraws the screen every frame.
+      if (!_ran) {
+        _ran = true;
+        _c.repeat(reverse: true, count: 6).whenComplete(() => mounted ? _c.value = 0 : null);
+      }
     } else {
+      _ran = false;
       _c.stop();
       _c.value = 0;
     }

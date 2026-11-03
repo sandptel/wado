@@ -329,7 +329,7 @@ class _SessionRowState extends State<SessionRow> {
                   padding: const EdgeInsets.symmetric(horizontal: 14),
                   decoration: BoxDecoration(color: t.s2, borderRadius: BorderRadius.circular(t.r2)),
                   child: Row(children: [
-                    Breathe(ms: 1100, child: Container(width: 10, height: 10, decoration: BoxDecoration(shape: BoxShape.circle, color: t.accent))),
+                    Breathe(ms: 1100, cycles: 0, child: Container(width: 10, height: 10, decoration: BoxDecoration(shape: BoxShape.circle, color: t.accent))),
                     const SizedBox(width: 10),
                     Text(doing, style: body(context, w: FontWeight.w600, color: t.bright)),
                   ]),
@@ -497,7 +497,7 @@ class LinkMeter extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 10),
               decoration: BoxDecoration(color: fade(tone, 86), borderRadius: BorderRadius.circular(999)),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Breathe(ms: 900, on: testing, child: Container(width: 7, height: 7, decoration: BoxDecoration(shape: BoxShape.circle, color: tone))),
+                Breathe(ms: 900, on: testing, cycles: 0, child: Container(width: 7, height: 7, decoration: BoxDecoration(shape: BoxShape.circle, color: tone))),
                 const SizedBox(width: 6),
                 Text(word, style: body(context, size: .75, w: FontWeight.w600, color: tone)),
               ]),
