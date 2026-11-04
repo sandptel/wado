@@ -12,7 +12,7 @@
 //! the trust list and the codes are files there that every daemon reads.
 //!
 //! ```text
-//!   <config>/wado/trusted_clients        <client_key>\t<name>[\t<device pk>\t<pinned>[\t<files>]]
+//!   <config>/wado/trusted_clients        <client_key>\t<name>[\t<device pk>\t<pinned>[\t<files>[\t<grants>[\t<until>\t<by>]]]]
 //!   <config>/wado/pair_codes             see `pairing`
 //! ```
 //!
@@ -22,6 +22,11 @@
 //! the envelope) takes the first key proven for it; `pinned` is 1 when that key was proven with
 //! a pairing code, which file access requires. `files` is that device's grant — `none` (the
 //! default, also when absent), `ro` or `rw` — set by `wado files grant`.
+//!
+//! **Expiry (`2026-11-04`):** `until` is the Unix second a line stops counting (`-` or absent:
+//! never), enforced here — an expired line is as good as no line, and is pruned on the next
+//! admit. One that does not read is treated as expired: fail closed. `by` is the key of the
+//! device that asked for the code which paired it (`-`: this computer).
 
 use std::fs;
 use std::path::PathBuf;
@@ -78,6 +83,24 @@ pub enum Proof {
     Wrong,
 }
 
+/// How long a trust line lasts, and who asked for the code that wrote it.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Term {
+    /// Unix seconds it stops counting; `None`: until removed.
+    pub until: Option<u64>,
+    /// The device that asked for the pairing code; empty: this computer.
+    pub by: String,
+}
+
+/// Whether a split trust line still counts: no end time, or one still ahead. An end time that
+/// does not read counts as passed.
+fn live(f: &[&str]) -> bool {
+    match f.get(6).map(|s| s.trim()) {
+        None | Some("" | "-") => true,
+        Some(t) => t.parse::<u64>().is_ok_and(|u| u > now_s()),
+    }
+}
+
 /// What [`Gate::admit`] let through.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Admitted {
@@ -86,7 +109,7 @@ pub enum Admitted {
     /// A typed code checked out and is spent, but the device is **not** trusted yet: the check
     /// words must be confirmed on the computer first (`confirm`), then [`Gate::confirmed`] pins
     /// it with these grants.
-    Confirm(Grants),
+    Confirm(Grants, Term),
 }
 
 /// One line of `trusted_clients`, read.
@@ -97,6 +120,7 @@ pub struct Device {
     /// Its key was proven with a pairing code.
     pub pinned: bool,
     pub grants: Grants,
+    pub term: Term,
 }
 
 /// The trust list and the pairing codes of one machine.
@@ -125,6 +149,7 @@ impl Gate {
         fs::read_to_string(self.trusted_path())
             .unwrap_or_default()
             .lines()
+            .filter(|l| live(&l.split('\t').collect::<Vec<_>>()))
             .filter_map(|l| {
                 let mut it = l.split('\t');
                 let key = it.next()?.trim();
@@ -143,6 +168,7 @@ impl Gate {
         fs::read_to_string(self.trusted_path())
             .unwrap_or_default()
             .lines()
+            .filter(|l| live(&l.split('\t').collect::<Vec<_>>()))
             .filter_map(|l| l.split('\t').next())
             .map(str::trim)
             .filter(|k| !k.is_empty())
@@ -164,7 +190,14 @@ impl Gate {
         if key.is_empty() || self.knows(key) {
             return;
         }
-        self.write_line(key, name, "", false, &Grants::new_device());
+        self.write_line(
+            key,
+            name,
+            "",
+            false,
+            &Grants::new_device(),
+            &Term::default(),
+        );
     }
 
     /// `(device pk, pinned)` on file for `key`; the pk is empty for a line from before keys.
@@ -173,6 +206,7 @@ impl Gate {
             .unwrap_or_default()
             .lines()
             .map(|l| l.split('\t').collect::<Vec<_>>())
+            .filter(|f| live(f))
             .find(|f| f[0].trim() == key)
             .map(|f| {
                 let pk = f.get(2).map_or("", |s| s.trim()).to_string();
@@ -182,21 +216,29 @@ impl Gate {
 
     /// Write `key`'s line with its proven key, in place or appended. Its grants are kept, plus
     /// `more` (a pairing code's checklist); a new line starts with `security { new-device }`.
-    fn set(&self, key: &str, name: &str, pk: &str, pinned: bool, more: Option<&Grants>) {
-        let had = self
-            .device(key)
-            .map_or_else(Grants::new_device, |d| d.grants);
-        let g = more.map_or_else(|| had.clone(), |m| had.union(m));
-        self.write_line(key, name, pk, pinned, &g);
+    /// A new code's `term` replaces the line's; without one (a key proven again) it is kept.
+    fn set(&self, key: &str, name: &str, pk: &str, pinned: bool, more: Option<(&Grants, &Term)>) {
+        let had = self.device(key);
+        let was = had
+            .as_ref()
+            .map_or_else(Grants::new_device, |d| d.grants.clone());
+        let g = more.map_or_else(|| was.clone(), |(m, _)| was.union(m));
+        let term = more.map_or_else(
+            || had.map(|d| d.term).unwrap_or_default(),
+            |(_, t)| t.clone(),
+        );
+        self.write_line(key, name, pk, pinned, &g, &term);
     }
 
-    fn write_line(&self, key: &str, name: &str, pk: &str, pinned: bool, g: &Grants) {
+    fn write_line(&self, key: &str, name: &str, pk: &str, pinned: bool, g: &Grants, term: &Term) {
         let name = name.replace(['\t', '\n'], " ");
         let line = format!(
-            "{key}\t{name}\t{pk}\t{}\t{}\t{}",
+            "{key}\t{name}\t{pk}\t{}\t{}\t{}\t{}\t{}",
             u8::from(pinned),
             g.files,
-            g.flags()
+            g.flags(),
+            term.until.map_or_else(|| "-".into(), |u| u.to_string()),
+            if term.by.is_empty() { "-" } else { &term.by }
         );
         let mut lines: Vec<String> = fs::read_to_string(self.trusted_path())
             .unwrap_or_default()
@@ -221,7 +263,7 @@ impl Gate {
             .unwrap_or_default()
             .lines()
             .map(|l| l.split('\t').map(str::trim).collect::<Vec<_>>())
-            .filter(|f| !f[0].is_empty())
+            .filter(|f| !f[0].is_empty() && live(f))
             .map(|f| {
                 let get = |i: usize| f.get(i).copied().unwrap_or("");
                 Device {
@@ -229,6 +271,14 @@ impl Gate {
                     name: get(1).into(),
                     pinned: get(3) == "1",
                     grants: Grants::from_columns(get(4), f.get(5).copied()),
+                    term: Term {
+                        until: get(6).parse().ok(),
+                        by: if get(7) == "-" {
+                            String::new()
+                        } else {
+                            get(7).into()
+                        },
+                    },
                 }
             })
             .collect()
@@ -284,7 +334,7 @@ impl Gate {
             g.set(t, on)?;
         }
         let pk = self.entry(&d.key).map(|e| e.0).unwrap_or_default();
-        self.write_line(&d.key, &d.name, &pk, d.pinned, &g);
+        self.write_line(&d.key, &d.name, &pk, d.pinned, &g, &d.term);
         info!("gate: {} may now: {}", d.name, g.tokens());
         Ok((d.name, g))
     }
@@ -350,14 +400,19 @@ impl Gate {
     ) -> Result<Admitted, &'static str> {
         // A code is the owner's say-so, and it pins whatever key proved it — a re-pair is how
         // a device that lost its key comes back.
+        self.prune();
         let unknown = match proof {
-            Proof::Qr(c) => match self.redeem(c).map(|g| g.union(&Grants::CODE_PAIRED)) {
-                Some(g) => {
+            Proof::Qr(c) => match self
+                .redeem(c)
+                .map(|(g, t)| (g.union(&Grants::CODE_PAIRED), t))
+            {
+                Some((g, t)) => {
                     info!(
-                        "gate: {name} paired with a QR code — trusted and pinned, may: {}",
-                        g.tokens()
+                        "gate: {name} paired with a QR code — trusted and pinned, may: {}{}",
+                        g.tokens(),
+                        t.until.map_or_else(String::new, |u| format!(", until {u}"))
                     );
-                    self.set(key, name, pk, true, Some(&g));
+                    self.set(key, name, pk, true, Some((&g, &t)));
                     return Ok(Admitted::In);
                 }
                 // Spent between the proof and here — by another daemon of the pool, say.
@@ -365,9 +420,9 @@ impl Gate {
             },
             // Spent now, so it works once whatever the answer; trusted only on a yes.
             Proof::Typed(c) => match self.redeem(c) {
-                Some(g) => {
+                Some((g, t)) => {
                     info!("gate: {name} proved a typed code — waiting for the check words");
-                    return Ok(Admitted::Confirm(g));
+                    return Ok(Admitted::Confirm(g, t));
                 }
                 None => STALE_CODE,
             },
@@ -393,20 +448,48 @@ impl Gate {
     }
 
     /// The check words of a typed pairing were confirmed on the computer: trust and pin.
-    pub fn confirmed(&self, key: &str, name: &str, pk: &str, grants: &Grants) {
+    pub fn confirmed(&self, key: &str, name: &str, pk: &str, grants: &Grants, term: &Term) {
         let grants = &grants.union(&Grants::CODE_PAIRED);
         info!(
             "gate: {name} paired with a typed code, check words confirmed — trusted and pinned, \
              may: {}",
             grants.tokens()
         );
-        self.set(key, name, pk, true, Some(grants));
+        self.set(key, name, pk, true, Some((grants, term)));
+    }
+
+    /// Drop the lines whose time is up (they already count for nothing), and their passkeys.
+    pub fn prune(&self) {
+        let Ok(all) = fs::read_to_string(self.trusted_path()) else {
+            return;
+        };
+        let (kept, gone): (Vec<&str>, Vec<&str>) = all
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .partition(|l| live(&l.split('\t').collect::<Vec<_>>()));
+        if gone.is_empty() {
+            return;
+        }
+        let body: String = kept.iter().map(|l| format!("{l}\n")).collect();
+        if let Err(e) = fs::write(self.trusted_path(), body) {
+            warn!("gate: could not drop expired devices: {e}");
+            return;
+        }
+        for l in gone {
+            let mut f = l.split('\t');
+            let key = f.next().unwrap_or("").trim();
+            info!(
+                "gate: {}'s time ran out — no longer trusted",
+                f.next().unwrap_or(key).trim()
+            );
+            crate::passkey::Store::at(self.dir.join("passkeys")).forget(key);
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Admitted, Gate, Grants, Proof, STALE_CODE, UNPAIRED, WRONG_CODE};
+    use super::{Admitted, Gate, Grants, Proof, STALE_CODE, Term, UNPAIRED, WRONG_CODE};
 
     fn temp() -> Gate {
         let dir = std::env::temp_dir().join(format!("wado-gate-{}", rand::random::<u64>()));
@@ -444,6 +527,43 @@ mod tests {
     }
 
     #[test]
+    fn a_trust_line_counts_until_its_time_and_a_garbled_time_counts_for_nothing() {
+        let g = temp();
+        // A code that trusts for an hour: in, with its end time on the line.
+        let m = g.mint_pair_for(&Grants::NONE, Some(3600), "phonekey");
+        assert_eq!(
+            g.admit("tab", "Tab", "PK1", &Proof::Qr(m.code)),
+            Ok(Admitted::In)
+        );
+        let d = g.device("tab").unwrap();
+        assert!(d.term.until.is_some_and(|u| u > super::now_s() + 3500));
+        assert_eq!(d.term.by, "phonekey");
+        // Hand-written lines: past, garbled, future.
+        let now = super::now_s();
+        std::fs::write(
+            g.trusted_path(),
+            format!(
+                "old\tOld\tPKO\t1\tnone\t-\t{}\t-\nbad\tBad\tPKB\t1\tnone\t-\tsoon\t-\nnew\tNew\tPKN\t1\tnone\t-\t{}\t-\nall\tAll\tPKA\t1\tnone\t-\n",
+                now - 1,
+                now + 60
+            ),
+        )
+        .unwrap();
+        assert!(
+            !g.knows("old") && !g.knows("bad"),
+            "past and unreadable both refused"
+        );
+        assert!(g.knows("new") && g.knows("all"));
+        assert_eq!(g.admit("old", "Old", "PKO", &Proof::None), Err(UNPAIRED));
+        // That admit pruned the dead lines from the file.
+        let file = std::fs::read_to_string(g.trusted_path()).unwrap();
+        assert!(!file.contains("PKO") && !file.contains("PKB") && file.contains("PKN"));
+        // A grant change keeps the end time.
+        g.allow("new", &["clipboard"], true).unwrap();
+        assert_eq!(g.device("new").unwrap().term.until, Some(now + 60));
+    }
+
+    #[test]
     fn a_pairing_code_lives_ten_minutes() {
         assert_eq!(super::PAIR_TTL, std::time::Duration::from_secs(600));
     }
@@ -470,7 +590,13 @@ mod tests {
         let g = temp();
         let m = g.mint_pair_with(&Grants::parse("shells").unwrap());
         let got = g.admit("laptop", "Laptop", "PK3", &Proof::Typed(m.typed.clone()));
-        assert_eq!(got, Ok(Admitted::Confirm(Grants::parse("shells").unwrap())));
+        assert_eq!(
+            got,
+            Ok(Admitted::Confirm(
+                Grants::parse("shells").unwrap(),
+                Term::default()
+            ))
+        );
         assert!(
             !g.knows("laptop"),
             "not trusted before the words are confirmed"
@@ -485,7 +611,13 @@ mod tests {
             Err(STALE_CODE),
             "single use, even while the first waits"
         );
-        g.confirmed("laptop", "Laptop", "PK3", &Grants::parse("shells").unwrap());
+        g.confirmed(
+            "laptop",
+            "Laptop",
+            "PK3",
+            &Grants::parse("shells").unwrap(),
+            &Term::default(),
+        );
         assert_eq!(
             g.entry("laptop"),
             Some(("PK3".into(), true)),

@@ -183,6 +183,17 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
         ));
     }
     row(f, app, inner.x, y, inner.right(), spans);
+    y += 1;
+    if y < bottom {
+        let term = app.pair_for.map_or_else(
+            || "until removed".to_string(),
+            |s| format!("for {}", crate::cli::devices::span(s)),
+        );
+        f.render_widget(
+            Line::styled(format!(" trusted {term} · t to change"), theme::dim()),
+            Rect::new(inner.x, y, inner.width, 1),
+        );
+    }
     y += 2;
 
     if let Ok(p) = &app.pair {

@@ -41,6 +41,18 @@ pub fn list() -> i32 {
             dim(&d.key[..d.key.len().min(8)]),
             badges(&gate.grants(&d.key), d.pinned),
         );
+        if let Some(u) = d.term.until {
+            let left = u.saturating_sub(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |t| t.as_secs()),
+            );
+            println!(
+                "    {:<width$}  {}",
+                "",
+                dim(&format!("trusted for {} more", span(left)))
+            );
+        }
         if let Some(line) = cfg.device.get(&d.key).and_then(input_line) {
             println!("    {:<width$}  {}", "", dim(&line));
         }
@@ -161,6 +173,18 @@ fn pick_help(gate: &Gate, who: &str, verb: &str, rest: &str) -> i32 {
 }
 
 /// Grants as tokens, or what having none means.
+/// `5400` → `1 h 30 min`, `90000` → `1 d 1 h`.
+pub fn span(s: u64) -> String {
+    let (d, h, m) = (s / 86_400, s % 86_400 / 3600, s % 3600 / 60);
+    match (d, h, m) {
+        (0, 0, m) => format!("{} min", m.max(1)),
+        (0, h, 0) => format!("{h} h"),
+        (0, h, m) => format!("{h} h {m} min"),
+        (d, 0, _) => format!("{d} d"),
+        (d, h, _) => format!("{d} d {h} h"),
+    }
+}
+
 pub fn describe(g: &Grants) -> String {
     let t = g.tokens();
     if t.is_empty() {

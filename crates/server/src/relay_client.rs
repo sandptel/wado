@@ -2725,7 +2725,7 @@ async fn e2e_finish(
             crate::e2e::link::WAKE.to_string()
         }
         // A typed code: not in until the check words are confirmed on the computer.
-        Ok((crate::gate::Admitted::Confirm(grants), d)) => {
+        Ok((crate::gate::Admitted::Confirm(grants, term), d)) => {
             let crate::gate::Proof::Typed(typed) = d.proof.clone() else {
                 unreachable!("only a typed code asks for the check words")
             };
@@ -2734,6 +2734,7 @@ async fn e2e_finish(
                 name,
                 pk: dev_pk.to_string(),
                 grants,
+                term,
                 typed,
             };
             let out = crate::e2e::check::begin(&mut link, &ctx.gate, &p, d);

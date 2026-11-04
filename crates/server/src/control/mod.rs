@@ -180,7 +180,7 @@ impl Rooms {
                         .admit(&room.who.key, &room.who.name, &dev_pk, &d.proof)
                     {
                         Ok(Admitted::In) => Ok(d),
-                        Ok(Admitted::Confirm(_)) => Err("pairing is not done on a widget's link"),
+                        Ok(Admitted::Confirm(..)) => Err("pairing is not done on a widget's link"),
                         Err(e) => Err(e),
                     }
                 });

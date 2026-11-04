@@ -87,6 +87,8 @@ pub struct App {
     pub cursor: [(usize, usize); 3],
     /// The checklist the QR on screen carries.
     pub pair_grants: Grants,
+    /// How long the code's device is trusted; `None`: until removed. `t` cycles it.
+    pub pair_for: Option<u64>,
     pub pair: Result<Pair, String>,
     /// The QR at its large size, for a camera that struggles with the compact one.
     pub big_qr: bool,
@@ -109,6 +111,7 @@ impl App {
             focus: Card::Pair,
             cursor: [(0, 0); 3],
             pair_grants: Grants::new_device(),
+            pair_for: None,
             pair: Err("making a code…".into()),
             big_qr: false,
             confirm: None,
@@ -169,7 +172,7 @@ impl App {
         if let Ok(old) = &self.pair {
             Gate::default().revoke_pair(&old.code.code);
         }
-        self.pair = actions::pair(&self.pair_grants).map(|p| Pair {
+        self.pair = actions::pair(&self.pair_grants, self.pair_for).map(|p| Pair {
             link: p.link,
             code: p.code,
         });
@@ -261,6 +264,15 @@ impl App {
                     let on = self.snap.not_required.contains(&key);
                     self.done(actions::passkey_require(&key, &name, on));
                 }
+            }
+            KeyCode::Char('t') if self.focus == Card::Pair => {
+                self.pair_for = match self.pair_for {
+                    None => Some(3600),
+                    Some(3600) => Some(86_400),
+                    Some(86_400) => Some(7 * 86_400),
+                    _ => None,
+                };
+                self.mint();
             }
             KeyCode::Char('z') => self.big_qr = !self.big_qr,
             KeyCode::Char('n') => {

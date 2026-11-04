@@ -1,4 +1,4 @@
-//! `wado pair [--relay URL] [--id ID] [<grant>…]` (or `wado qr`) — a pairing code for a new
+//! `wado pair [--relay URL] [--id ID] [--for 7d] [--yes] [<grant>…]` (or `wado qr`) — a pairing code for a new
 //! device, in the terminal: a QR of the connect link, the same code to type, and how long it has.
 //!
 //! Scanning it opens the web client with the relay and Remote ID filled in; a device that has
@@ -45,6 +45,7 @@ pub fn pair_link(
     relay: Option<&str>,
     id: Option<&str>,
     grants: &crate::gate::Grants,
+    trust_for: Option<u64>,
 ) -> Result<Pairing, String> {
     let cfg = wado_config::live::current();
     let relay = relay
@@ -71,7 +72,7 @@ pub fn pair_link(
     let hk = crate::e2e::host_key::HostKey::load_or_create(&crate::remote_id::config_dir())
         .map_err(|e| format!("could not read this computer's identity key: {e}"))?
         .pin();
-    let code = Gate::default().mint_pair_with(grants);
+    let code = Gate::default().mint_pair_for(grants, trust_for, "");
     Ok(Pairing {
         link: format!(
             "{}&pair={}&hk={hk}",
@@ -87,8 +88,9 @@ fn print_with(
     relay: Option<&str>,
     id: Option<&str>,
     grants: &crate::gate::Grants,
+    trust_for: Option<u64>,
 ) -> Option<Minted> {
-    let p = match pair_link(relay, id, grants) {
+    let p = match pair_link(relay, id, grants, trust_for) {
         Ok(p) => p,
         Err(e) => {
             eprintln!("{e}");
@@ -101,6 +103,13 @@ fn print_with(
     println!(
         "  Scan to pair — the device may: {}",
         super::devices::describe(grants)
+    );
+    println!(
+        "  Trusted {}",
+        trust_for.map_or_else(
+            || "until you remove it (wado unpair)".to_string(),
+            |s| format!("for {}", super::devices::span(s))
+        )
     );
     println!(
         "  or type this code on it: {}",
@@ -117,12 +126,14 @@ fn saved_id() -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
-/// `wado pair [--relay URL] [--id ID] [--wait] [<grant>…]` — no grants named: `security {
-/// new-device }`. `--wait`: keep going when piped, answering the check words from stdin.
+/// `wado pair [--relay URL] [--id ID] [--wait] [--for 7d] [--yes] [<grant>…]` — bare in a
+/// terminal it asks (cli/pair_ask.rs); no grants named otherwise: `security { new-device }`. `--wait`: keep going when piped, answering the check words from stdin.
 pub fn run(args: &[String]) -> i32 {
     let mut relay = None;
     let mut id = None;
     let mut wait = false;
+    let mut yes = false;
+    let mut trust_for: Option<Option<u64>> = None;
     let mut tokens = Vec::new();
     let mut it = args.iter();
     while let Some(a) = it.next() {
@@ -130,21 +141,38 @@ pub fn run(args: &[String]) -> i32 {
             "--relay" => relay = it.next().cloned(),
             "--id" => id = it.next().cloned(),
             "--wait" => wait = true,
+            "--yes" | "-y" => yes = true,
+            "--for" => match super::pair_ask::parse_for(it.next().map_or("", String::as_str)) {
+                Ok(t) => trust_for = Some(t),
+                Err(e) => {
+                    eprintln!("{e}");
+                    return 2;
+                }
+            },
             t => tokens.push(t),
         }
     }
-    let grants = if tokens.is_empty() {
-        crate::gate::Grants::new_device()
-    } else {
-        match crate::gate::Grants::parse(&tokens.join(" ")) {
-            Ok(g) => g,
-            Err(e) => {
-                eprintln!("{e}");
-                return 2;
+    use std::io::IsTerminal;
+    let bare = tokens.is_empty() && trust_for.is_none() && !yes;
+    let (grants, trust_for) =
+        if bare && std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
+            match super::pair_ask::ask(&crate::gate::Grants::new_device()) {
+                Some(a) => a,
+                None => return 1,
             }
-        }
-    };
-    match print_with(relay.as_deref(), id.as_deref(), &grants) {
+        } else if tokens.is_empty() {
+            (crate::gate::Grants::new_device(), trust_for.flatten())
+        } else {
+            let g = match crate::gate::Grants::parse(&tokens.join(" ")) {
+                Ok(g) => g,
+                Err(e) => {
+                    eprintln!("{e}");
+                    return 2;
+                }
+            };
+            (g, trust_for.flatten())
+        };
+    match print_with(relay.as_deref(), id.as_deref(), &grants, trust_for) {
         Some(code) => {
             super::countdown::run(&code, wait);
             0

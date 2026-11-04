@@ -8,7 +8,7 @@
 //! [`MAX_STRIKES`] wrong ones every live code is revoked and a new one has to be made.
 //!
 //! ```text
-//!   <config>/wado/pair_codes     <qr code>\t<expiry>\t<grants>[\t<typed code>]
+//!   <config>/wado/pair_codes     <qr code>\t<expiry>\t<grants>[\t<typed code>[\t<trust for s>\t<by>]]
 //!   <config>/wado/pair_strikes   one line per wrong typed code since codes were last all gone
 //!   <config>/wado/pair_lockout   present once the strikes revoked everything; cleared by a mint
 //! ```
@@ -20,7 +20,7 @@ use std::time::Duration;
 
 use tracing::warn;
 
-use super::{Check, Gate, Grants, now_s, typed_code};
+use super::{Check, Gate, Grants, Term, now_s, typed_code};
 
 /// How long a pairing code works.
 pub const PAIR_TTL: Duration = Duration::from_secs(10 * 60);
@@ -44,13 +44,22 @@ struct Record {
     until: u64,
     grants: String,
     typed: String,
+    /// How long the device it pairs is trusted, from the moment it pairs; `None`: until removed.
+    trust_for: Option<u64>,
+    /// The device that asked for this code (`2026-11-04`, delegated pairing); empty: this computer.
+    by: String,
 }
 
 impl Record {
     fn line(&self) -> String {
         format!(
-            "{}\t{}\t{}\t{}",
-            self.code, self.until, self.grants, self.typed
+            "{}\t{}\t{}\t{}\t{}\t{}",
+            self.code,
+            self.until,
+            self.grants,
+            self.typed,
+            self.trust_for.map_or_else(|| "-".into(), |s| s.to_string()),
+            if self.by.is_empty() { "-" } else { &self.by }
         )
     }
     fn live(&self) -> bool {
@@ -86,11 +95,19 @@ impl Gate {
                     .next()
                     .map_or_else(|| Grants::new_device().tokens(), String::from);
                 let typed = f.next().unwrap_or("").to_string();
+                // A term that does not read is refused, not taken as forever: fail closed.
+                let trust_for = match f.next() {
+                    None | Some("-") => None,
+                    Some(s) => Some(s.parse().ok()?),
+                };
+                let by = f.next().filter(|b| *b != "-").unwrap_or("").to_string();
                 Some(Record {
                     code,
                     until,
                     grants,
                     typed,
+                    trust_for,
+                    by,
                 })
             })
             .collect()
@@ -118,6 +135,12 @@ impl Gate {
     /// and the typed code are shown only on this computer, so a device presenting either was
     /// shown the host's screen.
     pub fn mint_pair_with(&self, grants: &Grants) -> Minted {
+        self.mint_pair_for(grants, None, "")
+    }
+
+    /// As [`Gate::mint_pair_with`], and the device it pairs is trusted for `trust_for` seconds
+    /// from then (`None`: until removed). `by` is the device that asked for the code, if any.
+    pub fn mint_pair_for(&self, grants: &Grants, trust_for: Option<u64>, by: &str) -> Minted {
         use rand::Rng;
         let code: String = rand::thread_rng()
             .sample_iter(&rand::distributions::Alphanumeric)
@@ -141,6 +164,8 @@ impl Gate {
             until: minted.until,
             grants: grants.tokens(),
             typed: minted.typed.clone(),
+            trust_for,
+            by: by.to_string(),
         });
         self.write_records(&live);
         minted
@@ -148,13 +173,17 @@ impl Gate {
 
     /// Spend a pairing code, given in either form: the grants it carries, or `None` if it is
     /// not live. A typed code must already be normalised.
-    pub fn redeem(&self, code: &str) -> Option<Grants> {
+    pub fn redeem(&self, code: &str) -> Option<(Grants, Term)> {
         let live = self.live_records();
         let hit = live.iter().find(|r| r.is(code))?;
         let g = Grants::parse(&hit.grants).unwrap_or(Grants::NONE);
+        let term = Term {
+            until: hit.trust_for.map(|s| now_s() + s),
+            by: hit.by.clone(),
+        };
         let rest: Vec<Record> = live.into_iter().filter(|r| !r.is(code)).collect();
         self.write_records(&rest);
-        Some(g)
+        Some((g, term))
     }
 
     /// Whether pairing code `code` (either form) can still be redeemed — false once used,

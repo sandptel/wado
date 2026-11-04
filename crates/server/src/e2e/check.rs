@@ -17,6 +17,8 @@ pub struct Pending {
     pub name: String,
     pub pk: String,
     pub grants: Grants,
+    /// How long it is trusted once confirmed, and who asked for its code.
+    pub term: crate::gate::Term,
     /// The typed code, which names the question.
     pub typed: String,
 }
@@ -51,7 +53,7 @@ pub async fn settle(
     let check = gate.await_answer(&p.typed, CONFIRM_WAIT, here).await;
     let out = match check {
         Check::Yes => {
-            gate.confirmed(&p.key, &p.name, &p.pk, &p.grants);
+            gate.confirmed(&p.key, &p.name, &p.pk, &p.grants, &p.term);
             gate.settle(&p.typed, Check::Paired);
             let mut l = link.lock().unwrap_or_else(|e| e.into_inner());
             (here() && l.confirm()).then(|| WAKE.to_string())

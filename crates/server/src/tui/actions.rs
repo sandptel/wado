@@ -55,8 +55,8 @@ pub fn approve(id: &str, device: &str, yes: bool) -> Outcome {
 }
 
 /// A fresh pairing code carrying `grants`, and its link.
-pub fn pair(grants: &Grants) -> Result<crate::cli::qr::Pairing, String> {
-    crate::cli::qr::pair_link(None, None, grants)
+pub fn pair(grants: &Grants, trust_for: Option<u64>) -> Result<crate::cli::qr::Pairing, String> {
+    crate::cli::qr::pair_link(None, None, grants, trust_for)
 }
 
 /// Write a setting to `ui.kdl` and have every running daemon reload it.
