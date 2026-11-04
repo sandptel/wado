@@ -14,9 +14,10 @@ import '../widgets/basics.dart';
 /// The readouts drawn over the picture (debug.rs `ITEMS`): id, label, on by default.
 const readouts = [
   ('statusbar', 'Status overlay (session, encoder, stats)', false),
-  ('health', 'Health verdict (who is at fault)', true),
-  ('fps', 'Show FPS', true),
-  ('ping', 'Show ping', true),
+  ('health', 'Health verdict, when something is wrong', true),
+  // Off unless asked for: numbers over a desktop are for a person diagnosing it, not using it.
+  ('fps', 'Show FPS', false),
+  ('ping', 'Show ping', false),
   ('touches', 'Show touches / clicks', false),
   ('latency', 'Latency breakdown (per stage)', false),
 ];

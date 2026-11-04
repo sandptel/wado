@@ -103,22 +103,20 @@ class Readouts extends StatelessWidget {
                   ),
                 )
               : null;
-          // Health in the top-left corner, the pill in the top-right — one under the other, so a
-          // narrow picture never stacks them on top of each other.
+          // Along the picture's bottom edge, not its top: an app's own title bar, menus and Back
+          // live at the top (2026-11-05, "the worst place possible"). Health only when something is
+          // wrong — "healthy" said all the time was a chip over the picture for nothing.
+          final health = readout('health') && Stats.I.verdict.value.state != 'ok';
           return Padding(
             padding: const EdgeInsets.all(8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (readout('health'))
-                  Align(
-                    alignment: Alignment.topLeft,
-                    child: _Health(v: Stats.I.verdict.value, narrow: narrow),
-                  ),
-                if (readout('health') && pillW != null) const SizedBox(height: 6),
-                if (pillW != null) Align(alignment: Alignment.topRight, child: pillW),
-                const Spacer(),
                 if (readout('latency') && Latency.I.timing.value != null) _Breakdown(t: Latency.I.timing.value!, x: x, narrow: narrow),
+                const Spacer(),
+                if (pillW != null) Align(alignment: Alignment.bottomRight, child: pillW),
+                if (health && pillW != null) const SizedBox(height: 6),
+                if (health) Align(alignment: Alignment.bottomLeft, child: _Health(v: Stats.I.verdict.value, narrow: narrow)),
               ],
             ),
           );

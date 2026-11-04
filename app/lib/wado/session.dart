@@ -251,7 +251,8 @@ class Session {
     // ponytail: a quarter turn of today's insets (the status bar's side goes left), not the OS's own.
     final held = view.physicalSize;
     if ((held.width >= held.height) != (sw >= sh)) inset = EdgeInsets.fromLTRB(inset.top, inset.left, inset.bottom, inset.right);
-    final room = pictureRoom(sw / k, sh / k, inset);
+    // The room as the console is now — deck out or put away — so the session fills what is operable.
+    final room = pictureRoom(sw / k, sh / k, inset, deck: Settings.I.b('console_deck'));
     if (room.width < 1 || room.height < 1) return defaultRes(sw, sh);
     final a = room.width / room.height;
     final (w, h) = a >= 1 ? ((720 * a).round() & ~1, 720) : (720, (720 / a).round() & ~1);

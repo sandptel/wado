@@ -14,7 +14,8 @@ void main() {
     expect(l.pic.height, closeTo(584.3, 1));
     expect(l.k, closeTo(.692, .002));
     expect(l.pic.left - l['ws']!.r.right - 6, closeTo(0, .6));
-    expect(l['faces']!.r.left - l.pic.right - 8, closeTo(0, .6));
+    // 48 px buttons fill the 48 px rail: the faces sit right at the gap.
+    expect(l['faces']!.r.left - l.pic.right - 6, closeTo(0, .6));
     final strip = l['strip']!.r, deck = l['deck']!.r, nav = l['nav']!.r;
     expect(strip.top > l.pic.bottom && deck.top > strip.bottom && nav.top > deck.bottom, isTrue);
     expect(deck.height >= 88, isTrue);

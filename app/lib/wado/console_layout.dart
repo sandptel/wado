@@ -78,7 +78,8 @@ class ConsoleLayout {
 
 /// "Full screen"'s width with its label, for the slots placed beside it.
 const fullW = 128.0;
-const _btn = 44.0;
+// 48, not 44: a thumb on a phone held one-handed misses a 44 target in the console's corners.
+const _btn = 48.0;
 
 /// The picture's content fitted into `room` at the session's aspect, centred.
 Rect fit(Rect room, double aspect) {
@@ -89,10 +90,10 @@ Rect fit(Rect room, double aspect) {
 /// The console arrangement.
 /// The picture's room in the console with its deck out — what a session sized to fill it would
 /// measure (a very wide picture is width-bound, a very tall one height-bound).
-Size pictureRoom(double vw, double vh, EdgeInsets inset) {
+Size pictureRoom(double vw, double vh, EdgeInsets inset, {bool deck = true}) {
   final form = Form.of(Size(vw, vh));
-  final w = console(vw: vw, vh: vh, inset: inset, outW: 1e4, outH: 1, form: form, face: Face.pad).pic.width;
-  final h = console(vw: vw, vh: vh, inset: inset, outW: 1, outH: 1e4, form: form, face: Face.pad).pic.height;
+  final w = console(vw: vw, vh: vh, inset: inset, outW: 1e4, outH: 1, form: form, face: Face.pad, deck: deck).pic.width;
+  final h = console(vw: vw, vh: vh, inset: inset, outW: 1, outH: 1e4, form: form, face: Face.pad, deck: deck).pic.height;
   return Size(w, h);
 }
 

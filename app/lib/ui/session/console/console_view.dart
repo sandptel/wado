@@ -58,6 +58,7 @@ class _ConsoleViewState extends State<ConsoleView> with TickerProviderStateMixin
   late final _lay = AnimationController(vsync: this, duration: const Duration(milliseconds: 420));
   ConsoleLayout? _from, _shown;
   bool _deck = Settings.I.b('console_deck');
+  Timer? _refit;
   bool _cockpit = _opensFull;
 
   /// A session opens in the arrangement this device asked for (`console { open }`).
@@ -82,6 +83,7 @@ class _ConsoleViewState extends State<ConsoleView> with TickerProviderStateMixin
 
   @override
   void dispose() {
+    _refit?.cancel();
     active(false);
     Host.I.watch(false);
     Settings.I.removeListener(_settings);
@@ -106,6 +108,14 @@ class _ConsoleViewState extends State<ConsoleView> with TickerProviderStateMixin
       _deck = d;
       _from = _shown;
       _lay.forward(from: 0);
+      // Shape on its default ("fits the console"): the session takes the room the deck gave or
+      // left, in place — apps stay open (2026-11-05: a picture letterboxed in dead bands).
+      _refit?.cancel();
+      if (Settings.I.s('res').isEmpty && Session.I.on.value) {
+        _refit = Timer(const Duration(milliseconds: 700), () {
+          if (mounted && Session.I.on.value && Settings.I.s('res').isEmpty) Session.I.reconfigure();
+        });
+      }
     }
     final c = Settings.I.b('cockpit');
     if (c != _cockpit) {
@@ -285,7 +295,7 @@ class _ConsoleViewState extends State<ConsoleView> with TickerProviderStateMixin
 
           // The quick rail's buttons, cockpit places: a column on the screen's edge.
           final railN = 4;
-          const rb = 40.0;
+          const rb = 44.0;
           final railH = railN * rb + (railN - 1) * 4 + 12;
           final railTop = (vh - railH) / 2 + 6;
           final railX = railSide == 'left' ? 8 + sa.left + 6 : vw - 8 - sa.right - 6 - rb;
@@ -451,13 +461,13 @@ class _ConsoleViewState extends State<ConsoleView> with TickerProviderStateMixin
               fly(
                 (s) => railAt(1, s),
                 (s) => slotAt('rotate', s),
-                IgnorePointer(ignoring: a > .5 && !L['rotate']!.shown, child: BarBtn(icon: 'rotate', label: 'Turn to $turnTo', size: _l(rb, 44, a), onTap: () => _rotate(turnTo))),
+                IgnorePointer(ignoring: a > .5 && !L['rotate']!.shown, child: BarBtn(icon: 'rotate', label: 'Turn to $turnTo', size: _l(rb, 48, a), onTap: () => _rotate(turnTo))),
                 opacity: _l(railOpacity, L['rotate']!.shown ? 1 : 0, a),
               ),
               fly(
                 (s) => railAt(2, s),
                 (s) => slotAt('full', s),
-                _FullBtn(cockpit: _cockpit, a: a, w: _l(rb, fullW, a), h: _l(rb, 44, a), onTap: _toggle),
+                _FullBtn(cockpit: _cockpit, a: a, w: _l(rb, fullW, a), h: _l(rb, 48, a), onTap: _toggle),
                 opacity: railOpacity,
               ),
               fly(
@@ -467,7 +477,13 @@ class _ConsoleViewState extends State<ConsoleView> with TickerProviderStateMixin
                   ignoring: a > .5 && !L['kbd']!.shown,
                   child: ValueListenableBuilder(
                     valueListenable: KeyboardSheet.open,
-                    builder: (context, on, _) => BarBtn(icon: 'kbd', label: 'Keyboard', on: on, size: _l(rb, 44, a), onTap: () => KeyboardSheet.toggle(context)),
+                    builder: (context, on, _) => BarBtn(
+                      icon: '',
+                      label: 'Home — an empty workspace',
+                      size: _l(rb, 48, a),
+                      onTap: () => Session.I.window('home'),
+                      child: Container(width: 18, height: 18, decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: t.text, width: 2.2))),
+                    ),
                   ),
                 ),
                 opacity: _l(railOpacity, L['kbd']!.shown ? 1 : 0, a),
@@ -521,12 +537,11 @@ class _Nav extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Tok.of(context);
     final apps = BarBtn(icon: 'apps', label: 'Apps', minW: grid ? 48 : 54, onTap: onApps);
-    final home = BarBtn(
-      icon: '',
-      label: 'Home — an empty workspace',
-      minW: grid ? 48 : 62,
-      onTap: () => Session.I.window('home'),
-      child: Container(width: 20, height: 20, decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: t.text, width: 2.2))),
+    // The keyboard sits under the thumb with Apps and Back (2026-11-05): typing is the dock's most
+    // used act after them. Home went up to the rail, where the keyboard was.
+    final home = ValueListenableBuilder<bool>(
+      valueListenable: KeyboardSheet.open,
+      builder: (context, on, _) => BarBtn(icon: 'kbd', label: 'Keyboard', on: on, minW: grid ? 48 : 58, onTap: () => KeyboardSheet.toggle(context)),
     );
     final back = BarBtn(icon: 'back', label: 'Back', minW: grid ? 48 : 54, onTap: onBack);
     if (grid) {
