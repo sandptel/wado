@@ -12,7 +12,7 @@ import '../../../wado/latency.dart';
 import '../../../wado/session.dart';
 import '../../../wado/settings.dart';
 import '../../../wado/stats.dart';
-import '../../pages/diagnostics.dart' show readout;
+import '../../pages/diagnostics.dart' show readout, readouts;
 import '../../theme/look.dart';
 import '../../theme/tokens.dart';
 import '../../widgets/basics.dart' show rem;
@@ -38,13 +38,15 @@ String _pair(double got, double need) {
 /// Over the picture's own rect: health top-left, the pill top-right.
 class Readouts extends StatelessWidget {
   const Readouts({super.key});
+  // The readout switches only: over the live picture, a setting changed elsewhere must not redraw it.
+  static final _flags = Settings.I.keys([for (final r in readouts) 'debug_${r.$1}', 'debug_master']);
   @override
   Widget build(BuildContext context) {
     final t = Tok.of(context);
     final s = Session.I;
     return IgnorePointer(
       child: ListenableBuilder(
-        listenable: Listenable.merge([Settings.I, Stats.I.sample, Stats.I.verdict, s.on, s.encoder, s.stagebar, Latency.I.timing, Latency.I.inputMs]),
+        listenable: Listenable.merge([_flags, Stats.I.sample, Stats.I.verdict, s.on, s.encoder, s.stagebar, Latency.I.timing, Latency.I.inputMs]),
         builder: (context, _) {
           if (!s.on.value) return const SizedBox.shrink();
           final narrow = MediaQuery.sizeOf(context).width < 520;
