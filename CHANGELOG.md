@@ -41,6 +41,29 @@ Spec: `docs/superpowers/specs/2026-11-04-player-home-and-devices-design.md`.
   ping, link word or slider tick — and the theme's colours are mixed once per scheme instead of
   on every read.
 
+### Fixes from the first days on a phone — `2026-11-05`
+
+- **Pairing never waits on someone else's desktop.** A new device proves its code on a seatless
+  control room, then joins — so a device mid-session no longer makes pairing say the computer is
+  busy (app and web; an older daemon or relay still pairs on the seat).
+- **`wado pair` is one screen:** what the device may do, ticked by default, arrows and space;
+  Enter shows the code.
+- **The app is called wado.** Its QR scanner is Google's (no camera permission; the old reader is
+  the fallback), and a pairing link opened in a browser on Android hands itself to the app.
+- **The app drawer fills at once.** The list comes without its icons, which follow 24 at a time —
+  a megabyte of inline icons used to sit behind the relay's pacing for half a minute. The drawer
+  lifts above the keyboard, and the keyboard shows what it typed.
+- **Apply applies** (it did; its bar never heard), **Virtual input is not "Offline"** while the
+  desktop link is busy, and a shut door says why.
+- **The console gives the picture the room.** Readouts along the picture's bottom edge, health only
+  when something is wrong, fps and ping opt-in; 48 px targets; the keyboard in the dock beside Apps
+  and Back, Home on the rail. In the app the session follows the deck's room as it opens or folds.
+- **Smoother app.** Each page draws on its own layer, icons keep one loader each — the control
+  centre no longer blinks with every stats tick.
+- **The web, end to end.** The app's top bar, play grid, Devices (with the code as a QR), tips and
+  tour; tablet and desktop layouts — a shelf you scroll with a thumb or a grid for a mouse; Game
+  mode's sheet, which never appeared, now does.
+
 ### Android goes native — phase 1
 
 - **The client protocol in Rust** (`crates/client-core`): the relay link, the end-to-end envelope,
