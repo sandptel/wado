@@ -1,6 +1,8 @@
-//! One pairing ceremony. The daemon pairs only on the seat join (`pair=1`; never on a control
-//! room, by design), so the ceremony takes the seat for as long as it lasts and leaves with
-//! `4001` the moment it is let in (A9.4). No feature ever uses the seat.
+//! One pairing ceremony. Since `2026-11-04` it runs on a **control room** — seatless, so a device
+//! using the desktop never stands in the way (parallel use): the daemon opens one for a device it
+//! does not know while a pairing code is live. An older daemon (or relay) refuses that, and the
+//! ceremony falls back to the seat join (`pair=1`), leaving with `4001` the moment it is let in
+//! (A9.4). No feature ever uses the seat.
 //!
 //! QR: the link's code is proven inside the envelope and its `hk` pins the computer, so a relay
 //! cannot stand in for it. Typed code: proven with the session's own key, then four check words
@@ -90,13 +92,44 @@ async fn ceremony(
 ) -> PairStep {
     let computer = display_remote_id(&link.remote_id);
     emit(PairStep::Dialing);
+    let control = url::control(
+        &link.relay_url,
+        &link.remote_id,
+        &ctx.identity.client_key,
+        &ctx.name,
+    );
+    let on_control = over(link, ctx, connector, &computer, &control, emit).await;
+    // Only a refusal that means "not here" (an older daemon or relay) tries the seat.
+    match &on_control {
+        PairStep::Failed { why }
+            if why.contains(NOT_HERE_DAEMON) || why.contains(NOT_HERE_RELAY) => {}
+        _ => return on_control,
+    }
+    emit(PairStep::Dialing);
     let u = url::seat_pair(
         &link.relay_url,
         &link.remote_id,
         &ctx.identity.client_key,
         &ctx.name,
     );
-    let mut t = match tokio::time::timeout(DIAL, connector.connect(&u)).await {
+    over(link, ctx, connector, &computer, &u, emit).await
+}
+
+/// An older daemon's refusal of an unknown device on a control room (`gate::UNPAIRED`), and an
+/// older relay's of control rooms at all (`join_control::NO_CONTROL`).
+const NOT_HERE_DAEMON: &str = "doesn't know this device yet";
+const NOT_HERE_RELAY: &str = "older than live widgets";
+
+/// The ceremony over one join `u`.
+async fn over(
+    link: &PairLink,
+    ctx: &PairCtx,
+    connector: &dyn Connector,
+    computer: &str,
+    u: &str,
+    emit: &mut impl FnMut(PairStep),
+) -> PairStep {
+    let mut t = match tokio::time::timeout(DIAL, connector.connect(u)).await {
         Ok(Ok(t)) => t,
         Ok(Err(e)) => {
             return failed(format!(
@@ -107,7 +140,7 @@ async fn ceremony(
             return failed("Can't reach the computer's relay. Check the connection and try again.")
         }
     };
-    let end = with_socket(link, ctx, &computer, t.as_mut(), emit).await;
+    let end = with_socket(link, ctx, computer, t.as_mut(), emit).await;
     t.close(LEAVE).await;
     end
 }
@@ -295,7 +328,10 @@ mod tests {
     #[async_trait]
     impl Connector for OneShot {
         async fn connect(&self, url: &str) -> std::io::Result<Box<dyn Transport>> {
-            assert!(url.ends_with("&pair=1"), "{url}");
+            assert!(
+                url.ends_with("&pair=1") || url.contains("control=1"),
+                "{url}"
+            );
             Ok(Box::new(self.0.lock().unwrap().take().expect("one dial")))
         }
     }
@@ -307,6 +343,47 @@ mod tests {
             pins: Arc::new(Mutex::new(Pins::load(dir))),
             name: "Phone".into(),
         }
+    }
+
+    /// Dials in order: the control room first, then the seat.
+    struct Dials(Mutex<Vec<(String, MemTransport)>>);
+
+    #[async_trait]
+    impl Connector for Dials {
+        async fn connect(&self, url: &str) -> std::io::Result<Box<dyn Transport>> {
+            let (want, t) = self.0.lock().unwrap().remove(0);
+            assert!(url.contains(&want), "dialled {url}, expected {want}");
+            Ok(Box::new(t))
+        }
+    }
+
+    #[tokio::test]
+    async fn pairs_on_a_control_room_and_falls_back_to_the_seat_only_for_an_old_relay() {
+        let dir = crate::store::temp_dir("pair-fallback");
+        let c = ctx(&dir);
+        let (a1, mut b1) = MemTransport::pair();
+        let (a2, mut b2) = MemTransport::pair();
+        let conn = Dials(Mutex::new(vec![
+            ("control=1".into(), a1),
+            ("pair=1".into(), a2),
+        ]));
+        let link = PairLink {
+            relay_url: "https://r".into(),
+            remote_id: "528491307".into(),
+            code: PairCode::Qr("Q".into()),
+            hk: None,
+        };
+        b1.send(r#"{"type":"join_denied","reason":"this computer's wado is older than live widgets — update it"}"#.into()).await.unwrap();
+        b2.send(r#"{"type":"join_denied","reason":"528-491-307 already has an active connection","takeover":true}"#.into()).await.unwrap();
+        let last = run(link, &c, &conn, |_| {}).await;
+        assert!(
+            matches!(last, PairStep::Failed { ref why } if why.contains("busy")),
+            "{last:?}"
+        );
+        assert!(
+            conn.0.lock().unwrap().is_empty(),
+            "both dialled: control, then the seat"
+        );
     }
 
     #[derive(Clone, Copy, PartialEq)]

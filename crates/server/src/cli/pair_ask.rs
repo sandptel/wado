@@ -1,8 +1,7 @@
 //! `wado pair` run bare in a terminal asks first (`2026-11-04`): what the device that scans the
-//! code may do — the defaults are `security { new-device }` — and for how long. The code is made
-//! only after, so the decision rides in it and nothing is decided once a device is already in.
-
-use std::io::{BufRead, Write};
+//! code may do — the defaults are `security { new-device }`, already ticked — and for how long, on
+//! one screen (Enter alone takes the defaults). The code is made only after, so the decision rides
+//! in it and nothing is decided once a device is already in.
 
 use crate::gate::Grants;
 
@@ -71,66 +70,109 @@ fn has(g: &Grants, token: &str) -> bool {
     g.tokens().split(',').any(|t| t == token)
 }
 
-/// Ask on the terminal. `None` when stdin closed.
+/// The trust terms on offer, in the order ← → walks them.
+const TERMS: &[(Option<u64>, &str)] = &[
+    (None, "until you remove it"),
+    (Some(3600), "1 hour"),
+    (Some(86_400), "1 day"),
+    (Some(7 * 86_400), "7 days"),
+];
+
+/// One screen, decided in place (`2026-11-04`, after "the interface is inhuman"): the defaults are
+/// already ticked, so Enter alone shows the code; ↑↓ move, space switches, ←→ sets how long, Esc
+/// leaves. Redrawn where it stands — no scrolling wall of questions. `None` when cancelled.
 pub fn ask(defaults: &Grants) -> Option<(Grants, Option<u64>)> {
+    use std::io::Write;
+
+    use super::style::{accent, bad, bold, dim};
+    use ratatui::crossterm::{
+        cursor,
+        event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
+        queue,
+        style::Print,
+        terminal::{self, ClearType},
+    };
+
     let mut g = defaults.clone();
-    let stdin = std::io::stdin();
-    let mut line = String::new();
-    loop {
-        println!("\n  What can the device that scans this do?  The desktop is always included.");
+    let mut row = 0usize;
+    let mut term = 0usize;
+    let mut out = std::io::stdout();
+    let height = (ITEMS.len() + 5) as u16;
+    let draw = |out: &mut std::io::Stdout, g: &Grants, row: usize, term: usize, first: bool| {
+        if !first {
+            let _ = queue!(
+                out,
+                cursor::MoveUp(height),
+                cursor::MoveToColumn(0),
+                terminal::Clear(ClearType::FromCursorDown)
+            );
+        }
+        let mut lines = vec![format!(
+            "  {}",
+            bold("What may the device that scans this do?")
+        )];
         for (i, (tok, label, note)) in ITEMS.iter().enumerate() {
-            let mark = if has(&g, tok) { "[x]" } else { "[ ]" };
-            let note = if note.is_empty() {
-                String::new()
+            let on = has(g, tok);
+            let mark = if on { accent("[x]") } else { dim("[ ]") };
+            let here = if i == row { accent("›") } else { " ".into() };
+            let label = if *tok == "devices" && on {
+                bad(label)
             } else {
-                format!("  — {note}")
+                label.to_string()
             };
-            println!("   {} {mark} {label}{note}", i + 1);
+            lines.push(format!("  {here} {mark} {label:<24} {}", dim(note)));
         }
-        print!("  Numbers to switch (e.g. 1 3), Enter to go on: ");
-        std::io::stdout().flush().ok();
-        line.clear();
-        if stdin.lock().read_line(&mut line).ok()? == 0 {
-            return None;
+        lines.push(String::new());
+        lines.push(format!(
+            "  {}   {} {} {}",
+            bold("For"),
+            dim("‹"),
+            accent(TERMS[term].1),
+            dim("›   ← →")
+        ));
+        lines.push(String::new());
+        lines.push(format!(
+            "  {}",
+            dim("↑↓ move · space switch · enter show the code · esc cancel")
+        ));
+        for l in lines {
+            let _ = queue!(out, Print(l), Print("\r\n"));
         }
-        let picks: Vec<usize> = line
-            .split_whitespace()
-            .filter_map(|w| w.parse().ok())
-            .collect();
-        if picks.is_empty() {
-            break;
+        let _ = out.flush();
+    };
+    terminal::enable_raw_mode().ok()?;
+    let _ = queue!(out, cursor::Hide);
+    draw(&mut out, &g, row, term, true);
+    let picked = loop {
+        let Ok(Event::Key(k)) = event::read() else {
+            continue;
+        };
+        if k.kind != KeyEventKind::Press {
+            continue;
         }
-        for n in picks {
-            if let Some((tok, ..)) = ITEMS.get(n.wrapping_sub(1)) {
+        match k.code {
+            KeyCode::Enter => break Some((g.clone(), TERMS[term].0)),
+            KeyCode::Esc | KeyCode::Char('q') => break None,
+            KeyCode::Char('c') if k.modifiers.contains(KeyModifiers::CONTROL) => break None,
+            KeyCode::Up | KeyCode::Char('k') => row = row.checked_sub(1).unwrap_or(ITEMS.len() - 1),
+            KeyCode::Down | KeyCode::Char('j') | KeyCode::Tab => row = (row + 1) % ITEMS.len(),
+            KeyCode::Left | KeyCode::Char('h') => {
+                term = term.checked_sub(1).unwrap_or(TERMS.len() - 1)
+            }
+            KeyCode::Right | KeyCode::Char('l') => term = (term + 1) % TERMS.len(),
+            KeyCode::Char(' ') => {
+                let tok = ITEMS[row].0;
                 let on = !has(&g, tok);
                 let _ = g.set(tok, on);
             }
+            _ => continue,
         }
-    }
-    let choices = [
-        ("1 hour", Some(3600)),
-        ("1 day", Some(86_400)),
-        ("7 days", Some(7 * 86_400)),
-        ("until you remove it", None),
-    ];
-    println!("\n  For how long?");
-    for (i, (w, _)) in choices.iter().enumerate() {
-        println!("   {} {w}{}", i + 1, if i == 3 { "  (Enter)" } else { "" });
-    }
-    print!("  ");
-    std::io::stdout().flush().ok();
-    line.clear();
-    if stdin.lock().read_line(&mut line).ok()? == 0 {
-        return None;
-    }
-    let pick = line
-        .trim()
-        .parse::<usize>()
-        .ok()
-        .and_then(|n| choices.get(n.wrapping_sub(1)))
-        .map_or(None, |c| c.1);
-    println!();
-    Some((g, pick))
+        draw(&mut out, &g, row, term, false);
+    };
+    let _ = queue!(out, cursor::Show, Print("\r\n"));
+    let _ = out.flush();
+    let _ = terminal::disable_raw_mode();
+    picked
 }
 
 #[cfg(test)]

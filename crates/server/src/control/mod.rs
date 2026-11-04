@@ -53,6 +53,10 @@ struct Room {
     /// Set by `room_hello{view}`: a joined device, not a widget.
     view: Mutex<Option<Arc<crate::viewers::room::ViewRoom>>>,
     hub: Option<Arc<crate::viewers::Hub>>,
+    /// Opened for a device not yet trusted, to pair (`2026-11-04`): pairing needs no seat, so a
+    /// device using the desktop never stands in the way of one pairing. Until the handshake's
+    /// proof checks out, the envelope carries nothing — and then the device is simply trusted.
+    pairing: bool,
 }
 
 impl Room {
@@ -82,9 +86,11 @@ impl Rooms {
         self.len() == 0
     }
 
-    /// A control-only client joined. Only a device this computer already trusts gets a room.
+    /// A control-only client joined. A device this computer already trusts gets a room; one it
+    /// does not, only while a pairing code is live — to prove it on this seatless room.
     pub async fn open(&self, sh: &Shared, room_id: String, key: String, name: String) {
-        if !sh.gate.knows(&key) {
+        let pairing = !sh.gate.knows(&key);
+        if pairing && sh.gate.live_pairs().is_empty() && sh.gate.live_typed().is_empty() {
             info!(device = %name, "control link: refused — not a device this computer knows");
             let reason = crate::gate::UNPAIRED.to_string();
             let fail = wado_protocol::envelope::E2eMsg::E2eFail {
@@ -128,6 +134,7 @@ impl Rooms {
             },
             view: Mutex::default(),
             hub: sh.hub.clone(),
+            pairing,
         };
         info!(device = %name, "control link: opened (no seat, controls only)");
         self.0
@@ -164,26 +171,76 @@ impl Rooms {
                         .await;
                 }
             }
-            // Any pairing code the client claims is ignored: pairing never happens here, and a
-            // proof checked against no codes must not count as a wrong guess.
-            Inbound::Finish { dev_pk, sig, .. } => {
-                let done = room.link.lock().unwrap_or_else(|e| e.into_inner()).finish(
-                    &dev_pk,
-                    &sig,
-                    "",
-                    "",
-                    &Codes::default(),
-                );
+            // A trusted device's code claim is ignored (a proof checked against no codes must not
+            // count as a wrong guess); a pairing room checks it against the live codes, as the
+            // seat does.
+            Inbound::Finish {
+                dev_pk,
+                sig,
+                pair_mac,
+                typed_mac,
+            } => {
+                let codes = if room.pairing {
+                    Codes {
+                        qr: sh.gate.live_pairs(),
+                        typed: sh.gate.live_typed(),
+                    }
+                } else {
+                    Codes::default()
+                };
+                let (pm, tm) = if room.pairing {
+                    (pair_mac.as_str(), typed_mac.as_str())
+                } else {
+                    ("", "")
+                };
+                let done = room
+                    .link
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .finish(&dev_pk, &sig, pm, tm, &codes);
                 let verdict = done.and_then(|d| {
                     match sh
                         .gate
                         .admit(&room.who.key, &room.who.name, &dev_pk, &d.proof)
                     {
-                        Ok(Admitted::In) => Ok(d),
+                        Ok(Admitted::In) => Ok((d, None)),
+                        Ok(Admitted::Confirm(grants, term)) if room.pairing => {
+                            Ok((d, Some((grants, term))))
+                        }
                         Ok(Admitted::Confirm(..)) => Err("pairing is not done on a widget's link"),
                         Err(e) => Err(e),
                     }
                 });
+                // A typed code on a pairing room: the check words, answered on the computer (or by
+                // the device that asked for the code), as on the seat (`e2e::check`).
+                if let Ok((d, Some((grants, term)))) = verdict {
+                    let crate::gate::Proof::Typed(typed) = d.proof.clone() else {
+                        return;
+                    };
+                    let p = crate::e2e::check::Pending {
+                        key: room.who.key.clone(),
+                        name: room.who.name.clone(),
+                        pk: dev_pk.clone(),
+                        grants,
+                        term,
+                        typed,
+                    };
+                    let first = {
+                        let mut link = room.link.lock().unwrap_or_else(|e| e.into_inner());
+                        crate::e2e::check::begin(&mut link, &sh.gate, &p, d)
+                    };
+                    let _ = room.cx.out.send(first).await;
+                    tokio::spawn(crate::e2e::check::settle(
+                        sh.gate.clone(),
+                        Arc::clone(&room.link),
+                        Arc::new(Mutex::new(room_id.to_string())),
+                        room_id.to_string(),
+                        room.cx.out.clone(),
+                        p,
+                    ));
+                    return;
+                }
+                let verdict = verdict.map(|(d, _)| d);
                 let mut link = room.link.lock().unwrap_or_else(|e| e.into_inner());
                 let out = match verdict {
                     Ok(d) => {
