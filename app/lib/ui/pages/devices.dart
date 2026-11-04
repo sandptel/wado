@@ -16,33 +16,16 @@ import '../../wado/devices.dart';
 import '../../wado/host.dart';
 import '../../wado/nav.dart';
 import '../../wado/passkey.dart';
+import '../../wado/ux.dart';
 import '../theme/look.dart';
 import '../widgets/basics.dart';
 import '../widgets/sheet.dart';
 
 String _computer() => CoreHost.I.computer(Nav.I.selected)?.name ?? 'this computer';
 
-String _left(int? until) {
-  if (until == null) return 'until removed';
-  final s = until - DateTime.now().millisecondsSinceEpoch ~/ 1000;
-  if (s <= 0) return 'ending';
-  if (s < 3600) return 'ends in ${(s / 60).ceil()} min';
-  if (s < 86400) return 'ends in ${(s / 3600).round()} h';
-  return 'ends in ${(s / 86400).round()} d';
-}
-
-String _words(String grants) {
-  if (grants.isEmpty) return 'the desktop only';
-  const say = {
-    'files-ro': 'files (read)',
-    'files-rw': 'files',
-    'host': 'sound & sleep',
-    'input': 'trackpad',
-    'takeover': 'take over',
-    'devices': 'manages devices',
-  };
-  return grants.split(',').map((g) => say[g] ?? g).join(', ');
-}
+// The shared words (`wado_ux::trust`), the web's too.
+String _left(int? until) => '${ux('left', {'until': until, 'now': nowS}) ?? ''}';
+String _words(String grants) => '${ux('grants', {'tokens': grants}) ?? ''}';
 
 class DevicesPage extends StatefulWidget {
   const DevicesPage({super.key});

@@ -6,6 +6,7 @@ import '../play/poster.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
+import '../../wado/ux.dart';
 import 'tips.dart';
 
 void tourOnce(BuildContext context, String computer) {
@@ -40,11 +41,13 @@ class _TourState extends State<_Tour> {
   Widget build(BuildContext context) {
     final t = Tok.of(context);
     final c = widget.computer;
+    // The shared cards (`wado_ux::tour`), worded for the form in hand.
+    final size = MediaQuery.sizeOf(context);
+    final raw = ux('tour', {'computer': c, 'form': ux('form', {'w': size.width, 'h': size.height, 'touch': true})});
     final cards = [
-      (8 + 6, '$c\'s games and apps, right here', 'Everything installed on $c can open on this phone, at this phone\'s own size.', _Shelf()),
-      (8 + 5, 'Set a game up once', 'Turn on Game mode for a game and say how you play. Every time after, one tap opens it ready.', const _Big('pad')),
-      (8 + 2, '? is always there', 'Tap it in any session to see what every gesture and button does on that screen.', const _Big('?')),
-      (8 + 3, 'It\'s still your computer', 'What this phone may do is decided on $c. When something is off, wado says why and how to change it.', const _Big('lock')),
+      for (final m in (raw as List? ?? const []))
+        if (m is Map)
+          ((m['hue'] as num? ?? 13).toInt(), '${m['title']}', '${m['words']}', m['art'] == 'shelf' ? _Shelf() : _Big('${m['art']}') as Widget),
     ];
     final last = _i == cards.length - 1;
     return Scaffold(

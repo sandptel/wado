@@ -6438,10 +6438,13 @@ name = "wado-app-bridge"
 version = "0.0.4"
 dependencies = [
  "anyhow",
+ "base64",
  "flutter_rust_bridge",
  "ring",
  "serde_json",
+ "sha2",
  "wado-client-core",
+ "wado-ux",
 ]
 
 [[package]]
@@ -6555,6 +6558,15 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
  "wado-protocol",
+]
+
+[[package]]
+name = "wado-ux"
+version = "0.0.4"
+dependencies = [
+ "qrcode",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

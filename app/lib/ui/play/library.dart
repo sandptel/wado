@@ -10,6 +10,7 @@ import '../../wado/game_mode.dart';
 import '../../wado/nav.dart';
 import '../../wado/play.dart';
 import '../../wado/session.dart';
+import '../../wado/ux.dart';
 import '../home/cards.dart' show go, Dashed;
 import '../home/top_bar.dart' show homeAll, homeView, hueOf;
 import '../theme/look.dart';
@@ -332,13 +333,7 @@ class _Continue extends StatelessWidget {
   }
 }
 
-String _ago(int at) {
-  final s = DateTime.now().millisecondsSinceEpoch ~/ 1000 - at;
-  if (s < 90) return 'just now';
-  if (s < 3600) return '${s ~/ 60} min ago';
-  if (s < 86400) return '${s ~/ 3600} h ago';
-  return '${s ~/ 86400} d ago';
-}
+String _ago(int at) => '${ux('ago', {'at': at, 'now': nowS}) ?? ''}';
 
 /// Turn Game mode on for an app: pick it from the computer's apps, then the setup.
 Future<void> addGame(BuildContext context, Computer c) async {

@@ -4,6 +4,7 @@
 // ignore_for_file: unused_import, unused_element, unnecessary_import, duplicate_ignore, invalid_use_of_internal_member, annotate_overrides, non_constant_identifier_names, curly_braces_in_flow_control_structures, prefer_const_literals_to_create_immutables, unused_field
 
 import 'api/core.dart';
+import 'api/ux.dart';
 import 'api/webauthn.dart';
 
 import 'dart:async';
@@ -69,7 +70,7 @@ class WadoCore
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => -557642999;
+  int get rustContentHash => -1957707772;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -150,6 +151,8 @@ abstract class WadoCoreApi extends BaseApi {
   });
 
   List<String> crateApiCoreOsLogoSlugs();
+
+  String crateApiUxUx({required String op, required String input});
 
   Uint8List crateApiWebauthnWebauthnAttestation({
     required String rpId,
@@ -709,6 +712,30 @@ class WadoCoreApiImpl extends WadoCoreApiImplPlatform implements WadoCoreApi {
       const TaskConstMeta(debugName: "os_logo_slugs", argNames: []);
 
   @override
+  String crateApiUxUx({required String op, required String input}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(op, serializer);
+          sse_encode_String(input, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 17)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiUxUxConstMeta,
+        argValues: [op, input],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiUxUxConstMeta =>
+      const TaskConstMeta(debugName: "ux", argNames: ["op", "input"]);
+
+  @override
   Uint8List crateApiWebauthnWebauthnAttestation({
     required String rpId,
     required List<int> credId,
@@ -721,7 +748,7 @@ class WadoCoreApiImpl extends WadoCoreApiImplPlatform implements WadoCoreApi {
           sse_encode_String(rpId, serializer);
           sse_encode_list_prim_u_8_loose(credId, serializer);
           sse_encode_list_prim_u_8_loose(publicKey, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 17)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 18)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_prim_u_8_strict,
@@ -751,7 +778,7 @@ class WadoCoreApiImpl extends WadoCoreApiImplPlatform implements WadoCoreApi {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(rpId, serializer);
           sse_encode_u_32(count, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 18)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 19)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_prim_u_8_strict,
@@ -783,7 +810,7 @@ class WadoCoreApiImpl extends WadoCoreApiImplPlatform implements WadoCoreApi {
           sse_encode_bool(create, serializer);
           sse_encode_list_prim_u_8_loose(challenge, serializer);
           sse_encode_String(origin, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 19)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 20)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_prim_u_8_strict,
@@ -813,7 +840,7 @@ class WadoCoreApiImpl extends WadoCoreApiImplPlatform implements WadoCoreApi {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_list_prim_u_8_loose(authData, serializer);
           sse_encode_list_prim_u_8_loose(clientData, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 20)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 21)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_prim_u_8_strict,

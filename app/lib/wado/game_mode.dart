@@ -1,5 +1,5 @@
-// Game mode: a switch on one app of one computer (spec 2026-11-04-player-home-and-devices). Set up
-// once — how it is played, then the session's rules — and every open of that app from this phone
+// Game mode: a switch on one app of one computer (spec 2026-11-04-player-home-and-devices; the
+// rules are `crates/ux` game.rs, shared with the web). Set up once — how it is played, then the session's rules — and every open of that app from this phone
 // uses it. While it runs, its values shadow the phone's own settings (Settings.overlay): nothing
 // the person chose for ordinary sessions is touched, and a change made in the game is kept for
 // that game.
@@ -8,6 +8,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 
 import 'session.dart';
+import 'ux.dart';
 import 'settings.dart';
 
 /// One app's Game mode, as stored under `game_modes` (`<computer>|<exec>` → this as JSON).
@@ -69,33 +70,24 @@ class GameProfile {
         kept: (m['kept'] as Map?)?.cast<String, Object?>(),
       );
 
-  /// The settings this profile shadows while it runs.
-  Map<String, Object?> overlay({int? refresh}) => {
-        'cockpit': true,
-        'console_open': 'full',
-        if (play == 'pad') ...{'console_face': 'gamepad', 'pad_on': true, 'gpad_layout': layout},
-        if (play == 'touch') ...{'console_face': 'touchpad', 'pad_on': false},
-        if (play == 'controller') 'pad_on': false,
-        ...pictures(picture, refresh ?? 60),
-        if (input) ...{'redundant_input': true, 'low_latency_audio': true},
-        if (calm) ...{'edge_swipe': false, 'swipe3': false},
-        if (awake) ...{'keep_awake': true, 'volume_keys': true},
-        if (x) 'x_server': true,
-        ...kept,
-      };
+  /// The settings this profile shadows while it runs (`wado_ux::game::Profile::overlay`).
+  Map<String, Object?> overlay({int? refresh}) =>
+      ((ux('overlay', {'profile': toJson(), 'refresh': refresh ?? 60}) as Map?) ?? const {}).cast<String, Object?>();
+
+  /// A shadowed setting changed in the game: keep it (`Profile::keep`).
+  GameProfile keep(String k, Object? v) {
+    final m = ux('keep', {'profile': toJson(), 'key': k, 'value': v});
+    return m is Map ? GameProfile.fromJson(m) : this;
+  }
 }
 
-/// The Picture presets, each the exact values it sets (shown to the person in mono).
-Map<String, Object?> pictures(String id, int refresh) => switch (id) {
-      'balanced' => {'fps': 60, 'quality': 'balanced', 'fps_lock': true, 'keyframe_mode': 'on_request'},
-      'sharp' => {'fps': 30, 'quality': 'quality', 'fps_lock': false, 'keyframe_mode': 'periodic'},
-      _ => {'fps': refresh.clamp(60, 120), 'quality': 'reactivity', 'fps_lock': true, 'keyframe_mode': 'on_request'},
-    };
+/// The Picture preset's exact values in a line (`wado_ux::game::picture_words`).
+String pictureWords(String id, int refresh) => '${ux('picture_words', {'id': id, 'refresh': refresh}) ?? ''}';
 
-String pictureWords(String id, int refresh) {
-  final p = pictures(id, refresh);
-  final kf = p['keyframe_mode'] == 'on_request' ? 'keyframes on demand' : 'keyframes every few s';
-  return '${p['fps']} fps · ${p['quality'] == 'reactivity' ? 'latency' : p['quality']} · ${p['fps_lock'] == true ? 'locked' : 'adaptive'} · $kf';
+/// A first profile for an app: launchers get the X server (`wado_ux::game::new`).
+GameProfile newGame(String name, String exec) {
+  final m = ux('new_game', {'name': name, 'exec': exec});
+  return m is Map ? GameProfile.fromJson(m) : GameProfile(name: name, exec: exec);
 }
 
 class GameMode extends ChangeNotifier {
@@ -163,11 +155,6 @@ class GameMode extends ChangeNotifier {
     final i = key.indexOf('|');
     final p = of(key.substring(0, i), key.substring(i + 1));
     if (p == null) return;
-    if (k == 'gpad_layout' && v is String) {
-      p.layout = v;
-    } else {
-      p.kept[k] = v;
-    }
-    save(key.substring(0, i), p);
+    save(key.substring(0, i), p.keep(k, v));
   }
 }

@@ -12,6 +12,7 @@ import 'multi.dart';
 import 'nav.dart';
 import 'session.dart';
 import 'settings.dart';
+import 'ux.dart';
 
 /// One thing done on a computer, for Continue: `game`, `desktop`, `shell`, `file`.
 typedef Recent = ({String computer, String kind, String name, String exec, int at});
@@ -74,11 +75,12 @@ class Play extends ChangeNotifier {
 
   /// Remember what was done, newest first, a few per computer.
   void note(String computer, String kind, String name, String exec) {
-    final all = recent.where((r) => !(r.computer == computer && r.exec == exec && r.kind == kind)).toList()
-      ..insert(0, (computer: computer, kind: kind, name: name, exec: exec, at: DateTime.now().millisecondsSinceEpoch ~/ 1000));
-    Settings.I.set('recent_play', [
-      for (final r in all.take(16)) {'c': r.computer, 'k': r.kind, 'n': r.name, 'e': r.exec, 't': r.at},
-    ]);
+    // `wado_ux::recent::note`: the same thing once, newest first, a few.
+    final list = ux('note', {
+      'list': Settings.I.get<Object?>('recent_play') ?? const [],
+      'recent': {'c': computer, 'k': kind, 'n': name, 'e': exec, 't': nowS},
+    });
+    if (list is List) Settings.I.set('recent_play', list);
     // Its own signal: home's play section must not rebuild on every setting (a volume slider).
     notifyListeners();
   }
@@ -89,9 +91,6 @@ class Play extends ChangeNotifier {
       ];
 
   /// Played recently: one of the last two things done, or anything in three days, was a game.
-  bool gamedLately(String computer) {
-    final mine = recent.where((r) => r.computer == computer).toList();
-    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    return mine.take(2).any((r) => r.kind == 'game') || mine.any((r) => r.kind == 'game' && now - r.at < 3 * 86400);
-  }
+  bool gamedLately(String computer) =>
+      ux('gamed_lately', {'list': Settings.I.get<Object?>('recent_play') ?? const [], 'computer': computer, 'now': nowS}) == true;
 }

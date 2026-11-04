@@ -2,15 +2,17 @@
 // ground — so a scheme swap recolours the whole shelf and no colour is hard-coded.
 import 'package:flutter/material.dart';
 
+import '../../wado/ux.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
 import '../widgets/data_image.dart';
 
 /// The accent slot (base08–0F) an app's poster washes in.
-// ponytail: its name hashed onto the eight slots, not the icon's dominant colour — decoding the
-// icon's pixels on the frame is the jitter this avoids; sample off-isolate if a hue reads wrong.
-int posterHue(String name) => 8 + name.codeUnits.fold(0, (a, c) => (a * 31 + c) & 0xffff) % 8;
+// The shared rule (`wado_ux::poster::hue`), so the web draws the same app the same colour; asked
+// once per name and kept, since posters rebuild.
+final _hues = <String, int>{};
+int posterHue(String name) => _hues[name] ??= (ux('hue', {'name': name}) as int?) ?? 8;
 
 /// The wash behind a poster or a launch: the slot over the ground, brighter at the top.
 BoxDecoration wash(Tokens t, int hue, double radius) {

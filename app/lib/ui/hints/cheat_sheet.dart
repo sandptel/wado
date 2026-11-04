@@ -5,59 +5,31 @@ import 'package:flutter/material.dart';
 
 import '../../wado/host.dart';
 import '../../wado/settings.dart';
+import '../../wado/ux.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
 
-String _action(String a) => switch (a) {
-      'app-drawer' => 'your apps',
-      'control-centre' => 'the controls',
-      'back' => 'Back',
-      'focus-next' => 'the next window',
-      'keyboard' => 'the keyboard',
-      'workspace-next' => 'the next workspace',
-      'workspace-prev' => 'the last workspace',
-      _ => a.replaceAll('-', ' '),
-    };
-
-/// (fingers, arrow icon or '', words) for [surface]: `picture` or `pad`.
-List<(int, String, String)> gestures(String surface) {
+/// (fingers, icon, words) for [surface] (`home`, `picture`, `pad`) on a screen of [size] — the
+/// shared rows (`wado_ux::help`), so the web's ? says the same thing for the same settings.
+List<(int, String, String)> gestures(String surface, Size size) {
   final s = Settings.I;
-  final raw = s.s('touch_mode') == 'touch';
-  final out = <(int, String, String)>[];
-  if (surface == 'home') {
-    return const [
-      (1, '', 'Tap a game to play it, ready the way you set it up'),
-      (1, 'pin', 'Hold a game for its Game mode settings, or to turn it off'),
-      (1, 'plus', 'Add a game: turn on Game mode for any app'),
-      (1, 'play', '▶ on a computer starts or rejoins its desktop'),
-      (1, 'down', 'The name at the top switches computers, or shows them all'),
-      (1, 'camera', 'Scan a code to add a computer'),
-    ];
-  }
-  if (surface == 'pad') {
-    out.add((0, 'pad', 'The buttons press the computer\'s gamepad. ⋯ changes the layout'));
-  }
-  if (!raw) {
-    out
-      ..add((1, '', 'Tap to click'))
-      ..add((1, 'down', 'Drag one finger to scroll'))
-      ..add((1, 'pin', 'Hold for a right-click, or to drag'))
-      ..add((2, 'max', 'Pinch with two fingers to zoom'));
-  } else {
-    out.add((1, '', 'Touches go to the app as touches'));
-  }
-  if (s.b('swipe3')) {
-    final custom = Host.I.config.value?['gestures'];
-    const dflt = {'up': 'app-drawer', 'down': 'control-centre', 'left': 'back', 'right': 'focus-next'};
-    for (final d in const ['up', 'down', 'left', 'right']) {
-      final a = custom is Map && custom['swipe-3-$d'] != null ? '${custom['swipe-3-$d']}' : dflt[d]!;
-      if (a != 'none') out.add((3, d, 'Three fingers $d: ${_action(a)}'));
-    }
-  }
-  if (s.b('edge_swipe')) out.add((1, 'right', 'Swipe in from a side edge: the next workspace'));
-  if (s.overlaid && !s.b('swipe3')) out.add((0, 'lock', 'Game mode has the swipes off, so a game never catches one by accident'));
-  return out;
+  final c = Host.I.config.value;
+  final rows = ux('help', {
+    'surface': surface,
+    'form': ux('form', {'w': size.width, 'h': size.height, 'touch': true}),
+    'raw': s.s('touch_mode') == 'touch',
+    'swipe3': s.b('swipe3'),
+    'edge_swipe': s.b('edge_swipe'),
+    'game': s.overlaid,
+    'gestures': c?['gestures'] ?? const {},
+    'binds': c?['binds'] ?? const {},
+    'bind_mod': c?['bind_mod'] ?? '',
+  });
+  return [
+    for (final r in (rows as List? ?? const []))
+      if (r is Map) ((r['fingers'] as num? ?? 0).toInt(), '${r['icon'] ?? ''}', '${r['words'] ?? ''}'),
+  ];
 }
 
 Future<void> showCheatSheet(BuildContext context, String surface) => Navigator.of(context, rootNavigator: true).push(
@@ -78,7 +50,7 @@ class _Sheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Tok.of(context);
-    final list = gestures(surface);
+    final list = gestures(surface, MediaQuery.sizeOf(context));
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => Navigator.of(context).pop(),

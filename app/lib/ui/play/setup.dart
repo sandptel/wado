@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../wado/game_mode.dart';
 import '../../wado/gpad_layouts.dart';
+import '../../wado/ux.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
@@ -11,10 +12,10 @@ import '../widgets/sheet.dart';
 import 'poster.dart';
 
 /// Launchers and Windows-game runners need the X server.
-bool needsX(String exec) => RegExp(r'steam|lutris|heroic|wine|bottles|itch', caseSensitive: false).hasMatch(exec);
+bool needsX(String exec) => ux('needs_x', {'exec': exec}) == true;
 
 Future<GameProfile?> setUpGame(BuildContext context, {required String name, required String exec, String? icon, GameProfile? from}) =>
-    openSheet<GameProfile>(context, (ctx) => _Setup(from ?? GameProfile(name: name, exec: exec, x: needsX(exec)), icon: icon, edit: from != null));
+    openSheet<GameProfile>(context, (ctx) => _Setup(from ?? newGame(name, exec), icon: icon, edit: from != null));
 
 class _Setup extends StatefulWidget {
   const _Setup(this.p, {this.icon, this.edit = false});

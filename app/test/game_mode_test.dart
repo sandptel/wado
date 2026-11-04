@@ -2,8 +2,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wado/wado/game_mode.dart';
 import 'package:wado/wado/settings.dart';
 
+import 'ux_lib.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(loadUx);
   test('a pad game shadows full screen, the pad and its picture, and keeps what changed', () {
     final p = GameProfile(name: 'Celeste', exec: 'celeste', layout: 'racing', picture: 'sharp', x: true);
     final o = p.overlay(refresh: 120);
@@ -14,7 +17,8 @@ void main() {
     expect(o['fps'], 30);
     expect(o['x_server'], true);
     expect(o['swipe3'], false);
-    expect(pictures('smooth', 144)['fps'], 120, reason: 'the phone\'s rate, capped');
+    expect(GameProfile(name: 'A', exec: 'a').overlay(refresh: 144)['fps'], 120, reason: 'the phone\'s rate, capped');
+    expect(newGame('Steam', '/usr/bin/steam %U').x, true, reason: 'launchers get the X server');
 
     final s = Settings.I;
     s.set('fps', 48);
