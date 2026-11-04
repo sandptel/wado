@@ -44,8 +44,20 @@ class WIcon extends StatelessWidget {
     final svg = fill
         ? '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="$hex" d="$d"/></svg>'
         : '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="none" stroke="$hex" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="$d"/></svg>';
-    return SizedBox(width: size, height: size, child: SvgPicture.string(svg, width: size, height: size));
+    return SizedBox(width: size, height: size, child: SvgPicture(_loader(svg), width: size, height: size));
   }
+}
+
+// One loader per icon drawing, kept: a rebuild then hands the picture the *same* loader, so it
+// never reloads — a fresh `SvgPicture.string` each build reloaded and could draw nothing for a
+// frame (the control centre's icons blinking with every stats tick) and redid the work per row
+// on every scroll.
+final _loaders = <String, SvgStringLoader>{};
+SvgStringLoader _loader(String svg) {
+  final l = _loaders[svg];
+  if (l != null) return l;
+  if (_loaders.length > 800) _loaders.remove(_loaders.keys.first);
+  return _loaders[svg] = SvgStringLoader(svg);
 }
 
 /// A base16 slot by its two-digit name ("0D").

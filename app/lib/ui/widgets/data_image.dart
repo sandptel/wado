@@ -30,6 +30,7 @@ MemoryImage? dataImage(String? uri) {
 }
 
 final _svgs = LinkedHashMap<String, Uint8List?>();
+final _svgLoaders = <String, SvgBytesLoader>{};
 
 /// An app icon or picture from a `data:` URI, raster or SVG (most desktop icon themes are SVG).
 /// `fallback` when it is neither.
@@ -56,7 +57,10 @@ class DataPicture extends StatelessWidget {
       _svgs[u] = b;
       if (_svgs.length > _keep) _svgs.remove(_svgs.keys.first);
       if (b == null) return fallback;
-      return SvgPicture.memory(b, width: size, height: size, fit: fit, placeholderBuilder: (_) => fallback);
+      // The same loader each build (kept beside the bytes): no reload, no blank frame.
+      if (_svgLoaders.length > _keep) _svgLoaders.remove(_svgLoaders.keys.first);
+      final l = _svgLoaders[u] ??= SvgBytesLoader(b);
+      return SvgPicture(l, width: size, height: size, fit: fit, placeholderBuilder: (_) => fallback);
     }
     final img = dataImage(u);
     if (img == null) return fallback;
