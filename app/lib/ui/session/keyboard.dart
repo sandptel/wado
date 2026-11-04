@@ -69,16 +69,25 @@ class _KeyboardSheetState extends State<KeyboardSheet> {
     setState(() {});
   }
 
+  /// What was typed lately, shown in the box: the app's own field may sit under the keyboard.
+  /// ponytail: an echo of keys sent, not the app's text — a click elsewhere there is not seen.
+  String _echo = '';
+
   void _changed(String v) {
     // A zero-width sentinel stays in the field so Backspace always has something to delete.
     if (v.isEmpty) {
       tapKey(14);
+      if (_echo.isNotEmpty) _echo = _echo.substring(0, _echo.length - 1);
     } else {
-      for (final ch in v.replaceAll('​', '').split('')) {
+      final typed = v.replaceAll('​', '');
+      for (final ch in typed.split('')) {
         sendChar(ch);
       }
+      _echo = (_echo + typed).replaceAll('\n', '');
+      if (_echo.length > 60) _echo = _echo.substring(_echo.length - 60);
     }
     _c.value = const TextEditingValue(text: '​', selection: TextSelection.collapsed(offset: 1));
+    setState(() {});
   }
 
   @override
@@ -112,22 +121,51 @@ class _KeyboardSheetState extends State<KeyboardSheet> {
             Expanded(child: k('→', 106)),
             Expanded(child: k('⏎', 28)),
           ]),
-          SizedBox(
-            height: 1,
-            child: Opacity(
-              opacity: 0,
-              child: TextField(
-                controller: _c,
-                focusNode: _f,
-                autocorrect: false,
-                enableSuggestions: false,
-                keyboardType: TextInputType.visiblePassword,
-                onChanged: _changed,
-                onSubmitted: (_) {
-                  tapKey(28);
-                  _f.requestFocus();
-                },
-              ),
+          // The typing box: what went to the computer, visible above the phone's keyboard. The real
+          // field lies under it, transparent, so a tap brings the keyboard back.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(3, 3, 3, 2),
+            child: Container(
+              height: 44,
+              decoration: BoxDecoration(color: t.s2, borderRadius: BorderRadius.circular(t.r2)),
+              child: Stack(children: [
+                Positioned.fill(
+                  child: Opacity(
+                    opacity: 0,
+                    child: TextField(
+                      controller: _c,
+                      focusNode: _f,
+                      autocorrect: false,
+                      enableSuggestions: false,
+                      keyboardType: TextInputType.visiblePassword,
+                      onChanged: _changed,
+                      onSubmitted: (_) {
+                        tapKey(28);
+                        setState(() => _echo = '');
+                        _f.requestFocus();
+                      },
+                    ),
+                  ),
+                ),
+                IgnorePointer(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    child: Row(children: [
+                      Expanded(
+                        child: Text(
+                          _echo.isEmpty ? 'Typing goes to the computer' : _echo,
+                          maxLines: 1,
+                          overflow: TextOverflow.fade,
+                          softWrap: false,
+                          textAlign: _echo.isEmpty ? TextAlign.start : TextAlign.end,
+                          style: TextStyle(color: _echo.isEmpty ? t.dim : t.bright, fontSize: 15),
+                        ),
+                      ),
+                      Container(width: 2, height: 20, margin: const EdgeInsets.only(left: 2), color: t.accent),
+                    ]),
+                  ),
+                ),
+              ]),
             ),
           ),
         ]),
