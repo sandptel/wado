@@ -93,13 +93,26 @@ pub fn render(ui: Ui) -> Element {
                                 p { "It is turned off, asleep, or its wado is not running. This page fills in by itself when it is back — nothing to retry." }
                             }
                         }
-                        actions::Actions { ui, r: r.clone() }
+                        actions::Actions { ui, r: r.clone(), name: name.clone() }
                         sessions::Sessions { ui, r: r.clone() }
                         // Claude's cards come over the selected computer's own link.
                         if r.selected && r.may("shells") && !off {
                             section { class: "sx claude o2", style: "--n:2", id: "claude", "aria-label": "Claude",
                                 div { class: "sect", span { "Claude" } }
                                 {crate::ui::scoped(ui, "claude", crate::ui::claude::section)}
+                            }
+                        } else if r.selected && !off {
+                            // Shown, locked, rather than missing: a section that vanishes explains nothing.
+                            section { class: "sx claude o2", style: "--n:2", "aria-label": "Claude",
+                                div { class: "sect", span { "Claude" } }
+                                crate::ui::computer::grant::Grant {
+                                    computer: name.clone(),
+                                    device: r.grants().unwrap_or_default().name.clone(),
+                                    token: "shells".to_string(),
+                                    what: "Claude sessions, which run in its shells".to_string(),
+                                    has: crate::ui::computer::grant::has_words(&r.grants().unwrap_or_default()),
+                                    title: "Claude needs shells".to_string(),
+                                }
                             }
                         }
                         section { class: "sx settings o5", style: "--n:4", "aria-label": "This computer",

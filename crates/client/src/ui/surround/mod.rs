@@ -13,12 +13,14 @@
 //! |---|---|
 //! | [`layout`] | the geometry: a pure function, unit-tested |
 //! | [`top_band`] | the computer's name, or the software-encoding chip in its place |
+//! | [`help`] | the ? and what every gesture does here |
 //! | [`window_strip`] | the focused window: its title, Minimise, Maximise, Close |
 //! | [`faces`] | the four input faces, and the cockpit rail's one |
 //! | [`deck`] | what the active face puts under the thumbs |
 
 pub mod deck;
 pub mod faces;
+pub mod help;
 pub mod layout;
 pub mod stage_state;
 pub mod top_band;
@@ -172,6 +174,8 @@ pub fn render(ui: Ui) -> Element {
             {faces::switcher(ui, face)}
             {deck::render(ui, face)}
         }
+        // Outside #surround: the ? stays in the cockpit too.
+        {crate::ui::scoped(ui, "help", help::render)}
     }
 }
 

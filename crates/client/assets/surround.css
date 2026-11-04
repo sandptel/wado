@@ -252,3 +252,21 @@
 /* The soft keyboard is up (js/stage_fit.js): the console keeps the height it was laid out for,
  * so the picture does not shrink under it; the keyboard covers the deck's lower part instead. */
 :root[data-ime][data-arr="console"] .app { height: var(--stage-h, 100dvh); }
+
+/* ── the ? (ui/surround/help.rs): in both arrangements, top centre, out of the badge's way ── */
+.helpq { position: fixed; z-index: 66; top: calc(10px + env(safe-area-inset-top, 0px)); left: 50%; translate: -50% 0;
+  width: 32px; height: 32px; border-radius: 50%; border: 1px solid color-mix(in oklab, var(--line), transparent 30%);
+  background: color-mix(in oklab, var(--s1), transparent 20%); color: var(--accent); font: 700 15px var(--display); cursor: pointer;
+  transition: scale var(--dur-press) var(--spring); }
+.helpq:active { scale: .92; }
+.helpov { position: fixed; inset: 0; z-index: 72; display: grid; place-items: center; padding: 20px;
+  background: color-mix(in oklab, var(--base00), transparent 18%); animation: helpin var(--dur) var(--spring); }
+.helpbox { max-width: 420px; width: 100%; display: grid; gap: 8px; color: var(--bright); }
+.helpbox > b { font: 700 1.375rem/1.1 var(--display); letter-spacing: -.02em; }
+.helprow { display: flex; gap: 12px; align-items: center; padding: 10px 14px; border-radius: var(--r2); background: var(--s2);
+  border: 1.5px solid color-mix(in oklab, var(--accent), transparent 60%); font-size: .8125rem; }
+.helprow .fingers { display: flex; gap: 3px; width: 46px; flex: none; }
+.helprow .fingers i { width: 10px; height: 10px; border-radius: 50%; background: color-mix(in oklab, var(--accent), transparent 25%);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent), transparent 78%); }
+@keyframes helpin { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .helpov { animation: none; } }

@@ -47,13 +47,15 @@ pub fn desktop(ui: Ui, r: &Reach) {
 }
 
 #[component]
-pub fn Actions(ui: Ui, r: Reach) -> Element {
+pub fn Actions(ui: Ui, r: Reach, name: String) -> Element {
     let live = ui.live;
     let relay = (ui.set.conn_mode)() == "relay";
     let (_, list) = (live.sessions)();
     let running = !list.is_empty();
     let shells_open = (live.shells)().iter().filter(|s| s.alive).count();
     let off = !r.online;
+    // A door this phone may not use answers its tap with why, and the fix (`grant::Grant`).
+    let mut why = use_signal(|| None::<(&'static str, &'static str)>);
     let Doors {
         files: files_ok,
         shell: shell_ok,
@@ -102,18 +104,33 @@ pub fn Actions(ui: Ui, r: Reach) -> Element {
             crate::ui::computer::input::tile::Tile { ui, r: r.clone() }
             button {
                 class: "act",
-                disabled: off || !relay || !files_ok,
-                onclick: move |_| bridge::call("window.__wado.filesOpen();".to_string()),
+                disabled: off || !relay,
+                onclick: move |_| if files_ok { bridge::call("window.__wado.filesOpen();".to_string()) } else { why.set(Some(("files-ro", "its files"))) },
                 span { class: "aic", Icon { name: "folder" } }
-                span { b { "Files" } small { if files_ok { "Browse, send, download" } else { "Not allowed for this phone" } } }
+                span { b { "Files" } small { if files_ok { "Browse, send, download" } else { "Not allowed for this phone · why?" } } }
             }
             button {
                 class: "act",
-                disabled: off || !relay || !shell_ok,
-                onclick: move |_| crate::ui::console::open_shells(ui),
+                disabled: off || !relay,
+                onclick: move |_| if shell_ok { crate::ui::console::open_shells(ui) } else { why.set(Some(("shells", "its shells"))) },
                 if shells_open > 0 { span { class: "badge", "{shells_open} open" } }
                 span { class: "aic", Icon { name: "term" } }
-                span { b { "Shell" } small { if shell_ok { "A terminal, no video" } else { "Not allowed for this phone" } } }
+                span { b { "Shell" } small { if shell_ok { "A terminal, no video" } else { "Not allowed for this phone · why?" } } }
+            }
+        }
+        if let Some((token, what)) = why() {
+            {
+                let g = r.grants().unwrap_or_default();
+                rsx! {
+                    crate::ui::computer::grant::Grant {
+                        computer: name.clone(),
+                        device: g.name.clone(),
+                        token: token.to_string(),
+                        what: what.to_string(),
+                        has: crate::ui::computer::grant::has_words(&g),
+                        title: format!("{} is off for this phone", if token == "shells" { "Shell" } else { "Files" }),
+                    }
+                }
             }
         }
     }
