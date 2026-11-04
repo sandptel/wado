@@ -6,7 +6,7 @@
 
 use dioxus::prelude::*;
 
-use crate::{bridge, state::Ui};
+use crate::{bridge, state::Ui, ui::widgets::Icon};
 
 fn send(v: serde_json::Value) {
     bridge::call(format!("window.__wado.devicesSend({v});"));
@@ -73,16 +73,19 @@ pub fn render(ui: Ui) -> Element {
             }
         }
         if !err.is_empty() { div { class: "card alert", "{err}" } }
-        div { class: "list",
-            if rows.is_empty() { div { class: "row", span { class: "why", "Asking the computer…" } } }
-            for d in rows.clone() {
-                div { key: "{d.key}", class: "row devrow",
-                    span { class: "grow1",
-                        b { "{d.name}" if d.me { " · this device" } }
-                        small { class: "why", "{d.grants} · {left(d.until)}" if d.mine { " · let in by this device" } }
-                    }
-                    if d.mine {
-                        button { class: "btn danger small", onclick: { let k = d.key.clone(); move |_| send(serde_json::json!({ "type": "device_sign_out", "key": k })) }, "Sign out" }
+        // The same calm empty state as the computer page's, not a row squeezed into an empty list.
+        if rows.is_empty() { div { class: "npempty", Icon { name: "phone" } "Asking the computer…" } }
+        if !rows.is_empty() {
+            div { class: "list",
+                for d in rows.clone() {
+                    div { key: "{d.key}", class: "row devrow",
+                        span { class: "grow1",
+                            b { "{d.name}" if d.me { " · this device" } }
+                            small { class: "why", "{d.grants} · {left(d.until)}" if d.mine { " · let in by this device" } }
+                        }
+                        if d.mine {
+                            button { class: "btn danger small", onclick: { let k = d.key.clone(); move |_| send(serde_json::json!({ "type": "device_sign_out", "key": k })) }, "Sign out" }
+                        }
                     }
                 }
             }
@@ -91,6 +94,13 @@ pub fn render(ui: Ui) -> Element {
             div { class: "card",
                 b { "Code for this computer" }
                 p { class: "why", "On the new device, open wado and type this code — or open the link. It works once." }
+                // The same code as a QR (quiet zone included) for a device with a camera.
+                if let Some((n, d)) = wado_ux::qr::path(&link) {
+                    svg { class: "devqr", "viewBox": "0 0 {n} {n}", role: "img", "aria-label": "QR code for this link",
+                        rect { width: "{n}", height: "{n}", fill: "#fff" }
+                        path { d: "{d}", fill: "#000" }
+                    }
+                }
                 p { class: "mono big", "{typed}" }
                 button { class: "btn", onclick: { let l = link.clone(); move |_| bridge::call(format!("window.__wado.clipboardToPhone({});", bridge::js(&l))) }, "Copy the link" }
                 p { class: "why", "Works until {left(Some(until))}" }

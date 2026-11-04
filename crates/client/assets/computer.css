@@ -219,6 +219,7 @@ button.hcell:active:not(:disabled) { scale: .97; }
   .cbar { padding-inline: max(24px, calc((100% - 1080px) / 2 + 16px)); }
   .cgrid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 20px; align-items: start; }
   .cgrid .col { display: grid; gap: 12px; }
+  .cgrid.one { grid-template-columns: minmax(0, 620px); justify-content: center; }
   .hname { font-size: 2.375rem; }
   .hero2 { padding: 22px 20px 20px; }
   .act { min-height: 120px; }
@@ -232,3 +233,4 @@ button.hcell:active:not(:disabled) { scale: .97; }
 .btn.small { width: auto; min-height: 44px; padding: 0 12px; }
 .seg3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .mono.big { font: 700 1.25rem var(--mono); color: var(--bright); letter-spacing: .04em; }
+.devqr { width: min(100%, 240px); aspect-ratio: 1; justify-self: center; border-radius: var(--r2); shape-rendering: crispEdges; }

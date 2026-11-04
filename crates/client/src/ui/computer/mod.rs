@@ -84,7 +84,8 @@ pub fn render(ui: Ui) -> Element {
                 span { class: "cbtitle", "{name}" }
             }
             div { class: "cpage",
-                div { class: "cgrid",
+                // Offline, the right column has nothing to show: one centred column, not a lopsided pair.
+                div { class: if off { "cgrid one" } else { "cgrid" },
                     div { class: "col",
                         hero::Hero { ui, pk: pk.clone(), r: r.clone() }
                         if off {
