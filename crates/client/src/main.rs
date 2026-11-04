@@ -14,6 +14,7 @@ mod cfg;
 mod claude;
 mod debug;
 mod deeplink;
+mod game_mode;
 mod lane;
 mod link;
 mod multi;

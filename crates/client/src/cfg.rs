@@ -60,7 +60,7 @@ pub fn build(ui: Ui) -> SessionConfig {
         _ => EncoderBackend::Auto,
     };
 
-    SessionConfig {
+    let mut c = SessionConfig {
         width,
         height,
         fps: (s.fps)(),
@@ -100,7 +100,12 @@ pub fn build(ui: Ui) -> SessionConfig {
         } else {
             None
         },
+    };
+    // A session started for a game takes that game's rules (`game_mode`).
+    if let Some(p) = (ui.live.game)() {
+        crate::game_mode::shape(&mut c, &p);
     }
+    c
 }
 
 #[cfg(test)]

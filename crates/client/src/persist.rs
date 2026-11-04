@@ -41,6 +41,7 @@ pub struct Saved {
     pub keyframe: Option<String>,
     pub isolate_apps: Option<bool>,
     pub x_server: Option<bool>,
+    pub game_modes: Option<String>,
 
     pub command: Option<String>,
     pub recent: Option<Vec<String>>,
@@ -121,6 +122,7 @@ pub fn snapshot(ui: Ui) -> Saved {
         keyframe: Some((s.keyframe)()),
         isolate_apps: Some((s.isolate_apps)()),
         x_server: Some((s.x_server)()),
+        game_modes: Some((s.game_modes)()),
 
         command: Some((s.command)()),
         recent: Some(recent),
@@ -208,6 +210,7 @@ pub fn restore(ui: Ui, saved: Saved) {
     put!(keyframe);
     put!(isolate_apps);
     put!(x_server);
+    put!(game_modes);
     put!(command);
     put!(recent);
     put!(show_hidden);

@@ -124,6 +124,8 @@ pub struct Settings {
     /// [`wado_protocol::SessionConfig::x_server`]. Session-scoped for two reasons: it is
     /// started at Start, and its screen is fixed at the output's size.
     pub x_server: Signal<bool>,
+    /// Each app's Game mode (`crate::game_mode`), as JSON: `<computer>|<exec>` → its rules.
+    pub game_modes: Signal<String>,
 
     // ── live: applied immediately, editable mid-session ─────────────────────────
     pub command: Signal<String>,
@@ -262,6 +264,7 @@ impl Settings {
             // Off: it puts a window the size of the output into every session that has it on,
             // whether or not anything X11 is running.
             x_server: use_signal(|| false),
+            game_modes: use_signal(String::new),
 
             command: use_signal(|| "weston-terminal".to_string()),
             recent: use_signal(Vec::new),
@@ -482,6 +485,10 @@ pub struct Live {
     /// Launchable applications, from the server. Empty until requested — and it stays empty
     /// on a server that could not be reached, which the free-text command box covers.
     pub apps: Signal<Vec<AppEntry>>,
+    /// The Game mode the session was started for, if any (`crate::game_mode`).
+    pub game: Signal<Option<crate::game_mode::Profile>>,
+    /// That game's command, to launch once the session is up.
+    pub game_launch: Signal<Option<String>>,
     /// Whether the app drawer is over the video. Not persisted — a drawer covering the
     /// picture on load is never what anyone wanted.
     pub drawer_open: Signal<bool>,
@@ -598,6 +605,8 @@ impl Live {
             pair_sas: use_signal(Vec::new),
             session_alive: use_signal(|| None),
             apps: use_signal(Vec::new),
+            game: use_signal(|| None),
+            game_launch: use_signal(|| None),
             drawer_open: use_signal(|| false),
             windows: use_signal(|| (Vec::new(), 1)),
             stage: use_signal(Default::default),

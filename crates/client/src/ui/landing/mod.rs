@@ -14,7 +14,7 @@ use dioxus::prelude::*;
 use crate::{
     route::View,
     state::Ui,
-    ui::home::{cards, sessions, settings, widgets},
+    ui::home::{cards, games, sessions, settings, widgets},
 };
 
 pub fn render(ui: Ui) -> Element {
@@ -40,6 +40,9 @@ pub fn render(ui: Ui) -> Element {
             {crate::ui::scoped(ui, "install_hint", install_hint::render)}
             // The computer does not know this device yet: pair it before anything else.
             {crate::ui::scoped(ui, "pair", pair::render)}
+            if !ui.set.profiles.read().is_empty() {
+                {crate::ui::scoped(ui, "games", games::render)}
+            }
             div { class: "sect", span { "Computers" } }
             {crate::ui::scoped(ui, "cards", cards::render)}
             {crate::ui::scoped(ui, "sessions", sessions::render)}

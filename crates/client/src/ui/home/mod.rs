@@ -4,12 +4,14 @@
 //! | file | job |
 //! |---|---|
 //! | [`cards`] | the computer cards, each with ▶ straight to its desktop |
+//! | [`games`] | Games: the apps with Game mode on, one tap to play, and the launcher |
 //! | [`sessions`] | Running: the sessions on the selected computer |
 //! | [`settings`] | On this phone: the app-wide settings list |
 //! | [`widgets`] | the widgets, each bound to one computer, and arranging them |
 //! | [`pages`] | the phone's own multi-section pages |
 
 pub mod cards;
+pub mod games;
 pub mod pages;
 pub mod sessions;
 pub mod settings;
