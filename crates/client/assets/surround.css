@@ -50,7 +50,7 @@
 /* ── the top band: link words, the computer's name (or the encoder chip), people ─────── */
 .cband { display: none; }
 :root[data-arr="console"] .linkbadge { left: var(--c-link-x); top: var(--c-link-y); }
-.cname { left: calc(var(--c-link-x) + var(--c-linkw, 0px) + 12px); top: var(--c-band-y); height: var(--c-band-h);
+.cname { left: calc(var(--c-link-x) + var(--c-linkw, 0px) + 52px); top: var(--c-band-y); height: var(--c-band-h);
   max-width: calc(var(--c-band-w) - var(--c-linkw, 0px) - 150px);
   display: inline-flex; align-items: center; gap: 8px; color: var(--bright);
   font: 700 .9375rem var(--display); letter-spacing: -.01em; white-space: nowrap; }
@@ -253,8 +253,9 @@
  * so the picture does not shrink under it; the keyboard covers the deck's lower part instead. */
 :root[data-ime][data-arr="console"] .app { height: var(--stage-h, 100dvh); }
 
-/* ── the ? (ui/surround/help.rs): in both arrangements, top centre, out of the badge's way ── */
-.helpq { position: fixed; z-index: 66; top: calc(10px + env(safe-area-inset-top, 0px)); left: 50%; translate: -50% 0;
+/* ── the ? (ui/surround/help.rs): in both arrangements, just after the link badge, as the app ── */
+.helpq { position: fixed; z-index: 66; top: calc(var(--c-band-y, calc(10px + env(safe-area-inset-top, 0px))) + (var(--c-band-h, 32px) - 32px) / 2);
+  left: calc(var(--c-link-x, 10px) + var(--c-linkw, 32px) + 8px);
   width: 32px; height: 32px; border-radius: 50%; border: 1px solid color-mix(in oklab, var(--line), transparent 30%);
   background: color-mix(in oklab, var(--s1), transparent 20%); color: var(--accent); font: 700 15px var(--display); cursor: pointer;
   transition: scale var(--dur-press) var(--spring); }

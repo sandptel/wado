@@ -378,7 +378,7 @@ class _ConsoleViewState extends State<ConsoleView> with TickerProviderStateMixin
                     child: Opacity(
                       opacity: only,
                       child: ConstrainedBox(
-                        constraints: BoxConstraints(maxWidth: (slot('band').width - 150 - 140).clamp(60, 600)),
+                        constraints: BoxConstraints(maxWidth: (slot('band').width - 190 - 140).clamp(60, 600)),
                         child: SizedBox(height: 32, child: const Align(alignment: Alignment.centerLeft, child: NameChip())),
                       ),
                     ),
