@@ -70,7 +70,11 @@
 .glive { position: absolute; top: 8px; left: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--good); }
 .gsub { font-size: .6875rem; color: var(--dim); }
 .gedit { text-decoration: none; color: var(--dim); }
-@media (min-width: 600px) {
+/* The edit link keeps its 32 px target but sits under the name, not centred in it. */
+.gposter .gedit { display: flex; align-items: flex-start; }
+/* A tablet scrolls one row with the thumb, bigger posters; a mouse gets a grid, no sideways scroll. */
+@media (min-width: 600px) { .gposter { width: 120px; } }
+@media (min-width: 600px) and (hover: hover) and (pointer: fine) {
   .gshelf { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); overflow: visible; }
   .gposter { width: auto; }
 }
@@ -83,15 +87,15 @@
 }
 
 /* ── the sheet: a bottom sheet on a phone, a dialog on anything bigger ── */
-.wscrim { position: fixed; inset: 0; z-index: 75; display: flex; align-items: flex-end; justify-content: center;
+.uscrim { position: fixed; inset: 0; z-index: 75; display: flex; align-items: flex-end; justify-content: center;
   background: color-mix(in oklab, #000, transparent 45%); animation: wfade var(--dur) var(--spring); }
-.wsheet { width: 100%; max-height: 88dvh; overflow-y: auto; display: grid; gap: 10px; align-content: start; outline: none;
+.usheet { width: 100%; max-height: 88dvh; overflow-y: auto; display: grid; gap: 10px; align-content: start; outline: none;
   padding: 10px 16px calc(20px + env(safe-area-inset-bottom)); background: var(--s1); border-radius: var(--r4) var(--r4) 0 0;
   box-shadow: 0 -20px 60px rgb(0 0 0 / .35); animation: wrise var(--dur-sheet) var(--spring); }
-.wgrab { justify-self: center; width: 36px; height: 4px; border-radius: 4px; background: var(--s3); margin-bottom: 4px; }
-.whead { display: grid; gap: 3px; margin-bottom: 4px; }
-.whead b { font: 700 1.1875rem/1.2 var(--display); color: var(--bright); letter-spacing: -.01em; }
-.whead span { font-size: .75rem; color: var(--dim); }
+.ugrab { justify-self: center; width: 36px; height: 4px; border-radius: 4px; background: var(--s3); margin-bottom: 4px; }
+.uhead { display: grid; gap: 3px; margin-bottom: 4px; }
+.uhead b { font: 700 1.1875rem/1.2 var(--display); color: var(--bright); letter-spacing: -.01em; }
+.uhead span { font-size: .75rem; color: var(--dim); }
 .gpicklist { display: grid; }
 .gpickicon { width: 32px; height: 32px; object-fit: contain; }
 .gpickrow { gap: 12px; justify-content: flex-start; }
@@ -101,9 +105,9 @@
   transition: background var(--dur) var(--spring), color var(--dur) var(--spring); }
 .gchip.on { background: var(--accent); color: var(--on-accent); }
 @media (min-width: 600px) {
-  .wscrim { align-items: center; }
-  .wsheet { width: min(520px, calc(100% - 48px)); border-radius: var(--r4); padding: 18px 20px 20px; animation: wpop var(--dur-sheet) var(--spring); }
-  .wgrab { display: none; }
+  .uscrim { align-items: center; }
+  .usheet { width: min(520px, calc(100% - 48px)); border-radius: var(--r4); padding: 18px 20px 20px; animation: wpop var(--dur-sheet) var(--spring); }
+  .ugrab { display: none; }
 }
 @keyframes wfade { from { opacity: 0; } }
 @keyframes wrise { from { translate: 0 100%; } }
@@ -161,7 +165,7 @@
 .tourcard > p { margin: 0; color: var(--dim); }
 
 @media (prefers-reduced-motion: reduce) {
-  .tbmenu, .wscrim, .wsheet, .tip, .tour, .tourcard, .glaunchscrim { animation: none; }
+  .tbmenu, .uscrim, .usheet, .tip, .tour, .tourcard, .glaunchscrim { animation: none; }
   #glaunch { transition: opacity 120ms linear; }
   .ghops li.now .gm { animation: none; }
 }

@@ -25,19 +25,19 @@ pub fn Sheet(
 ) -> Element {
     rsx! {
         div {
-            class: "wscrim",
+            class: "uscrim",
             onclick: move |_| on_close.call(()),
             onkeydown: move |e: KeyboardEvent| if e.key() == Key::Escape { on_close.call(()) },
             div {
-                class: "wsheet",
+                class: "usheet",
                 role: "dialog",
                 "aria-modal": "true",
                 "aria-label": "{title}",
                 tabindex: "-1",
                 onmounted: move |e| { let _ = e.data().set_focus(true); },
                 onclick: move |e| e.stop_propagation(),
-                div { class: "wgrab", "aria-hidden": "true" }
-                div { class: "whead",
+                div { class: "ugrab", "aria-hidden": "true" }
+                div { class: "uhead",
                     b { "{title}" }
                     if let Some(s) = sub { span { "{s}" } }
                 }

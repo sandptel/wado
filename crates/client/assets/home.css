@@ -172,7 +172,7 @@ button.wtitle.linky::after { content: ""; width: 5px; height: 5px; border-right:
 .gopt { display: grid; gap: 2px; text-align: left; min-height: 56px; padding: 8px 14px; border: 0; border-radius: var(--r2); background: var(--s2); color: var(--bright); cursor: pointer;
   transition: background var(--dur) var(--spring), border-radius var(--dur) var(--spring); }
 .gopt.on { background: var(--accent); color: var(--on-accent); border-radius: var(--r3); }
-.gopt .mono { font: .6875rem var(--mono, "JetBrains Mono"), monospace; opacity: .75; }
+.gopt .mono { font: .6875rem var(--mono, "JetBrains Mono"), monospace; opacity: .75; text-wrap: pretty; }
 .grow { display: flex; gap: 10px; align-items: center; min-height: 44px; font-size: .8125rem; color: var(--text); }
 .grow input { width: 20px; height: 20px; accent-color: var(--accent); flex: none; }
 .grow2 { display: flex; gap: 8px; }

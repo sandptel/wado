@@ -26,6 +26,11 @@ fn rows(ui: Ui, surface: &str) -> Vec<wado_ux::help::Row> {
 /// The overlay for `surface` (`home`, `picture`, `pad`).
 pub fn overlay(ui: Ui, surface: &str, close: impl FnMut() + Clone + 'static) -> Element {
     let list = rows(ui, surface);
+    let close_words = if crate::ui::sheet::form(ui) == wado_ux::form::Form::Desktop {
+        "Click anywhere or press Esc to close. It's always under ?."
+    } else {
+        "Tap anywhere to close. It's always under ?."
+    };
     let c1 = close.clone();
     let mut c2 = close;
     rsx! {
@@ -39,7 +44,7 @@ pub fn overlay(ui: Ui, surface: &str, close: impl FnMut() + Clone + 'static) -> 
             onkeydown: move |e: KeyboardEvent| if e.key() == Key::Escape { c2() },
             div { class: "helpbox",
                 b { "What you can do here" }
-                p { class: "why", "Tap anywhere to close. It's always under ?." }
+                p { class: "why", "{close_words}" }
                 for (i, r) in list.into_iter().enumerate() {
                     div { key: "{i}", class: "helprow", style: "--i: {i}",
                         span { class: "fingers",

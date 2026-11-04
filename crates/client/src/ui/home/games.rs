@@ -41,7 +41,7 @@ fn play(ui: Ui, p: Profile, from: &str) {
 pub fn render(ui: Ui) -> Element {
     let mut live = ui.live;
     let setup = use_signal(|| None::<(Profile, bool)>);
-    let mut picking = use_signal(|| false);
+    let picking = use_signal(|| false);
 
     // The launcher: the game's app, once its session is really up; the shadow ends with it.
     use_effect(move || {

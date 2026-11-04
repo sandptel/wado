@@ -8,7 +8,7 @@
  * and the console, trackpad and gamepad lay themselves out against the glass. `--z` tells
  * what is inside how much it is zoomed, for the few values that must hold *on the glass*. */
 
-#landing, #computer, #sub, #cc, #wado-files, .pksheet, .wsheet {
+#landing, #computer, #sub, #cc, #wado-files, .pksheet, .wsheet, .usheet {
   zoom: var(--ui-scale);
   --z: var(--ui-scale);
   --tap: calc(44px / var(--ui-scale));
