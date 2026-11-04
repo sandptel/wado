@@ -13,6 +13,7 @@ import '../../core/core_host.dart';
 import '../../wado/nav.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
+import '../../wado/clip.dart';
 import '../hints/tour.dart';
 import '../widgets/basics.dart';
 import '../motion/motion.dart';
@@ -36,6 +37,8 @@ class AddComputer extends StatefulWidget {
   const AddComputer({super.key});
   /// A pairing link that opened the app (ui/share/inbound.dart): paired as soon as the page is up.
   static String? pending;
+  /// [pending] came off the camera: the computer starts with clipboard sharing off.
+  static bool scanned = false;
   @override
   State<AddComputer> createState() => _AddComputerState();
 }
@@ -46,6 +49,7 @@ class _AddComputerState extends State<AddComputer> {
   final _code = TextEditingController();
   final _relay = TextEditingController(text: defaultRelay);
   int? _op;
+  bool _viaScan = false;
   String _step = '';
   List<String> _words = const [];
   String _why = '';
@@ -62,12 +66,20 @@ class _AddComputerState extends State<AddComputer> {
         if (_step == 'failed') _why = (e['why'] ?? '') as String;
       });
       if (_step == 'done') {
+        // Safe start (2026-11-04): a computer that came off a camera shares no clipboard until
+        // the person turns it on — a QR can lead to someone else's computer.
+        if (_viaScan) {
+          Clip.I.setPref(e['key'] as String, 'pull', false);
+          Clip.I.setPref(e['key'] as String, 'push', false);
+        }
         Nav.I.openComputer(e['key'] as String);
         if (mounted) tourOnce(context, '${e['name'] ?? 'your computer'}');
       }
     });
     final link = AddComputer.pending;
     AddComputer.pending = null;
+    _viaScan = AddComputer.scanned;
+    AddComputer.scanned = false;
     if (link != null) {
       _link.text = link;
       _start(CoreHost.I.pair(link));
@@ -156,6 +168,13 @@ class _AddComputerState extends State<AddComputer> {
         ]),
         const SizedBox(height: 12),
       ],
+      if (_viaScan && _op != null && _step != 'failed') ...[
+        WCard(children: [
+          Text('This is a new computer. Only add computers you own.', style: body(context, w: FontWeight.w600, color: t.bright)),
+          const Why('A computer added from a code starts with clipboard sharing off. Turn it on under Clipboard once you know it is yours.'),
+        ]),
+        const SizedBox(height: 12),
+      ],
       if (_step == 'failed') ...[
         WCard(alert: true, children: [Text(_why.isEmpty ? "That didn't work." : _why, style: body(context, color: t.bright))]),
         const SizedBox(height: 12),
@@ -174,9 +193,10 @@ class _AddComputerState extends State<AddComputer> {
                     return;
                   }
                   if (!context.mounted) return;
-                  final link = await Navigator.of(context).push<String>(MaterialPageRoute(builder: (_) => const _Scan()));
+                  final link = await Navigator.of(context).push<String>(MaterialPageRoute(builder: (_) => const ScanCode()));
                   if (link != null && link.isNotEmpty) {
                     _link.text = link;
+                    _viaScan = true;
                     _start(CoreHost.I.pair(link));
                   }
                 }),
@@ -241,13 +261,13 @@ class _AddComputerState extends State<AddComputer> {
 
 /// The camera, reading the computer's pairing QR (zxing-cpp; nothing leaves the phone). The QR
 /// may be a terminal's half-blocks, light on dark or dark on light: try hard, both ways round.
-class _Scan extends StatefulWidget {
-  const _Scan();
+class ScanCode extends StatefulWidget {
+  const ScanCode({super.key});
   @override
-  State<_Scan> createState() => _ScanState();
+  State<ScanCode> createState() => _ScanState();
 }
 
-class _ScanState extends State<_Scan> {
+class _ScanState extends State<ScanCode> {
   bool _done = false;
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -268,4 +288,18 @@ class _ScanState extends State<_Scan> {
           },
         ),
       );
+}
+
+/// The home's scan button: the camera, then a pairing link goes to Add a computer.
+Future<void> scanFromHome(BuildContext context) async {
+  if (Platform.isAndroid && await const MethodChannel('wado/os').invokeMethod<bool>('camera') != true) {
+    if (context.mounted) Nav.I.openPage('add_computer', aboutComputer: false);
+    return;
+  }
+  if (!context.mounted) return;
+  final link = await Navigator.of(context).push<String>(MaterialPageRoute(builder: (_) => const ScanCode()));
+  if (link == null || link.isEmpty) return;
+  AddComputer.pending = link;
+  AddComputer.scanned = true;
+  Nav.I.openPage('add_computer', aboutComputer: false);
 }

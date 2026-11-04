@@ -78,6 +78,7 @@ const defaults = <String, Object>{
   'recent_play': <Object>[],
   'swipe3': true,
   'tips_seen': <String>[],
+  'home_all': false,
 };
 
 class Settings extends ChangeNotifier {

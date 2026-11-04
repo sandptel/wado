@@ -25,6 +25,16 @@ List<(int, String, String)> gestures(String surface) {
   final s = Settings.I;
   final raw = s.s('touch_mode') == 'touch';
   final out = <(int, String, String)>[];
+  if (surface == 'home') {
+    return const [
+      (1, '', 'Tap a game to play it, ready the way you set it up'),
+      (1, 'pin', 'Hold a game for its Game mode settings, or to turn it off'),
+      (1, 'plus', 'Add a game: turn on Game mode for any app'),
+      (1, 'play', '▶ on a computer starts or rejoins its desktop'),
+      (1, 'down', 'The name at the top switches computers, or shows them all'),
+      (1, 'camera', 'Scan a code to add a computer'),
+    ];
+  }
   if (surface == 'pad') {
     out.add((0, 'pad', 'The buttons press the computer\'s gamepad. ⋯ changes the layout'));
   }

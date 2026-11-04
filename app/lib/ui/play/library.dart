@@ -11,6 +11,7 @@ import '../../wado/nav.dart';
 import '../../wado/play.dart';
 import '../../wado/session.dart';
 import '../home/cards.dart' show go, Dashed;
+import '../home/top_bar.dart' show homeAll, homeView, hueOf;
 import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
@@ -38,8 +39,9 @@ class PlaySection extends StatelessWidget {
   const PlaySection({super.key});
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-        listenable: Listenable.merge([GameMode.I, Play.I, Session.I.apps, CoreHost.I.computers, Nav.I.view]),
+        listenable: Listenable.merge([GameMode.I, Play.I, Session.I.apps, CoreHost.I.computers, Nav.I.view, homeView]),
         builder: (context, _) {
+          if (homeAll) return const _All();
           final c = selectedComputer();
           if (c == null) return const SizedBox.shrink();
           final games = GameMode.I.on(c.key);
@@ -251,6 +253,45 @@ class _Tag extends StatelessWidget {
         decoration: BoxDecoration(color: fade(color, 84), borderRadius: BorderRadius.circular(999)),
         child: Text(words.toUpperCase(), style: body(context, size: .625, w: FontWeight.w700, color: color).copyWith(letterSpacing: .6)),
       );
+}
+
+/// Every computer at once: what was left on each, newest first, then each one's games.
+class _All extends StatelessWidget {
+  const _All();
+  @override
+  Widget build(BuildContext context) {
+    final t = Tok.of(context);
+    final comps = {for (final c in CoreHost.I.computers.value) c.key: c};
+    final left = Play.I.recent.where((r) => comps.containsKey(r.computer)).take(4).toList();
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (left.isNotEmpty) ...[
+        const Sect('Pick up where you left off'),
+        const SizedBox(height: 8),
+        for (final r in left)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Stack(children: [
+              _Continue(c: comps[r.computer]!, r: r),
+              Positioned(
+                right: 72,
+                top: 12,
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Container(width: 7, height: 7, decoration: BoxDecoration(color: hueOf(context, r.computer), shape: BoxShape.circle)),
+                  const SizedBox(width: 5),
+                  Text(comps[r.computer]!.name, style: body(context, size: .6875, w: FontWeight.w600, color: fade(t.bright, 20))),
+                ]),
+              ),
+            ]),
+          ),
+      ],
+      for (final c in comps.values)
+        if (GameMode.I.on(c.key).isNotEmpty) ...[
+          Sect('Games · ${c.name}'),
+          const SizedBox(height: 8),
+          _Shelf(c: c, games: GameMode.I.on(c.key)),
+        ],
+    ]);
+  }
 }
 
 /// The last thing done on this computer, whatever kind.

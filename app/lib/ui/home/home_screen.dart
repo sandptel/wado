@@ -15,6 +15,7 @@ import '../play/library.dart';
 import '../widgets/basics.dart';
 import 'cards.dart';
 import 'running.dart';
+import 'top_bar.dart';
 import 'widgets.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -99,14 +100,18 @@ class _HomeScreenState extends State<HomeScreen> {
             Settings.I,
           ]),
           builder: (context, _) => ListView(
-            padding: EdgeInsets.fromLTRB(side, 64 + mq.padding.top, side, 32 + mq.padding.bottom),
+            padding: EdgeInsets.fromLTRB(side, (CoreHost.I.computers.value.isEmpty ? 64 : 14) + mq.padding.top, side, 32 + mq.padding.bottom),
             children: [
-              Text.rich(
-                TextSpan(text: 'wado', children: [TextSpan(text: '.', style: TextStyle(color: t.accent))]),
-                style: display(context, (w * .12).clamp(42, 64), ls: -(w * .12).clamp(42, 64) * .045),
-              ),
-              const SizedBox(height: 6),
-              Text("Your computers, at this screen's own resolution.", style: body(context, color: t.dim)),
+              // First run: the wordmark and what wado is. Paired: the computer bar, and the games.
+              if (CoreHost.I.computers.value.isEmpty) ...[
+                Text.rich(
+                  TextSpan(text: 'wado', children: [TextSpan(text: '.', style: TextStyle(color: t.accent))]),
+                  style: display(context, (w * .12).clamp(42, 64), ls: -(w * .12).clamp(42, 64) * .045),
+                ),
+                const SizedBox(height: 6),
+                Text("Use your own computer from this phone — its games, apps, files and shells, at this screen's own size.", style: body(context, color: t.dim)),
+              ] else
+                const TopBar(),
               if (CoreHost.I.keyReset) ...[
                 const SizedBox(height: 12),
                 const WCard(alert: true, children: [Text("This phone's key was reset — pair your computers again.")]),
