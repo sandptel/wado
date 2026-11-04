@@ -1,0 +1,172 @@
+/* The player's home and its sheets (ui/home/{top_bar,games,launch}.rs, ui/sheet.rs, ui/tips.rs) —
+ * the app's surfaces, in base16 tokens only, with the two curves (--spring, --pop). Per form:
+ * a phone gets a bottom sheet that rises and one column; a tablet two columns from 900 px; a desktop
+ * (fine pointer) dialogs that scale in, posters that lift on hover, Game mode shown on hover/focus. */
+
+/* ── home: one column, or the games beside the computers ── */
+#landing:has(.topbar) { padding-top: calc(14px + env(safe-area-inset-top)); }
+.homegrid { display: grid; gap: 12px; }
+.homeplay, .homeside { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+@media (min-width: 600px) {
+  #landing:has(.topbar) { padding-inline: max(24px, calc((100% - 720px) / 2)); }
+}
+@media (min-width: 900px) {
+  #landing:has(.topbar) { padding-inline: max(28px, calc((100% - 1180px) / 2)); }
+  .homegrid { grid-template-columns: minmax(0, 1.55fr) minmax(320px, 1fr); align-items: start; gap: 28px; }
+  .homeside { position: sticky; top: 0; }
+}
+
+/* ── the top bar ── */
+.topbar { display: flex; align-items: center; gap: 8px; position: relative; z-index: 5; }
+.tbsp { flex: 1; }
+.tbwrap { position: relative; }
+.hostdd { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 10px 0 12px; border-radius: 999px; cursor: pointer;
+  background: var(--s1); border: 1px solid var(--line); color: var(--bright); font: 600 .875rem var(--body, Figtree), sans-serif; max-width: 60vw;
+  transition: scale var(--dur-press) var(--spring), background var(--dur) var(--spring); }
+.hostdd span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hostdd i, .tbitem i { width: 8px; height: 8px; border-radius: 50%; background: var(--hue); flex: none; }
+.hostdd:active { scale: .96; }
+.topbar .iconbtn { width: 44px; height: 40px; border-radius: 999px; background: var(--s1); border: 1px solid var(--line); color: var(--bright); }
+.tbq { font: 700 15px var(--display); color: var(--accent) !important; }
+.tbscrim { position: fixed; inset: 0; z-index: 1; }
+.tbmenu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 2; min-width: 240px; padding: 6px; display: grid; gap: 2px;
+  background: var(--s2); border: 1px solid var(--line); border-radius: var(--r3); box-shadow: 0 18px 50px -20px #000a;
+  transform-origin: top left; animation: tbin var(--dur) var(--pop); }
+.tbmenu.right { left: auto; right: 0; transform-origin: top right; }
+.tbhead { font: 700 .625rem/1 var(--body, Figtree); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); padding: 10px 10px 6px; }
+.tbitem { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 10px; border: 0; border-radius: var(--r2);
+  background: none; color: var(--bright); text-align: left; cursor: pointer; }
+.tbitem span { display: grid; }
+.tbitem small { color: var(--dim); font-size: .6875rem; }
+.tbitem.on { background: color-mix(in oklab, var(--accent), transparent 84%); }
+.tbitem:hover, .tbitem:focus-visible { background: color-mix(in oklab, var(--s3), transparent 30%); }
+@keyframes tbin { from { opacity: 0; scale: .96; } }
+
+/* ── Jump back in, Continue, Pick up where you left off ── */
+.gcarousel { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; padding-bottom: 4px; }
+.gwide, .gcont, .gleftrow { position: relative; border: 0; border-radius: var(--r3); cursor: pointer; color: var(--bright); text-align: left;
+  background: linear-gradient(color-mix(in oklab, var(--h), var(--base00) 52%), color-mix(in oklab, var(--h), var(--base00) 86%)); }
+.gwide { flex: none; width: min(82%, 380px); aspect-ratio: 16 / 11; padding: 14px; display: flex; flex-direction: column; justify-content: flex-end; gap: 2px;
+  scroll-snap-align: start; transition: scale var(--dur-press) var(--spring), translate var(--dur) var(--spring); }
+.gwide b { font: 700 1.25rem/1.1 var(--display); letter-spacing: -.02em; padding-right: 56px; }
+.gwide small, .gcont small, .gleftrow small { color: color-mix(in oklab, var(--bright), transparent 25%); font-size: .75rem; }
+.gwide .gicon { position: absolute; top: 14px; right: 14px; width: 52px; height: 52px; }
+.gtag { align-self: flex-start; font: 700 .625rem/1 var(--body, Figtree); letter-spacing: .06em; text-transform: uppercase;
+  padding: 4px 8px; border-radius: 999px; background: color-mix(in oklab, var(--bright), transparent 84%); margin-bottom: 4px; }
+.gtag.live { color: var(--good); background: color-mix(in oklab, var(--good), transparent 84%); }
+.gplay { position: absolute; right: 12px; bottom: 12px; width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--accent); color: var(--on-accent); box-shadow: 0 10px 30px color-mix(in oklab, var(--accent), transparent 70%); }
+.gcont { display: flex; align-items: center; gap: 12px; padding: 14px; min-height: 80px; }
+.gcont .gplay { position: static; margin-left: auto; flex: none; }
+.gcontw { display: grid; min-width: 0; }
+.gcontw b { font: 700 1.0625rem/1.2 var(--display); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gleft { display: grid; gap: 8px; }
+.gleftrow { display: flex; align-items: center; gap: 12px; padding: 12px; cursor: default; }
+.gletter.big { width: 96px; height: 96px; font-size: 2.6rem; border-radius: 28px; }
+
+/* ── the shelf: posters; a grid on a big screen ── */
+.gshelf { gap: 12px; }
+.gposter .gart { width: 100%; position: relative; }
+.glive { position: absolute; top: 8px; left: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--good); }
+.gsub { font-size: .6875rem; color: var(--dim); }
+.gedit { text-decoration: none; color: var(--dim); }
+@media (min-width: 600px) {
+  .gshelf { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); overflow: visible; }
+  .gposter { width: auto; }
+}
+/* A mouse: posters lift, and Game mode shows on hover or focus instead of always. */
+@media (hover: hover) and (pointer: fine) {
+  .gart, .gwide { transition: translate var(--dur) var(--spring), box-shadow var(--dur) var(--spring), scale var(--dur-press) var(--spring); }
+  .gposter:hover .gart, .gwide:hover { translate: 0 -4px; box-shadow: 0 18px 40px -24px #000c; }
+  .gposter .gedit { opacity: 0; transition: opacity var(--dur) var(--spring); }
+  .gposter:hover .gedit, .gposter:focus-within .gedit { opacity: 1; }
+}
+
+/* ── the sheet: a bottom sheet on a phone, a dialog on anything bigger ── */
+.wscrim { position: fixed; inset: 0; z-index: 75; display: flex; align-items: flex-end; justify-content: center;
+  background: color-mix(in oklab, #000, transparent 45%); animation: wfade var(--dur) var(--spring); }
+.wsheet { width: 100%; max-height: 88dvh; overflow-y: auto; display: grid; gap: 10px; align-content: start; outline: none;
+  padding: 10px 16px calc(20px + env(safe-area-inset-bottom)); background: var(--s1); border-radius: var(--r4) var(--r4) 0 0;
+  box-shadow: 0 -20px 60px rgb(0 0 0 / .35); animation: wrise var(--dur-sheet) var(--spring); }
+.wgrab { justify-self: center; width: 36px; height: 4px; border-radius: 4px; background: var(--s3); margin-bottom: 4px; }
+.whead { display: grid; gap: 3px; margin-bottom: 4px; }
+.whead b { font: 700 1.1875rem/1.2 var(--display); color: var(--bright); letter-spacing: -.01em; }
+.whead span { font-size: .75rem; color: var(--dim); }
+.gpicklist { display: grid; }
+.gpickicon { width: 32px; height: 32px; object-fit: contain; }
+.gpickrow { gap: 12px; justify-content: flex-start; }
+.gpickrow span { flex: 1; text-align: left; }
+.gchips { display: flex; flex-wrap: wrap; gap: 6px; }
+.gchip { height: 36px; padding: 0 12px; border: 0; border-radius: 999px; background: var(--s2); color: var(--text); font-weight: 600; font-size: .75rem; cursor: pointer;
+  transition: background var(--dur) var(--spring), color var(--dur) var(--spring); }
+.gchip.on { background: var(--accent); color: var(--on-accent); }
+@media (min-width: 600px) {
+  .wscrim { align-items: center; }
+  .wsheet { width: min(520px, calc(100% - 48px)); border-radius: var(--r4); padding: 18px 20px 20px; animation: wpop var(--dur-sheet) var(--spring); }
+  .wgrab { display: none; }
+}
+@keyframes wfade { from { opacity: 0; } }
+@keyframes wrise { from { translate: 0 100%; } }
+@keyframes wpop { from { opacity: 0; scale: .94; translate: 0 12px; } }
+
+/* ── the launch: the poster's wash grows into the game (js/launch.js FLIPs it) ── */
+.glaunchscrim { position: fixed; inset: 0; z-index: 79; background: #000; opacity: 0; animation: wfade var(--dur-hero) var(--spring) forwards; pointer-events: none; }
+@keyframes glaunchscrimin { to { opacity: .6; } }
+#glaunch { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; color: var(--bright);
+  background: linear-gradient(color-mix(in oklab, var(--h), var(--base00) 52%), color-mix(in oklab, var(--h), var(--base00) 86%));
+  transition: transform var(--dur-hero) var(--spring), opacity 300ms var(--spring); will-change: transform; }
+#glaunch.out { opacity: 0; }
+#glaunch .glin { display: grid; justify-items: center; gap: 16px; opacity: 0; transition: opacity 300ms var(--spring) 280ms; }
+#glaunch.in .glin { opacity: 1; }
+#glaunch .glin > b { font: 700 1.75rem/1 var(--display); letter-spacing: -.03em; }
+.ghops { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; width: 250px; }
+.ghops li { display: flex; align-items: center; gap: 10px; font-size: .8125rem; color: color-mix(in oklab, var(--bright), transparent 50%); }
+.ghops li.done, .ghops li.now { color: var(--bright); }
+.ghops .gm { width: 18px; height: 18px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px currentColor; display: grid; place-items: center; flex: none; }
+.ghops li.done .gm { background: var(--good); box-shadow: none; color: var(--base00); }
+.ghops li.now .gm { box-shadow: inset 0 0 0 2px currentColor; animation: hopnow 1.2s var(--spring) infinite alternate; }
+.ghops li.failed .gm { background: var(--bad); box-shadow: none; }
+.ghops .gm svg { width: 12px; height: 12px; }
+.gerr { max-width: 280px; text-align: center; font-size: .8125rem; }
+@keyframes hopnow { to { scale: .8; } }
+/* A big screen: the game grows into a card, not the whole monitor. */
+@media (min-width: 900px) and (pointer: fine) {
+  #glaunch { inset: auto; left: 50%; top: 50%; width: 560px; height: 420px; margin: -210px 0 0 -280px; border-radius: var(--r4);
+    box-shadow: 0 40px 100px rgb(0 0 0 / .5); }
+  .glaunchscrim { animation-name: glaunchscrimin; }
+}
+
+/* ── tips and the tour ── */
+.tip { position: fixed; z-index: 67; top: calc(54px + env(safe-area-inset-top)); left: 12px; max-width: 260px; display: grid; gap: 2px;
+  padding: 10px 12px 4px; border-radius: var(--r2); background: var(--accent); color: var(--on-accent); font-size: .78rem; line-height: 1.35;
+  box-shadow: 0 18px 50px -20px #000a; animation: tipin var(--dur) var(--pop); }
+.tip b { font-size: .8125rem; }
+.tipok { justify-self: start; min-height: 36px; border: 0; background: none; color: inherit; font-weight: 700; padding: 0; cursor: pointer; }
+@keyframes tipin { from { opacity: 0; scale: .94; } }
+.tour { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 20px; background: var(--s0); animation: wfade var(--dur-sheet) var(--spring); }
+.tourcard { width: min(460px, 100%); height: min(720px, 100%); display: grid; grid-template-rows: 1fr auto auto auto auto; gap: 14px;
+  animation: wpop var(--dur-sheet) var(--spring); }
+.tourart { border-radius: var(--r4); display: grid; place-items: center;
+  background: linear-gradient(color-mix(in oklab, var(--h), var(--base00) 52%), color-mix(in oklab, var(--h), var(--base00) 86%)); }
+.tourshelf { display: flex; gap: 10px; rotate: -8deg; }
+.tourshelf span { width: 70px; height: 94px; border-radius: 16px; display: grid; place-items: center; color: var(--bright);
+  background: linear-gradient(color-mix(in oklab, var(--h), var(--base00) 40%), color-mix(in oklab, var(--h), var(--base00) 80%)); }
+.tourbig { width: 108px; height: 108px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in oklab, var(--base00), transparent 30%);
+  font: 700 3.4rem var(--display); color: var(--accent); }
+.tourbig svg { width: 52px; height: 52px; color: var(--bright); }
+.tourdots { display: flex; justify-content: center; gap: 6px; }
+.tourdots i { width: 7px; height: 7px; border-radius: 4px; background: var(--s3); transition: width var(--dur) var(--spring), background var(--dur) var(--spring); }
+.tourdots i.on { width: 22px; background: var(--accent); }
+.tourcard > b { font: 700 1.625rem/1.1 var(--display); letter-spacing: -.03em; color: var(--bright); text-wrap: balance; }
+.tourcard > p { margin: 0; color: var(--dim); }
+
+@media (prefers-reduced-motion: reduce) {
+  .tbmenu, .wscrim, .wsheet, .tip, .tour, .tourcard, .glaunchscrim { animation: none; }
+  #glaunch { transition: opacity 120ms linear; }
+  .ghops li.now .gm { animation: none; }
+}
+
+/* ── readouts: along the picture's bottom edge, not its top, where an app keeps its title bar,
+ *    menus and Back (2026-11-05, as the app) ── */
+.health { top: auto; bottom: 8px; }
+#stagebar { top: auto !important; bottom: 8px; }

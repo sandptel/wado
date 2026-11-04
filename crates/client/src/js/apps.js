@@ -14,7 +14,7 @@
 // and leave an empty list indistinguishable from "this machine has no apps".
 W.requestApps = async (server) => {
   if (W.relayMode) {
-    W.relaySendMsg({ type: "apps_request" });
+    W.relaySendMsg({ type: "apps_request", lean: true });
     return;
   }
   try {

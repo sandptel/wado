@@ -46,7 +46,9 @@ pub fn render(ui: Ui) -> Element {
         return rsx! {};
     }
     let h = (live.health)();
-    if h.state.is_empty() {
+    // Only when something is wrong (2026-11-05, as the app): "healthy" said all the time was a
+    // chip over the picture for nothing — the link badge already says the link is fine.
+    if h.state.is_empty() || h.state == "ok" {
         return rsx! {};
     }
 

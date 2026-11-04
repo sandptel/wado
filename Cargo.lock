@@ -6456,6 +6456,7 @@ dependencies = [
  "serde",
  "serde_json",
  "wado-protocol",
+ "wado-ux",
  "wasm-bindgen",
 ]
 

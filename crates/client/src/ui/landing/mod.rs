@@ -14,7 +14,7 @@ use dioxus::prelude::*;
 use crate::{
     route::View,
     state::Ui,
-    ui::home::{cards, games, sessions, settings, widgets},
+    ui::home::{cards, games, sessions, settings, top_bar, widgets},
 };
 
 pub fn render(ui: Ui) -> Element {
@@ -34,21 +34,35 @@ pub fn render(ui: Ui) -> Element {
 
     rsx! {
         section { id: "landing", class: "{class}", "aria-hidden": "{on || covered}", inert: crate::ui::widgets::inert(on || covered),
-            div { class: "wordmark", "wado" span { "." } }
-            p { class: "tag", "Your computers, at this screen's own resolution." }
-            // iOS Safari only, once: how to install, since it never offers to.
-            {crate::ui::scoped(ui, "install_hint", install_hint::render)}
-            // The computer does not know this device yet: pair it before anything else.
-            {crate::ui::scoped(ui, "pair", pair::render)}
-            if !ui.set.profiles.read().is_empty() {
-                {crate::ui::scoped(ui, "games", games::render)}
+            if ui.set.profiles.read().is_empty() {
+                // First run: what wado is, then how to pair.
+                div { class: "wordmark", "wado" span { "." } }
+                p { class: "tag", "Use your own computer from here — its games, apps, files and shells, at this screen's own size." }
+                {crate::ui::scoped(ui, "install_hint", install_hint::render)}
+                {crate::ui::scoped(ui, "pair", pair::render)}
+                div { class: "sect", span { "Computers" } }
+                {crate::ui::scoped(ui, "cards", cards::render)}
+                div { class: "sect", span { "On this phone" } }
+                {settings::render(ui)}
+            } else {
+                {crate::ui::scoped(ui, "topbar", top_bar::render)}
+                {crate::ui::scoped(ui, "install_hint", install_hint::render)}
+                {crate::ui::scoped(ui, "pair", pair::render)}
+                // One column on a phone; on a wide screen the games beside the computers.
+                div { class: "homegrid",
+                    div { class: "homeplay",
+                        {crate::ui::scoped(ui, "games", games::render)}
+                    }
+                    div { class: "homeside",
+                        div { class: "sect", span { "Computers" } }
+                        {crate::ui::scoped(ui, "cards", cards::render)}
+                        {crate::ui::scoped(ui, "sessions", sessions::render)}
+                        div { class: "sect", span { "On this device" } }
+                        {settings::render(ui)}
+                        {crate::ui::scoped(ui, "widgets", widgets::render)}
+                    }
+                }
             }
-            div { class: "sect", span { "Computers" } }
-            {crate::ui::scoped(ui, "cards", cards::render)}
-            {crate::ui::scoped(ui, "sessions", sessions::render)}
-            div { class: "sect", span { "On this phone" } }
-            {settings::render(ui)}
-            {crate::ui::scoped(ui, "widgets", widgets::render)}
         }
     }
 }

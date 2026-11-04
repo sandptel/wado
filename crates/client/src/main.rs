@@ -152,6 +152,8 @@ fn App() -> Element {
         document::Stylesheet { href: asset!("/assets/cc.css") }
         document::Stylesheet { href: asset!("/assets/landing.css") }
         document::Stylesheet { href: asset!("/assets/home.css") }
+        // The player's home, its sheets, the launch, tips and the tour (`ui/home/games.rs` & co).
+        document::Stylesheet { href: asset!("/assets/play.css") }
         document::Stylesheet { href: asset!("/assets/computer.css") }
         document::Stylesheet { href: asset!("/assets/sessions.css") }
         document::Stylesheet { href: asset!("/assets/presence.css") }

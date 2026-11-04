@@ -45,13 +45,13 @@ pub const ITEMS: &[Item] = &[
     Item {
         id: "fps",
         label: "Show FPS",
-        default: true,
+        default: false,
         js: None,
     },
     Item {
         id: "ping",
         label: "Show ping",
-        default: true,
+        default: false,
         js: None,
     },
     Item {

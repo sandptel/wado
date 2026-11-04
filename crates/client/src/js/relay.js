@@ -490,9 +490,32 @@ W.relayOn("ice_candidate", async (msg) => {
 // breakdown.
 W.relayOn("timing", (msg) => { W._lastTiming = msg.timings || null; });
 
+// Lean since 2026-11-05 (apps.js asks `lean`): the list without icons, at once; the icons this browser
+// has not kept follow 24 at a time (`apps_icons`). An older daemon sends them inline: kept the same way.
+W.appIcons = (() => { try { return JSON.parse(localStorage.getItem("wado.appIcons") || "{}"); } catch (_) { return {}; } })();
+const keepIcons = () => { try { localStorage.setItem("wado.appIcons", JSON.stringify(W.appIcons)); } catch (_) {} };
+const withIcons = (list) => list.map((a) => (a.icon || !W.appIcons[a.exec] ? a : { ...a, icon: W.appIcons[a.exec] }));
+let iconsWanted = [];
+const askIcons = () => {
+  if (!iconsWanted.length) return;
+  W.relaySendMsg({ type: "apps_icons", execs: iconsWanted.slice(0, 24) });
+  iconsWanted = iconsWanted.slice(24);
+};
 W.relayOn("apps_list", (msg) => {
-  W.appsList = msg.apps || [];
+  const list = msg.apps || [];
+  for (const a of list) if (a.icon) W.appIcons[a.exec] = a.icon;
+  keepIcons();
+  W.appsList = withIcons(list);
   emit({ type: "apps", apps: W.appsList });
+  iconsWanted = list.filter((a) => !a.hidden && !W.appIcons[a.exec]).map((a) => a.exec);
+  askIcons();
+});
+W.relayOn("apps_icons_list", (msg) => {
+  Object.assign(W.appIcons, msg.icons || {});
+  keepIcons();
+  W.appsList = withIcons(W.appsList || []);
+  emit({ type: "apps", apps: W.appsList });
+  askIcons();
 });
 W.relayOn("log", (msg) => { if (msg.line) emit({ type: "log", line: msg.line }); });
 W.relayOn("error", (msg) => status("relay error: " + (msg.message || "?")));
