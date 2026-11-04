@@ -2,7 +2,13 @@
 // opening its surface; each works without a session. Their settings live under each door.
 import 'package:flutter/material.dart';
 
+import '../../core/core_host.dart';
 import '../../wado/host.dart';
+import '../../wado/online.dart';
+import '../../wado/reach.dart';
+import '../../wado/side_links.dart';
+import '../computer/actions.dart' show notAllowed;
+import '../widgets/sheet.dart';
 import '../../wado/nav.dart';
 import '../../wado/relay_link.dart';
 import '../theme/look.dart';
@@ -15,12 +21,27 @@ class InputHub extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Tok.of(context);
     return ListenableBuilder(
-      listenable: Listenable.merge([RelayLink.I.up, Host.I.config]),
+      // Reach, not the seat link: each door opens a link of its own, so a session elsewhere (or
+      // files downloading) holding the seat never makes the computer "Offline" here.
+      listenable: Listenable.merge([RelayLink.I.up, RelayLink.I.seatBusy, Host.I.config, Online.I.map, SideLinks.I.state]),
       builder: (context, _) {
-        final up = RelayLink.I.up.value;
+        final c = CoreHost.I.computer(Nav.I.selected);
+        final r = c == null ? null : Reach.of(c);
+        // Still connecting counts as reachable: each door's own link says if it is really refused.
+        final up = r == null ? RelayLink.I.up.value : (r.online || (r.selected && r.tone == 'warn'));
+        final name = c?.name ?? 'The computer';
         final g = Host.I.config.value?['grants'] as Map<String, dynamic>?;
         final input = g == null || g['input'] == true;
-        String why(bool needsInput) => !up ? 'Offline' : (needsInput && !input ? 'Not allowed for this phone' : '');
+        String why(bool needsInput) => !up ? 'Offline · why?' : (needsInput && !input ? 'Not allowed for this phone · why?' : '');
+        // A shut door answers its tap: what is wrong, and what would fix it.
+        void explain(bool needsInput) => (!up
+                ? Locked(
+                    '$name isn\'t answering',
+                    'It is turned off, asleep, or its wado is not running. This page fills in by itself when it is back.',
+                    fix: 'On $name, check it is awake and wado daemon is running.',
+                  )
+                : notAllowed('The touchpad and keyboard', 'input'))
+            .show(context);
         Widget door(String icon, String hue, String title, String sub, String note, VoidCallback onOpen, String settings) => WCard(children: [
               Row(children: [
                 Disc(hue: slot(context, hue), size: 46, child: WIcon(icon, color: slot(context, hue))),
@@ -33,7 +54,7 @@ class InputHub extends StatelessWidget {
                 ),
               ]),
               Row(children: [
-                Expanded(child: Btn('Open', primary: true, icon: 'play', onTap: note.isEmpty ? onOpen : null)),
+                Expanded(child: Btn('Open', primary: note.isEmpty, icon: note.isEmpty ? 'play' : 'lock', onTap: note.isEmpty ? onOpen : () => explain(note.startsWith('Not')))),
                 const SizedBox(width: 8),
                 Expanded(child: Btn('Settings', icon: 'sliders', onTap: () => Nav.I.openPage(settings))),
               ]),

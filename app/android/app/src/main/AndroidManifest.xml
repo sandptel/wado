@@ -10,7 +10,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <application
-        android:label="wado next"
+        android:label="wado"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher">
@@ -60,9 +60,11 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="wado" />
             </intent-filter>
-            <!-- The QR's own https link, when the phone's camera app hands it over (offered, not
-                 verified: Android opens it here only once "Open supported links" is on). -->
-            <intent-filter>
+            <!-- The QR's own https link. Opened here directly from a browser by the page's own
+                 `intent:` handoff (js/app_handoff.js); from Lens and the camera with no browser in
+                 between once the link is verified: autoVerify plus deploy/assetlinks.json served at
+                 https://sandptel.github.io/.well-known/assetlinks.json. -->
+            <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />

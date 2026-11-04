@@ -18,8 +18,16 @@ pub fn render(ui: Ui) -> Element {
     let list = ui.set.profiles.read().clone();
     let cur = (ui.set.profile)();
     let all = (ui.set.home_all)() && list.len() > 1;
-    let name = if all { "All computers".to_string() } else { profile::current_name(ui) };
-    let hue = if all { "0D".to_string() } else { profile::hue(cur).to_string() };
+    let name = if all {
+        "All computers".to_string()
+    } else {
+        profile::current_name(ui)
+    };
+    let hue = if all {
+        "0D".to_string()
+    } else {
+        profile::hue(cur).to_string()
+    };
     rsx! {
         div { class: "topbar",
             div { class: "tbwrap",

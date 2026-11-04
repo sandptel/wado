@@ -58,7 +58,11 @@ pub fn overlay(ui: Ui, surface: &str, close: impl FnMut() + Clone + 'static) -> 
 pub fn render(ui: Ui) -> Element {
     let mut open = use_signal(|| false);
     let face = (ui.live.stage)().face();
-    let surface = if face == crate::ui::surround::layout::Face::Gamepad { "pad" } else { "picture" };
+    let surface = if face == crate::ui::surround::layout::Face::Gamepad {
+        "pad"
+    } else {
+        "picture"
+    };
     rsx! {
         button {
             id: "helpq",

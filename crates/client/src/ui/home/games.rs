@@ -25,7 +25,9 @@ fn hue(name: &str) -> String {
 }
 
 fn icon_of(apps: &[AppEntry], exec: &str) -> Option<String> {
-    apps.iter().find(|a| a.exec == exec).and_then(|a| a.icon.clone())
+    apps.iter()
+        .find(|a| a.exec == exec)
+        .and_then(|a| a.icon.clone())
 }
 
 /// Grow the poster into the game (`js/launch.js`), then open it.
@@ -48,7 +50,9 @@ pub fn render(ui: Ui) -> Element {
         if !on {
             game_mode::end(ui);
         }
-        let Some(exec) = (live.game_launch)() else { return };
+        let Some(exec) = (live.game_launch)() else {
+            return;
+        };
         if !up {
             return;
         }
@@ -100,9 +104,18 @@ fn lately(ui: Ui, list: &[recent::Recent], here: &str, now: u64, apps: &[AppEntr
             }
         };
     }
-    let Some(r) = mine.first().map(|r| (*r).clone()) else { return rsx! {} };
-    let p = game_mode::on(ui).into_iter().find(|p| r.kind == "game" && p.exec == r.exec);
-    let kind = match r.kind.as_str() { "game" => "Game mode", "shell" => "Shell", "file" => "File", _ => "Desktop" };
+    let Some(r) = mine.first().map(|r| (*r).clone()) else {
+        return rsx! {};
+    };
+    let p = game_mode::on(ui)
+        .into_iter()
+        .find(|p| r.kind == "game" && p.exec == r.exec);
+    let kind = match r.kind.as_str() {
+        "game" => "Game mode",
+        "shell" => "Shell",
+        "file" => "File",
+        _ => "Desktop",
+    };
     rsx! {
         div { class: "sect", span { "Continue" } }
         button {
@@ -143,7 +156,13 @@ fn wide(ui: Ui, p: Profile, apps: &[AppEntry]) -> Element {
     }
 }
 
-fn shelf(ui: Ui, games: Vec<Profile>, apps: &[AppEntry], mut setup: Signal<Option<(Profile, bool)>>, mut picking: Signal<bool>) -> Element {
+fn shelf(
+    ui: Ui,
+    games: Vec<Profile>,
+    apps: &[AppEntry],
+    mut setup: Signal<Option<(Profile, bool)>>,
+    mut picking: Signal<bool>,
+) -> Element {
     rsx! {
         div { class: "gshelf", role: "list",
             for p in games.clone() {
@@ -164,7 +183,12 @@ fn shelf(ui: Ui, games: Vec<Profile>, apps: &[AppEntry], mut setup: Signal<Optio
     }
 }
 
-fn poster(ui: Ui, p: Profile, apps: &[AppEntry], mut setup: Signal<Option<(Profile, bool)>>) -> Element {
+fn poster(
+    ui: Ui,
+    p: Profile,
+    apps: &[AppEntry],
+    mut setup: Signal<Option<(Profile, bool)>>,
+) -> Element {
     let a = apps.iter().find(|a| a.exec == p.exec);
     let running = a.is_some_and(|a| a.running);
     let icon = icon_of(apps, &p.exec);
@@ -197,8 +221,19 @@ fn poster(ui: Ui, p: Profile, apps: &[AppEntry], mut setup: Signal<Option<(Profi
 /// All computers: what was left on each, newest first, then each one's games.
 fn everything(ui: Ui, list: &[recent::Recent], now: u64) -> Element {
     let comps = ui.set.profiles.read().clone();
-    let name_of = |key: &str| comps.iter().find(|c| c.key() == key).map(|c| c.display()).unwrap_or_default();
-    let left: Vec<recent::Recent> = list.iter().filter(|r| comps.iter().any(|c| c.key() == r.computer)).take(4).cloned().collect();
+    let name_of = |key: &str| {
+        comps
+            .iter()
+            .find(|c| c.key() == key)
+            .map(|c| c.display())
+            .unwrap_or_default()
+    };
+    let left: Vec<recent::Recent> = list
+        .iter()
+        .filter(|r| comps.iter().any(|c| c.key() == r.computer))
+        .take(4)
+        .cloned()
+        .collect();
     rsx! {
         if !left.is_empty() {
             div { class: "sect", span { "Pick up where you left off" } }
@@ -230,9 +265,19 @@ fn everything(ui: Ui, list: &[recent::Recent], now: u64) -> Element {
 }
 
 /// Pick the app to turn Game mode on for.
-fn pick(ui: Ui, apps: &[AppEntry], mut setup: Signal<Option<(Profile, bool)>>, mut picking: Signal<bool>) -> Element {
+fn pick(
+    ui: Ui,
+    apps: &[AppEntry],
+    mut setup: Signal<Option<(Profile, bool)>>,
+    mut picking: Signal<bool>,
+) -> Element {
     let on = game_mode::on(ui);
-    let mut list: Vec<AppEntry> = apps.iter().filter(|a| !a.hidden && !on.iter().any(|g| g.exec == a.exec)).take(60).cloned().collect();
+    let mut list: Vec<AppEntry> = apps
+        .iter()
+        .filter(|a| !a.hidden && !on.iter().any(|g| g.exec == a.exec))
+        .take(60)
+        .cloned()
+        .collect();
     list.sort_by_key(|a| !game_mode::needs_x(&a.exec));
     rsx! {
         Sheet {
@@ -258,7 +303,10 @@ fn pick(ui: Ui, apps: &[AppEntry], mut setup: Signal<Option<(Profile, bool)>>, m
 
 /// The setup: how it is played, then the session's rules — the app's two steps, on one sheet.
 fn form(ui: Ui, p: Profile, known: bool, mut setup: Signal<Option<(Profile, bool)>>) -> Element {
-    let layouts = crate::ui::computer::input::prefs::GAMEPAD.read().list.clone();
+    let layouts = crate::ui::computer::input::prefs::GAMEPAD
+        .read()
+        .list
+        .clone();
     let mut set = move |q: Profile| setup.set(Some((q, known)));
     rsx! {
         Sheet {

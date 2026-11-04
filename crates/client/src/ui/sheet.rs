@@ -17,7 +17,12 @@ pub fn form(ui: Ui) -> wado_ux::form::Form {
 }
 
 #[component]
-pub fn Sheet(title: String, sub: Option<String>, on_close: EventHandler<()>, children: Element) -> Element {
+pub fn Sheet(
+    title: String,
+    sub: Option<String>,
+    on_close: EventHandler<()>,
+    children: Element,
+) -> Element {
     rsx! {
         div {
             class: "wscrim",

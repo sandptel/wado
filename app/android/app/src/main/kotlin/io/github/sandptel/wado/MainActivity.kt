@@ -1,6 +1,9 @@
 package io.github.sandptel.wado
 
 import android.Manifest
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import android.content.ClipData
 import android.content.ClipDescription
 import android.content.ClipboardManager
@@ -167,6 +170,15 @@ class MainActivity : FlutterFragmentActivity() {
                 "shortcut" -> {
                     Shortcut.desktop(this, call.argument<String>("key").orEmpty(), call.argument<String>("title").orEmpty())
                     result.success(null)
+                }
+                // Google's code scanner: the QR's text, "" when put away, an error when Play
+                // services cannot scan here (the Dart side then opens the in-app reader).
+                "scan" -> {
+                    val opts = GmsBarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build()
+                    GmsBarcodeScanning.getClient(this, opts).startScan()
+                        .addOnSuccessListener { result.success(it.rawValue ?: "") }
+                        .addOnCanceledListener { result.success("") }
+                        .addOnFailureListener { result.error("unavailable", it.message, null) }
                 }
                 "camera" -> if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
                     result.success(true)

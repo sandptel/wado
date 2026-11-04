@@ -60,4 +60,7 @@ dependencies {
     // tink-android (from flutter_secure_storage) has the same classes as the connector's tink.
     implementation("org.unifiedpush.android:connector:3.3.5") { exclude(group = "com.google.crypto.tink", module = "tink") }
     implementation("androidx.fragment:fragment-ktx:1.9.1")
+    // The pairing QR: Google's own scanner (Play services) — no camera permission, and it reads a
+    // terminal's half-block QR where the in-app reader struggled. zxing stays the fallback.
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
 }

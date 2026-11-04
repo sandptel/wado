@@ -23,6 +23,9 @@ use crate::{
 pub const JS: &str = concat!(
     include_str!("js/core.js"),
     "\n",
+    // Before anything dials: a pairing link on Android goes to the app when it is installed.
+    include_str!("js/app_handoff.js"),
+    "\n",
     // Right after `core`: every action anywhere below may start a pending action, and every
     // message from the computer is offered to it (`relay_link.js`'s `fire`).
     include_str!("js/pending.js"),
@@ -833,7 +836,11 @@ pub fn run(ui: Ui) {
                     }
                 }
                 // A Game mode's shadowed console choice changed in the game: kept for the game.
-                "gameKept" => crate::game_mode::kept(ui, &string("key"), msg.get("value").cloned().unwrap_or_default()),
+                "gameKept" => crate::game_mode::kept(
+                    ui,
+                    &string("key"),
+                    msg.get("value").cloned().unwrap_or_default(),
+                ),
                 "device_list" => {
                     let rows = msg
                         .get("devices")

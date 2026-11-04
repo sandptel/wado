@@ -62,9 +62,21 @@ class TopBar extends StatelessWidget {
                 ),
               ),
             ),
+            const SizedBox(width: 8),
             const Spacer(),
-            if (Platform.isAndroid || Platform.isIOS) IconBtn('camera', label: 'Scan a code', color: t.accent, onTap: () => scanFromHome(context)),
-            IconBtn('dots', label: sel == null ? 'More' : '${sel.name}: settings and connection', onTap: () => _more(context, sel)),
+            // One plate for the bar's actions, the chip's own height, surface and border: the
+            // controls read as a pair with the chip, not as loose glyphs on the wash.
+            Container(
+              height: 40,
+              decoration: BoxDecoration(color: t.s1, borderRadius: BorderRadius.circular(999), border: Border.all(color: t.line)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                if (Platform.isAndroid || Platform.isIOS) ...[
+                  _BarBtn(icon: 'camera', label: 'Scan a code', onTap: () => scanFromHome(context)),
+                  Container(width: 1, height: 18, color: t.line),
+                ],
+                _BarBtn(icon: 'dots', label: sel == null ? 'More' : '${sel.name}: settings and connection', onTap: () => _more(context, sel)),
+              ]),
+            ),
           ]);
         },
       );
@@ -133,5 +145,18 @@ class TopBar extends StatelessWidget {
         value: v,
         height: 48,
         child: Row(children: [WIcon(icon, color: Tok.of(context).dim), const SizedBox(width: 10), Text(words, style: body(context, color: Tok.of(context).bright))]),
+      );
+}
+
+/// A 44 px-wide target inside the bar's plate, its icon in the chip's text colour.
+class _BarBtn extends StatelessWidget {
+  const _BarBtn({required this.icon, required this.label, required this.onTap});
+  final String icon, label;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) => Press(
+        onTap: onTap,
+        label: label,
+        child: SizedBox(width: 46, height: 40, child: Center(child: WIcon(icon, size: 20, color: Tok.of(context).bright))),
       );
 }

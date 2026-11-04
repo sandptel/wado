@@ -46,7 +46,7 @@ class Diagnostics extends StatelessWidget {
             Row(children: [
               Container(width: 8, height: 8, decoration: BoxDecoration(shape: BoxShape.circle, color: kReleaseMode ? t.good : t.dim)),
               const SizedBox(width: 8),
-              Text('wado next $appVersion', style: mono(context, size: .875, w: FontWeight.w600, color: t.bright)),
+              Text('wado $appVersion', style: mono(context, size: .875, w: FontWeight.w600, color: t.bright)),
             ]),
             Text(kReleaseMode ? 'The native app, installed beside the old one.' : 'A development build: profile or debug, for testing.', style: body(context, size: .75, color: t.dim)),
           ]),
@@ -64,7 +64,8 @@ class Diagnostics extends StatelessWidget {
   }
 }
 
-const appVersion = '0.1.0';
+/// The pubspec version, passed in by scripts/app-build.sh; `dev` for a plain `flutter run`.
+const appVersion = String.fromEnvironment('WADO_VERSION', defaultValue: 'dev');
 
 /// The log: this app's and the computer's lines (the console's Logs tab).
 class LogsPage extends StatelessWidget {

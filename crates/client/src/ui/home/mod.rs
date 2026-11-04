@@ -13,8 +13,8 @@
 pub mod cards;
 pub mod games;
 pub mod launch;
-pub mod top_bar;
 pub mod pages;
 pub mod sessions;
 pub mod settings;
+pub mod top_bar;
 pub mod widgets;

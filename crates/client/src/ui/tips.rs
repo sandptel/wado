@@ -47,7 +47,10 @@ pub fn tour(ui: Ui) -> Element {
     if seen(ui, "tour") || ui.set.profiles.read().is_empty() || (ui.live.session_on)() {
         return rsx! {};
     }
-    let cards = wado_ux::tour::cards(&crate::profile::current_name(ui), crate::ui::sheet::form(ui));
+    let cards = wado_ux::tour::cards(
+        &crate::profile::current_name(ui),
+        crate::ui::sheet::form(ui),
+    );
     let n = cards.len();
     let c = cards[i().min(n - 1)].clone();
     let last = i() + 1 >= n;

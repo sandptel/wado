@@ -145,12 +145,12 @@ class AboutPage extends StatelessWidget {
     final t = Tok.of(context);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       WCard(children: [
-        Text('wado next', style: display(context, rem(context, 1.5))),
+        Text('wado', style: display(context, rem(context, 1.5))),
         Text('The native app — Flutter over wado’s Rust client core.', style: body(context, color: t.dim)),
         Text('AGPL-3.0-only. Fonts: Bricolage Grotesque, Figtree, JetBrains Mono (OFL). OS logos: Simple Icons (CC0), used only to name each computer’s OS.', style: body(context, size: .8125)),
       ]),
       const SizedBox(height: 8),
-      Btn('Open-source licences', onTap: () => showLicensePage(context: context, applicationName: 'wado next')),
+      Btn('Open-source licences', onTap: () => showLicensePage(context: context, applicationName: 'wado')),
     ]);
   }
 }

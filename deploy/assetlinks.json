@@ -1,0 +1,10 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "io.github.sandptel.wado.next",
+      "sha256_cert_fingerprints": ["EF:61:57:7E:7F:82:66:CE:2D:6F:52:12:FD:4A:E4:D8:EE:1F:FA:34:56:F8:DA:74:45:33:D7:1F:06:3B:55:55"]
+    }
+  }
+]

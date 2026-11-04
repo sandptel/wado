@@ -12,7 +12,10 @@ pub fn render(ui: Ui) -> Element {
     // Done: the picture is up, or the session went away. Fade, then gone.
     use_effect(move || {
         if (live.launching)().is_some() && ((live.fps)().is_some() || !(live.session_on)()) {
-            bridge::call("var g=document.getElementById('glaunch'); if(g) g.classList.add('out');".to_string());
+            bridge::call(
+                "var g=document.getElementById('glaunch'); if(g) g.classList.add('out');"
+                    .to_string(),
+            );
             spawn(async move {
                 bridge::sleep(320).await;
                 live.launching.set(None);
@@ -25,7 +28,9 @@ pub fn render(ui: Ui) -> Element {
         live.launching.set(None);
     });
     // Hooks first, always in the same order; then whether there is anything to show.
-    let Some((name, hue)) = (live.launching)() else { return rsx! {} };
+    let Some((name, hue)) = (live.launching)() else {
+        return rsx! {};
+    };
     let stage = (live.conn_stage)();
     let err = (live.conn_error)();
     let video = (live.fps)().is_some();

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build the Flutter app (app/): its Rust bridge (crates/app-bridge) for the target, then Flutter.
-#   nix develop .#app -c scripts/app-build.sh --android [--release]   → ~/Downloads/wado-next-*.apk
+#   nix develop .#app -c scripts/app-build.sh --android [--release]   → ~/Downloads/wado-*.apk
 #   nix develop .#app -c scripts/app-build.sh --linux [--release]     → app/build/linux/x64/*/bundle
 # Run the Linux build with LD_LIBRARY_PATH=$WADO_APP_LIBS (flutter_webrtc's libwebrtc needs them).
 set -euo pipefail
@@ -16,9 +16,10 @@ for a in "$@"; do
   esac
 done
 cd "$ROOT"
+VER=$(grep '^version:' app/pubspec.yaml | awk '{print $2}' | cut -d+ -f1)
 if [ "$TARGET" = linux ]; then
   cargo build -p wado-app-bridge $([ $MODE = release ] && echo --release)
-  (cd app && flutter build linux --$MODE)
+  (cd app && flutter build linux --$MODE --dart-define=WADO_VERSION=$VER)
   exit 0
 fi
 : "${ANDROID_NDK_HOME:?run inside: nix develop .#app}"
@@ -36,8 +37,8 @@ fi
 JNI=$ROOT/app/android/app/src/main/jniLibs
 rm -rf "$JNI" && mkdir -p "$JNI"
 cargo ndk --platform 26 -o "$JNI" $(printf -- '-t %s ' "${ABIS[@]}") build -p wado-app-bridge --release --lib
-(cd app && flutter build apk --$MODE --split-per-abi)
+(cd app && flutter build apk --$MODE --split-per-abi --dart-define=WADO_VERSION=$VER)
 V=$(grep '^version:' app/pubspec.yaml | awk '{print $2}' | cut -d+ -f1)
-OUT=$HOME/Downloads/wado-next-$V-$MODE.apk
+OUT=$HOME/Downloads/wado-$V-$MODE.apk
 cp app/build/app/outputs/flutter-apk/app-arm64-v8a-$MODE.apk "$OUT"
 ls -la "$OUT"

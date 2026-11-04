@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_zxing/flutter_zxing.dart';
 
 import '../../core/core_host.dart';
+import '../../wado/log.dart';
 import '../../wado/nav.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
@@ -185,15 +186,7 @@ class _AddComputerState extends State<AddComputer> {
           Btn('Scan the QR code', primary: true, icon: 'camera', onTap: busy
               ? null
               : () async {
-                  if (Platform.isAndroid && await const MethodChannel('wado/os').invokeMethod<bool>('camera') != true) {
-                    setState(() {
-                      _step = 'failed';
-                      _why = 'wado next needs the camera to read the QR. Allow it in the app\'s settings, or paste the link.';
-                    });
-                    return;
-                  }
-                  if (!context.mounted) return;
-                  final link = await Navigator.of(context).push<String>(MaterialPageRoute(builder: (_) => const ScanCode()));
+                  final link = await scanCode(context);
                   if (link != null && link.isNotEmpty) {
                     _link.text = link;
                     _viaScan = true;
@@ -290,14 +283,33 @@ class _ScanState extends State<ScanCode> {
       );
 }
 
-/// The home's scan button: the camera, then a pairing link goes to Add a computer.
-Future<void> scanFromHome(BuildContext context) async {
-  if (Platform.isAndroid && await const MethodChannel('wado/os').invokeMethod<bool>('camera') != true) {
-    if (context.mounted) Nav.I.openPage('add_computer', aboutComputer: false);
-    return;
+/// Read a wado code: Google's scanner where Play services has it (no camera permission, sure-footed
+/// on a terminal's QR), else the in-app reader. The code's text, or null when put away or not ours.
+Future<String?> scanCode(BuildContext context) async {
+  bool ours(String t) => t.contains('pair=') || t.startsWith('wado:');
+  if (Platform.isAndroid) {
+    try {
+      final t = await const MethodChannel('wado/os').invokeMethod<String>('scan');
+      if (t == null || t.isEmpty) return null;
+      if (ours(t)) return t;
+      if (context.mounted) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(content: Text("That isn't a wado code — on the computer run wado pair for one.")));
+      }
+      return null;
+    } on PlatformException catch (e) {
+      rlog('scan: Google scanner unavailable (${e.message}) — the in-app reader instead');
+    } on MissingPluginException {
+      // An older shell: the in-app reader.
+    }
+    if (await const MethodChannel('wado/os').invokeMethod<bool>('camera') != true) return null;
   }
-  if (!context.mounted) return;
-  final link = await Navigator.of(context).push<String>(MaterialPageRoute(builder: (_) => const ScanCode()));
+  if (!context.mounted) return null;
+  return Navigator.of(context).push<String>(MaterialPageRoute(builder: (_) => const ScanCode()));
+}
+
+/// The home's scan button: a pairing link goes to Add a computer.
+Future<void> scanFromHome(BuildContext context) async {
+  final link = await scanCode(context);
   if (link == null || link.isEmpty) return;
   AddComputer.pending = link;
   AddComputer.scanned = true;
