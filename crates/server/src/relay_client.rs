@@ -2084,6 +2084,21 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     }
                 }
 
+                // Devices, for a device the computer let manage them (`gate::delegate`).
+                msg @ (RelayMsg::DevicesRequest
+                | RelayMsg::DeviceSignOut { .. }
+                | RelayMsg::PairMint { .. }
+                | RelayMsg::PairAnswer { .. }) => {
+                    let (device, name) =
+                        ctx.viewer.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                    if !ctx.viewer_ok.load(Ordering::SeqCst) {
+                        continue;
+                    }
+                    if let Some(out) = crate::gate::relay::handle(&msg, &ctx.gate, &device, &name) {
+                        send_relay(&out_tx, &out).await.ok();
+                    }
+                }
+
                 msg @ (RelayMsg::ClipList
                 | RelayMsg::ClipGet { .. }
                 | RelayMsg::ClipPush { .. }

@@ -33,6 +33,11 @@ const ITEMS: &[(&str, &str, &str)] = &[
         "Settings",
         "what can run code or cut the computer off",
     ),
+    (
+        "devices",
+        "Manage devices",
+        "it may let other devices in, for up to 7 days — only ever given here",
+    ),
 ];
 
 /// Seconds for `1h`, `8h`, `1d`, `7d`, `30m`; `None` for `forever`. A bad one is an error.

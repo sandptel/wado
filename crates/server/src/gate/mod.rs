@@ -33,8 +33,10 @@ use std::path::PathBuf;
 use std::time::SystemTime;
 
 pub mod confirm;
+pub mod delegate;
 pub mod grants;
 pub mod pairing;
+pub mod relay;
 pub mod typed_code;
 pub use confirm::{CONFIRM_WAIT, Check};
 pub use grants::Grants;
@@ -98,6 +100,16 @@ fn live(f: &[&str]) -> bool {
     match f.get(6).map(|s| s.trim()) {
         None | Some("" | "-") => true,
         Some(t) => t.parse::<u64>().is_ok_and(|u| u > now_s()),
+    }
+}
+
+/// What a code adds: join and take over for a device shown this computer's own screen — not
+/// for one shown a code on another device's, which gets exactly what that device could give.
+fn code_paired(g: Grants, term: &Term) -> Grants {
+    if term.by.is_empty() {
+        g.union(&Grants::CODE_PAIRED)
+    } else {
+        g
     }
 }
 
@@ -294,8 +306,10 @@ impl Gate {
         let own = self.device(key).map_or(Grants::NONE, |d| d.grants);
         if crate::config::link::is_owner(key, self) {
             // Files stay an explicit grant, owner or not.
+            // So does managing devices: being first is not the computer's say-so.
             return Grants {
                 files: own.files,
+                devices: own.devices,
                 ..Grants::ALL
             };
         }
@@ -386,6 +400,10 @@ impl Gate {
         // Its passkey goes with it, and whether it was asked for one: a re-pair starts clean.
         crate::passkey::Store::at(self.dir.join("passkeys")).forget(&key);
         info!("gate: unpaired {name}");
+        // What it let in goes with it (`delegate`): a delegate cannot delegate, so one level.
+        for d in self.minted_by(&key) {
+            let _ = self.unpair(&d.key);
+        }
         Ok(name)
     }
 
@@ -402,10 +420,7 @@ impl Gate {
         // a device that lost its key comes back.
         self.prune();
         let unknown = match proof {
-            Proof::Qr(c) => match self
-                .redeem(c)
-                .map(|(g, t)| (g.union(&Grants::CODE_PAIRED), t))
-            {
+            Proof::Qr(c) => match self.redeem(c).map(|(g, t)| (code_paired(g, &t), t)) {
                 Some((g, t)) => {
                     info!(
                         "gate: {name} paired with a QR code — trusted and pinned, may: {}{}",
@@ -449,7 +464,7 @@ impl Gate {
 
     /// The check words of a typed pairing were confirmed on the computer: trust and pin.
     pub fn confirmed(&self, key: &str, name: &str, pk: &str, grants: &Grants, term: &Term) {
-        let grants = &grants.union(&Grants::CODE_PAIRED);
+        let grants = &code_paired(grants.clone(), term);
         info!(
             "gate: {name} paired with a typed code, check words confirmed — trusted and pinned, \
              may: {}",
@@ -463,10 +478,18 @@ impl Gate {
         let Ok(all) = fs::read_to_string(self.trusted_path()) else {
             return;
         };
-        let (kept, gone): (Vec<&str>, Vec<&str>) = all
+        let alive: Vec<&str> = all
             .lines()
-            .filter(|l| !l.trim().is_empty())
-            .partition(|l| live(&l.split('\t').collect::<Vec<_>>()));
+            .filter(|l| !l.trim().is_empty() && live(&l.split('\t').collect::<Vec<_>>()))
+            .filter_map(|l| l.split('\t').next())
+            .collect();
+        // Dead too: a line let in by a device that is itself no longer trusted.
+        let (kept, gone): (Vec<&str>, Vec<&str>) =
+            all.lines().filter(|l| !l.trim().is_empty()).partition(|l| {
+                let f: Vec<&str> = l.split('\t').collect();
+                let by = f.get(7).map_or("", |s| s.trim());
+                live(&f) && (by.is_empty() || by == "-" || alive.contains(&by))
+            });
         if gone.is_empty() {
             return;
         }

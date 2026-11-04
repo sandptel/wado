@@ -10,22 +10,29 @@ use std::time::Duration;
 
 /// Tell the desktop that `device` asks to be approved. Returns at once.
 pub fn show(device: &str) {
+    notice(
+        "A phone asks to be let in",
+        format!(
+            "{device} asks to unlock without its passkey. If it is yours, run `wado passkey approve` \
+             or answer in `wado tui`. Nobody answering counts as no."
+        ),
+    );
+}
+
+/// Any notice from the computer to the person at it (a device let another in, `gate::delegate`).
+pub fn notice(title: &'static str, body: String) {
     if cfg!(test) || std::env::var_os("WADO_NO_DESKTOP_NOTIFY").is_some_and(|v| v != "0") {
         return;
     }
-    let body = format!(
-        "{device} asks to unlock without its passkey. If it is yours, run `wado passkey approve` \
-         or answer in `wado tui`. Nobody answering counts as no."
-    );
     tokio::spawn(async move {
-        let sent = tokio::time::timeout(Duration::from_secs(3), send(&body)).await;
+        let sent = tokio::time::timeout(Duration::from_secs(3), send(title, &body)).await;
         if !matches!(sent, Ok(Ok(()))) {
             tracing::debug!("passkey: no desktop notification for the approval request");
         }
     });
 }
 
-async fn send(body: &str) -> zbus::Result<()> {
+async fn send(title: &str, body: &str) -> zbus::Result<()> {
     let conn = zbus::Connection::session().await?;
     let hints: HashMap<&str, zbus::zvariant::Value<'_>> = HashMap::new();
     conn.call_method(
@@ -37,7 +44,7 @@ async fn send(body: &str) -> zbus::Result<()> {
             "wado",
             0u32,
             "dialog-password",
-            "A phone asks to be let in",
+            title,
             body,
             Vec::<&str>::new(),
             hints,

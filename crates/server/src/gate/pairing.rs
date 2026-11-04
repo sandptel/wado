@@ -449,7 +449,7 @@ mod tests {
         let g = temp();
         let m = g.mint_pair();
         g.redeem(&m.typed);
-        g.ask(&m.typed, "desert badger torch shell", "Laptop");
+        g.ask(&m.typed, "desert badger torch shell", "Laptop", "");
         let CodeState::Confirm {
             words,
             device,
@@ -467,7 +467,7 @@ mod tests {
         assert_eq!(g.state(&m), CodeState::Used);
         let m = g.mint_pair();
         g.redeem(&m.typed);
-        g.ask(&m.typed, "a b c d", "Tab");
+        g.ask(&m.typed, "a b c d", "Tab", "");
         g.settle(&m.typed, Check::Declined);
         assert!(matches!(g.state(&m), CodeState::Refused(_)));
         assert!(!g.pair_live(&m.typed), "declined: the code is gone too");

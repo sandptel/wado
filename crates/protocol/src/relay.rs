@@ -661,6 +661,47 @@ pub enum RelayMsg {
         text: String,
     },
 
+    // ── Devices, for a device that manages them (`2026-11-04`, the `devices` grant) ──
+    // Post-handshake, forwarded by the relay unread — no mirror in `relay_wire.rs`.
+    /// Client → server: send me [`RelayMsg::DeviceList`].
+    DevicesRequest,
+    /// Server → client: every trusted device, and the check words of this device's codes that
+    /// wait for an answer. `error` says why a request was refused.
+    DeviceList {
+        devices: Vec<DeviceRow>,
+        #[serde(default)]
+        asks: Vec<PairAsk>,
+        #[serde(default)]
+        error: Option<String>,
+    },
+    /// Client → server: sign out a device this one let in.
+    DeviceSignOut {
+        key: String,
+    },
+    /// Client → server: a pairing code for another device, with these grants (capped to this
+    /// device's own) for `trust_for_s` seconds (capped to seven days). Needs a fresh passkey.
+    PairMint {
+        grants: Vec<String>,
+        trust_for_s: u64,
+    },
+    /// Server → client: the code made for [`RelayMsg::PairMint`].
+    PairMinted {
+        #[serde(default)]
+        link: String,
+        #[serde(default)]
+        typed: String,
+        /// Unix seconds the code stops working.
+        #[serde(default)]
+        until: u64,
+        #[serde(default)]
+        error: Option<String>,
+    },
+    /// Client → server: the check words of one of this device's codes match, or don't.
+    PairAnswer {
+        typed: String,
+        yes: bool,
+    },
+
     // ── The computer's clipboard history (see `server::clip`) ───────────────
     // Needs no session, and the `clipboard` grant.
     /// Client → server: send me [`RelayMsg::ClipHistory`].
@@ -1333,4 +1374,33 @@ mod wire_tests {
             other => panic!("round-trip gave {other:?}"),
         }
     }
+}
+
+/// One trusted device, as a managing device sees it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DeviceRow {
+    pub key: String,
+    pub name: String,
+    /// What it may do, as `wado allow` tokens, comma-joined.
+    pub grants: String,
+    /// Unix seconds its trust ends; absent: until removed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub until: Option<u64>,
+    /// The asking device let it in — so it may sign it out.
+    #[serde(default)]
+    pub mine: bool,
+    /// The asking device itself.
+    #[serde(default)]
+    pub me: bool,
+}
+
+/// The check words of a typed code, waiting for the device that asked for it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PairAsk {
+    pub typed: String,
+    pub words: String,
+    /// The device that typed the code, as it names itself.
+    pub device: String,
+    /// Seconds left to answer.
+    pub left: u64,
 }

@@ -96,6 +96,9 @@ pub struct DeviceGrants {
     /// pairing. Sharing the clipboard automatically is on by default only for such a device.
     #[serde(default)]
     pub paired: bool,
+    /// May let other devices in and sign them out (`2026-11-04`). Given only on the computer.
+    #[serde(default)]
+    pub devices: bool,
 }
 
 /// One device's trackpad layout, as `wado_config::schema::DeviceTrackpad` types it. The phone

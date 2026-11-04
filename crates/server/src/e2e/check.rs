@@ -28,7 +28,7 @@ pub struct Pending {
 pub fn begin(link: &mut Link, gate: &Gate, p: &Pending, done: Done) -> String {
     let words = sas_words(done.sas).join(" ");
     link.confirming(done.sealer, done.opener);
-    gate.ask(&p.typed, &words, &p.name);
+    gate.ask(&p.typed, &words, &p.name, &p.term.by);
     info!(
         "gate: {} typed a code — check words on the computer: {words}",
         p.name

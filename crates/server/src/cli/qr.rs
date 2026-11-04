@@ -47,6 +47,22 @@ pub fn pair_link(
     grants: &crate::gate::Grants,
     trust_for: Option<u64>,
 ) -> Result<Pairing, String> {
+    // A fresh single-use pairing code: whoever scans this was shown this computer's screen,
+    // so their device is trusted.
+    link_for(relay, id, || {
+        Ok(Gate::default().mint_pair_for(grants, trust_for, ""))
+    })
+}
+
+/// The connect link carrying the code `mint` makes — made only once the link can be.
+///
+/// The relay is `relay`, else `server { public-relay }` or the dialled relay, else the rig's
+/// live tunnel.
+pub fn link_for(
+    relay: Option<&str>,
+    id: Option<&str>,
+    mint: impl FnOnce() -> Result<Minted, String>,
+) -> Result<Pairing, String> {
     let cfg = wado_config::live::current();
     let relay = relay
         .map(str::to_string)
@@ -63,16 +79,13 @@ pub fn pair_link(
                 .into(),
         );
     };
-    // A fresh single-use pairing code: whoever scans this was shown this computer's screen,
-    // so their device is trusted.
-    //
     // `hk` pins this computer's identity key on the device that scans it, so a relay can never
     // stand in for this computer to it (`crate::e2e`). Neither the code nor the pin reach the
     // relay: the client keeps both and proves the code inside the envelope.
     let hk = crate::e2e::host_key::HostKey::load_or_create(&crate::remote_id::config_dir())
         .map_err(|e| format!("could not read this computer's identity key: {e}"))?
         .pin();
-    let code = Gate::default().mint_pair_for(grants, trust_for, "");
+    let code = mint()?;
     Ok(Pairing {
         link: format!(
             "{}&pair={}&hk={hk}",

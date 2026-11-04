@@ -10,7 +10,9 @@
 //! are separate processes of one machine, so the question is a file, keyed by the typed code:
 //!
 //! ```text
-//!   <config>/wado/pair_confirm/<typed code>   <check>\t<words>\t<device>\t<since>
+//!   <config>/wado/pair_confirm/<typed code>   <check>\t<words>\t<device>\t<since>[\t<by>]
+//!
+//! `by` is the device that asked for the code (`2026-11-04`): it may answer too, and only it.
 //! ```
 //!
 //! The daemon writes `ask`, a screen answers `yes` or `no`, the daemon settles it — `paired`,
@@ -85,6 +87,8 @@ pub struct Ask {
     /// Unix seconds it was asked.
     pub since: u64,
     pub check: Check,
+    /// The device that asked for the code, which may answer for it; empty: this computer.
+    pub by: String,
 }
 
 impl Ask {
@@ -110,7 +114,13 @@ impl Gate {
             return false;
         };
         let device = a.device.replace(['\t', '\n'], " ");
-        let body = format!("{}\t{}\t{device}\t{}\n", a.check.as_str(), a.words, a.since);
+        let body = format!(
+            "{}\t{}\t{device}\t{}\t{}\n",
+            a.check.as_str(),
+            a.words,
+            a.since,
+            if a.by.is_empty() { "-" } else { &a.by }
+        );
         // Written whole and renamed in, so a screen never reads half an answer.
         let tmp = path.with_extension("tmp");
         let res = fs::create_dir_all(self.confirm_dir())
@@ -123,13 +133,14 @@ impl Gate {
     }
 
     /// Put the check words of a typed pairing to whoever is at the computer.
-    pub fn ask(&self, typed: &str, words: &str, device: &str) -> bool {
+    pub fn ask(&self, typed: &str, words: &str, device: &str, by: &str) -> bool {
         self.write_ask(&Ask {
             typed: typed.into(),
             words: words.into(),
             device: device.into(),
             since: now_s(),
             check: Check::Asking,
+            by: by.into(),
         })
     }
 
@@ -142,6 +153,7 @@ impl Gate {
             words: f.next()?.into(),
             device: f.next()?.into(),
             since: f.next()?.parse().ok()?,
+            by: f.next().filter(|b| *b != "-").unwrap_or("").into(),
             typed: typed.into(),
         })
     }
@@ -234,7 +246,12 @@ mod tests {
     #[test]
     fn a_question_is_asked_answered_once_and_settled() {
         let g = temp();
-        assert!(g.ask("K7QF2MXP", "desert badger torch shell", "Linux · Firefox"));
+        assert!(g.ask(
+            "K7QF2MXP",
+            "desert badger torch shell",
+            "Linux · Firefox",
+            ""
+        ));
         let a = g.asking();
         assert_eq!(a.len(), 1);
         assert_eq!(a[0].words, "desert badger torch shell");
@@ -251,7 +268,7 @@ mod tests {
     #[test]
     fn only_a_typed_code_names_a_file() {
         let g = temp();
-        assert!(!g.ask("../trusted_clients", "a b c d", "x"));
+        assert!(!g.ask("../trusted_clients", "a b c d", "x", ""));
         assert!(!g.answer("../x", true));
         assert!(g.ask_of("k7qf2mxp").is_none(), "normalised codes only");
     }
@@ -260,25 +277,25 @@ mod tests {
     async fn the_daemon_hears_yes_no_silence_or_a_departure() {
         let g = temp();
         let short = Duration::from_millis(700);
-        g.ask("AAAA1111", "w w w w", "d");
+        g.ask("AAAA1111", "w w w w", "d", "");
         let g2 = g.clone();
         let t = tokio::spawn(async move { g2.await_answer("AAAA1111", short * 4, || true).await });
         tokio::time::sleep(Duration::from_millis(100)).await;
         g.answer("AAAA1111", true);
         assert_eq!(t.await.unwrap(), Check::Yes);
 
-        g.ask("BBBB2222", "w w w w", "d");
+        g.ask("BBBB2222", "w w w w", "d", "");
         g.answer("BBBB2222", false);
         assert_eq!(g.await_answer("BBBB2222", short, || true).await, Check::No);
 
-        g.ask("CCCC3333", "w w w w", "d");
+        g.ask("CCCC3333", "w w w w", "d", "");
         assert_eq!(
             g.await_answer("CCCC3333", short, || true).await,
             Check::NoAnswer,
             "silence is a no"
         );
 
-        g.ask("DDDD4444", "w w w w", "d");
+        g.ask("DDDD4444", "w w w w", "d", "");
         assert_eq!(
             g.await_answer("DDDD4444", short, || false).await,
             Check::Left

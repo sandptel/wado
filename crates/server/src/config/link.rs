@@ -101,6 +101,7 @@ fn grants_for(key: &str, gate: &Gate) -> Option<wado_protocol::config::DeviceGra
         join: g.join,
         takeover: g.takeover,
         paired: d.pinned,
+        devices: g.devices,
     })
 }
 

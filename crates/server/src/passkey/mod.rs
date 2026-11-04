@@ -21,7 +21,7 @@
 //! hand-written [`cbor`].
 
 pub mod approve;
-mod approve_notify;
+pub mod approve_notify;
 pub mod authdata;
 pub mod cbor;
 pub mod challenge;

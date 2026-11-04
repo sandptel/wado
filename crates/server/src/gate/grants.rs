@@ -19,6 +19,7 @@ pub const TOKENS: &[&str] = &[
     "clipboard",
     "join",
     "takeover",
+    "devices",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,7 +42,15 @@ pub struct Grants {
     pub join: bool,
     /// Take a session over: become its lead and disconnect everyone else in it.
     pub takeover: bool,
+    /// Manage devices (`2026-11-04`): ask this computer for pairing codes for other devices,
+    /// within this one's own grants and for at most [`DELEGATE_MAX_S`], and sign out the devices
+    /// it let in. Given only on this computer — never by a code a device asked for, never to
+    /// itself, never by being the owner.
+    pub devices: bool,
 }
+
+/// The longest a device let in by another device is trusted: seven days.
+pub const DELEGATE_MAX_S: u64 = 7 * 86_400;
 
 impl Grants {
     pub const NONE: Self = Self {
@@ -53,6 +62,7 @@ impl Grants {
         clipboard: false,
         join: false,
         takeover: false,
+        devices: false,
     };
     pub const ALL: Self = Self {
         files: "rw",
@@ -63,6 +73,7 @@ impl Grants {
         clipboard: true,
         join: true,
         takeover: true,
+        devices: true,
     };
 
     /// What a line from before grants had.
@@ -75,6 +86,7 @@ impl Grants {
         clipboard: false,
         join: false,
         takeover: false,
+        devices: false,
     };
 
     /// What pairing with a code adds, whatever the code's checklist said (Decision Log
@@ -114,6 +126,7 @@ impl Grants {
             ("clipboard", _) => self.clipboard = on,
             ("join", _) => self.join = on,
             ("takeover", _) => self.takeover = on,
+            ("devices", _) => self.devices = on,
             _ => {
                 return Err(format!(
                     "`{token}` is not a grant — use {}",
@@ -145,6 +158,28 @@ impl Grants {
             clipboard: self.clipboard || o.clipboard,
             join: self.join || o.join,
             takeover: self.takeover || o.takeover,
+            devices: self.devices || o.devices,
+        }
+    }
+
+    /// What a device that has `self` may hand on: only what both sides have, files at the lower
+    /// level, and never `devices` — a delegate cannot delegate.
+    pub fn cap(&self, o: &Self) -> Self {
+        let files = match (self.files, o.files) {
+            ("rw", "rw") => "rw",
+            ("rw" | "ro", "rw" | "ro") => "ro",
+            _ => "none",
+        };
+        Self {
+            files,
+            shells: self.shells && o.shells,
+            settings: self.settings && o.settings,
+            host: self.host && o.host,
+            input: self.input && o.input,
+            clipboard: self.clipboard && o.clipboard,
+            join: self.join && o.join,
+            takeover: self.takeover && o.takeover,
+            devices: false,
         }
     }
 
@@ -158,6 +193,7 @@ impl Grants {
             (self.clipboard, "clipboard"),
             (self.join, "join"),
             (self.takeover, "takeover"),
+            (self.devices, "devices"),
         ]
         .into_iter()
         .filter_map(|(on, t)| on.then_some(t))
