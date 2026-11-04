@@ -47,6 +47,7 @@ const BULK: &[&str] = &[
     "clipboard",
     "host_state",
     "apps_list",
+    "apps_icons_list",
     "notification",
     "claude_cards",
     "claude_dirs",

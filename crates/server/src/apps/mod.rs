@@ -56,6 +56,18 @@ fn search_dirs() -> Vec<PathBuf> {
 /// Entries are keyed by desktop-file id so a user override in `~/.local/share` shadows the
 /// system copy rather than appearing twice — which is the entire reason the search order is
 /// most-specific-first.
+/// The icons of the apps whose `exec` is in `execs` (`RelayMsg::AppsIcons`): asked a few at a
+/// time, so no one message is held to the relay's lane for long. At most 48 per ask.
+pub fn icons_for(execs: &[String]) -> BTreeMap<String, String> {
+    let want: std::collections::BTreeSet<&str> =
+        execs.iter().take(48).map(String::as_str).collect();
+    discover()
+        .into_iter()
+        .filter(|a| want.contains(a.exec.as_str()))
+        .filter_map(|a| a.icon.map(|i| (a.exec, i)))
+        .collect()
+}
+
 pub fn discover() -> Vec<AppEntry> {
     let mut by_id: BTreeMap<String, AppEntry> = BTreeMap::new();
 

@@ -43,6 +43,8 @@ class AppDrawer extends StatefulWidget {
 
 class _AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixin {
   late final _a = AnimationController(vsync: this, duration: const Duration(milliseconds: 220));
+  // Only what the grid shows: up to 400 icon tiles must not rebuild for every setting.
+  late final _mine = Settings.I.keys(const ['show_hidden', 'recent']);
   // The first default filled the box with a command and hid every app behind it: it opens empty.
   late final _box = TextEditingController(text: Settings.I.s('command') == 'weston-terminal' ? '' : Settings.I.s('command'));
 
@@ -82,15 +84,23 @@ class _AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMix
       builder: (context, child) {
         if (_a.value == 0) return const SizedBox.shrink();
         final v = Curves.ease.transform(_a.value);
-        return Align(
-          alignment: Alignment.bottomCenter,
-          child: Opacity(opacity: v, child: Transform.translate(offset: Offset(0, 40 * (1 - v)), child: child)),
+        // Above the keyboard: the console does not resize for it, so the drawer lifts itself —
+        // the box being typed in, and what it finds, stay in sight.
+        return Padding(
+          padding: EdgeInsets.only(bottom: mq.viewInsets.bottom),
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: Opacity(opacity: v, child: Transform.translate(offset: Offset(0, 40 * (1 - v)), child: child)),
+          ),
         );
       },
       child: ConstrainedBox(
-        constraints: BoxConstraints(maxHeight: land ? mq.size.height * .84 : (mq.size.height * .62).clamp(0, 560)),
+        constraints: BoxConstraints(
+          maxHeight: ((land ? mq.size.height * .84 : (mq.size.height * .62).clamp(0.0, 560.0)) as double)
+              .clamp(0.0, (mq.size.height - mq.viewInsets.bottom - mq.padding.top - 24).clamp(120.0, double.infinity)),
+        ),
         child: Container(
-          padding: EdgeInsets.fromLTRB(12, 0, 12, 12 + mq.padding.bottom),
+          padding: EdgeInsets.fromLTRB(12, 0, 12, 12 + (mq.viewInsets.bottom > 0 ? 0 : mq.padding.bottom)),
           decoration: BoxDecoration(
             color: t.base[1],
             border: Border(top: BorderSide(color: t.base[2])),
@@ -98,7 +108,7 @@ class _AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMix
             boxShadow: const [BoxShadow(color: Color(0x59000000), blurRadius: 24, offset: Offset(0, -8))],
           ),
           child: ListenableBuilder(
-            listenable: Listenable.merge([Session.I.apps, Settings.I, _box, Apps.I.asking]),
+            listenable: Listenable.merge([Session.I.apps, _mine, _box, Apps.I.asking]),
             builder: (context, _) {
               final apps = Session.I.apps.value;
               final q = _box.text.trim().toLowerCase();

@@ -2260,10 +2260,20 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     }
                 }
 
-                RelayMsg::AppsRequest => {
+                RelayMsg::AppsRequest { lean } => {
                     let mut apps = crate::apps::discover();
                     crate::apps::running::mark(&mut apps, &ctx.cmd_tx).await;
+                    if lean {
+                        apps.iter_mut().for_each(|a| a.icon = None);
+                    }
                     send_relay(&out_tx, &RelayMsg::AppsList { apps }).await.ok();
+                }
+
+                RelayMsg::AppsIcons { execs } => {
+                    let icons = crate::apps::icons_for(&execs);
+                    send_relay(&out_tx, &RelayMsg::AppsIconsList { icons })
+                        .await
+                        .ok();
                 }
 
                 RelayMsg::PtyOpen { .. }

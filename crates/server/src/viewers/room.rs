@@ -325,10 +325,17 @@ pub async fn handle(hub: &Arc<Hub>, room: &ViewRoom, who: &Who, text: &str, cx: 
                 / 1e3;
             send(out, &RelayMsg::Timing { timings }).await;
         }
-        RelayMsg::AppsRequest => {
+        RelayMsg::AppsRequest { lean } => {
             let mut apps = crate::apps::discover();
             crate::apps::running::mark(&mut apps, &hub.cmd_tx).await;
+            if lean {
+                apps.iter_mut().for_each(|a| a.icon = None);
+            }
             send(out, &RelayMsg::AppsList { apps }).await;
+        }
+        RelayMsg::AppsIcons { execs } => {
+            let icons = crate::apps::icons_for(&execs);
+            send(out, &RelayMsg::AppsIconsList { icons }).await;
         }
         RelayMsg::TargetsRequest { seq, x, y, r } if member() => {
             let (cmd_tx, a11y, out) =

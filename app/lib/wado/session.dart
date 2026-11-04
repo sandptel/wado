@@ -279,6 +279,7 @@ class Session {
   /// Start (or rejoin) a desktop on the selected computer — a person's tap.
   void start() {
     _config = config();
+    appliedAt.value++;
     _wanted = true;
     _left = false;
     shown.value = true;
@@ -481,6 +482,7 @@ class Session {
   bool reconfigure() {
     if (!on.value) return false;
     _config = config();
+    appliedAt.value++;
     _armWait('change');
     return RelayLink.I.send({'type': 'session_reconfigure', 'config': _config});
   }
@@ -548,6 +550,10 @@ class Session {
 
   /// The config last sent to the running session (Apply compares against it).
   Map<String, dynamic>? get applied => _config;
+
+  /// Bumped whenever the config the session runs with changes here (start, apply) — what the
+  /// pending-changes bar listens to, so it goes away the moment Apply is pressed.
+  final appliedAt = ValueNotifier<int>(0);
 
   void _closePc() {
     final p = pc;

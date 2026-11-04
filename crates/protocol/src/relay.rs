@@ -328,7 +328,22 @@ pub enum RelayMsg {
     /// Relay mode has no HTTP path to the server, so the `GET /apps` route needs a message
     /// counterpart. Unlike the session verbs this needs no running session — you pick what to
     /// launch before there is anything to launch it into.
-    AppsRequest,
+    AppsRequest {
+        /// Leave the icons out (`2026-11-05`): the list is then a few KB and arrives at once,
+        /// where with every icon inline it was a megabyte held to the relay's lane for tens of
+        /// seconds. Icons follow with [`RelayMsg::AppsIcons`], a few at a time, only those the
+        /// client lacks. Absent from an older client, which gets them inline as before.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        lean: bool,
+    },
+    /// Client → server: the icons of these apps, by `exec`, as [`RelayMsg::AppsIconsList`].
+    AppsIcons {
+        execs: Vec<String>,
+    },
+    /// Server → client: icons by `exec`, as `data:` URIs; an app with none is left out.
+    AppsIconsList {
+        icons: std::collections::BTreeMap<String, String>,
+    },
     /// Act on the running session's focused window.
     ///
     /// A peer variant rather than a nesting inside `SessionLaunch`: this enum is flat and

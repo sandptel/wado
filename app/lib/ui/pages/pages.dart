@@ -89,7 +89,9 @@ int pendingChanges() {
   final a = Session.I.applied;
   if (a == null) return 0;
   final b = Session.config();
-  return b.keys.where((k) => jsonEncode(a[k]) != jsonEncode(b[k])).length;
+  // Not a person's change: auto bitrate moves its cap by itself, the theme its desktop colour.
+  const own = {'bitrate_cap_kbps', 'background', 'dark'};
+  return b.keys.where((k) => !own.contains(k) && jsonEncode(a[k]) != jsonEncode(b[k])).length;
 }
 
 /// The pending-changes bar: only while a session runs and the settings differ from it.
@@ -100,7 +102,7 @@ class ApplyBar extends StatelessWidget {
     final t = Tok.of(context);
     final mq = MediaQuery.of(context);
     return ListenableBuilder(
-      listenable: Listenable.merge([Settings.I, Session.I.on]),
+      listenable: Listenable.merge([Settings.I, Session.I.on, Session.I.appliedAt]),
       builder: (context, _) {
         final n = Session.I.on.value ? pendingChanges() : 0;
         return AnimatedSlide(
