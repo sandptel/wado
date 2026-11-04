@@ -63,6 +63,11 @@ class DockSwitcher extends StatelessWidget {
         SwitchRow(title: 'Edge swipes', sub: 'Swipe in from a side edge for the next workspace', on: s.b('edge_swipe'), onToggle: (v) => s.set('edge_swipe', v)),
       ]),
       const SizedBox(height: 12),
+      HeadCard(title: 'Tips', children: [
+        const Hint('The once-only tips (where ? is, holding for a right-click) and the tour after pairing.'),
+        Btn('Show tips again', onTap: s.get<List<String>>('tips_seen').isEmpty ? null : () => s.set('tips_seen', <String>[])),
+      ]),
+      const SizedBox(height: 12),
       HeadCard(title: 'Quick rail', children: [
         Seg(options: const [('left', 'Left'), ('right', 'Right'), ('off', 'Off')], value: s.s('rail'), onPick: (v) => s.set('rail', v)),
         const Hint('Rotate, fullscreen and the keyboard, on the screen\'s edge.'),

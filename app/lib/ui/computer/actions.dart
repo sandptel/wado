@@ -16,8 +16,17 @@ import '../motion/motion.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
+import '../widgets/sheet.dart';
 
 enum Door { touchpad, keyboard, gamepad }
+
+/// A grant this phone lacks: what it is, and where it is given — always on the computer.
+Locked notAllowed(String what, String token) => Locked(
+      '$what is off for this phone',
+      'The computer decides what each phone may do, and it hasn\'t allowed $what for this one yet. Nothing on this phone can change that.',
+      fix: 'On the computer, open wado tui → Devices, pick this phone and tick ${what.toLowerCase()}.',
+      details: 'wado allow <this phone> $token',
+    );
 
 Map<String, dynamic>? get _grants => Host.I.config.value?['grants'] as Map<String, dynamic>?;
 bool _may(String g) => _grants == null || _grants![g] == true;
@@ -90,13 +99,18 @@ class ActionTiles extends StatelessWidget {
         onTap: off && !r.busy ? null : () => desktop(r),
       ),
       _ViTile(r: r),
-      _Act(icon: 'folder', title: 'Files', sub: filesOk ? 'Browse, send, download' : 'Not allowed for this phone', onTap: off || !filesOk ? null : () => Nav.I.openPage('files')),
+      _Act(
+        icon: 'folder',
+        title: 'Files',
+        sub: filesOk ? 'Browse, send, download' : 'Not allowed for this phone · why?',
+        onTap: off ? null : (filesOk ? () => Nav.I.openPage('files') : () => notAllowed('Files', 'files-ro').show(context)),
+      ),
       _Act(
         icon: 'term',
         title: 'Shell',
-        sub: shellOk ? 'A terminal, no video' : 'Not allowed for this phone',
+        sub: shellOk ? 'A terminal, no video' : 'Not allowed for this phone · why?',
         badge: shellsOpen > 0 ? '$shellsOpen open' : null,
-        onTap: off || !shellOk ? null : () => Nav.I.openPage('shells'),
+        onTap: off ? null : (shellOk ? () => Nav.I.openPage('shells') : () => notAllowed('Shells', 'shells').show(context)),
       ),
     ];
     // `repeat(auto-fit, minmax(max(8.5rem, 50% - 4px), 1fr))`: two to a row, rows as tall as

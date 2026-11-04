@@ -13,6 +13,7 @@ import '../../core/core_host.dart';
 import '../../wado/nav.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
+import '../hints/tour.dart';
 import '../widgets/basics.dart';
 import '../motion/motion.dart';
 
@@ -60,7 +61,10 @@ class _AddComputerState extends State<AddComputer> {
         if (_step == 'check_words') _words = (e['words'] as List).cast<String>();
         if (_step == 'failed') _why = (e['why'] ?? '') as String;
       });
-      if (_step == 'done') Nav.I.openComputer(e['key'] as String);
+      if (_step == 'done') {
+        Nav.I.openComputer(e['key'] as String);
+        if (mounted) tourOnce(context, '${e['name'] ?? 'your computer'}');
+      }
     });
     final link = AddComputer.pending;
     AddComputer.pending = null;
@@ -157,7 +161,7 @@ class _AddComputerState extends State<AddComputer> {
         const SizedBox(height: 12),
       ],
       WCard(children: [
-        const Why('On the computer, run `wado pair` (or wado tui → Pair). It shows a QR code, a pairing link and a code.'),
+        const Why('On the computer you want to use, open a terminal and run wado pair (or open wado tui → Pair). It shows a QR code, a link and a short code — any one of them pairs this phone.'),
         if (Platform.isAndroid || Platform.isIOS)
           Btn('Scan the QR code', primary: true, icon: 'camera', onTap: busy
               ? null

@@ -125,7 +125,16 @@ class _ComputerPageState extends State<ComputerPage> {
                     sx(Sessions(r: r)),
                     // Claude's cards come over the selected computer's own link.
                     if (r.selected && !off && ((Host.I.config.value?['grants'] as Map?)?['shells'] ?? true) == true)
-                      sx(const Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Sect('Claude'), SizedBox(height: 8), ClaudeSection()])),
+                      sx(const Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Sect('Claude'), SizedBox(height: 8), ClaudeSection()]))
+                    // Shown, locked, rather than missing: a section that vanishes explains nothing.
+                    else if (r.selected && !off)
+                      sx(Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        const Sect('Claude'),
+                        const SizedBox(height: 8),
+                        ListBox(children: [
+                          NavRow(icon: 'lock', hue: '0A', title: 'Claude sessions', sub: 'Needs shells, which are off for this phone', onOpen: () => notAllowed('Shells', 'shells').show(context)),
+                        ]),
+                      ])),
                     if (r.online && Passkey.I.view.value.state.isNotEmpty && Passkey.I.view.value.required)
                       sx(const Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Sect('Passkey'), SizedBox(height: 8), PasskeyCard()])),
                     if (!off) ...[

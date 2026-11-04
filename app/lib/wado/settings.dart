@@ -77,6 +77,7 @@ const defaults = <String, Object>{
   'game_modes': <String, Object?>{},
   'recent_play': <Object>[],
   'swipe3': true,
+  'tips_seen': <String>[],
 };
 
 class Settings extends ChangeNotifier {

@@ -4,6 +4,7 @@
 // already uses — never the trackpad's own link, which drives the computer's own desktop.
 import 'package:flutter/material.dart';
 
+import '../../hints/tips.dart';
 import '../../../wado/host.dart';
 import '../../../wado/input.dart';
 import '../../../wado/session.dart';
@@ -582,5 +583,5 @@ class _NpMini extends StatelessWidget {
 class GameFace extends StatelessWidget {
   const GameFace({super.key});
   @override
-  Widget build(BuildContext context) => const GpadLive();
+  Widget build(BuildContext context) => const Stack(fit: StackFit.expand, children: [GpadLive(), PadRefused()]);
 }

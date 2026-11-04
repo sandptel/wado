@@ -27,6 +27,7 @@ import '../cc/control_centre.dart';
 import '../drawer.dart';
 import '../keyboard.dart' show KeyboardSheet;
 import '../picture_input.dart';
+import '../../hints/tips.dart';
 import 'deck.dart';
 import 'ghosts.dart';
 import 'parts.dart';
@@ -369,6 +370,8 @@ class _ConsoleViewState extends State<ConsoleView> with TickerProviderStateMixin
                 (s) => slotAt('link', s, centreY: false),
                 Row(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
                   LinkBadge(quietable: a < .5, waiting: stageWaiting()),
+                  const SizedBox(width: 8),
+                  HelpBtn(surface: face == Face.gamepad ? 'pad' : 'picture'),
                   const SizedBox(width: 12),
                   IgnorePointer(
                     ignoring: a < .5,
@@ -386,6 +389,12 @@ class _ConsoleViewState extends State<ConsoleView> with TickerProviderStateMixin
                 (s) => Offset(vw - 10 - sa.right - s.width, 10 + sa.top),
                 (s) => slotAt('people', s, centreY: false),
                 ConstrainedBox(constraints: BoxConstraints(maxWidth: L.form == Form.port || L.form == Form.land ? 132 : 260), child: PeopleChip(shadow: a < .5)),
+              ),
+              // The first session ever: where help lives.
+              Positioned(
+                left: 10 + sa.left,
+                top: 50 + sa.top,
+                child: const Tip(id: 'help', title: 'Tap ? any time', words: 'It shows what every gesture and button does here.'),
               ),
               // ── the dock's groups ──
               if (wsBar)
