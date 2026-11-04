@@ -225,3 +225,10 @@ button.hcell:active:not(:disabled) { scale: .97; }
 }
 .navtext small.mono { font-size: .6875rem; }
 .hopnote { margin: -8px 0 0; display: flex; align-items: center; gap: 8px; font-size: .7812rem; color: var(--text); }
+
+/* ── Devices (ui/computer/pages/devices.rs) ── */
+.devrow { display: flex; gap: 10px; align-items: center; min-height: 58px; }
+.devrow .grow1 { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.btn.small { width: auto; min-height: 44px; padding: 0 12px; }
+.seg3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.mono.big { font: 700 1.25rem var(--mono); color: var(--bright); letter-spacing: .04em; }

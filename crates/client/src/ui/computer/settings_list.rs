@@ -75,6 +75,7 @@ pub fn render(ui: Ui) -> Element {
             .unwrap_or_default();
         format!("{via}{wifi}{grants}")
     };
+    let may_devices = (live.host)().grants.is_some_and(|g| g.devices);
     let go = move |p: Page| route::go(ui, p);
     rsx! {
         div { class: "list",
@@ -82,6 +83,11 @@ pub fn render(ui: Ui) -> Element {
             NavRow { icon: "phone", hue: "0C", title: "Virtual input", sub: pad, onopen: move |_| go(Page::Input) }
             NavRow { icon: "sound", hue: "0E", title: "Sound & devices", sub: sound, onopen: move |_| go(Page::SoundDevices) }
             NavRow { icon: "net", hue: "09", title: "Connection & trust", sub: conn, onopen: move |_| go(Page::ConnectionTrust) }
+            if may_devices {
+                NavRow { icon: "phone", hue: "0A", title: "Devices", sub: "Who is signed in · let a device in", onopen: move |_| go(Page::Devices) }
+            } else {
+                NavRow { icon: "lock", hue: "0A", title: "Devices", sub: "Managed on the computer — wado allow <this device> devices lets a device do it", onopen: move |_| {} }
+            }
         }
     }
 }

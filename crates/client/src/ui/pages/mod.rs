@@ -49,6 +49,8 @@ pub enum Page {
     DisplaySession,
     SoundDevices,
     ConnectionTrust,
+    /// Devices (privileged): who is signed in, letting a device in.
+    Devices,
     /// Virtual input: the hub, and its three pages.
     Input,
     InputTouchpad,
@@ -71,6 +73,7 @@ impl Page {
             Page::DisplaySession => "Display & session",
             Page::SoundDevices => "Sound & devices",
             Page::ConnectionTrust => "Connection & trust",
+            Page::Devices => "Devices",
             Page::Appearance => "Appearance",
             Page::InputFeel => "Input feel",
             Page::Input => "Virtual input",
@@ -91,6 +94,7 @@ impl Page {
                 | Page::DisplaySession
                 | Page::SoundDevices
                 | Page::ConnectionTrust
+                | Page::Devices
                 | Page::Input
                 | Page::InputTouchpad
                 | Page::InputKeyboard
@@ -119,6 +123,7 @@ pub fn render(ui: Ui, page: Page) -> Element {
             crate::ui::scoped(ui, "display_session", c::display_session::render)
         }
         Page::SoundDevices => crate::ui::scoped(ui, "sound_devices", c::sound_devices::render),
+        Page::Devices => crate::ui::scoped(ui, "devices", c::devices::render),
         Page::ConnectionTrust => {
             crate::ui::scoped(ui, "connection_trust", c::connection_trust::render)
         }

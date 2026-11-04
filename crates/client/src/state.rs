@@ -489,6 +489,14 @@ pub struct Live {
     pub game: Signal<Option<crate::game_mode::Profile>>,
     /// That game's command, to launch once the session is up.
     pub game_launch: Signal<Option<String>>,
+    /// Devices, for a device that manages them: rows, this device's codes' questions, an error.
+    pub devices: Signal<(
+        Vec<wado_protocol::relay::DeviceRow>,
+        Vec<wado_protocol::relay::PairAsk>,
+        String,
+    )>,
+    /// A code made for another device: (link, typed, until).
+    pub minted: Signal<Option<(String, String, u64)>>,
     /// Whether the app drawer is over the video. Not persisted — a drawer covering the
     /// picture on load is never what anyone wanted.
     pub drawer_open: Signal<bool>,
@@ -607,6 +615,8 @@ impl Live {
             apps: use_signal(Vec::new),
             game: use_signal(|| None),
             game_launch: use_signal(|| None),
+            devices: use_signal(Default::default),
+            minted: use_signal(|| None),
             drawer_open: use_signal(|| false),
             windows: use_signal(|| (Vec::new(), 1)),
             stage: use_signal(Default::default),

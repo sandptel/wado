@@ -5,5 +5,6 @@
 //! - [`connection_trust`] — how it is reached, what this phone may do there, its Wi-Fi, forget it.
 
 pub mod connection_trust;
+pub mod devices;
 pub mod display_session;
 pub mod sound_devices;

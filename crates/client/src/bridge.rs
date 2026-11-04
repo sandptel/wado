@@ -333,6 +333,8 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/sessions.js"),
     "\n",
+    include_str!("js/devices.js"),
+    "\n",
     // Several devices in one session: the speed test, joined rooms (after relay.js and
     // sessions.js, whose handlers they chain), and the other devices' pointers.
     include_str!("js/linktest.js"),
@@ -825,6 +827,28 @@ pub fn run(ui: Ui) {
                         crate::profile::learn_info(ui, &crate::profile::current_key(ui), &st);
                         live.hoststate.set(Some(st));
                     }
+                }
+                "device_list" => {
+                    let rows = msg
+                        .get("devices")
+                        .and_then(|v| serde_json::from_value(v.clone()).ok())
+                        .unwrap_or_default();
+                    let asks = msg
+                        .get("asks")
+                        .and_then(|v| serde_json::from_value(v.clone()).ok())
+                        .unwrap_or_default();
+                    live.devices.set((rows, asks, string("error")));
+                }
+                "pair_minted" => {
+                    let err = string("error");
+                    live.devices.write().2 = err.clone();
+                    live.minted.set((err.is_empty()).then(|| {
+                        (
+                            string("link"),
+                            string("typed"),
+                            msg.get("until").and_then(|v| v.as_u64()).unwrap_or(0),
+                        )
+                    }));
                 }
                 "sessions" => {
                     let list: Vec<wado_protocol::SessionSummary> = msg
