@@ -7,6 +7,7 @@
 // Scale, never resize: the video keeps the stage's size and one transform takes its content onto
 // the console's picture slot, so the session's output never changes size.
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart' hide Flow, Form;
 import 'package:flutter/services.dart';
@@ -115,7 +116,7 @@ class _ConsoleViewState extends State<ConsoleView> with TickerProviderStateMixin
       _wake();
     }
     // Only what this view draws from: a volume slider elsewhere must not rebuild the console.
-    final mine = [for (final k in const ['cockpit', 'console_face', 'console_deck', 'rail', 'ws_bar', 'dock_pin', 'ui_size', 'gpad_layout', 'gpad_edits']) Settings.I.get<Object?>(k)].join('|');
+    final mine = [for (final k in const ['cockpit', 'console_face', 'console_deck', 'rail', 'ws_bar', 'dock_pin', 'ui_size', 'gpad_layout', 'gpad_edits', 'pad_on']) Settings.I.get<Object?>(k)].join('|');
     if (mine == _mine) return;
     _mine = mine;
     setState(() {});
@@ -344,7 +345,21 @@ class _ConsoleViewState extends State<ConsoleView> with TickerProviderStateMixin
                 'faces',
                 Align(alignment: Alignment.topCenter, child: FacesSwitch(active: _deck ? face : null, flow: L.faces, touch: form.touch, onPick: (f) => _face(f, face))),
               ),
-              if (face == Face.gamepad)
+              if (face == Face.gamepad && Settings.I.b('pad_on'))
+                // Full screen keeps the pad, over the picture. One pad, never two: it stays in the
+                // console's slot until the morph's middle, then sits on the whole screen, faded
+                // through zero at the swap so it is laid out once, not on every frame.
+                Positioned.fromRect(
+                  rect: a >= .5 ? L['pad']!.r : sa.deflateRect(Offset.zero & size),
+                  child: IgnorePointer(
+                    ignoring: a >= .5 && !L['pad']!.shown,
+                    child: Opacity(
+                      opacity: a >= .5 ? (L['pad']!.shown ? only : 0) : math.max(.35, Settings.I.d('pad_opacity')) * (1 - 2 * a),
+                      child: const RepaintBoundary(child: GameFace()),
+                    ),
+                  ),
+                )
+              else if (face == Face.gamepad)
                 only_('pad', const GameFace())
               else
                 only_('deck', Deck(face: switch (face) { Face.pad => 'pad', Face.keys => 'keys', _ => 'quick' }, col: L.deckCol)),

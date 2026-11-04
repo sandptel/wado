@@ -61,13 +61,14 @@ class Tokens {
   final String motion;
 
   Color get s0 => base[0];
-  Color get s1 => mix(base[0], base[5], 6);
-  Color get s2 => mix(base[0], base[5], 11);
-  Color get s3 => mix(base[0], base[5], 18);
-  Color get line => mix(base[0], base[5], 14);
+  // Mixed once per theme: every build reads these, and an OKLab mix is pow and cube roots.
+  late final Color s1 = mix(base[0], base[5], 6);
+  late final Color s2 = mix(base[0], base[5], 11);
+  late final Color s3 = mix(base[0], base[5], 18);
+  late final Color line = mix(base[0], base[5], 14);
   Color get bright => base[5];
-  Color get text => mix(base[5], base[0], 10);
-  Color get dim => mix(base[5], base[0], 42);
+  late final Color text = mix(base[5], base[0], 10);
+  late final Color dim = mix(base[5], base[0], 42);
   Color get onAccent => base[0];
   Color get good => base[0xB];
   Color get warn => base[9];

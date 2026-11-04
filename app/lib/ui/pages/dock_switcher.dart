@@ -59,6 +59,7 @@ class DockSwitcher extends StatelessWidget {
       HeadCard(children: [
         SwitchRow(title: 'Workspace bar', sub: 'Numbered workspaces and their apps, left of the dock', on: s.b('ws_bar'), onToggle: (v) => s.set('ws_bar', v)),
         SwitchRow(title: 'Pin the dock', sub: 'Keep it on screen instead of fading after 2 s', on: s.b('dock_pin'), onToggle: (v) => s.set('dock_pin', v)),
+        SwitchRow(title: 'Gamepad in full screen', sub: 'Keep the on-screen pad over the picture when it fills the screen', on: s.b('pad_on'), onToggle: (v) => s.set('pad_on', v)),
         SwitchRow(title: 'Edge swipes', sub: 'Swipe in from a side edge for the next workspace', on: s.b('edge_swipe'), onToggle: (v) => s.set('edge_swipe', v)),
       ]),
       const SizedBox(height: 12),

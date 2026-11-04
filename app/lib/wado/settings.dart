@@ -74,6 +74,9 @@ const defaults = <String, Object>{
   'stay_connected': false,
   'volume_keys': true,
   'pad_marks_off': false,
+  'game_modes': <String, Object?>{},
+  'recent_play': <Object>[],
+  'swipe3': true,
 };
 
 class Settings extends ChangeNotifier {
@@ -92,8 +95,24 @@ class Settings extends ChangeNotifier {
     }
   }
 
+  /// Values that shadow the stored ones for now — a Game-mode session's (game_mode.dart). Never
+  /// saved with the rest; a change to a shadowed key goes to [onOver] instead.
+  final _over = <String, Object?>{};
+  void Function(String k, Object? v)? onOver;
+
+  /// Shadow [values] (empty: stop shadowing). One notification, so the screen moves once.
+  void overlay(Map<String, Object?> values) {
+    if (mapEquals(_over, values)) return;
+    _over
+      ..clear()
+      ..addAll(values);
+    notifyListeners();
+  }
+
+  bool get overlaid => _over.isNotEmpty;
+
   T get<T>(String k) {
-    final v = _v[k] ?? defaults[k];
+    final v = _over.containsKey(k) ? _over[k] : (_v[k] ?? defaults[k]);
     // A key nobody wrote and with no default reads as its type's empty value, never a crash.
     if (v == null) {
       if (T == bool) return false as T;
@@ -113,6 +132,13 @@ class Settings extends ChangeNotifier {
   double d(String k) => get<double>(k);
 
   void set(String k, Object? v) {
+    if (_over.containsKey(k)) {
+      if (_over[k] == v) return;
+      _over[k] = v;
+      onOver?.call(k, v);
+      notifyListeners();
+      return;
+    }
     if (_v[k] == v) return;
     _v[k] = v;
     // Written once things settle: a slider sets on every tick, and encoding every setting each

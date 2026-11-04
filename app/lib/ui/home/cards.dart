@@ -6,6 +6,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../../core/core_host.dart';
 import '../../wado/host.dart';
 import '../../wado/nav.dart';
+import '../../wado/play.dart';
 import '../../wado/online.dart';
 import '../../wado/relay_link.dart';
 import '../../wado/side_links.dart';
@@ -36,6 +37,7 @@ class OsDisc extends StatelessWidget {
 }
 
 void go(Computer c) {
+  Play.I.note(c.key, 'desktop', 'Desktop', '');
   if (Nav.I.selected != c.key) {
     Nav.I.select(c.key);
     Session.I.start();

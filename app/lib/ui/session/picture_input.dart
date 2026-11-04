@@ -103,7 +103,7 @@ class _PictureInputState extends State<PictureInput> {
       _pts3[e.pointer] = (e.position, e.position);
       return true;
     }
-    if (_active.length != 3 || _raw) return false;
+    if (_active.length != 3 || _raw || !Settings.I.b('swipe3')) return false;
     if (g != null && g!.state != 'pending' && g!.state != 'two') return false;
     g?.hold?.cancel();
     g = null;

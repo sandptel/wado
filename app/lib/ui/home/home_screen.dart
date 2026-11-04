@@ -11,6 +11,7 @@ import '../../wado/session.dart';
 import '../../wado/settings.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
+import '../play/library.dart';
 import '../widgets/basics.dart';
 import 'cards.dart';
 import 'running.dart';
@@ -110,6 +111,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: 12),
                 const WCard(alert: true, children: [Text("This phone's key was reset — pair your computers again.")]),
               ],
+              const PlaySection(),
               const Sect('Computers'),
               const SizedBox(height: 8),
               const Cards(),
