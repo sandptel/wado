@@ -1,0 +1,11 @@
+[package]
+name = "wado-ux"
+version = "0.0.4"
+edition = "2021"
+license = "AGPL-3.0-only"
+description = "The clients' shared experience model: Game mode, posters, help, Continue, trust words, QR — pure, no I/O, the same on the web (direct) and in the app (app-bridge `ux`)."
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+qrcode = { version = "0.14", default-features = false }
