@@ -167,6 +167,13 @@ W.e2eOnSealed = (msg, dispatch) => {
       if (s.sas) emit({ type: "pair_sas", words: [] });
       // Proven (or not needed): either way the code has done its job.
       try { localStorage.removeItem("wado.pair"); } catch (_) {}
+      // Paired on a control room: now trusted, so the main link goes to the seat it is for.
+      if (W._relayPairRoom) {
+        W._relayPairRoom = false;
+        if (W.rlog) W.rlog("paired — moving to the computer's seat");
+        setTimeout(() => W.relayKick(false), 0);
+        return;
+      }
       if (W.rlog) W.rlog("secure link up — end-to-end sealed" + (W.e2eUnpinned ? " (computer pinned on first use, not by QR)" : ""));
       s.onUp();
       return;

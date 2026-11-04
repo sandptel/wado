@@ -235,10 +235,15 @@ function openLink() {
   const target = W._relayTarget;
   if (!target) return;
   let ws;
+  // A code to prove is proven on a seatless control room (as the app does, 2026-11-04), so pairing
+  // never waits on — or bumps — a device using the desktop. Once in, the link moves to the seat
+  // (`e2e_handshake.js`); an older daemon or relay sends it to the seat at once (`pair.js`).
+  const pairRoom = !!pairCode() && !W._relayRoom && !W._pairOnSeat;
+  W._relayPairRoom = pairRoom;
   try {
-    ws = new WebSocket(target.wsUrl + (W._relayTakeover && !W._relayRoom ? "&takeover=1" : "") +
+    ws = new WebSocket(target.wsUrl + (W._relayTakeover && !W._relayRoom && !pairRoom ? "&takeover=1" : "") +
       // Only "I hold a code": the code itself is proven inside the envelope, never sent.
-      (pairCode() ? "&pair=1" : ""));
+      (pairRoom ? "&control=1&strict=1" : pairCode() ? "&pair=1" : ""));
   } catch (_) {
     scheduleRelink();
     return;

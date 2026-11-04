@@ -29,6 +29,15 @@ W.PAIR_REFUSAL = /doesn't know this device yet|code didn't work|pairing code was
 W._relayUnpaired = false;
 
 W.pairRefused = (reason) => {
+  // A control room the daemon cannot pair on (an older daemon, or no code live there): the seat
+  // gives the real answer, as client-core's ceremony falls back (`pair/flow.rs`).
+  if (W._relayPairRoom && /doesn't know this device yet|older than live widgets/.test(reason || "")) {
+    W._pairOnSeat = true;
+    W._relayPairRoom = false;
+    if (W.rlog) W.rlog("pairing on the seat — the control room said: " + reason);
+    setTimeout(() => W.relayKick(false), 0);
+    return true;
+  }
   if (!W.PAIR_REFUSAL.test(reason || "")) return false;
   W._relayUnpaired = true;
   // A QR code that did not work is spent either way; the form asks for a fresh one.
@@ -44,6 +53,7 @@ W.pairWith = (text) => {
   try { localStorage.setItem(PAIR_TYPED, code); } catch (_) { return false; }
   W._relayUnpaired = false;
   W._e2eBlocked = false;
+  W._pairOnSeat = false;
   emit({ type: "unpaired", reason: "" });
   if (W.rlog) W.rlog("pairing with a typed code");
   return W.relayKick(false);
