@@ -1,7 +1,7 @@
 //! The dock, spread into three groups along the bottom edge: the **workspace bar** on the left,
-//! **⊞ Apps · ○ Home · ◁ Back** in the middle where Android keeps them, **⋯ Control centre** on
+//! **⊞ Apps · ⌨ Keyboard (○ Home on a desktop) · ◁ Back** in the middle where Android keeps them, **⋯ Control centre** on
 //! the right. ⋯ becomes ⌨ for the one moment that is worth a slot: an app wants typing and the
-//! keyboard is down. The **quick rail** on a side edge holds rotate, fullscreen and keyboard.
+//! keyboard is down. The **quick rail** on a side edge holds rotate, fullscreen and Home (the keyboard, on a desktop).
 //!
 //! The 6 px LED on ⋯ is the only status always on screen. It is how invariant #5 stays
 //! visible without a banner reflowing the picture: software encoding turns it orange, and it
@@ -17,7 +17,9 @@ pub fn render(ui: Ui) -> Element {
     if !on {
         return rsx! {};
     }
-    let type_now = (live.text_wanted)() && !(live.osk_on)();
+    let touch = crate::ui::sheet::form(ui) != wado_ux::form::Form::Desktop;
+    // The keyboard already sits in a touch screen's dock, so ⋯ only gives way on a desktop.
+    let type_now = !touch && (live.text_wanted)() && !(live.osk_on)();
     let cc = (live.cc_open)();
     let led = if (live.encoder_mode)() == "software" {
         "sw"
@@ -72,13 +74,15 @@ pub fn render(ui: Ui) -> Element {
                     },
                     Icon { name: "apps" }
                 }
-                // Home: the first empty workspace (compositor `workspace.rs`). Again goes back.
-                button {
-                    class: "barbtn nav home",
-                    title: "Home",
-                    "aria-label": "Home — an empty workspace",
-                    onclick: move |_| bridge::call("window.__wado.windowAction(\"home\");".to_string()),
-                    span { class: "homering" }
+                // On a touch screen the keyboard takes Home's place, beside Apps and Back where the
+                // thumb is, and Home goes to the rail (the app's dock, 2026-11-05). A desktop has
+                // its own keyboard, so Home stays.
+                if touch {
+                    button { "data-osk": "1", class: "barbtn nav", title: "Keyboard", "aria-label": "Keyboard",
+                        Icon { name: "kbd" }
+                    }
+                } else {
+                    {home()}
                 }
                 button {
                     class: "barbtn nav",
@@ -127,10 +131,27 @@ pub fn render(ui: Ui) -> Element {
                 Icon { name: if cockpit { "min" } else { "max" } }
                 span { class: "lbl", "Full screen" }
             }
-            button { "data-osk": "1", class: "barbtn", title: "Keyboard", "aria-label": "Keyboard",
-                Icon { name: "kbd" }
+            if touch {
+                {home()}
+            } else {
+                button { "data-osk": "1", class: "barbtn", title: "Keyboard", "aria-label": "Keyboard",
+                    Icon { name: "kbd" }
+                }
             }
         }
         {crate::ui::workspaces::sheet(ui)}
+    }
+}
+
+/// Home: the first empty workspace (compositor `workspace.rs`). Again goes back.
+fn home() -> Element {
+    rsx! {
+        button {
+            class: "barbtn nav home",
+            title: "Home",
+            "aria-label": "Home — an empty workspace",
+            onclick: move |_| bridge::call("window.__wado.windowAction(\"home\");".to_string()),
+            span { class: "homering" }
+        }
     }
 }

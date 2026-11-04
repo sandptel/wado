@@ -247,7 +247,7 @@ pub struct Frame {
 /// "Full screen"'s width with its label, for the slots placed beside it on its left. The label is
 /// fixed copy, so this is a constant rather than a measurement.
 pub const FULL_W: f64 = 128.0;
-const BTN: f64 = 44.0;
+const BTN: f64 = 48.0;
 
 /// The picture's content fitted into `room` at the session's aspect, centred.
 fn fit(room: Rect, aspect: f64) -> Rect {
@@ -352,7 +352,7 @@ pub fn console(f: Frame) -> Layout {
             b.put("ws", Rect::new(xl, p.y + 6.0, rail, p.h - 12.0));
             let cxr = xr + (rail - BTN) / 2.0;
             b.put("rotate", Rect::new(cxr, p.y + 4.0, BTN, BTN));
-            b.put("kbd", Rect::new(cxr, p.y + 52.0, BTN, BTN));
+            b.put("kbd", Rect::new(cxr, p.y + 8.0 + BTN, BTN, BTN));
             let fh = 4.0 * BTN + 3.0 * 6.0;
             b.put("faces", Rect::new(cxr, p.bottom() - 4.0 - fh, BTN, fh));
             // The chin: the focused window's strip, the bezel's full width.
@@ -587,7 +587,7 @@ mod tests {
             "left rail hugs: {ws:?}"
         );
         assert!(
-            (faces.x - l.pic.right() - 6.0 - 2.0).abs() < 0.6,
+            (faces.x - l.pic.right() - 6.0).abs() < 0.6,
             "right rail hugs"
         );
         // The chin sits under the picture, the deck under the chin, the dock row at the bottom.

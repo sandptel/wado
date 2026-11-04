@@ -96,7 +96,7 @@
 /* Full screen: a labelled accent pill in the console, an icon on the cockpit's rail. */
 .rail .full .lbl { display: none; }
 :root[data-arr="console"] .rail .full { position: fixed; left: var(--c-full-x); right: var(--c-full-r); top: var(--c-full-y);
-  width: var(--c-full-w); height: 44px; display: inline-flex; justify-content: center; gap: 8px; padding: 0 14px 0 12px;
+  width: var(--c-full-w); height: 48px; display: inline-flex; justify-content: center; gap: 8px; padding: 0 14px 0 12px;
   background: color-mix(in oklab, var(--accent), transparent 82%); color: var(--accent); font: 600 .8125rem var(--body); white-space: nowrap; }
 :root[data-arr="console"] .rail .full .lbl { display: inline; }
 :root[data-arr="console"][data-form="land"] .rail .full { padding: 0 8px; gap: 6px; font-size: .75rem; }
@@ -105,7 +105,7 @@
 .cstrip { left: var(--c-strip-x); top: var(--c-strip-y); width: var(--c-strip-w); height: var(--c-strip-h);
   display: flex; align-items: center; gap: 6px; }
 :root[data-arr="console"] #surround > .cstrip { opacity: var(--c-strip-o); }
-.ctitle { flex: 1; min-width: 0; height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 10px 0 6px;
+.ctitle { flex: 1; min-width: 0; height: 48px; display: flex; align-items: center; gap: 10px; padding: 0 10px 0 6px;
   border-radius: var(--r2); text-align: left; transition: background var(--dur) var(--ease), scale var(--dur-press) var(--ease); }
 .ctitle:hover { background: var(--s2); }
 .ctitle:active { scale: .98; }
@@ -115,7 +115,7 @@
 .ctt { min-width: 0; display: grid; }
 .ctt b { color: var(--bright); font-weight: 600; font-size: .8438rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ctt small { color: var(--dim); font-size: .7188rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cwin { width: 44px; height: 44px; flex: none; border-radius: var(--r2); background: var(--s2); color: var(--bright);
+.cwin { width: 48px; height: 48px; flex: none; border-radius: var(--r2); background: var(--s2); color: var(--bright);
   transition: background var(--dur) var(--ease), color var(--dur) var(--ease), scale var(--dur-press) var(--ease); }
 .cwin:active { scale: .96; }
 .cwin.close { margin-left: 4px; } /* 10 px from its neighbours: Close is not a slip of the thumb */
@@ -125,9 +125,9 @@
 .cfaces { left: var(--c-faces-x); top: var(--c-faces-y); width: var(--c-faces-w); height: var(--c-faces-h);
   display: flex; gap: 6px; }
 :root[data-cfaces="col"] .cfaces { flex-direction: column; }
-:root[data-cfaces="grid"] .cfaces { display: grid; grid-template-columns: 44px 44px; justify-content: center; gap: 6px 12px; }
+:root[data-cfaces="grid"] .cfaces { display: grid; grid-template-columns: 48px 48px; justify-content: center; gap: 6px 12px; }
 :root[data-cfaces="row"] .cfaces { gap: 2px; }
-.fbtn { width: 44px; height: 44px; border-radius: var(--r2); color: var(--dim);
+.fbtn { width: 48px; height: 48px; border-radius: var(--r2); color: var(--dim);
   transition: background var(--dur) var(--ease), color var(--dur) var(--ease), border-radius 360ms var(--spring), scale var(--dur-press) var(--ease); }
 .fbtn.on { background: var(--accent); color: var(--on-accent); border-radius: 999px; }
 .fbtn:not(.on):hover { background: var(--s2); color: var(--bright); }
@@ -148,7 +148,7 @@
   border-radius: var(--r2); overflow: hidden; background: var(--s0); border: 1px solid var(--line); }
 :root[data-cdeck="col"] .cdeck[data-face="pad"] .cface { grid-template-rows: minmax(0, 1fr) auto; }
 /* A narrow column stacks the zones, so each stays a full 44 px target. */
-:root[data-cdeck="col"] .dpbtns { grid-template-columns: 1fr; grid-auto-rows: 44px; }
+:root[data-cdeck="col"] .dpbtns { grid-template-columns: 1fr; grid-auto-rows: 48px; }
 :root[data-cdeck="col"] .dpbtn + .dpbtn { border-left: 0; border-top: 1px solid var(--line); }
 .dpsurf { position: relative; display: grid; place-items: center; text-align: center; color: var(--dim);
   touch-action: none; user-select: none; -webkit-user-select: none; cursor: crosshair; }
@@ -199,8 +199,8 @@
   position: fixed; inset: auto; left: var(--c-pad-x); top: var(--c-pad-y); width: var(--c-pad-w); height: var(--c-pad-h); }
 
 /* Targets: 44 px everywhere in the console (spec §7); the cockpit keeps its denser dock. */
-:root[data-arr="console"] #wado-bar .wsnum, :root[data-arr="console"] #wado-bar .wsapp { min-width: 44px; width: 44px; height: 44px; }
-:root[data-arr="console"] .rail .barbtn { min-width: 44px; min-height: 44px; }
+:root[data-arr="console"] #wado-bar .wsnum, :root[data-arr="console"] #wado-bar .wsapp { min-width: 48px; width: 48px; height: 48px; }
+:root[data-arr="console"] .rail .barbtn { min-width: 48px; min-height: 48px; }
 
 /* What rides on the picture: the debug readout keeps to the picture's own top-right corner. */
 :root[data-arr="console"] #stagebar { position: fixed; top: calc(var(--c-pic-y) + 8px); right: auto;
