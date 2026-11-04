@@ -9,6 +9,7 @@ description = "wado web client — a Dioxus (WASM) app that configures, starts, 
 # Web (WASM) target. Native desktop/mobile can be added later from the same code.
 dioxus = { version = "0.7", features = ["web"] }
 wado-protocol = { path = "../protocol" }
+wado-ux = { path = "../ux" }
 serde = "1"
 serde_json = "1"
 # Readable panics in the browser console during development.

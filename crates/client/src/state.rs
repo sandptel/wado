@@ -126,6 +126,12 @@ pub struct Settings {
     pub x_server: Signal<bool>,
     /// Each app's Game mode (`crate::game_mode`), as JSON: `<computer>|<exec>` → its rules.
     pub game_modes: Signal<String>,
+    /// What was done on each computer, for Continue (`crate::recent`), as JSON.
+    pub recent_play: Signal<String>,
+    /// The once-only tips already shown, and the tour (`ui::tips`).
+    pub tips_seen: Signal<Vec<String>>,
+    /// Home shows every computer at once (`ui::home::top_bar`).
+    pub home_all: Signal<bool>,
 
     // ── live: applied immediately, editable mid-session ─────────────────────────
     pub command: Signal<String>,
@@ -265,6 +271,9 @@ impl Settings {
             // whether or not anything X11 is running.
             x_server: use_signal(|| false),
             game_modes: use_signal(String::new),
+            recent_play: use_signal(String::new),
+            tips_seen: use_signal(Vec::new),
+            home_all: use_signal(|| false),
 
             command: use_signal(|| "weston-terminal".to_string()),
             recent: use_signal(Vec::new),
@@ -489,6 +498,8 @@ pub struct Live {
     pub game: Signal<Option<crate::game_mode::Profile>>,
     /// That game's command, to launch once the session is up.
     pub game_launch: Signal<Option<String>>,
+    /// A game growing out of its poster (`ui::home::launch`): its name and its wash's slot.
+    pub launching: Signal<Option<(String, String)>>,
     /// Devices, for a device that manages them: rows, this device's codes' questions, an error.
     pub devices: Signal<(
         Vec<wado_protocol::relay::DeviceRow>,
@@ -615,6 +626,7 @@ impl Live {
             apps: use_signal(Vec::new),
             game: use_signal(|| None),
             game_launch: use_signal(|| None),
+            launching: use_signal(|| None),
             devices: use_signal(Default::default),
             minted: use_signal(|| None),
             drawer_open: use_signal(|| false),

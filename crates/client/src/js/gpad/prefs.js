@@ -76,7 +76,11 @@
     wire(field, cur[field]);
   };
 
-  P.idFor = (where) => (where === "away" && cur.away !== V.SAME ? cur.away : cur.layout);
+  // A Game mode's layout (`js/game_shadow.js`): the session's while it runs, never saved here.
+  let shadowId = null;
+  P.shadow = (id) => { shadowId = id && (V.BUILT[id] || cur.mine.some((m) => m.id === id)) ? id : null; changed(); };
+  P.idFor = (where) =>
+    where === "away" && cur.away !== V.SAME ? cur.away : (where !== "away" && shadowId) || cur.layout;
 
   P.layoutOf = (id) => {
     const m = cur.mine.find((x) => x.id === id);

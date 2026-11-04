@@ -17,6 +17,7 @@ use crate::{
 
 /// Start or rejoin the desktop on computer `i`, selecting it first.
 fn go(ui: Ui, i: usize) {
+    crate::recent::note(ui, "desktop", "Desktop", "");
     if (ui.set.profile)() != i {
         profile::select(ui, i);
         actions::start(ui);

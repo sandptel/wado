@@ -36,6 +36,8 @@ pub mod latency;
 pub mod link_badge;
 pub mod live;
 pub mod pages;
+pub mod sheet;
+pub mod tips;
 pub mod passkey;
 pub mod push;
 pub mod reconnecting;

@@ -15,6 +15,7 @@ mod claude;
 mod debug;
 mod deeplink;
 mod game_mode;
+mod recent;
 mod lane;
 mod link;
 mod multi;
@@ -186,6 +187,11 @@ fn App() -> Element {
                 {ui::dock::render(ui)}
             }
             {ui::landing::render(ui)}
+            // A game growing out of its poster: mounted per launch, over home and the stage.
+            if (ui.live.launching)().is_some() {
+                {ui::scoped(ui, "launch", ui::home::launch::render)}
+            }
+            {ui::scoped(ui, "tour", ui::tips::tour)}
             {ui::computer::render(ui)}
             {ui::subpage::render(ui)}
             {ui::toast::render(ui)}

@@ -28,11 +28,28 @@
   const writeMirror = () => { try { localStorage.setItem(MIRROR, JSON.stringify(cur)); } catch (_) {} };
   let cur = clean(readMirror());
 
-  P.get = () => ({ ...cur });
-  const tell = () => emit({ type: "consolePrefs", ...cur });
+  // A Game mode's shadow (`js/game_shadow.js`): wins while its session runs, never written to the
+  // computer; a change to a shadowed field goes back to the game (`gameKept`), kept for it.
+  let shadow = null;
+  const now = () => (shadow ? clean({ ...cur, ...shadow }) : cur);
+  P.get = () => ({ ...now() });
+  const tell = () => emit({ type: "consolePrefs", ...now() });
+  P.shadow = (o) => {
+    if (o && W.stageMorph) W.stageMorph.prepare();
+    shadow = o && typeof o === "object" ? { ...o } : null;
+    tell();
+  };
 
   P.set = (field, value) => {
     if (!(field in DEFAULTS)) return;
+    if (shadow && field in shadow) {
+      if (shadow[field] === value) return;
+      if (field === "face" && W.stageMorph) W.stageMorph.prepare();
+      shadow[field] = value;
+      tell();
+      emit({ type: "gameKept", key: field === "open" ? "console_open" : "console_face", value });
+      return;
+    }
     const next = clean({ ...cur, [field]: value });
     if (next[field] === cur[field]) return;
     if (field === "face") {

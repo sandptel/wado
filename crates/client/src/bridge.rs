@@ -335,6 +335,10 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/devices.js"),
     "\n",
+    include_str!("js/game_shadow.js"),
+    "\n",
+    include_str!("js/launch.js"),
+    "\n",
     // Several devices in one session: the speed test, joined rooms (after relay.js and
     // sessions.js, whose handlers they chain), and the other devices' pointers.
     include_str!("js/linktest.js"),
@@ -828,6 +832,8 @@ pub fn run(ui: Ui) {
                         live.hoststate.set(Some(st));
                     }
                 }
+                // A Game mode's shadowed console choice changed in the game: kept for the game.
+                "gameKept" => crate::game_mode::kept(ui, &string("key"), msg.get("value").cloned().unwrap_or_default()),
                 "device_list" => {
                     let rows = msg
                         .get("devices")

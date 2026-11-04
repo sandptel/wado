@@ -42,6 +42,9 @@ pub struct Saved {
     pub isolate_apps: Option<bool>,
     pub x_server: Option<bool>,
     pub game_modes: Option<String>,
+    pub recent_play: Option<String>,
+    pub tips_seen: Option<Vec<String>>,
+    pub home_all: Option<bool>,
 
     pub command: Option<String>,
     pub recent: Option<Vec<String>>,
@@ -95,6 +98,7 @@ pub fn snapshot(ui: Ui) -> Saved {
     let s = ui.set;
     let flags = s.debug.read().clone();
     let recent = s.recent.read().clone();
+    let tips_seen = s.tips_seen.read().clone();
     let tiles = s.tiles.read().clone();
     let profiles = s.profiles.read().clone();
     let relays = s.relays.read().clone();
@@ -123,6 +127,9 @@ pub fn snapshot(ui: Ui) -> Saved {
         isolate_apps: Some((s.isolate_apps)()),
         x_server: Some((s.x_server)()),
         game_modes: Some((s.game_modes)()),
+        recent_play: Some((s.recent_play)()),
+        tips_seen: Some(tips_seen),
+        home_all: Some((s.home_all)()),
 
         command: Some((s.command)()),
         recent: Some(recent),
@@ -211,6 +218,9 @@ pub fn restore(ui: Ui, saved: Saved) {
     put!(isolate_apps);
     put!(x_server);
     put!(game_modes);
+    put!(recent_play);
+    put!(tips_seen);
+    put!(home_all);
     put!(command);
     put!(recent);
     put!(show_hidden);
