@@ -5,6 +5,7 @@ import '../theme/look.dart';
 import '../widgets/basics.dart';
 import 'add_computer.dart';
 import 'appearance.dart';
+import 'devices.dart';
 import 'diagnostics.dart';
 import 'input_pages.dart';
 import 'tiles.dart';
@@ -37,6 +38,7 @@ final _pages = <String, PageDef>{
   'tiles': PageDef('Quick tiles', (_) => const TilesPage()),
   'background': PageDef('Notifications & background', (_) => const BackgroundPage()),
   'about': PageDef('About', (_) => const AboutPage()),
+  'devices': PageDef('Devices', (_) => const DevicesPage()),
   'input': PageDef('Virtual input', (_) => const InputHub()),
   'shells': PageDef('Shell', (_) => const ShellPage(), fullBleed: true),
   'files': PageDef('Files', (_) => const FilesPage(), fullBleed: true),

@@ -21,6 +21,8 @@ import 'clips.dart';
 import '../../wado/passkey.dart';
 import '../passkey/passkey_card.dart';
 import 'quick.dart';
+import '../../wado/devices.dart';
+import '../widgets/sheet.dart';
 import 'actions.dart';
 import 'sessions.dart';
 import 'claude.dart';
@@ -367,6 +369,19 @@ class _SettingsList extends StatelessWidget {
       NavRow(icon: 'phone', hue: '0C', title: 'Virtual input', sub: 'Touchpad · Keyboard · Gamepad', onOpen: () => Nav.I.openPage('input')),
       NavRow(icon: 'sound', hue: '0E', title: 'Sound & devices', sub: sound, onOpen: () => Nav.I.openPage('sound_devices')),
       NavRow(icon: 'net', hue: '09', title: 'Connection & trust', sub: conn, onOpen: () => Nav.I.openPage('connection_trust')),
+      Devices.may
+          ? NavRow(icon: 'phone', hue: '0A', title: 'Devices', sub: 'Who is signed in · let a device in', onOpen: () => Nav.I.openPage('devices'))
+          : NavRow(
+              icon: 'lock',
+              hue: '0A',
+              title: 'Devices',
+              sub: 'Managed on the computer',
+              onOpen: () => const Locked(
+                'Devices are managed on the computer',
+                'Letting other devices in from a phone is off unless the computer turns it on for this phone. It is a lot of trust: a phone that has it can let a device in for up to a week.',
+                fix: 'On the computer: wado allow <this phone> devices — or keep doing it there, with wado pair.',
+              ).show(context),
+            ),
     ]);
   }
 }
