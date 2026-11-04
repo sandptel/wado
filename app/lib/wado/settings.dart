@@ -151,6 +151,11 @@ class Settings extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// A signal for [keys] alone: it fires when one of them changes, not on every setting — so a
+  /// slider dragged elsewhere never rebuilds what does not show it. One per caller, kept for
+  /// the widget's life (made in build, it would be a new listener every frame).
+  Listenable keys(List<String> keys) => _Keys(this, keys);
+
   Timer? _save;
   // ignore: unused_field
   late final _flush = AppLifecycleListener(onHide: () {
@@ -159,4 +164,28 @@ class Settings extends ChangeNotifier {
       _p?.setString('wado.settings', jsonEncode(_v));
     }
   });
+}
+
+class _Keys extends ChangeNotifier {
+  _Keys(this.s, this.keys) : _was = _now(s, keys) {
+    s.addListener(_check);
+  }
+  final Settings s;
+  final List<String> keys;
+  String _was;
+
+  static String _now(Settings s, List<String> keys) => [for (final k in keys) s.get<Object?>(k)].join('\u0000');
+
+  void _check() {
+    final now = _now(s, keys);
+    if (now == _was) return;
+    _was = now;
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    s.removeListener(_check);
+    super.dispose();
+  }
 }

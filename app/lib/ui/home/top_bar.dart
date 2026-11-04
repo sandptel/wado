@@ -10,7 +10,6 @@ import '../../wado/settings.dart';
 import '../hints/cheat_sheet.dart';
 import '../pages/add_computer.dart' show scanFromHome;
 import '../theme/look.dart';
-import '../theme/tokens.dart';
 import '../widgets/basics.dart';
 import 'cards.dart' show hues;
 

@@ -49,6 +49,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   late final List<Listenable> _links = [Settings.I, Nav.I.view, Session.I.shown, CoreHost.I.computers];
+  late final _phone = Settings.I.keys(const ['placement', 'theme', 'radius', 'touch_mode', 'scroll_speed', 'natural_scroll', 'tiles', 'stay_connected']);
   void _watch() => watchLinks(session: Session.I.shown.value);
 
   void _probe() {
@@ -88,17 +89,10 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         ),
+        // Only what the page itself decides on. Each section listens to its own sources, so a
+        // ping, a link's words or a slider never rebuilds the whole page (the jitter of 0.2/0.3).
         ListenableBuilder(
-          listenable: Listenable.merge([
-            CoreHost.I.computers,
-            Online.I.map,
-            RelayLink.I.up,
-            RelayLink.I.words,
-            RelayLink.I.seatBusy,
-            Host.I.sessions,
-            Session.I.on,
-            Settings.I,
-          ]),
+          listenable: CoreHost.I.computers,
           builder: (context, _) => ListView(
             padding: EdgeInsets.fromLTRB(side, (CoreHost.I.computers.value.isEmpty ? 64 : 14) + mq.padding.top, side, 32 + mq.padding.bottom),
             children: [
@@ -120,10 +114,13 @@ class _HomeScreenState extends State<HomeScreen> {
               const Sect('Computers'),
               const SizedBox(height: 8),
               const Cards(),
-              const Running(),
+              ListenableBuilder(
+                listenable: Listenable.merge([Host.I.sessions, RelayLink.I.pool, Nav.I.view]),
+                builder: (context, _) => const Running(),
+              ),
               const Sect('On this phone'),
               const SizedBox(height: 8),
-              const PhoneList(),
+              ListenableBuilder(listenable: _phone, builder: (context, _) => const PhoneList()),
               const SizedBox(height: 4),
               const WidgetsSection(),
             ],

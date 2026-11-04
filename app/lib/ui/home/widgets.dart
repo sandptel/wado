@@ -54,12 +54,14 @@ class WidgetsSection extends StatefulWidget {
 
 class _WidgetsSectionState extends State<WidgetsSection> {
   bool _edit = false;
+  // Only the settings this section draws: a slider dragged elsewhere must not rebuild every widget.
+  late final _mine = Settings.I.keys(const ['widgets', 'clipShare', 'theme', 'accent']);
 
   @override
   Widget build(BuildContext context) {
     final t = Tok.of(context);
     return ListenableBuilder(
-      listenable: Listenable.merge([Settings.I, CoreHost.I.computers, SideLinks.I.state, Host.I.state, Host.I.config, RelayLink.I.up, Claude.I.cards, Clip.I.entries]),
+      listenable: Listenable.merge([_mine, CoreHost.I.computers, SideLinks.I.state, Host.I.state, Host.I.config, RelayLink.I.up, Claude.I.cards, Clip.I.entries]),
       builder: (context, _) {
         if (CoreHost.I.computers.value.isEmpty) return const SizedBox.shrink();
         final list = Widgets.list;
