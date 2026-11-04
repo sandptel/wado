@@ -2,6 +2,45 @@
 
 ## Unreleased
 
+### A home for players, many computers, and devices you manage — `2026-11-04`
+
+Spec: `docs/superpowers/specs/2026-11-04-player-home-and-devices-design.md`.
+
+- **Game mode, per app.** Turn it on for any app (Steam, Lutris, a game): say once how you play it
+  — on-screen pad, your controller, or touch — and the session's rules: a Picture preset whose
+  exact frame rate, tuning and keyframes are shown, inputs sent twice and sound kept tight, the
+  stray-gesture swipes off, the volume keys and screen kept for the game, and the older X11 mode
+  for launchers that need it. Every open from the phone after that goes straight in. Its values
+  shadow your own settings while it runs and never overwrite them; a change made mid-game is
+  kept for that game. On the web it shapes the session; the app also opens it full screen with
+  its pad.
+- **Home is a library.** Played lately: *Jump back in*, a carousel of recent games, ▶ under the
+  thumb. Otherwise one Continue card for the last thing done. Then Games — posters drawn from the
+  app's own icon on a base16 wash. Tapping a poster grows it into the game, the connection's four
+  steps told in plain words; a failed step names itself.
+- **Full screen keeps the pad**, over the picture (also a switch in Dock & switcher).
+- **Hints that teach.** `?` in every session lays out what each gesture does *there*, from this
+  phone's real settings; once-only tips; a four-card tour after the first pairing. A gamepad the
+  computer refuses, and Files, Shell and Claude when they are off for this phone, now say why and
+  where to allow them instead of greying out or vanishing.
+- **Many computers.** A computer dropdown at the top of home (All computers: what was left on
+  each, and every computer's games), `⋯` for the picked one's settings and connection, and a scan
+  button. A computer added from a scanned code starts with clipboard sharing off, with a plain
+  warning.
+- **`wado pair` asks first** — what the device that scans may do, and for how long — then shows
+  the code. `--for 7d`, `--yes` and named grants skip the questions. **Trust can end**: the
+  computer enforces it, a garbled end time refuses, and expired devices are dropped. The TUI's
+  Pair takes `t` to set how long.
+- **Devices you manage.** A device the computer gives *Manage devices* (`wado allow <it> devices`,
+  never from another device) can let others in: it asks the computer for an ordinary pairing
+  code — at most its own grants and seven days, a passkey first — shows it (a QR in the app, the
+  typed code everywhere), answers the new device's check words, and signs out only the devices it
+  let in, which go with it when it is signed out. The computer announces every such code. A
+  Devices page lists who is trusted, for how long, and who let them in, on the app and the web.
+- **Smoother.** Home and the picture's readouts rebuild only for what they show — not on every
+  ping, link word or slider tick — and the theme's colours are mixed once per scheme instead of
+  on every read.
+
 ### Android goes native — phase 1
 
 - **The client protocol in Rust** (`crates/client-core`): the relay link, the end-to-end envelope,
