@@ -15,6 +15,8 @@ import '../../widgets/slider.dart';
 /// The output that plays on the device in hand: it says which device, not "This phone".
 String get here => 'This device · ${CoreHost.deviceName.replaceAll(' · app', '')}';
 
+final _soundKeys = Settings.I.keys(const ['muted', 'volume']);
+
 class SoundCard extends StatelessWidget {
   const SoundCard({super.key, required this.open});
   final void Function(String page) open;
@@ -22,7 +24,7 @@ class SoundCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Tok.of(context);
     return ListenableBuilder(
-      listenable: Listenable.merge([Host.I.state, Settings.I, Session.I.on]),
+      listenable: Listenable.merge([Host.I.state, _soundKeys, Session.I.on]),
       builder: (context, _) {
         final h = Host.I.state.value;
         if (h == null) return const SizedBox.shrink();

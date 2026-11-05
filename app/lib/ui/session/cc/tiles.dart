@@ -95,6 +95,10 @@ List<String> shownTiles() {
   return raw.where(ids.contains).toList();
 }
 
+/// The settings the tiles show: the sound card's slider writes `volume` every tick, and the grid
+/// must not rebuild with it. ponytail: a tile reading a new setting adds its key here.
+final _tileKeys = Settings.I.keys(const ['tiles', 'muted', 'cockpit', 'move_mode', 'touch_mode', 'fps_lock', 'natural_scroll', 'debug_master', 'keep_awake', 'dnd']);
+
 /// `.tiles`: two columns. Tap toggles; a long-press opens the tile's page.
 class TileGrid extends StatelessWidget {
   const TileGrid({super.key, required this.open});
@@ -103,7 +107,7 @@ class TileGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     final pool = {for (final t in tilePool(open)) t.id: t};
     return ListenableBuilder(
-      listenable: Listenable.merge([Settings.I, Host.I.state, Session.I.on, KeyboardSheet.open, Recorder.I.on]),
+      listenable: Listenable.merge([_tileKeys, Host.I.state, Session.I.on, KeyboardSheet.open, Recorder.I.on]),
       builder: (context, _) {
         final tiles = [for (final id in shownTiles()) if (pool[id] != null) pool[id]!];
         return LayoutBuilder(builder: (context, box) {
