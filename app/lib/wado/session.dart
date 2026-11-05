@@ -624,7 +624,7 @@ class Session {
         return;
       }
       rlog('track received — waiting for a network path');
-      Stats.I.start(p);
+      Stats.I.start(p, ev.track);
       if (ev.streams.isNotEmpty) renderer.srcObject = ev.streams.first;
       hasVideo.value = true;
       stagebar.value = 'Streaming (relay).';

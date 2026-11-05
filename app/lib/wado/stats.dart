@@ -47,8 +47,12 @@ class Stats {
     _strain = false;
   }
 
-  void start(RTCPeerConnection pc) {
+  /// `video`: the picture's track. Its report is the receiver's own — the inbound stream and what
+  /// it references (transport, the selected pair, its candidates) — not every candidate, codec,
+  /// data channel and certificate of the connection, which crossed the main thread once a second.
+  void start(RTCPeerConnection pc, [MediaStreamTrack? video]) {
     stop();
+    var whole = video == null;
     num? lastFrames, lastTs, lastBytes, lastByteTs, lastLost, lastPrecv, lastDropped, lastRecv, lastDecT, lastDecF, lastJD, lastJC;
     var tick = 0;
     final clock = Stopwatch()..start();
@@ -56,7 +60,13 @@ class Stats {
     _t = Timer.periodic(const Duration(seconds: 1), (_) async {
       List<StatsReport> st;
       try {
-        st = await pc.getStats();
+        st = await pc.getStats(whole ? null : video);
+        // A libwebrtc whose selection leaves the pair out: the whole report, from here on.
+        if (!whole && !st.any((r) => r.type == 'candidate-pair')) {
+          whole = true;
+          rlog('stats: the track report has no candidate pair — reading the whole connection');
+          st = await pc.getStats();
+        }
       } catch (_) {
         return;
       }
