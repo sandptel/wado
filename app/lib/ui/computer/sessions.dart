@@ -19,6 +19,7 @@ import '../motion/motion.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
+import '../widgets/live.dart';
 
 /// multi.rs `offer`: what this device may do with a session.
 ({bool rejoin, bool join, bool takeover, bool end, String whyNot}) offer(Map<String, dynamic> s, String here, bool inIt, bool rooms, (bool, bool)? granted) {
@@ -83,7 +84,7 @@ class _SessionsState extends State<Sessions> {
   Widget build(BuildContext context) {
     final t = Tok.of(context);
     final m = Multi.I;
-    return ListenableBuilder(
+    return Live(
       listenable: Listenable.merge([Host.I.sessions, m.list, m.you, m.busy, m.testing, m.verdict, RelayLink.I.caps]),
       builder: (context, _) {
         final list = Host.I.sessions.value;

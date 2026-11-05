@@ -225,8 +225,9 @@ class _ShellState extends State<Shell> with TickerProviderStateMixin {
                       isUnder: !underIsComp,
                       AnimatedBuilder(
                         animation: _comp,
-                        // Each page its own layer: a slide or a fade over it then moves a picture already
-                        // drawn, instead of drawing the whole page offscreen again on every frame.
+                        // Each page its own layer: a slide or a fade over it never repaints the page's
+                        // widgets. Impeller keeps no raster cache, so a fade (Opacity < 1) still draws
+                        // the whole page offscreen each frame — keep fades short and never ambient.
                         child: const RepaintBoundary(
                           child: Zoom(child: HomeScreen()),
                         ),

@@ -11,6 +11,7 @@ import '../hints/cheat_sheet.dart';
 import '../pages/add_computer.dart' show scanFromHome;
 import '../theme/look.dart';
 import '../widgets/basics.dart';
+import '../widgets/live.dart';
 import 'cards.dart' show hues;
 
 // One bar on screen; a key made in build would rebuild the chip from scratch each time.
@@ -34,7 +35,7 @@ Color hueOf(BuildContext context, String key) {
 class TopBar extends StatelessWidget {
   const TopBar({super.key});
   @override
-  Widget build(BuildContext context) => ListenableBuilder(
+  Widget build(BuildContext context) => Live(
         listenable: Listenable.merge([CoreHost.I.computers, Nav.I.view, homeView]),
         builder: (context, _) {
           final t = Tok.of(context);

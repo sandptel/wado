@@ -13,6 +13,7 @@ import '../motion/motion.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
+import '../widgets/live.dart';
 
 class ClaudeSection extends StatefulWidget {
   const ClaudeSection({super.key});
@@ -44,7 +45,7 @@ class _ClaudeSectionState extends State<ClaudeSection> {
   Widget build(BuildContext context) {
     final t = Tok.of(context);
     final name = CoreHost.I.computer(Nav.I.selected)?.name ?? 'the computer';
-    return ListenableBuilder(
+    return Live(
       listenable: Listenable.merge([Claude.I.cards, Passkey.I.view]),
       builder: (context, _) {
         final st = Claude.I.cards.value;

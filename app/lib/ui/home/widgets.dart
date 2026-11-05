@@ -26,6 +26,7 @@ import '../theme/tokens.dart';
 import '../widgets/basics.dart';
 import '../widgets/data_image.dart';
 import '../widgets/slider.dart';
+import '../widgets/live.dart';
 import 'cards.dart' show hues, Dashed;
 import 'home_screen.dart' show LinkWords;
 
@@ -60,7 +61,7 @@ class _WidgetsSectionState extends State<WidgetsSection> {
   @override
   Widget build(BuildContext context) {
     final t = Tok.of(context);
-    return ListenableBuilder(
+    return Live(
       listenable: Listenable.merge([_mine, CoreHost.I.computers, SideLinks.I.state, Host.I.state, Host.I.config, RelayLink.I.up, Claude.I.cards, Clip.I.entries]),
       builder: (context, _) {
         if (CoreHost.I.computers.value.isEmpty) return const SizedBox.shrink();

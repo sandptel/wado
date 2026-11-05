@@ -13,6 +13,7 @@ import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../play/library.dart';
 import '../widgets/basics.dart';
+import '../widgets/live.dart';
 import 'cards.dart';
 import 'running.dart';
 import 'top_bar.dart';
@@ -91,7 +92,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         // Only what the page itself decides on. Each section listens to its own sources, so a
         // ping, a link's words or a slider never rebuilds the whole page (the jitter of 0.2/0.3).
-        ListenableBuilder(
+        Live(
           listenable: CoreHost.I.computers,
           builder: (context, _) => ListView(
             padding: EdgeInsets.fromLTRB(side, (CoreHost.I.computers.value.isEmpty ? 64 : 14) + mq.padding.top, side, 32 + mq.padding.bottom),
@@ -114,7 +115,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const Sect('Computers'),
               const SizedBox(height: 8),
               const Cards(),
-              ListenableBuilder(
+              Live(
                 listenable: Listenable.merge([Host.I.sessions, RelayLink.I.pool, Nav.I.view]),
                 builder: (context, _) => const Running(),
               ),

@@ -18,6 +18,7 @@ import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
 import '../widgets/data_image.dart';
+import '../widgets/live.dart';
 
 String ago(int seen) {
   if (seen == 0) return '';
@@ -68,7 +69,7 @@ class _ClipsState extends State<Clips> {
   Widget build(BuildContext context) {
     final t = Tok.of(context);
     final c = Clip.I;
-    return ListenableBuilder(
+    return Live(
       listenable: Listenable.merge([c.entries, c.available, c.error, c.loaded, c.images, c.changed, Host.I.config]),
       builder: (context, _) {
         final key = Nav.I.selected;

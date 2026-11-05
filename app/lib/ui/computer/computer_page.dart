@@ -27,6 +27,7 @@ import 'actions.dart';
 import 'sessions.dart';
 import 'claude.dart';
 import '../motion/motion.dart';
+import '../widgets/live.dart';
 
 String uptime(int s) {
   final d = s ~/ 86400, h = s % 86400 ~/ 3600, m = s % 3600 ~/ 60;
@@ -69,7 +70,7 @@ class _ComputerPageState extends State<ComputerPage> {
   Widget build(BuildContext context) {
     final t = Tok.of(context);
     final mq = MediaQuery.of(context);
-    return ListenableBuilder(
+    return Live(
       listenable: Listenable.merge([
         CoreHost.I.computers,
         RelayLink.I.up,
