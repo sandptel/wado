@@ -332,7 +332,7 @@ class _ConsoleViewState extends State<ConsoleView> with TickerProviderStateMixin
               // ── the picture: one transform ──
               Positioned.fill(
                 child: IgnorePointer(
-                  child: ClipPath(
+                  child: ClipRRect(
                     clipper: _Round(content, 16 * a),
                     child: Transform(
                       transform: Matrix4.identity()
@@ -518,12 +518,14 @@ class _Fly extends SingleChildLayoutDelegate {
   bool shouldRelayout(_Fly o) => true;
 }
 
-class _Round extends CustomClipper<Path> {
+/// An rrect, not a path: the clip is redrawn with every video frame, and Impeller clips an rrect
+/// analytically (a plain rect, at radius 0 in the cockpit) where a path needs a stencil pass.
+class _Round extends CustomClipper<RRect> {
   _Round(this.r, this.radius);
   final Rect r;
   final double radius;
   @override
-  Path getClip(Size size) => Path()..addRRect(RRect.fromRectAndRadius(r, Radius.circular(radius)));
+  RRect getClip(Size size) => RRect.fromRectAndRadius(r, Radius.circular(radius));
   @override
   bool shouldReclip(_Round o) => o.r != r || o.radius != radius;
 }
