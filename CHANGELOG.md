@@ -21,6 +21,11 @@ review, not yet measured on a phone.
   channel of the connection.
 - **Full refresh rate** (Display & stream, off by default): some phones hold an app at 60 Hz on a
   90/120 Hz screen unless it asks; this asks for the fastest mode.
+- **Touch on the picture goes out as its batch is read**, not at the next frame: up to a frame
+  less input delay, and a finger's move no longer forces a frame of its own.
+- **The Rust core takes the reading off the main thread.** Room messages arrive as one JSON
+  document, not a string inside one (parsed twice), and a host poll that repeats the last one is
+  recognised on the core's own thread and handed on as a two-field note.
 - Smaller: the picture is clipped as a rounded rect, not a path; the control centre's tiles no
   longer rebuild on every volume tick; the touchpad's direct lane sends one frame per touch batch.
 
