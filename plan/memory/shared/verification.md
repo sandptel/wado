@@ -186,3 +186,45 @@ applications did not survive" for a session that was entirely healthy.
 The right question is whether the process that was **launched** is still running. Everything
 under it is its own business. A test that is too strict does not fail safe: it produced a
 confident false negative on the exact case that mattered most (Chrome is the real workload).
+
+## The envelope (`2026-10-04`) changes how every harness talks to a daemon
+
+Since F0 a daemon **drops every unsealed frame from the device side** (WARN
+`e2e: dropped a frame from the relay link (<type>)`). A harness speaking plain JSON to the relay
+now gets `join_accepted` and then silence — it looks like a hung daemon, it is not.
+- Harness clients use `scripts/lib/e2e-device.mjs` (`deviceFor(key)` + `secure(ws, …)`), which
+  runs the real `js/e2e_*.js` in a vm. Sends queue until `__up`.
+- A **new device key per connection** under an already-bound `client_key` is refused ("key is not
+  the one") — reuse the device per key (`deviceFor` does).
+- In the client, **only `W.relaySendMsg` may write to the relay socket**; `relay-link-check.mjs`
+  fails on any other `ws.send`/`relayWs.send`.
+- The pre-existing failures as of `83dc68f` (identical before and after F0, measured against a
+  worktree build): `relay-seat-e2e` hold/takeover ×8, `relay-link-check` cold-load ×4.
+
+## The file manager (`2026-10-04`) — `scripts/files-e2e.mjs`
+
+- Runs on **debug** binaries (`target/debug`, the default arg): no session, no GPU. Needs Chrome
+  and the sandbox off (WebRTC UDP). Writes its screenshots to `$SHOTS` — look at them; two layout
+  bugs were only visible there.
+- File access needs a **QR-pinned** key line *and* a grant, so the harness pairs each browser with
+  a `wado qr` link (`&pair=…&hk=…`) and runs `wado files grant <key> rw`. A plain trusted line
+  gets "file access needs this device paired by QR".
+- `openat2` is strict where `openat` is lax: **`O_PATH` with any flag but `O_DIRECTORY`/
+  `O_NOFOLLOW`/`O_CLOEXEC` is `EINVAL`**. That silently emptied recents and symlink targets until
+  the scope stopped adding `O_NONBLOCK|O_NOCTTY` to `O_PATH` opens.
+- **Streaming checks need a long MKV.** A 40 s test file transcodes faster than the 4 MiB initial
+  credit is used, so ffmpeg is gone before the "nice 19" check looks — the test used 300 s.
+- **CDP-dispatched key events target `document`**, which has no `.closest`. A handler doing
+  `e.target.closest(...)` throws on them (and on some real ones) — use `W.files.inField(e)`.
+- Phone screenshots taken right after a re-render can catch the open animation; sleep ~1 s first.
+- **Headless Chrome emulating a phone reports `screen.orientation` as landscape.** Read the
+  viewport (`matchMedia("(orientation: landscape)")`), never the screen, for layout decisions.
+- **Check what the picture fills, not just a class.** The landscape check passed while the
+  video sat in a 0-height grid row; it now asserts the wrapper's height.
+- A finger held on a `<video>` past ~500 ms gets the browser's long-press menu, which cancels the
+  touch — block `contextmenu` and `touch-action: none` on the picture, and fire holds at 400 ms.
+- **Panzoom refuses an element not yet attached** ("should be called on elements that have been
+  attached to the DOM") — attach, then create. A throw inside a `.then` success handler is not
+  caught by its error handler: the viewer's render is wrapped so a failure shows, not a spinner.
+- No EXIF tool on this host (no exiftool/exiv2/ImageMagick/PIL): `scripts/lib/exif-jpeg.mjs`
+  writes a real EXIF block for tests.

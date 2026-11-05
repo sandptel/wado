@@ -11,6 +11,24 @@ reported to the user as "everything is dead". It was not.
 **Use `rtk proxy "<command>"` for anything whose exact output matters**: `ps`, `grep` on a
 log, `ls`, `cat /proc/...`, `sed -i`.
 
+## EGL/GBM can load the HOST's Mesa — the zero-copy tier silently disappears
+
+`2026-10-28`: after a NixOS rebuild, a daemon started from the dev shell logged
+`MESA-LOADER: … GLIBC_2.43 not found` and `Unable to find suitable EGL platform`, then **ran
+anyway** on surfaceless EGL + `vaapi-cpu`. No crash, just no GBM and no `vaapi-dmabuf` — easy to
+misread as an encoder regression. Cause: libglvnd reads the host's EGL vendor file from
+`/run/opengl-driver`, whose Mesa is built against a newer glibc than the shell's. Both flakes now
+set `__EGL_VENDOR_LIBRARY_DIRS` and `GBM_BACKENDS_PATH` to the shell's own Mesa (like
+`LIBVA_DRIVERS_PATH`). **Check: `pipeline selected tier=VaapiDma` in the daemon log.** A shell
+entered before the flake change lacks them — re-enter it, or export both by hand.
+
+## The public relay is shared: tests leave seats behind
+
+The relay holds a device's seat for 30 min after its session, across daemon restarts. A headless
+test with a fresh profile is then refused "every daemon is in use" — correct behaviour, not a bug.
+`ssh wado@wado-relay.indiasouthcentral.cloudapp.azure.com 'sudo systemctl restart wado-relay'` is
+safe (nothing on disk) and clears it. Unpair test devices afterwards (`wado unpair <key prefix>`).
+
 ## The daemon must be a release build
 
 `./target/debug/wado` cannot meet the latency target and **does not fail like a build
@@ -44,6 +62,11 @@ reach a clone, and a commit message claiming to have updated them is wrong. Unre
 whether that is deliberate.
 
 ## Bringing the rig up: `scripts/rig.sh`
+
+**Since 2026-10-06 the user launches only via the binary** (`wado tui` / `wado daemon`): a bare
+daemon starts relay + tunnel itself (`selfhost/`), logs relay/tunnel to `/tmp/wado-rig/`. A
+quick tunnel can die under a live cloudflared ("Tunnel not found") — the daemon's watchdog
+replaces it after ~3 min; check `curl 127.0.0.1:4001/ready`. rig.sh still works for test rigs.
 
 One command for relay + tunnel + daemon; prints the relay URL and the Remote ID. `--daemon`
 restarts **only** the daemon, which is what you want after a rebuild — restarting the tunnel
@@ -134,6 +157,17 @@ candidates than its peers is the one to ask about a VPN — that is what the mys
 "15-candidate device" in earlier notes was, all along.
 
 Ask for the VPN before anything else. It costs one question and it has now cost two sessions.
+
+## The *phone* on Cloudflare WARP: connected, apps launch, picture blank (2026-10-03)
+
+The same trap from the other end. Relay link up, session started, apps launched, the browser
+logged "track received" and then nothing: ICE sat in `Checking` for 16 s, failed, re-offered,
+and failed again, forever. **The tell is in the browser's own candidates**: a host candidate in
+`100.96.0.0/12` (here `100.96.0.1`, WARP's tunnel) and srflx on a Cloudflare egress
+(`104.28.x.x`). The client now names WARP in the error when it sees that range, and no longer
+says "media is flowing" until ICE has actually connected. That premature claim is what made
+this look like a rendering bug. Fix on the device: WARP off, or exclude the browser.
+Lasting fix: TURN (see below).
 
 ## ⛔ This host runs Cloudflare WARP, and that makes its NAT **symmetric**
 
@@ -511,3 +545,7 @@ host. A pad that appears to do nothing at all is this, and the daemon log says s
 The device is **global to the machine**, not scoped to the session: a uinput device is a kernel
 input device and there is no way to hide one from processes outside the wado session. That is
 recorded as a design consequence in `WADO_PLAN.md`'s Decision Log, not as a bug to fix.
+
+- **The relay strips `_` (and every character outside `[A-Za-z0-9-]`) from client keys** (`crates/relay/src/join.rs`). A base64url key then makes the daemon sign a different transcript than the phone built (bad signature about half the time). Use UUID keys (found in native P1, 2026-10-31).
+
+- **No git during `scripts/app-build.sh`.** It `rm -rf`s the tracked jniLibs and refills them; a `git pull --autostash` mid-build restores/deletes them under cargo-ndk, which panics `NotFound` (2026-11-05). Commit the .so files after it exits.

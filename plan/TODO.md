@@ -3,7 +3,284 @@
 Working list for runs. The repo's `TODO.md` holds project milestones; this holds the loop.
 Newest concerns first. Keep it short — close items or move them to memory.
 
-Last updated: `2026-09-19`
+Last updated: `2026-10-03`
+
+---
+
+## ▣ RUN — 2026-11-05, Android app smoothness (ui lane; code review, no phone attached)
+
+Pushed 3d6faf9..cfb2b59; release APK `~/Downloads/wado-0.4.0-release.apk` (22:16). **Nothing measured** —
+every fix is reasoned from the code (see `memory/ui/app-perf.md`, 2026-11-05).
+
+- [ ] **On the phone:** install that APK; stutter on home, page changes, session — with and without
+      media playing on the computer. Send Diagnostics' log (`main thread held`, `slow frame`).
+- [ ] Phone model + its refresh rate in other apps; try *Full refresh rate* (Display & stream).
+- [ ] **Decision pending (user):** move WebRTC off flutter_webrtc (F9b, native/Rust session) so no
+      plugin call touches the main thread. Only after the log shows plugin calls dominate.
+- [ ] `Input._arm` coalesces picture motion with a frame callback + `scheduleFrame()`: up to a frame
+      of added latency per move; a microtask (as the pad's direct lane now) would not. Unmeasured.
+
+
+## ▣ RUN — 2026-11-04, player home / Game mode / delegated pairing (autonomous; Decision Log 2026-11-04 ×2)
+
+Built and pushed (app + web + daemon). **Awaiting the user on a real phone** — nothing here was
+seen on glass this run (unit tests + analyze/check only). Open, in order:
+
+- [ ] **On a phone:** poster → game launch (grow, hops, the game launched once), full screen + pad,
+      `?` overlay, tips, tour after pairing, Devices → Add a device (passkey, QR, check words).
+- [ ] TUI Devices column for `devices` (today `wado allow <d> devices`); four views index columns.
+- [x] Web: pad per game (`P.shadow`), poster-grows launch, Devices QR (`wado_ux::qr::path`),
+      control-room pairing (verified live 2026-11-05), tablet/desktop pass by CDP screenshots.
+- [ ] Web: shoot a **live session's console** at phone/tablet/desktop (needs a browser paired and
+      in a session; `scratchpad/cdp.mjs` drives Chrome — seed state via a same-origin `seed.html`).
+- [ ] Live issues L1, L4, L5, L11 need the phone (`plan/live-issues.md`).
+- [ ] "You played X with the pad — turn on Game mode?" suggestion (client sees pad face per app).
+- [ ] X-server restart waits on the daemon's stopped event instead of 1.5 s (`ui/play/launch.dart`).
+- [ ] Remaining storyboard questions (spec "Still open").
+- [ ] Compositor Game-mode rules (borderless, focus pin, no pop-ups, idle inhibit, pointer lock).
+
+## ✅ Consolidated at v0.0.4 (2026-10-30). Read HANDOVER.md; the open work is ranked there. The user takes items one by one.
+
+## ⏸ Paused — resume after the UI revamp + decided fixes are done (user, 2026-10-30)
+
+User: "do not start everything at once … only work on the UI revamp and fixes decided, complete
+those first, then we move ahead." Resume each with SendMessage to its agent id (transcripts and
+worktrees are kept), or start fresh from the notes here.
+
+- **#1 when resumed: no picture with the laptop on the phone's hotspot** (user recording,
+  16:24 / 10:53Z).
+  - The laptop's wlp97s0 is 10.83.90.214/24 via gateway 10.83.90.22, and its IPv6 shares the
+    phone's cellular /64 (2409:40d0:248f:56d2::/64).
+  - The phone offers only cellular candidates (CLAT 192.0.0.4 and its public IPv6), never the
+    hotspot side.
+  - ICE checks for about 16 s, fails, and the phone re-offers in a loop: "Connecting…" forever,
+    then "Relayed — limited".
+  - Investigate: whether the daemon's IPv6 host candidate reaches the phone's own IPv6 (Android
+    may drop inbound tether→rmnet traffic); whether a candidate on the 10.83.90.x link or an mDNS
+    name gets through; whether TURN on the relay is the honest fallback.
+  - For the native app, gather on every interface, the tether included.
+- **Live debug-log monitor**: agent `af3c51c662959d0b3`, worktree `agent-af3c51c662959d0b3`.
+  - Done: its instrumentation is merged and pushed (2a0c25c): `slow:` warnings for frame handlers
+    and lane waits, window-shown timing, the client ask clock, bad-input naming.
+  - **Not done:** the release rebuild and live-daemon swap. The daemon is still the 15:30 build
+    (791c09a); swap at an idle moment.
+  - TODO list: `plan/live-issues.md`.
+  - Open: a rejoin stuck for 30 s after a relay blip (the daemon answered, the client never sent
+    an offer); session start costing 1.4 s while the lane was busy; Lutris crashing with no
+    feedback; NaN touches dropped; no client clock on pad Run→Ran.
+- **Native Android app plan**. The plan must cover what the WebView got wrong in the user's
+  recording:
+  - IME insets reshaping the console
+  - the default video poster
+  - the connecting state as a floating card
+  - hints covering controls
+  - the route lost on resume
+  - ICE when the computer is tethered to the phone
+  Agent:: agent `ab45efab01d407ac9`.
+  - No plan file written yet. Target: `docs/superpowers/plans/2026-10-30-native-android.md`.
+  - The decision is logged in WADO_PLAN.md: the app goes fully native and the WebView is removed.
+- **Touchpad feel follow-up**: research is committed (e946016). Build after F11: frame timing per
+  input batch, the Wi-Fi low-latency lock, thumb flags, gesture mirroring, threshold haptics, the
+  buffer retune.
+- Also waiting: F9b native pieces (subsumed by the native plan); relay redeploy (user); a real-phone
+  pass on everything; F6 T11 measurements.
+
+## ▣ RUN — 2026-10-30, after-trackpad features (orchestrated; ping the user after each)
+Order agreed 2026-10-30. Each feature: confirm intent (multiple choice) → plan → build (subagents,
+reviewed) → release swap → ping the user → next. Trackpad plan 2 runs in parallel (daemon + phone
+tracks, `docs/superpowers/plans/2026-10-30-trackpad-plan-2.md`).
+- [ ] F1 — P0 pairing by QR / code only (remove first-device-wins)
+- [ ] F1.5 — Computer page per host + configurable home widgets (design → build)
+- [ ] F2 — Install as an app (PWA, service worker, signed updates, Trackpad shortcut)
+- [x] F3 — Passkey for shells + Claude status cards + push ✓ 2026-10-30 (merged; phone checks open)
+- [x] F4 merged (reconnect 4254→862 ms median; lane; relay health; compact frames; idle seat). Needs relay redeploy (user). Not verified on a real phone handoff.
+- [x] F5 — Pocket Console merged. Open: phone fps/decode-drop console vs cockpit; `maximized` in WindowInfo; people card; computed contrast + SR pass
+- [x] F11 merged (gamepad-check 27/27, layers 513/0, console 91, responsive 0 failures). LEFT for handover:
+  - T19 real-hardware check: phone, a game, evtest, a live `hyprctl keyword`, the stuck-button-after-kill case, latency.
+  - gamepad-check has no daemon phase.
+  - Sessionless Keys & mouse (T18): `KeyInjector::press` and a relative pointer.
+  - Behave tab key rebinding; the widget tinting the last door; the native trackpad's "More" opening the Touchpad page.
+  - Re-apply the Hyprland feel on `configreloaded`; Lua config (`hyprctl eval`).
+  - Click bar and thumb marking: settings stored, caps `pad-click`/`pad-palm` not built.
+  - Research follow-ups: frame timing per batch, Wi-Fi low-latency lock, gesture mirroring, threshold haptics.
+- [ ] (was) F11 — Virtual input: design done (231532a); BUILD dispatched 2026-10-30 after F4 + layering + sizing merged
+- [⏸] LIVE monitor: paused (see Paused section)
+- [x] Session trap + navigation + recording defects merged (trap-check 19/19). LEFT for handover:
+  - Wire `pending.js`/`pending.rs` into every action (chokepoints are listed in the agent's report and HANDOVER.md), plus `feedback-check.mjs`.
+  - Don't tear the session down on an unrelated `session_error`.
+  - Console perf (baseline: press 111–304 ms, input-to-paint up to 256 ms at 4×, 608 ms at 6×).
+  - layers-check: add the new states.
+  - responsive-check at 390×844: 36/240 failures (gamepad `.gpc`, `.vidoorname`), from F11.
+- [ ] (was) Action feedback everywhere (pressed / working / taking long / outcome primitive; acks where missing) + console responsiveness (measure, then fix) — agent running
+- [x] Passkey never-stuck merged (eaf023f + d18f3f3): a single bounded prompt, plain errors, approve on the computer (5 per 10 min), per-device passkey off; the two-tap race fixed (any live challenge counts). passkey-ui-e2e 95/95, f3-e2e all pass. Daemon swapped (pid 2191734).
+- [ ] Touchpad feel research (glass vs pad, speed/threshold sliders, 3/4-finger gestures, animations) — research agent; feeds F11
+- [x] Passkey fixed (sheet was inert: Dioxus inert="false"), lifetime choice, trackpad refusal cards — merged
+- [x] Layering fixed (layers-check 98→0) + file viewer revamp (11 kinds, zip listing) — merged. Unverified: real-phone pinch, Safari HEIC, Firefox PDF frame. files-e2e passkey path flaky under load.
+- [x] Keep-awake leaked systemd-inhibit holds across daemon restarts (systemd-inhibit blocks SIGTERM → PDEATHSIG swallowed); fixed with a stdin-pipe EOF (791c09a). Two old holds (637729, 1031976) left for the user to kill.
+- [x] Size: text + interface size per device (cozy default), reflow fixed (responsive-check 251→0 failing states), Android textZoom pinned — merged. Unverified: iOS Safari (zoom, currentCSSZoom), real phone
+- [x] Idle seat wording fixed in F4 (needs relay redeploy for the new wording)
+- [x] F6 — Multi-client merged (fc466ff). Open: T11 measurements; public relay redeploy (user) for Join; leaked e2e dbus-daemon/wl-paste processes for the user to kill
+- [ ] F7 — Perf pass + platform trait layer (design-an-interface)
+- [ ] F8 — Desktop app, experimental branch (Slint, host console + client)
+- [ ] F8b — Desktop app: switch onto wado-platform watches; native desktop streaming (webrtc-rs + VA-API → Slint image); publish encoder tier outside a session
+- [x] F9 — Android app merged (92330df). APK ~/.cache/wado/wado-0.0.3-debug.apk. Untested on a real phone or live daemon.
+- [ ] F9b — native video session (libwebrtc + MediaCodec), native Computer page + gesture rail, media3 MediaSession, minify release (76 MB debug), CI run of android.yml, clippy on mobile-core
+- [x] F10 — Clipboard revamp merged (0f20a9c); daemon swapped (pid 544110). Open: pool origin label ("desktop" for a peer push); persist secret hashes across restart; phone checklist (Safari chip, Android app bridge)
+- [ ] USER: deploy the relay — `scripts/relay-deploy.sh` (binary staged in ~/.cache/wado)
+- (user-driven) PV phone backlog, P2–P4 later
+
+### Queue — autonomous from 2026-10-30 (order = execution order; decisions logged in WADO_PLAN.md)
+In flight: F2 final (no-key mode) · Computer-page follow-ups + relay (seatless control rooms,
+`room_strict`) · platform-layer migration + perf · F8 Slint app (experimental branch).
+1. [ ] Merge F2; release swap.
+2. [ ] Merge relay/control-links; **redeploy the relay to Azure** (cargo-zigbuild, runbook
+       deploy/relay/README.md); verify /health + caps; then start **F6 multi-client** build.
+3. [ ] **F3** passkeys (shells, file writes, trackpad; 15 min idle + background re-lock) + Claude
+       (status cards, Allow/Deny from card & notification, new session in tmux, `wado claude hooks
+       install`) + Web Push (Claude needs permission/finished, computer offline/online, transfer done).
+       Builds on F2's service worker.
+4. [ ] **F4** fallback lane 64 KB/s + "Retry direct"; relay health: external monitor + push + TUI/CLI;
+       measure network-switch reconnect, ICE restart only if > 2 s; compact binary touch frames.
+5. [ ] **F5 Pocket Console** — design done (`docs/superpowers/specs/2026-10-30-pocket-console-design.md`, build plan §9); dispatch build after F6 merge.
+6. [ ] Platform-layer follow-ups: gate grant cache via watcher; macOS/Windows provider stubs that
+       compile (`cfg`), Slint app switched onto `wado-platform`.
+7. [ ] Hygiene: fix pre-existing e2e failures (relay-seat "hold" ×3, relay-link-check cold resume
+       ×4–5, session-e2e launches bare `wado`); dev-shell clippy toolchain mismatch; relay
+       "waiting for approval" wording; files.css hard-coded colours; pin Smithay rev in the manifest
+       (open decision → decide: pin); trackpad key-combo buttons + custom actions (scope-cut).
+
+### Ideas backlog — minimal profile, more power (brainstormed 2026-10-30; pick top items into the queue)
+Guiding rule: no new top-level surfaces; every idea lands on home, the Computer page, or the pad.
+- [ ] **One search** (home): a single field over computers, running apps, files, shells and actions
+      ("next workspace", "volume 30") — the fastest path to anything; also the desktop app's ⌘K.
+- [ ] **Continue where I left off**: the Computer page's first row offers the last session / last
+      file / last shell; walking away from the laptop (lock) offers "continue on phone".
+- [ ] **Send to computer / open on computer**: Android share target + a link handler — a URL opens in
+      the host's browser, a photo lands in ~/Downloads (P2 share target, extended to links).
+- [ ] **Phone camera as a quick scanner/webcam** into the host (one-shot photo → clipboard/file first;
+      live webcam later via a v4l2loopback provider behind the platform layer).
+- [ ] **Wake-on-LAN** a sleeping computer from its card (via another wado device on the same LAN or
+      the relay helper), so "offline" can become "waking…".
+- [ ] **Low-bandwidth mode** that turns on by itself when relayed/limited: shells, files, trackpad and
+      widgets stay; video waits — honest, never a frozen picture.
+- [ ] **Laptop battery & thermals** on the Computer page hero; **phone battery** shown in the host TUI.
+- [ ] **Do-not-disturb** quick toggle (host notifications) and **focus mode** widget.
+- [ ] **Voice actions** on the pad: hold the mic, say "next workspace / pause music / open terminal"
+      → matched against the actions list (local matching, no cloud).
+- [ ] **Per-app controls**: when a media or presentation app is focused, the rail shows its controls
+      (MPRIS + window class), otherwise your quick actions.
+- [ ] **`wado doctor` + first-run self-test** surfaced as one card on the Computer page (P3 item).
+- [ ] **Theme follows the host**: optional — the client adopts the computer's base16 scheme.
+
+### Optimisation plan between iterations (orchestrator)
+- [ ] relay_client.rs holds a MutexGuard across an `.await` (clippy `await_holding_lock`) — fix deliberately (scope the guard or switch to tokio::sync::Mutex where it must span the await).
+- [ ] Remaining clippy: `too_many_arguments` ×2, `while_let_loop` ×2 (RTCP retry loop); files.css greys `#aaa/#ddd/#bbb/#8a8a8a/#222` → tokens.
+- [ ] Binary touch/pad frames (shared with Android core) — ~4× smaller; matters on the 64 KB/s relay lane.
+- [ ] (deprioritised 2026-10-30, by reasoning, not measured) Gate grant cache: ~3 reads of a ~1 KB trust file per pad message at 125 Hz ≈ well under 1% of a core; a cache adds a stale-grant risk on a security path. Do only if a profile shows it.
+- [ ] Host state pushed via platform `watch` → stop per-request wpctl/zbus fan-out (migration step 3).
+- [ ] Client: lazy-load long-tail JS modules (files viewer, Plyr, xterm) — the bundle is one big eval today.
+- [x] wasm size: `--debug-symbols false` (1c8d3d2) — DWARF was ~13 of 15 MB; 2.6 MB → 0.93 MB gzipped (measured). Still open: first-paint on the phone.
+- [ ] Video fan-out (F6): one encode per session; measure host upload per extra viewer.
+### Reflection — redundancies / optimisations found while agents work (2026-10-30)
+- [ ] **Per-message gate reads disk at 60–125 Hz**: `pad::gate::refused*` → `Gate::grants` re-reads
+      `trusted_clients` + `live::current()` every touch frame. Cache grants per peer, invalidated by
+      the config/trust file watcher (`config/watch.rs` already watches); revoke still applies on the
+      next message after the watcher fires (~ms).
+- [ ] **Idle pacer tick**: the 125 Hz ticker locks the pad every 8 ms even with no finger and an
+      empty queue → park it (await a notify) when idle; laptop battery.
+- [ ] **Duplicate pointer pipelines on the phone**: `pad_touch.js` and `pad_feel.js` each listen to
+      every pointer event and each call `getBoundingClientRect` → one dispatcher, rect cached and
+      refreshed by ResizeObserver/orientation change.
+- [ ] **Frame encoding**: JSON frames ~70 B × up to 120/s per finger; under the F4 64 KB/s relay
+      cap it fits, but a compact binary frame (seq u32, t u32, n×(id u8, x u16, y u16)) is ~4× smaller
+      — do it with F4 if the cap bites.
+- [ ] **Agents + shared target/**: worktree agents must build with their own CARGO_TARGET_DIR
+      (cross-talk seen 2026-10-30); main verification uses `target-main/`.
+
+
+## ▣ RUN CLOSED 2026-10-04 — latency compass (Decision Log 2026-10-03). Findings: memory/latency/measurements.md (bottom).
+Open threads carried to the handoff (plan/handoff-latency-2026-10-04.md):
+- [ ] **Stream sound A/B on the phone never happened** — the switch silently reverted on reload
+      (daemon's stale settings copy won; fixed 83dc68f). Do it: off → reload → join; jbuf should
+      stay ~15 ms if the audio-sync hold is the cause. Then decide: sound only while media plays?
+- [ ] Trial options still in: Redundant input (now discrete-only), Low-latency audio, Keyframes
+      On request — no measured gain; remove if the user still sees none.
+- [ ] e2e "Join session takes it back" fails ~1 run in 3, passes on rerun (unexplored flake).
+
+## ▣ RUN — 2026-10-03, latency compass (Decision Log 2026-10-03)
+
+Measure every step with `node scripts/perf-report.mjs --since <clock> --label <phase>-<change>-<net> --save`.
+Baseline: `baseline-before-latency-work-4g` — jbuf p50/p90 122/187 ms, rtt 31/46, 720×1614@90.
+
+**Rule:** every optimisation that changes existing behaviour is a switch on Display & stream
+(default per phase, A/B-able): "Low-latency audio", "Server bandwidth estimator",
+"Low-latency pipeline (WebCodecs)" + "Loss recovery: NACK / FEC / both".
+
+### Phase 1 — audio leg + visibility (A/V sync is mandatory)
+- [x] Log the audio leg: abuf/atarget, video `jitterBufferMinimumDelay` (vmin = sync hold), input rt.
+- [ ] **Prove or kill the lip-sync hypothesis** from a phone run (vmin ≈ jbuf ⇒ held for audio).
+- [x] Daemon was already 10 ms Opus + 10 ms quantum, lowdelay, DTX off (libopus default). The
+      "Low-latency audio" switch takes it to 5 ms + 5 ms and sets audio `jitterBufferTarget = 0`.
+- [x] Latency line: audio + sync legs, "audio sync" culprit, input rt in the pill, A/B badge.
+- [x] Found on the way: relay mode never opened `wado-motion` — touch moves rode the reliable
+      channel (touch stalls on loss). Fixed both ends.
+- [ ] perf-report row per change, on the phone, same network.
+
+### Phase 2 — server-side congestion control (R6)
+- [ ] TWCC feedback → send-side estimate in the daemon; encoder at ~85% of it, capped per
+      resolution (~12 Mbps @1080p). Client auto bitrate retired as the controller.
+
+### ⚖ Trial — decided with the user 2026-10-04 (WebCodecs + redundant audio REMOVED same day)
+The options added from Redundant input onwards (Redundant input, Redundant audio, Low-latency
+pipeline (WebCodecs) v2; also Low-latency audio and Keyframes "On request") showed no improvement
+on the phone so far. The user tests the current version for a while; **if they still don't help,
+remove them completely** (client switches + JS: input fast copy, wc_*.js; server: input_order,
+wcmedia, FAST/MEDIA channels, audio redundancy, low_latency_audio, keyframe_mode, SessionConfig
+fields with serde defaults kept for compat). Keep: auto bitrate, latency line/blame, input rt,
+perf-report, motion channel + pong fixes on the relay path.
+
+### Phase 3 — WebCodecs receiver (opt-in, old path stays default + fallback)
+- [x] 3.1 Unreliable unordered data channel `wado-media` (server `wcmedia`, 18-byte chunk header,
+      1100 B payload), reassembly + VideoDecoder + canvas. Codec string via isConfigSupported
+      (Chrome rejects the SPS's own `avc1.640c2a`).
+- [x] 3.2 AudioDecoder + AudioWorklet, audio clock is master, jitter-sized buffer capped 150 ms,
+      late audio dropped/concealed. e2e: A/V offset < 50 ms.
+- [x] v1 on the phone was worse (main-thread decode/paint → touch glitches, hw decoder 0.3–10 s).
+- [x] v2: Worker + OffscreenCanvas + worker↔worklet MessageChannel; e2e main thread 5.8% busy.
+- [ ] **Phone A/B of v2 on the bad network** (perf rows); remote DevTools if the hw decoder still holds.
+- [ ] Loss: NACK + keyframe request; FEC (WASM) as a switch; A/B NACK / FEC / both.
+- [ ] Android Chrome first, then desktop Chrome; Safari stays on the old path.
+
+---
+
+## ▣ RUN — 2026-10-02, client redesign + daemon config + four features
+
+Decided in a grilling session (Decision Log 2026-10-02, two entries: the plan, and how it was
+built). Pushed `5c737f5` → `2cca71a`, one commit per milestone.
+
+- [x] C1 config.kdl · C2 hot reload, ui.kdl, `wado msg` · U1 landing + control centre ·
+      U2 shell tabs · C3 binds, gestures, window rules · F1 clipboard · F2 notifications ·
+      F3 screenshot/record · F4 audio.
+- [x] Verified by machine: `scripts/shells-e2e.mjs` (17 checks: shells, reattach, ssh allow-list,
+      config over relay) and `scripts/session-e2e.mjs` (clipboard both ways, notifications —
+      real session, needs GPU). Audio is proven in headless Chrome: 3 B/pkt silent and
+      136 B/pkt with a tone, at 100 pps. The UI was screenshotted at 390×844 and 1280×800,
+      in light and dark schemes, against a live session.
+
+### Awaiting the user — only a phone can answer
+
+- [ ] The control centre's sheet, its tiles and long-press feel right under a thumb.
+- [ ] Three-finger swipes don't fire by accident during two-finger scrolling.
+- [ ] Sound plays after Start on iOS Safari (gesture unlock), and the volume slider works there.
+      iOS ignores `audio.volume`, so mute may be the only control that works.
+- [ ] The Paste here tile is allowed to read the clipboard on Android Chrome and iOS.
+- [ ] The key row keeps the soft keyboard up while tapping Ctrl or Esc.
+
+### Not verified at runtime
+
+- [ ] **Binds**: key interception is unit-tested, and was never pressed in a live session.
+- [ ] **Window rules**: `open-maximized` was never seen applying to a real app.
+- [ ] **Apps follow light/dark**: the env is set; no GTK app was looked at.
 
 ---
 

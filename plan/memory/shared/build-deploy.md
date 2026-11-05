@@ -2,9 +2,12 @@
 
 ## Builds
 
+- **`rtk proxy "cargo test 2>&1"` silently filters every test** — the quoted `2>&1` reaches
+  cargo as a test-name filter and reports `0 passed … N filtered out`. Put the redirect
+  outside: `rtk proxy cargo test --workspace --exclude wado-client 2>&1`.
 - **Always run the daemon from `./target/release/wado`.** See `environment.md`.
-- `cargo fmt` is **not clean at baseline** — format only the files you touched, after
-  checking that file's baseline. Repo-wide formatting buries the real diff.
+- `cargo fmt` is **clean** since `1ff767f` (2026-09-29). `cargo fmt --all` is safe; keep
+  `cargo fmt --all --check` green before committing.
 - The dev shell and the host are different worlds. Libraries that must agree have to be made
   to agree explicitly; alignment that happens to hold today is not a fix.
 

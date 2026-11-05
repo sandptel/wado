@@ -140,3 +140,40 @@ framework. It loads the shipped `gamepad.js` against a DOM shim and asserts the 
 by one delta, resize spreads and scales, a fresh page reads the layout back out of storage, and
 reset clears both. Harness gotcha: `#wado-pad` needs its own entry in `RECTS` or every drag
 clamps to one pixel — an artefact that reads exactly like a clamping bug.
+
+## The shell since 2026-10-02 (landing · control centre · dock)
+
+The docked panel and the ⋯ pop-grid are gone. **Everything floats over a full-screen stage**:
+`#landing` (z 40) before a session, `#cc` (z 50) for everything else, `#console` (z 55, above the
+landing for shell-only mode), toasts (z 70), and `.rejoinprompt` (fixed, z 60). The layout
+rules above still hold; `#stage-video` is unchanged.
+
+- **The scrolling `.page` is a flex column, and its children must have `flex-shrink: 0`.**
+  Without it the shell strip and the settings list were squashed to slivers. Only visible with
+  real content, so it shipped once.
+- **base16 does not promise that base07 is bright.** rose-pine's base07 is a dim purple, and
+  latte's is lavender. Text tokens come from base05, and elevation is *mixed* from base00
+  toward base05 (catppuccin's base01 is darker than its base00).
+- **`:last-child` ignores text nodes.** An icon that comes before a button's label is still
+  its last child element, which is why "Add a computer" ended up right-aligned.
+- **The schemes live in `src/schemes.json`**, spliced into the bridge ahead of `theme.js` and
+  parsed by Rust. One list, no drift.
+- **Tiles are a table** (`ui/cc/tiles/pool.rs`). The keyboard tile must be a `label for=wado-osk`
+  and the mouse tile must carry `id=wado-lock`; each is commented at the `Act` enum.
+- **Headless-Chrome verification** works through a CDP script that clicks things and screenshots
+  them: start `wado-relay` and a debug daemon with a throwaway HOME, then point the built
+  client at them with a `wado.settings` localStorage blob. It drives a live session, including
+  WebRTC. In headless, `audioLevel` reads 0 even when sound is arriving; bytes per packet is
+  the signal to read instead.
+
+## Web visual checks (2026-11-05)
+
+- `google-chrome-stable --headless --screenshot` catches sheets **mid-transition** (hidden
+  `.pksheet`, the control centre and pickers all show half-faded). Not a bug — drive Chrome over
+  CDP instead (`scratchpad/cdp.mjs`: navigate, wait, `Runtime.evaluate` clicks, capture).
+- Headless has no fine pointer: `(hover: hover) and (pointer: fine)` rules never apply there.
+- Class names are global: the shared `Sheet` once reused the widget picker's `wsheet`/`wscrim`
+  and inherited their hidden state (Game mode's sheet never showed). New shared widgets get their
+  own prefix (`usheet`).
+- The web console already fits the picture box to the screen's aspect; a "session sized to the
+  room" (the app's `pictureRoom`) measured no gain there — not built.

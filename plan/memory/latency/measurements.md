@@ -311,3 +311,105 @@ pool size is concurrent hardware encode, and four 1080p sessions did not reach i
 
 Devices seen this run, by offer candidate count: **6** (connects, ~1 s), **8** (connects, ~2 s),
 **15** (never established media, ~38 attempts across all four daemons).
+
+## ⚑ 2026-10-03 — a big jbuf with a healthy decoder is the link, not the phone
+
+Cellular session, 900×2018 @90, 3.9 Mbps asked: rtt 24 → 70–360 ms (spike 519), received rate
+cycling 1118→749→341→17 kbps on a ~4 s period, server shedding to divisor 4 (22 fps), `dec` 9–10 ms,
+jbuf ~270 ms. The buffer is Chrome smoothing bursty arrival from an overfilled path. Fix shipped:
+auto bitrate (`js/autorate.js`, Decision Log 2026-10-03). Earlier the same day `dec` read 150 ms at
+steady 60 fps — a pipeline depth, not per-frame work (load ratio 9 is impossible); it vanished on
+a later session without a code change. Android Chrome does not expose `decoderImplementation`.
+
+⚠️ Same day, later: jbuf 300–400 ms (jtarget ~400) with rtt at its 22–31 ms floor, no loss, dec 8 ms —
+fps 90 on a 60 Hz phone dipping to ~45 every ~13 s. Not congestion: auto bitrate stepped down on it
+and jbuf did not move, so its jbuf clause was removed (rtt/loss only). Leading suspect: 90 fps on this
+phone (decode-saturation history above) — the user chose to leave fps alone; untested.
+
+## ⚑ Perf runs are now one command
+
+`node scripts/perf-report.mjs --since HH:MM --label <phase>-<change>-<net> --save` → a row in
+`plan/data/perf-runs.jsonl`. Protocol in the script header (idle · scroll · drag · video, ~1 min each).
+Baseline `baseline-before-latency-work-4g`: jbuf 122/187/249, rtt 31/46/60, fps 90, 151 anomalies.
+
+## ⚑ 2026-10-03 evening — video jbuf ≈ audio buffer: video is held to audio
+
+Phone, same session, two networks, three configs. Good net: jbuf 17–57, abuf 42–77. Bad net
+(rtt 9–44 typical, p90 56–147 — jitter, not congestion): jbuf 174–233 with **abuf 225–254 every
+window**, dec 8–48, decode and rtt median far too small to explain it. `vmin` reads 16–57 and does
+NOT show the hold — don't trust it as the sync figure. Low-latency audio (5 ms frames) did not
+move abuf (228) — withdrawn as a lever for this. Auto bitrate 2521→400 did not move either buffer
+(and was a false trigger; fixed to median rtt vs ≥20 ms floor).
+Leading hypothesis: periodic IDR every 1 s (`keyframe_interval=90`@90, invariant #7 says on demand)
+sent unpaced → bottleneck queue spikes → audio arrival jitter → NetEq grows → video held. Test:
+keyframe interval 900 on the bad net; then pacing (Phase 2). Daemon now logs "audio send spacing"
+(built, deploy pending) to rule out the sender's own audio bursts.
+- **Sender ruled out for audio jitter (2026-10-03 18:40):** `audio send spacing` p50 10.6 ms, p90 11.0,
+  max 13–22, 0% bursts. The audio unevenness that sizes NetEq is made on the path. Keyframes
+  measured 21–24 KB vs P 2–3 KB at ~1/s (Balanced/90 fps). "Keyframes: On request" shipped to A/B
+  it; pacing is the follow-up if it confirms. Input rt on relay now measured: 35–84 ms.
+- ⚠️ `rig.sh --daemon` used to truncate daemon logs — a mid-test restart lost the raw rows; it now
+  rotates `.1–.3`. Rows for that run were saved from the live monitor summaries.
+- **Keyframe bursts ruled out (A/B, same bad network, 2026-10-03 18:47–18:57):** periodic (1/s)
+  jbuf 424/565, abuf 451/596, rtt 56/201; On request (0 keyframes/300, received 44–400 kbps)
+  jbuf 459/482, abuf 471/596, rtt 70/126 (spikes to 639). Buffers do not depend on our video at
+  all. Cause: the path's own delay spikes → Chrome's audio jitter buffer (NetEq) grows to 450–600
+  ms and drains slowly → video held to it (A/V sync mandatory). Nothing in the WebRTC API lowers
+  NetEq (jitterBufferTarget is a floor; playout-delay ext is video-only). The lever is owning the
+  A/V buffer (Phase 3). "Keyframes: On request" kept as a bandwidth option, not a latency one.
+
+## ⚑ Phase 3 shipped behind "Low-latency pipeline (WebCodecs)" (2026-10-04 01:20 local)
+
+`wado-media` data channel (unordered, maxRetransmits 0), daemon `wcmedia` hub chunks frames
+(18 B header: kind, key, seq, idx, count, ts_us on one daemon clock). Client: wc_recv.js
+(reassembly, 30 ms reorder wait, skip-to-keyframe), wc_video.js (VideoDecoder, canvas, presents
+on the audio clock), wc_audio.js (AudioDecoder → AudioWorklet, buffer = p95 jitter + 10 ms,
+20–150 ms, late audio dropped). Gotchas found: Chrome rejects the SPS's own `avc1.640c2a` with
+prefer-hardware → isConfigSupported over candidates; a load-time throw in one bridge file kills
+every later file (lifecycle.js defines W.start, last); e2e daemons on UDP slice ≥4 fall back to
+slice 0 and collide with the rig. Not yet measured on the phone.
+
+## ⚑ Phase 3 v1 on the phone: worse — main-thread decode/paint (2026-10-03 20:22–20:32)
+
+WebCodecs on: 0–83 fps, dec 330 ms → 2–10 s (hardware VideoDecoder holding/stalling), audio
+clock silent (late-drop bug, fixed), touch glitching. Off again: 90–120 fps, rtt ~30, input rt
+28–33, 0 anomalies. Root design flaw: decode output + 2D-canvas drawImage of every frame + ~100
+audio postMessages/s on the main thread, which also runs touch handling. v2 must be a Worker +
+OffscreenCanvas (and measured over USB remote DevTools). Redundant input v1 strict ordering
+caused stall-then-burst; v2 classifies (scroll commutative, moves newest-wins, strict rest).
+- v2 (2026-10-04): worker does reassembly/decode/paint (OffscreenCanvas) and Opus decode; audio
+  worker→worklet via MessageChannel; main thread 5.8% busy in headless e2e. Hardware-decoder
+  hold-back/stall → software fallback lives in the worker. Phone not yet measured.
+- ⛔ 2026-10-04: **all data channels share ONE SCTP association = one congestion controller.**
+  Redundant input copying every scroll step/move ×3 drove input rt to 0.2–4.2 s (net rtt 6–17 ms);
+  the "fast" unreliable copies stall with the rest when cwnd collapses. Now discrete-only, 1 copy.
+  WebCodecs v2 on the phone: hw VideoDecoder **stalled within 3 s** → software fallback; the user
+  still rates it worse than the standard path. Next: on-device profiling (adb not installed;
+  `nix shell nixpkgs#android-tools`, USB debugging, chrome://inspect / CDP via adb forward).
+- 2026-10-04: WebCodecs pipeline + redundant audio **removed** (user: lags a lot, no gain; both v1
+  main-thread and v2 worker). Prime regression suspect stays the audio track (2cca71a, 10-02):
+  video jbuf tracks abuf. A/B switch "Stream sound" (off = no audio m-line, no sync) shipped.
+  Keyframes On-request vs periodic: measured no latency/buffer difference (A/B 10-03).
+
+## ⚑ RUN CLOSED 2026-10-04 — what this run established (read this first)
+
+1. **Daemon is not the bottleneck**: capture 0.1 + encode 3.3 + queue 0 + write_sample p99 0.3 ms.
+2. **The buffer regression is on the phone**: video jbuf tracks the audio buffer (A/V sync hold)
+   since the audio track landed (2cca71a, 2026-10-02). Sept baseline without audio: 7–14 ms.
+   Good network today: jbuf climbs 16 → ~54 ms to sit level with abuf within 30 s of connecting.
+   Bad (jittery cellular) network: both 120–600 ms. `vmin` does NOT show this hold.
+3. **Not the cause (ruled out by measurement)**: keyframe bursts (A/B 0 vs 4 kf/300 → same buffers),
+   bitrate (2521→400 kbps → same), our audio sender (10.6 ms even spacing, 0 % bursts), Opus 5 ms
+   frames (no change), decoder (8–10 ms).
+4. **Tried and REMOVED**: WebCodecs pipeline v1 (main thread) and v2 (worker): phone hw decoder
+   stalls/holds 0.3–10 s, everything lagged → removed with redundant audio.
+5. ⛔ **One SCTP association = one congestion controller** for all data channels: copying every
+   input event ×3 drove input rt to 4 s. Redundant input is now discrete events only, one copy.
+6. The decisive A/B (Stream sound off) was never actually run: the switch was reverted by the
+   daemon's stale settings copy on reload — fixed (newer `_at` wins). Run it first next time.
+
+## Android native P1 (2026-10-31, emulator API 37, debug build; recorded, not judged)
+- Cold start → first frame (`am start -W`) p50 of 5: 3692 ms first run, 2012 ms at final head.
+- Cold start → live link words p50 of 5: 4150 → 2019 ms.
+- Host `core-e2e`: pairing 4–11 ms, control room open 2–9 ms, watch → host state 8–12 ms.
+- The budget is 450 ms cold start on a real phone with a release build. Measure there before judging.
