@@ -246,8 +246,18 @@ class PadTouch {
 
   void _moved() {
     _dirty = true;
-    if (Pad.I.state.value == 'direct') _send();
+    // Every finger of one touch batch moves in the same Dart task: one frame for all of them,
+    // sent as that task ends — no later, and not one platform call per finger.
+    if (Pad.I.state.value == 'direct' && !_batch) {
+      _batch = true;
+      scheduleMicrotask(() {
+        _batch = false;
+        if (_dirty) _send();
+      });
+    }
   }
+
+  bool _batch = false;
 
   int _free() {
     final used = _fingers.values.map((f) => f[0]).toSet();
