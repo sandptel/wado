@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+### The app keeps its main thread for the screen — `2026-11-05`
+
+Since Flutter 3.29 the app's Dart runs on Android's main thread, which also schedules every video
+frame's redraw, so anything that holds it stutters both the app and the picture. Found by code
+review, not yet measured on a phone.
+
+- **Now-playing is told only what changed.** The playing position changed every poll, so every
+  1.2 s the cover art crossed to Android and the media session and its notification were posted
+  again — synchronous calls to the system with the bitmap, on the main thread. The position now
+  goes only when it jumps (a seek, a new track), the art only when it changes.
+- **A host poll that says nothing new rebuilds nothing**, and the computer's name and OS go to the
+  core only when they change, not the whole state with its art on every poll.
+- **Pages you cannot see stop rebuilding.** Home and the computer's page stay mounted under the
+  session; every poll, link word and setting rebuilt them anyway. They now catch up once when
+  shown.
+- **The once-a-second stats read the picture's own receiver**, not every candidate, codec and data
+  channel of the connection.
+- **Full refresh rate** (Display & stream, off by default): some phones hold an app at 60 Hz on a
+  90/120 Hz screen unless it asks; this asks for the fastest mode.
+- Smaller: the picture is clipped as a rounded rect, not a path; the control centre's tiles no
+  longer rebuild on every volume tick; the touchpad's direct lane sends one frame per touch batch.
+
 ### A home for players, many computers, and devices you manage — `2026-11-04`
 
 Spec: `docs/superpowers/specs/2026-11-04-player-home-and-devices-design.md`.
