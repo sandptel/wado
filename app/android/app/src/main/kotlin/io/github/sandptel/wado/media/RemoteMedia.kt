@@ -54,7 +54,8 @@ class RemoteMedia(private val context: Context, private val op: (String, Long?) 
         val app = (np["app"] as? String).orEmpty()
         val artist = (np["artist"] as? String).orEmpty()
         val playing = np["playing"] == true
-        loadArt((np["art"] as? String).orEmpty())
+        // Dart sends the art only when it changes: absent keeps the last one.
+        if (np.containsKey("art")) loadArt((np["art"] as? String).orEmpty())
         var actions = PlaybackStateCompat.ACTION_PLAY_PAUSE or PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PAUSE
         if (np["can_next"] == true) actions = actions or PlaybackStateCompat.ACTION_SKIP_TO_NEXT
         if (np["can_prev"] == true) actions = actions or PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS

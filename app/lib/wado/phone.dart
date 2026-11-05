@@ -32,6 +32,10 @@ class Phone {
   static const _os = MethodChannel('wado/os');
 
   String _last = '';
+  String? _art;
+  int _pos = 0, _posAt = 0;
+  bool _playing = false;
+  final _clock = Stopwatch()..start();
   bool? _stay, _keys;
 
   /// The player a press goes to: the one playing, else the first.
@@ -47,23 +51,46 @@ class Phone {
   }
 
   void _sync() {
-    final p = _player;
-    final np = p == null
-        ? const <String, Object?>{}
-        : {
-            'title': p['title'] ?? '', 'artist': p['artist'] ?? '', 'app': p['app'] ?? '', 'art': p['art'] ?? '', //
-            'playing': p['playing'] == true, 'position_ms': p['position_ms'] ?? 0, 'length_ms': p['length_ms'] ?? 0,
-            'can_next': p['can_next'] == true, 'can_prev': p['can_prev'] == true, 'can_seek': p['can_seek'] == true,
-          };
-    final key = '$np';
-    if (key != _last) {
-      _last = key;
-      _os.invokeMethod('nowPlaying', np);
-    }
+    _media();
     final keys = Settings.I.b('volume_keys') && _speaker != null;
     if (keys != _keys) {
       _keys = keys;
       _os.invokeMethod('volumeKeys', keys);
+    }
+  }
+
+  void _media() {
+    // The phone's media session, told only what changed. The position moved on every poll and
+    // made each one a resend — the cover art across the channel, then a MediaSession metadata
+    // and a notification post, each a binder call with the bitmap, all on the main thread every
+    // 1.2 s while anything played. The phone runs the clock itself from a position and a speed,
+    // so the position goes again only when it strays (a seek, a track change).
+    final p = _player;
+    if (p == null) {
+      if (_last.isNotEmpty) _os.invokeMethod('nowPlaying', const <String, Object?>{});
+      _last = '';
+      _art = null;
+      return;
+    }
+    final playing = p['playing'] == true;
+    final pos = ((p['position_ms'] ?? 0) as num).toInt();
+    final key = [p['title'], p['artist'], p['app'], playing, p['length_ms'], p['can_next'], p['can_prev'], p['can_seek']].join('|');
+    final at = _clock.elapsedMilliseconds;
+    final expect = _pos + (_playing ? at - _posAt : 0);
+    final art = (p['art'] as String?) ?? '';
+    final newArt = art != _art;
+    if (key != _last || newArt || (pos - expect).abs() > 2500) {
+      _last = key;
+      _pos = pos;
+      _posAt = at;
+      _playing = playing;
+      _os.invokeMethod('nowPlaying', {
+        'title': p['title'] ?? '', 'artist': p['artist'] ?? '', 'app': p['app'] ?? '', //
+        if (newArt) 'art': art,
+        'playing': playing, 'position_ms': pos, 'length_ms': p['length_ms'] ?? 0,
+        'can_next': p['can_next'] == true, 'can_prev': p['can_prev'] == true, 'can_seek': p['can_seek'] == true,
+      });
+      _art = art;
     }
   }
 

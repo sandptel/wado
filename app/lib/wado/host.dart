@@ -66,14 +66,45 @@ class Host {
       if (p['icon_same'] == true) p['icon'] = had['icon'];
       _pics[bus] = {'art': p['art'], 'icon': p['icon']};
     }
-    state.value = s;
+    // A poll that says nothing new rebuilds nothing: every listener (home under the session too)
+    // used to rebuild on each one, a fresh map every 1.2–3 s.
+    if (!_same(s, state.value)) state.value = s;
+    // The core keeps only the computer's name and OS from this (`note_host`): handed the whole
+    // state — cover art and all — on every poll, it was a synchronous parse on the main thread.
     final k = RelayLink.I.key;
-    if (s != null && k != null) CoreHost.I.core.noteHost(key: k, stateJson: jsonEncode(s));
+    final info = s == null ? '' : jsonEncode(s['info']);
+    if (s != null && k != null && '$k|$info' != _noted) {
+      _noted = '$k|$info';
+      CoreHost.I.core.noteHost(key: k, stateJson: jsonEncode(s));
+    }
     final fast = (s?['media'] as List? ?? []).any((p) => p['playing'] == true);
     if (fast != _fast) {
       _fast = fast;
       _arm();
     }
+  }
+
+  String _noted = '';
+
+  /// Deep equality over decoded JSON. Art strings kept from the last poll are the same object,
+  /// so they compare at once.
+  static bool _same(Object? a, Object? b) {
+    if (identical(a, b)) return true;
+    if (a is Map && b is Map) {
+      if (a.length != b.length) return false;
+      for (final e in a.entries) {
+        if (!b.containsKey(e.key) || !_same(e.value, b[e.key])) return false;
+      }
+      return true;
+    }
+    if (a is List && b is List) {
+      if (a.length != b.length) return false;
+      for (var i = 0; i < a.length; i++) {
+        if (!_same(a[i], b[i])) return false;
+      }
+      return true;
+    }
+    return a == b;
   }
 
   void get() {
