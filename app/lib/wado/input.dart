@@ -11,7 +11,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
-import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
@@ -73,11 +72,12 @@ class Input {
     }
   }
 
+  /// Sent as the task that delivered the touch batch ends: every finger of one batch coalesces,
+  /// and nothing waits for the next frame (a frame callback added up to one) or forces one.
   void _arm() {
     if (_scheduled) return;
     _scheduled = true;
-    SchedulerBinding.instance.scheduleFrameCallback((_) => _flush());
-    SchedulerBinding.instance.scheduleFrame();
+    scheduleMicrotask(_flush);
   }
 
   /// A positional update: only the newest per kind survives the frame.
