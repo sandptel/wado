@@ -58,6 +58,10 @@ class Host {
     } else {
       _gets = (_gets - 1).clamp(0, 1 << 30);
     }
+    // The core saw this answer repeat the last one byte for byte (crates/app-bridge repeats.rs):
+    // counted above, nothing to read. ponytail: a value changed here optimistically (a volume
+    // press) and refused by the computer stays until the next real change.
+    if (msg['same'] == true) return;
     final s = msg['state'] as Map<String, dynamic>?;
     for (final p in (s?['media'] as List? ?? []).cast<Map<String, dynamic>>()) {
       final bus = '${p['bus']}';

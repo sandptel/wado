@@ -6441,6 +6441,7 @@ dependencies = [
  "base64",
  "flutter_rust_bridge",
  "ring",
+ "serde",
  "serde_json",
  "sha2",
  "wado-client-core",

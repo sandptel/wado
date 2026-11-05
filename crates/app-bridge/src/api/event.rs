@@ -3,7 +3,8 @@
 //!
 //! - `computers` `{list: [{key, name, remote_id, relay_url, os, logo, desktop, hue}]}`
 //! - `room_state` `{id, state, words, tone, caps, instance, in_ms}`
-//! - `room_msg` / `room_relay` `{id, json}`: the message or relay frame as received
+//! - `room_msg` / `room_relay` `{id, msg}`: the message or relay frame as received, embedded as
+//!   JSON so the app reads it in one pass (`{id, json}`, a string, if it is not valid JSON)
 //! - `pair` `{op, step, words?, key?, why?}`, step one of dialing securing check_words waiting
 //!   done failed
 //! - `answer` `{op, outcome, why?}`, outcome one of done failed no_answer
@@ -51,14 +52,23 @@ fn link(id: &str, v: &LinkView) -> Value {
            "caps": v.caps, "instance": v.instance, "in_ms": in_ms})
 }
 
+/// `{"t", "id", "msg"}` with the message spliced in as is: carried as a string, it was escaped here
+/// and parsed twice on the app's main thread (the event, then the string inside it).
+pub(crate) fn room(t: &str, id: &str, msg: &str) -> String {
+    if serde_json::from_str::<serde::de::IgnoredAny>(msg).is_err() {
+        return json!({"t": t, "id": id, "json": msg}).to_string();
+    }
+    format!(r#"{{"t":"{t}","id":{},"msg":{msg}}}"#, Value::from(id))
+}
+
 pub(crate) fn json(e: &CoreEvent) -> String {
     match e {
+        CoreEvent::RoomMsg { id, json } => return room("room_msg", id, json),
+        CoreEvent::RoomRelay { id, json } => return room("room_relay", id, json),
         CoreEvent::Computers { list } => {
             json!({"t": "computers", "list": list.iter().map(computer).collect::<Vec<_>>()})
         }
         CoreEvent::RoomState { id, view } => link(id, view),
-        CoreEvent::RoomMsg { id, json } => json!({"t": "room_msg", "id": id, "json": json}),
-        CoreEvent::RoomRelay { id, json } => json!({"t": "room_relay", "id": id, "json": json}),
         CoreEvent::Pair { op, step } => match step {
             PairStep::Dialing => json!({"t": "pair", "op": op, "step": "dialing"}),
             PairStep::Securing => json!({"t": "pair", "op": op, "step": "securing"}),
@@ -98,7 +108,13 @@ mod tests {
         let v: Value = serde_json::from_str(&m).unwrap();
         assert_eq!(v["t"], "room_msg");
         assert_eq!(v["id"], "r1");
-        assert_eq!(v["json"], r#"{"type":"sessions"}"#);
+        assert_eq!(v["msg"]["type"], "sessions");
+        let bad: Value = serde_json::from_str(&room("room_relay", "r\"2", "not json")).unwrap();
+        assert_eq!(v["t"], "room_msg");
+        assert_eq!(
+            (bad["id"].as_str(), bad["json"].as_str()),
+            (Some("r\"2"), Some("not json"))
+        );
         let s = json(&CoreEvent::RoomState {
             id: "r1".into(),
             view: LinkView::new(

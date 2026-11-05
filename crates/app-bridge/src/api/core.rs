@@ -12,6 +12,7 @@ use wado_client_core::link::state::Room;
 use super::event;
 use super::secret::AesBox;
 use crate::frb_generated::StreamSink;
+use wado_client_core::event::CoreEvent;
 
 #[frb(opaque)]
 pub struct AppCore {
@@ -157,12 +158,19 @@ impl AppCore {
             .name("wado-events".into())
             .spawn(move || {
                 let rt = crate::exec::Executor;
+                let mut repeats = crate::repeats::Repeats::default();
                 loop {
                     let e = rt.block_on(core.next_event());
                     if STREAM.load(std::sync::atomic::Ordering::SeqCst) != me {
                         return;
                     }
-                    if sink.add(event::json(&e)).is_err() {
+                    let out = match &e {
+                        CoreEvent::RoomMsg { id, json } if repeats.same(id, json) => {
+                            event::room("room_msg", id, crate::repeats::SAME)
+                        }
+                        _ => event::json(&e),
+                    };
+                    if sink.add(out).is_err() {
                         return;
                     }
                 }
