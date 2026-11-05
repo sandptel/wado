@@ -17,8 +17,10 @@ every fix is reasoned from the code (see `memory/ui/app-perf.md`, 2026-11-05).
 - [ ] Phone model + its refresh rate in other apps; try *Full refresh rate* (Display & stream).
 - [ ] **Decision pending (user):** move WebRTC off flutter_webrtc (F9b, native/Rust session) so no
       plugin call touches the main thread. Only after the log shows plugin calls dominate.
-- [ ] `Input._arm` coalesces picture motion with a frame callback + `scheduleFrame()`: up to a frame
-      of added latency per move; a microtask (as the pad's direct lane now) would not. Unmeasured.
+- [x] `Input._arm` now a microtask (was frame callback + forced frame). Watch input(rt) for change.
+- [x] Rust: room messages embedded as JSON (one Dart parse); repeated `host_state` → `{same:true}`
+      on the event thread (`crates/app-bridge/src/repeats.rs`). `send_room` already only enqueues.
+- Final APK `~/Downloads/wado-0.4.0-release.apk` 22:25 (bridge rebuilt; `.so` checked for the change).
 
 
 ## ▣ RUN — 2026-11-04, player home / Game mode / delegated pairing (autonomous; Decision Log 2026-11-04 ×2)

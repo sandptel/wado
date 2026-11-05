@@ -43,3 +43,8 @@
   page is a full offscreen pass per frame. The shell comment claiming otherwise was corrected.
 - No refresh-rate request existed; *Full refresh rate* (off by default) sets
   `preferredDisplayModeId` to the fastest mode at the current size.
+- What Rust can take is the *reading*: the event thread (`wado-events`) now embeds room messages raw
+  and collapses byte-identical host polls. What it cannot take: widget builds, and plugin calls
+  that Android/Flutter route to the main thread — F9b is the only fix for those.
+- Clippy on app-bridge failed on a toolchain/artifact mismatch in `wado-ux` (E0514), not code;
+  `cargo test` is the check that ran.
