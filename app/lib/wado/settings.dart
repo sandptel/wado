@@ -72,6 +72,7 @@ const defaults = <String, Object>{
   // The gamepad editor's changes: {"<layout>:<l|p>": {"<control>": [dx, dy, scale, hidden]}}.
   'gpad_edits': '{}',
   'stay_connected': false,
+  'max_refresh': false,
   'volume_keys': true,
   'pad_marks_off': false,
   'game_modes': <String, Object?>{},

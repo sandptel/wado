@@ -36,7 +36,7 @@ class Phone {
   int _pos = 0, _posAt = 0;
   bool _playing = false;
   final _clock = Stopwatch()..start();
-  bool? _stay, _keys;
+  bool? _stay, _keys, _fast;
 
   /// The player a press goes to: the one playing, else the first.
   Map<String, dynamic>? get _player {
@@ -99,6 +99,11 @@ class Phone {
     if (stay != _stay) {
       _stay = stay;
       _os.invokeMethod('stay', stay);
+    }
+    final fast = Settings.I.b('max_refresh');
+    if (fast != _fast) {
+      _fast = fast;
+      _os.invokeMethod('maxRefresh', fast);
     }
     _sync();
   }

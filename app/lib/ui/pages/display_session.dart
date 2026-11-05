@@ -23,6 +23,7 @@ import 'host_settings.dart';
 
 const _scaleInfo = "How large apps draw themselves, as Hyprland's monitor scale does. The stream stays at the resolution above; only the logical area apps lay out in shrinks, so text and buttons come out bigger. Fractional steps need an app that speaks wp-fractional-scale; one that does not falls back to the nearest whole number below and comes out slightly soft.";
 const _lockInfo = 'Normally wado lowers the frame rate when your connection cannot keep up, so what arrives stays smooth at a slower rate. Locked, it never does: you keep the rate and congestion shows up as stutter instead. Worth it when the rate walking up and down is more distracting than the odd dropped frame — the usual case on mobile data at 90 or 120.';
+const _refreshInfo = 'Some phones keep an app at 60 Hz unless it asks for more, even on a 90 or 120 Hz screen — the app and the picture then move at half what the phone can show. On, wado asks for the screen’s fastest mode while it is open. It costs some battery; off, the phone decides.';
 const _isolateInfo = 'On, the session gets its own D-Bus bus and its apps are launched with no X11 display. That stops an app you launch here from opening a window on the computer running wado instead — browsers and file managers hand the request to the copy already running over there, and anything X11 draws on its screen. Off, apps share that computer’s desktop services: notifications and file-chooser portals work, and X11-only apps open over there rather than failing.';
 const _xInfo = 'wado speaks Wayland only, so an app that can only speak X11 — Steam is the one people hit — cannot draw here at all. On, the session gets its own X server and those apps run inside it. The cost: every X app shares one screen, a single window the size of the stream that is there even when nothing uses it, with no window manager inside it.';
 const _orientInfo = 'Which way round the session is. A phone at rest is held upright, so an unthinking start gave desktop applications a 360px-wide screen to lay themselves out on — hence the default. Entering fullscreen pins the phone to whichever way this makes the session, and leaving fullscreen by any route releases it.';
@@ -164,6 +165,7 @@ class _DisplaySessionState extends State<DisplaySession> {
                 onChange: (v) => s.set('bitrate', v.round()),
               ),
             SwitchRow(title: 'Lock frame rate', sub: 'Stutter instead of slowing down', info: _lockInfo, on: s.b('fps_lock'), onToggle: (v) => s.set('fps_lock', v)),
+            SwitchRow(title: 'Full refresh rate', sub: 'This phone at its fastest screen mode (now $hz Hz) while wado is open', info: _refreshInfo, on: s.b('max_refresh'), onToggle: (v) => s.set('max_refresh', v)),
           ]),
           const SizedBox(height: 12),
           HeadCard(children: [

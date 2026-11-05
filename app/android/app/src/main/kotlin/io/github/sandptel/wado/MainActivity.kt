@@ -67,6 +67,20 @@ class MainActivity : FlutterFragmentActivity() {
         return super.onKeyDown(keyCode, event)
     }
 
+    /**
+     * The screen's fastest mode at its current size, or the phone's own choice. Some OEMs hold an
+     * app that states no preference at 60 Hz on a 120 Hz panel.
+     */
+    @Suppress("DEPRECATION")
+    private fun maxRefresh(on: Boolean) {
+        val d = windowManager.defaultDisplay ?: return
+        val now = d.mode
+        val best = d.supportedModes
+            .filter { it.physicalWidth == now.physicalWidth && it.physicalHeight == now.physicalHeight }
+            .maxByOrNull { it.refreshRate }
+        window.attributes = window.attributes.apply { preferredDisplayModeId = if (on && best != null) best.modeId else 0 }
+    }
+
     /** A notification's tap or button (Notifier.ACTION), as Dart reads it. */
     private fun notifyAction(i: Intent): Map<String, String>? = if (i.action != Notifier.ACTION) null else mapOf(
         "kind" to (i.getStringExtra("kind") ?: ""), "id" to (i.getStringExtra("id") ?: ""), "action" to (i.getStringExtra("action") ?: ""),
@@ -112,6 +126,10 @@ class MainActivity : FlutterFragmentActivity() {
                 "nowPlaying" -> {
                     notifier
                     media.update(call.arguments as? Map<String, Any?> ?: emptyMap())
+                    result.success(null)
+                }
+                "maxRefresh" -> {
+                    maxRefresh(call.arguments == true)
                     result.success(null)
                 }
                 "stay" -> {
