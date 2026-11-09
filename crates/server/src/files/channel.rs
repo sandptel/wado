@@ -21,7 +21,7 @@ use webrtc::peer_connection::RTCPeerConnection;
 use webrtc::peer_connection::configuration::RTCConfiguration;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
-use wado_protocol::files::{FILES_CHANNEL, FileFrame, FileReq};
+use wado_protocol::files::{Clash, FILES_CHANNEL, FileFrame, FileReq};
 
 use crate::gate::Gate;
 
@@ -361,19 +361,16 @@ pub async fn dispatch(chan: Arc<Chan>, id: u32, req: FileReq) {
                 .await
             }
             Trash { paths } => {
-                many(&chan, id, "trash", &paths, |p| super::trash::trash(&sc, p)).await
+                many(&chan, id, "trash", &paths, |p| {
+                    super::trash::trash(&sc, p).map(|()| None)
+                })
+                .await
             }
             Move { paths, dest, clash } => {
-                many(&chan, id, "move", &paths, |p| {
-                    super::ops::transfer(&sc, p, &dest, clash, false)
-                })
-                .await
+                transfer(&chan, &sc, id, &paths, &dest, clash, false).await
             }
             Copy { paths, dest, clash } => {
-                many(&chan, id, "copy", &paths, |p| {
-                    super::ops::transfer(&sc, p, &dest, clash, true)
-                })
-                .await
+                transfer(&chan, &sc, id, &paths, &dest, clash, true).await
             }
             Quick => chan.reply(id, super::quick::quick(&sc)).await,
             Thumb { path } => match super::thumb::thumb(&sc, &path).await {
@@ -490,22 +487,53 @@ pub async fn dispatch(chan: Arc<Chan>, id: u32, req: FileReq) {
 }
 
 /// Run `op` on each path, auditing each; stop at the first failure and say which.
+/// Do `op` to each of `paths`, stopping at the first refusal. Answered `{to}`: where each one
+/// landed, for those that land somewhere (a move or a copy) — what an undo needs.
 async fn many(
     chan: &Chan,
     id: u32,
     name: &str,
     paths: &[String],
-    op: impl Fn(&str) -> Result<(), String>,
+    op: impl Fn(&str) -> Result<Option<String>, String>,
 ) {
+    let mut to = Vec::new();
     for p in paths {
         let r = op(p);
-        chan.audit(name, p, 0, &r);
-        if let Err(e) = r {
-            let base = p.rsplit('/').next().unwrap_or(p);
-            return chan.fail(id, format!("{base}: {e}")).await;
+        chan.audit(name, p, 0, &r.as_ref().map(|_| ()).map_err(Clone::clone));
+        match r {
+            Ok(t) => to.extend(t),
+            Err(e) => {
+                let base = p.rsplit('/').next().unwrap_or(p);
+                return chan.fail(id, format!("{base}: {e}")).await;
+            }
         }
     }
-    chan.reply(id, json!({})).await;
+    chan.reply(id, json!({ "to": to })).await;
+}
+
+/// Move or copy `paths` into `dest`. Asked to fail on a clash, it checks every name first, so a
+/// clash refuses the whole selection rather than leaving half of it moved.
+async fn transfer(
+    chan: &Chan,
+    sc: &super::scope::Scope,
+    id: u32,
+    paths: &[String],
+    dest: &str,
+    clash: Clash,
+    copy: bool,
+) {
+    if clash == Clash::Fail {
+        match super::ops::clashes(sc, paths, dest) {
+            Ok(true) => return chan.fail(id, "exists".to_string()).await,
+            Ok(false) => {}
+            Err(e) => return chan.fail(id, e).await,
+        }
+    }
+    let name = if copy { "copy" } else { "move" };
+    many(chan, id, name, paths, |p| {
+        super::ops::transfer(sc, p, dest, clash, copy).map(Some)
+    })
+    .await
 }
 
 /// Audit a one-path operation and answer it.

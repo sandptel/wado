@@ -21,14 +21,14 @@ pub fn rename(sc: &Scope, path: &str, to: &str) -> Result<(), Refusal> {
     dir.rename_at(&name, &dir, to, false).map_err(say)
 }
 
-/// Move or copy `path` into the folder `dest`.
+/// Move or copy `path` into the folder `dest`; the path it landed at (a clash may rename it).
 pub fn transfer(
     sc: &Scope,
     path: &str,
     dest: &str,
     clash: Clash,
     copy: bool,
-) -> Result<(), Refusal> {
+) -> Result<String, Refusal> {
     let (from, name) = sc.parent(path)?;
     let to = sc.dir(dest)?;
     if to.real.starts_with(from.real.join(&name)) {
@@ -45,9 +45,10 @@ pub fn transfer(
             }
         }
     }
+    let landed = format!("{}/{target}", dest.trim_end_matches('/'));
     if !copy {
         match from.rename_at(&name, &to, &target, false) {
-            Ok(()) => return Ok(()),
+            Ok(()) => return Ok(landed),
             // Another filesystem: copy, then remove the original.
             Err(e) if e.raw_os_error() == Some(libc::EXDEV) => {}
             Err(e) => return Err(say(e)),
@@ -63,7 +64,16 @@ pub fn transfer(
         };
         r.map_err(|e| format!("copied, but the original could not be removed: {}", say(e)))?;
     }
-    Ok(())
+    Ok(landed)
+}
+
+/// Whether any of `paths` would clash in `dest` — asked before moving or copying any, so a
+/// clash never leaves half of a selection moved.
+pub fn clashes(sc: &Scope, paths: &[String], dest: &str) -> Result<bool, Refusal> {
+    let to = sc.dir(dest)?;
+    Ok(paths
+        .iter()
+        .any(|p| p.rsplit('/').next().is_some_and(|n| to.has(n))))
 }
 
 /// Copy `name` in `from` to `to_name` in `to`, a folder recursively. Symlinks are recreated as
@@ -141,7 +151,9 @@ mod tests {
         );
         transfer(&sc, &p("docs/a.txt"), &p("renamed"), Clash::Fail, true).unwrap();
         assert!(transfer(&sc, &p("docs/a.txt"), &p("renamed"), Clash::Fail, true).is_err());
-        transfer(&sc, &p("docs/a.txt"), &p("renamed"), Clash::Rename, true).unwrap();
+        assert!(clashes(&sc, &[p("docs/a.txt")], &p("renamed")).unwrap());
+        let landed = transfer(&sc, &p("docs/a.txt"), &p("renamed"), Clash::Rename, true).unwrap();
+        assert_eq!(landed, p("renamed/a (1).txt"));
         assert!(r.join("renamed/a (1).txt").exists());
         transfer(&sc, &p("docs"), &p("renamed"), Clash::Fail, false).unwrap();
         assert!(r.join("renamed/docs/a.txt").exists() && !r.join("docs").exists());
