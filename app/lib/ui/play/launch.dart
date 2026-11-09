@@ -15,11 +15,14 @@ import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
 import '../widgets/sheet.dart';
+import '../widgets/soon.dart';
 import 'poster.dart';
 import 'setup.dart';
 
 /// Open an app of [c] as a game: set up once, then straight in.
 Future<void> openGame(BuildContext context, Computer c, {required String name, required String exec, String? icon, GlobalKey? from}) async {
+  // ponytail: only the selected computer's features are known; another's answers when it dials.
+  if (Nav.I.selected == c.key && !may('session')) return;
   var p = GameMode.I.of(c.key, exec);
   if (p == null) {
     p = await setUpGame(context, name: name, exec: exec, icon: icon);

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/core_host.dart';
 import '../../wado/host.dart';
+import '../../wado/host_caps.dart';
 import '../../wado/nav.dart';
 import '../../wado/reach.dart';
 import '../../wado/relay_link.dart';
@@ -23,6 +24,7 @@ import '../passkey/passkey_card.dart';
 import 'quick.dart';
 import '../../wado/devices.dart';
 import '../widgets/sheet.dart';
+import '../widgets/soon.dart';
 import 'actions.dart';
 import 'sessions.dart';
 import 'claude.dart';
@@ -125,7 +127,7 @@ class _ComputerPageState extends State<ComputerPage> {
                     ],
                     const SizedBox(height: 12),
                     sx(ActionTiles(r: r)),
-                    sx(Sessions(r: r)),
+                    ?gated('session', sx(Sessions(r: r))),
                     // Claude's cards come over the selected computer's own link.
                     if (r.selected && !off && ((Host.I.config.value?['grants'] as Map?)?['shells'] ?? true) == true)
                       sx(const Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Sect('Claude'), SizedBox(height: 8), ClaudeSection()]))
@@ -153,7 +155,8 @@ class _ComputerPageState extends State<ComputerPage> {
                       ])),
                     ],
                     sx(const Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Sect('This computer'), SizedBox(height: 8), _SettingsList()])),
-                    if (!off) sx(const Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Sect('Clipboard'), SizedBox(height: 8), Clips()])),
+                    if (!off) ?gated('clipboard', sx(const Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Sect('Clipboard'), SizedBox(height: 8), Clips()]))),
+                    if (HostCaps.now.mac) sx(const Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Sect('On this Mac'), SizedBox(height: 8), _OnThisMac()])),
                   ]),
                 ),
               ),
@@ -366,9 +369,9 @@ class _SettingsList extends StatelessWidget {
     final wifi = (h?['wifi'] as Map<String, dynamic>?)?['connected'];
     final conn = 'Via relay${wifi != null ? ' · Wi-Fi $wifi' : ''}';
     return ListBox(children: [
-      NavRow(icon: 'monitor', hue: '0D', title: 'Display & session', sub: '$res · ${s.i('fps')} fps · $q', onOpen: () => Nav.I.openPage('display_session')),
+      ?gated('session', NavRow(icon: 'monitor', hue: '0D', title: 'Display & session', sub: '$res · ${s.i('fps')} fps · $q', onOpen: () => Nav.I.openPage('display_session'))),
       NavRow(icon: 'phone', hue: '0C', title: 'Virtual input', sub: 'Touchpad · Keyboard · Gamepad', onOpen: () => Nav.I.openPage('input')),
-      NavRow(icon: 'sound', hue: '0E', title: 'Sound & devices', sub: sound, onOpen: () => Nav.I.openPage('sound_devices')),
+      ?gated('audio', NavRow(icon: 'sound', hue: '0E', title: 'Sound & devices', sub: sound, onOpen: () => Nav.I.openPage('sound_devices'))),
       NavRow(icon: 'net', hue: '09', title: 'Connection & trust', sub: conn, onOpen: () => Nav.I.openPage('connection_trust')),
       Devices.may
           ? NavRow(icon: 'phone', hue: '0A', title: 'Devices', sub: 'Who is signed in · let a device in', onOpen: () => Nav.I.openPage('devices'))
@@ -384,5 +387,34 @@ class _SettingsList extends StatelessWidget {
               ).show(context),
             ),
     ]);
+  }
+}
+
+/// What this Mac has not got, once, in plain words: what is coming to macOS, and what is not here
+/// and why — a missing permission verbatim, since it names the System Settings pane.
+class _OnThisMac extends StatelessWidget {
+  const _OnThisMac();
+  @override
+  Widget build(BuildContext context) {
+    final t = Tok.of(context);
+    final h = HostCaps.now;
+    Widget? group(String head, Cap c) {
+      final names = h.named(c).toList();
+      if (names.isEmpty) return null;
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [Expanded(child: Text(head, style: body(context, w: FontWeight.w600, color: t.bright))), if (c == Cap.later) const WhenBadge(When.soon)]),
+        for (final n in names)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(capLabel(n), style: body(context, size: .8125, w: FontWeight.w600, color: t.text)),
+              if (h.state(n).why.isNotEmpty) Why(h.state(n).why),
+            ]),
+          ),
+      ]);
+    }
+
+    final groups = [?group('Not on this Mac', Cap.off), ?group('Coming to macOS', Cap.later)];
+    return WCard(gap: 14, children: groups.isEmpty ? [const Why('Everything wado offers works on this Mac.')] : groups);
   }
 }

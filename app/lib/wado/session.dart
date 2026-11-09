@@ -14,6 +14,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import '../ui/theme/look.dart';
 import 'apps.dart';
 import 'console_layout.dart' show pictureRoom;
+import 'host_caps.dart';
 import 'latency.dart';
 import 'log.dart';
 import 'relay_link.dart';
@@ -279,6 +280,10 @@ class Session {
 
   /// Start (or rejoin) a desktop on the selected computer — a person's tap.
   void start() {
+    // Every way in (Desktop, ▶, a game, the session list) comes through here: a computer with no
+    // sessions (a Mac, for now) says why instead of dialling one.
+    final can = HostCaps.now.state('session');
+    if (!can.on) return Multi.I.note(can.why);
     _config = config();
     appliedAt.value++;
     _wanted = true;

@@ -9,6 +9,10 @@ Alpine Linux (alpinelinux)
   source: https://alpinelinux.org
   guidelines: none published
 
+Apple (apple)
+  source: https://www.apple.com
+  guidelines: none published
+
 Arch Linux (archlinux)
   source: https://www.archlinux.org/art
   guidelines: https://wiki.archlinux.org/index.php/DeveloperWiki:TrademarkPolicy#Logo_Usage_Guidelines

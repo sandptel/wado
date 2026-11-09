@@ -5,6 +5,8 @@
 import 'package:flutter/material.dart';
 
 import '../../wado/host.dart';
+import '../../wado/host_caps.dart';
+import '../../wado/multi.dart';
 import '../../wado/nav.dart';
 import '../../wado/reach.dart';
 import '../../wado/relay_link.dart';
@@ -17,8 +19,12 @@ import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
 import '../widgets/sheet.dart';
+import '../widgets/soon.dart';
 
 enum Door { touchpad, keyboard, gamepad }
+
+/// The host capability each door needs (crates/protocol/src/caps.rs).
+String doorCap(Door d) => switch (d) { Door.touchpad => 'touch', Door.keyboard => 'keys', Door.gamepad => 'gamepad' };
 
 /// A grant this phone lacks: what it is, and where it is given — always on the computer.
 Locked notAllowed(String what, String token) => Locked(
@@ -33,6 +39,9 @@ bool _may(String g) => _grants == null || _grants![g] == true;
 
 /// Why a door is shut, in plain words; null when it opens (input/open.rs `shut`).
 String? shut(Reach r, Door d) {
+  // First: a computer without it (a Mac without Accessibility) says so whatever else is true.
+  final cap = HostCaps.now.state(doorCap(d));
+  if (!cap.on) return cap.why;
   if (!r.online) return 'Offline';
   if (!_may('input')) return 'Not allowed for this phone';
   final caps = (Host.I.config.value?['caps'] as List?)?.cast<String>();
@@ -89,7 +98,7 @@ class ActionTiles extends StatelessWidget {
       deskSub = "Start at this screen's size";
     }
     final tiles = <Widget>[
-      _Act(
+      ?gated('session', _Act(
         icon: 'play',
         fill: true,
         title: 'Desktop',
@@ -97,7 +106,7 @@ class ActionTiles extends StatelessWidget {
         primary: true,
         badge: running && !r.busy ? 'running' : (r.busy && !idleElsewhere ? 'take over' : null),
         onTap: off && !r.busy ? null : () => desktop(r),
-      ),
+      )),
       _ViTile(r: r),
       _Act(
         icon: 'folder',
@@ -105,13 +114,13 @@ class ActionTiles extends StatelessWidget {
         sub: filesOk ? 'Browse, send, download' : 'Not allowed for this phone · why?',
         onTap: off ? null : (filesOk ? () => Nav.I.openPage('files') : () => notAllowed('Files', 'files-ro').show(context)),
       ),
-      _Act(
+      ?gated('pty', _Act(
         icon: 'term',
         title: 'Shell',
         sub: shellOk ? 'A terminal, no video' : 'Not allowed for this phone · why?',
         badge: shellsOpen > 0 ? '$shellsOpen open' : null,
         onTap: off ? null : (shellOk ? () => Nav.I.openPage('shells') : () => notAllowed('Shells', 'shells').show(context)),
-      ),
+      )),
     ];
     // `repeat(auto-fit, minmax(max(8.5rem, 50% - 4px), 1fr))`: two to a row, rows as tall as
     // their tallest tile; one to a row when the column is too narrow for two.
@@ -120,7 +129,13 @@ class ActionTiles extends StatelessWidget {
       Widget row(Widget a, Widget b) => IntrinsicHeight(
             child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Expanded(child: a), const SizedBox(width: 8), Expanded(child: b)]),
           );
-      return Column(children: [row(tiles[0], tiles[1]), const SizedBox(height: 8), row(tiles[2], tiles[3])]);
+      // A computer without a session or shells has fewer: an odd one out fills its row.
+      return Column(children: [
+        for (var i = 0; i < tiles.length; i += 2) ...[
+          if (i > 0) const SizedBox(height: 8),
+          i + 1 < tiles.length ? row(tiles[i], tiles[i + 1]) : tiles[i],
+        ],
+      ]);
     });
   }
 }
@@ -303,17 +318,19 @@ class _ViDoor extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Tok.of(context);
     final label = why == null ? name : '$name — $why';
+    // Shut for want of the computer's own feature: still answers a tap, with the reason.
+    final tell = !HostCaps.now.state(doorCap(door)).on;
     return Tooltip(
       message: label,
       child: Press(
-        onTap: why == null ? () => openDoor(context, door) : null,
-        enabled: why == null,
+        onTap: why == null ? () => openDoor(context, door) : (tell ? () => Multi.I.note(why!) : null),
+        enabled: why == null || tell,
         label: label,
         child: Container(
           height: 44,
           decoration: BoxDecoration(color: t.s3, borderRadius: BorderRadius.circular(t.r2)),
           alignment: Alignment.center,
-          child: WIcon(icon, color: t.bright),
+          child: WIcon(icon, color: tell ? t.dim : t.bright),
         ),
       ),
     );

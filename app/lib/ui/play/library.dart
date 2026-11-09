@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../../core/core_host.dart';
 import '../../wado/apps.dart';
 import '../../wado/game_mode.dart';
+import '../../wado/host.dart';
 import '../../wado/nav.dart';
 import '../../wado/play.dart';
 import '../../wado/session.dart';
@@ -17,6 +18,7 @@ import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
 import '../widgets/sheet.dart';
+import '../widgets/soon.dart';
 import 'launch.dart';
 import 'poster.dart';
 import 'setup.dart';
@@ -40,7 +42,7 @@ class PlaySection extends StatelessWidget {
   const PlaySection({super.key});
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-        listenable: Listenable.merge([GameMode.I, Play.I, Session.I.apps, CoreHost.I.computers, Nav.I.view, homeView]),
+        listenable: Listenable.merge([GameMode.I, Play.I, Session.I.apps, CoreHost.I.computers, Nav.I.view, homeView, Host.I.config]),
         builder: (context, _) {
           if (homeAll) return const _All();
           final c = selectedComputer();
@@ -52,7 +54,8 @@ class PlaySection extends StatelessWidget {
             for (final r in mine)
               if (r.kind == 'game') ?GameMode.I.of(c.key, r.exec),
           ];
-          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          // Games run in a session: a computer without one (a Mac, for now) shows them dimmed.
+          return gated('session', Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             if (lately && recentGames.isNotEmpty) ...[
               const Sect('Jump back in'),
               const SizedBox(height: 8),
@@ -65,7 +68,7 @@ class PlaySection extends StatelessWidget {
             Sect('Games', action: games.isEmpty ? null : 'Add', onAction: games.isEmpty ? null : () => addGame(context, c)),
             const SizedBox(height: 8),
             _Shelf(c: c, games: games),
-          ]);
+          ])) ?? const SizedBox.shrink();
         },
       );
 }

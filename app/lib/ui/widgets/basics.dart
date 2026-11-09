@@ -297,7 +297,7 @@ class IconBtn extends StatelessWidget {
       );
 }
 
-enum When { apply, restart, host }
+enum When { apply, restart, host, soon }
 
 /// `WhenBadge`.
 class WhenBadge extends StatelessWidget {
@@ -310,12 +310,13 @@ class WhenBadge extends StatelessWidget {
       When.apply => (t.accent, 'on apply'),
       When.restart => (t.base[0xA], 'next start'),
       When.host => (t.base[0xE], 'set by host'),
+      When.soon => (t.base[0xA], 'Coming to macOS'),
     };
     return Container(
       margin: const EdgeInsets.only(left: 2),
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(color: fade(c, 86), borderRadius: BorderRadius.circular(999)),
-      child: Text(text.toUpperCase(), style: TextStyle(fontFamily: Tokens.body, fontSize: rem(context, .5938), fontWeight: FontWeight.w600, letterSpacing: 0.8, color: c)),
+      child: Text(when == When.soon ? text : text.toUpperCase(), style: TextStyle(fontFamily: Tokens.body, fontSize: rem(context, .5938), fontWeight: FontWeight.w600, letterSpacing: 0.8, color: c)),
     );
   }
 }

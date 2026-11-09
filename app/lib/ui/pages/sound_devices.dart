@@ -12,6 +12,7 @@ import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
 import '../widgets/slider.dart';
+import '../widgets/soon.dart';
 
 /// A sink label short enough for a chip.
 String _short(String label) {
@@ -93,10 +94,8 @@ class SoundDevices extends StatelessWidget {
             ]),
             const SizedBox(height: 8),
           ],
-          const Why('"This device" plays on the device you are holding. Moving an app there sends its sound here instead of out of the computer.'),
-          const Sect('Bluetooth'),
-          const SizedBox(height: 8),
-          const Bluetooth(),
+          ?gated('viewer_sink', const Why('"This device" plays on the device you are holding. Moving an app there sends its sound here instead of out of the computer.')),
+          if (gated('bluetooth', const Bluetooth()) case final w?) ...[const Sect('Bluetooth'), const SizedBox(height: 8), w],
         ]);
       },
     );

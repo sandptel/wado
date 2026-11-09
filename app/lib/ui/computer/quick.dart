@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../wado/host.dart';
 import '../../wado/nav.dart';
+import '../widgets/soon.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
@@ -72,45 +73,49 @@ class _QuickState extends State<Quick> {
         ]),
         const SizedBox(height: 8),
       ],
-      if (b is num)
-        ThickSlider(label: 'Brightness', icon: 'sun', value: b.toDouble(), step: .1, ticks: 10, onChange: (v) => Host.I.act({'do': 'brightness', 'level': v}))
-      else
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(color: t.s1, borderRadius: BorderRadius.circular(t.r3)),
-          child: Row(children: [
-            WIcon('sun', color: t.dim),
-            const SizedBox(width: 12),
-            Expanded(child: Text('${widget.name} has no screen brightness wado can set.', style: body(context, size: .8125, color: t.dim))),
-          ]),
-        ),
-      const SizedBox(height: 8),
+      // Each is the computer's to have: a Mac without one leaves it out ("On this Mac" says why).
+      if (gated(
+            'brightness',
+            b is num
+                ? ThickSlider(label: 'Brightness', icon: 'sun', value: b.toDouble(), step: .1, ticks: 10, onChange: (v) => Host.I.act({'do': 'brightness', 'level': v}))
+                : Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(color: t.s1, borderRadius: BorderRadius.circular(t.r3)),
+                    child: Row(children: [
+                      WIcon('sun', color: t.dim),
+                      const SizedBox(width: 12),
+                      Expanded(child: Text('${widget.name} has no screen brightness wado can set.', style: body(context, size: .8125, color: t.dim))),
+                    ]),
+                  ),
+          ) case final w?) ...[w, const SizedBox(height: 8)],
       Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Expanded(child: QTile(icon: 'eye', title: 'Keep awake', on: awake, sub: awake ? "Won't sleep" : 'Sleeps as usual', onFlip: () => Host.I.act({'do': 'keep_awake', 'on': !awake}))),
-        const SizedBox(width: 8),
-        Expanded(
-          child: QTile(
-            icon: 'wifi',
-            title: 'Wi-Fi',
-            on: wifiOn,
-            sub: wifiSub,
-            disabled: wifi == null || !owner,
-            onFlip: () => wifiOn ? setState(() => askWifi = true) : Host.I.act({'do': 'wifi_radio', 'on': true, 'minutes': null}),
-            onMore: () => Nav.I.openPage('connection_trust'),
+        for (final (i, tile) in [
+          ?gated('power_inhibit', QTile(icon: 'eye', title: 'Keep awake', on: awake, sub: awake ? "Won't sleep" : 'Sleeps as usual', onFlip: () => Host.I.act({'do': 'keep_awake', 'on': !awake}))),
+          ?gated(
+            'wifi',
+            QTile(
+              icon: 'wifi',
+              title: 'Wi-Fi',
+              on: wifiOn,
+              sub: wifiSub,
+              disabled: wifi == null || !owner,
+              onFlip: () => wifiOn ? setState(() => askWifi = true) : Host.I.act({'do': 'wifi_radio', 'on': true, 'minutes': null}),
+              onMore: () => Nav.I.openPage('connection_trust'),
+            ),
           ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: QTile(
-            icon: 'bt',
-            title: 'Bluetooth',
-            on: btOn,
-            sub: btSub,
-            disabled: bt == null,
-            onFlip: () => Host.I.act({'do': 'bt_power', 'on': !btOn}),
-            onMore: () => Nav.I.openPage('sound_devices'),
+          ?gated(
+            'bluetooth',
+            QTile(
+              icon: 'bt',
+              title: 'Bluetooth',
+              on: btOn,
+              sub: btSub,
+              disabled: bt == null,
+              onFlip: () => Host.I.act({'do': 'bt_power', 'on': !btOn}),
+              onMore: () => Nav.I.openPage('sound_devices'),
+            ),
           ),
-        ),
+        ].indexed) ...[if (i > 0) const SizedBox(width: 8), Expanded(child: tile)],
       ]),
       if (wifi != null && !owner) ...[const SizedBox(height: 8), Why("Only the owner device can change ${widget.name}'s Wi-Fi.")],
       if (askWifi) ...[

@@ -25,6 +25,8 @@ const IDS: &[(&str, &str)] = &[
     ("deepin", "deepin"),
     ("solus", "solus"),
     ("steamos", "steam"),
+    // Not Linux at all: a Mac host says `macos`.
+    ("macos", "apple"),
 ];
 
 /// The fallback: Tux.

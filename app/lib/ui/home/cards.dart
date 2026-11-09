@@ -5,6 +5,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../core/core_host.dart';
 import '../../wado/host.dart';
+import '../../wado/host_caps.dart';
 import '../../wado/nav.dart';
 import '../../wado/play.dart';
 import '../../wado/online.dart';
@@ -15,6 +16,7 @@ import '../../wado/session.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
+import '../widgets/soon.dart';
 import '../motion/motion.dart';
 import 'home_screen.dart';
 import 'running.dart';
@@ -37,6 +39,8 @@ class OsDisc extends StatelessWidget {
 }
 
 void go(Computer c) {
+  // A Mac not yet asked what it has: its page says, rather than dialling a session it may not have.
+  if (c.os == 'macos' && Nav.I.selected != c.key) return Nav.I.openComputer(c.key);
   Play.I.note(c.key, 'desktop', 'Desktop', '');
   if (Nav.I.selected != c.key) {
     Nav.I.select(c.key);
@@ -55,7 +59,7 @@ class Cards extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ListenableBuilder(
         // What [Reach.of] reads: a const child of home would otherwise keep its first words.
-        listenable: Listenable.merge([CoreHost.I.computers, RelayLink.I.up, RelayLink.I.words, RelayLink.I.seatBusy, Online.I.map, SideLinks.I.state, Host.I.sessions, Session.I.on, Session.I.stage]),
+        listenable: Listenable.merge([CoreHost.I.computers, RelayLink.I.up, RelayLink.I.words, RelayLink.I.seatBusy, Online.I.map, SideLinks.I.state, Host.I.sessions, Host.I.config, Session.I.on, Session.I.stage]),
         builder: (context, _) => _build(context),
       );
 
@@ -107,6 +111,8 @@ class _CardState extends State<_Card> {
     final r = Reach.of(c);
     final os = [c.os, c.desktop].where((x) => x.isNotEmpty).join(' · ');
     final live = widget.sessions > 0;
+    // The selected computer said it has no sessions (a Mac, for now): ▶ is shut, and its tap says why.
+    final noSession = c.key == Nav.I.selected && !HostCaps.now.state('session').on;
     // The card *is* the hero while it flies (ui/motion): it steps out until the page has landed.
     return ValueListenableBuilder(
       valueListenable: Motion.flying,
@@ -162,7 +168,13 @@ class _CardState extends State<_Card> {
               ),
             ),
             const SizedBox(width: 4),
-            _Go(live: live, enabled: r.online || r.busy, label: live ? 'Rejoin the desktop on ${c.name}' : 'Start a desktop on ${c.name}', onTap: () => go(c)),
+            _Go(
+              live: live,
+              enabled: (r.online || r.busy) && !noSession,
+              label: live ? 'Rejoin the desktop on ${c.name}' : 'Start a desktop on ${c.name}',
+              onTap: () => go(c),
+              onShut: noSession ? () => may('session') : null,
+            ),
           ]),
         ),
       ),
@@ -172,10 +184,12 @@ class _CardState extends State<_Card> {
 
 /// `.cgo`: the round ▶, solid with a pulse ring while a session runs.
 class _Go extends StatefulWidget {
-  const _Go({required this.live, required this.enabled, required this.label, required this.onTap});
+  const _Go({required this.live, required this.enabled, required this.label, required this.onTap, this.onShut});
   final bool live, enabled;
   final String label;
   final VoidCallback onTap;
+  /// A shut ▶'s tap, when it has something to say.
+  final VoidCallback? onShut;
   @override
   State<_Go> createState() => _GoState();
 }
@@ -206,7 +220,7 @@ class _GoState extends State<_Go> with SingleTickerProviderStateMixin {
     final bg = !widget.enabled ? t.s2 : (widget.live ? t.accent : fade(t.accent, 82));
     final fg = !widget.enabled ? t.dim : (widget.live ? t.onAccent : t.accent);
     return Press(
-      onTap: widget.enabled ? widget.onTap : null,
+      onTap: widget.enabled ? widget.onTap : widget.onShut,
       label: widget.label,
       scale: .9,
       onPressed: (d) => setState(() => _down = d),

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/core_host.dart';
 import '../../wado/host.dart';
+import '../../wado/host_caps.dart';
 import '../../wado/online.dart';
 import '../../wado/reach.dart';
 import '../../wado/side_links.dart';
@@ -42,7 +43,15 @@ class InputHub extends StatelessWidget {
                   )
                 : notAllowed('The touchpad and keyboard', 'input'))
             .show(context);
-        Widget door(String icon, String hue, String title, String sub, String note, VoidCallback onOpen, String settings) => WCard(children: [
+        // The computer's own lack comes first: a Mac without Accessibility, or a feature it has not
+        // got yet — its reason verbatim, since it names the System Settings pane.
+        Widget door(String icon, String hue, String title, String sub, String cap, String shutWhy, VoidCallback onOpen, String settings) {
+          final has = HostCaps.now.state(cap);
+          final note = has.on ? shutWhy : has.why;
+          void tell() => has.on
+              ? explain(note.startsWith('Not'))
+              : Locked(has.cap == Cap.later ? '$title is coming to macOS' : '$title is not available on $name', has.why).show(context);
+          return WCard(children: [
               Row(children: [
                 Disc(hue: slot(context, hue), size: 46, child: WIcon(icon, color: slot(context, hue))),
                 const SizedBox(width: 12),
@@ -54,17 +63,18 @@ class InputHub extends StatelessWidget {
                 ),
               ]),
               Row(children: [
-                Expanded(child: Btn('Open', primary: note.isEmpty, icon: note.isEmpty ? 'play' : 'lock', onTap: note.isEmpty ? onOpen : () => explain(note.startsWith('Not')))),
+                Expanded(child: Btn('Open', primary: note.isEmpty, icon: note.isEmpty ? 'play' : 'lock', onTap: note.isEmpty ? onOpen : tell)),
                 const SizedBox(width: 8),
                 Expanded(child: Btn('Settings', icon: 'sliders', onTap: () => Nav.I.openPage(settings))),
               ]),
             ]);
+        }
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          door('trackpad', '0D', 'Touchpad', 'Move the pointer, click, scroll', why(true), () => openPad(context, keyboard: false), 'trackpad'),
+          door('trackpad', '0D', 'Touchpad', 'Move the pointer, click, scroll', 'touch', why(true), () => openPad(context, keyboard: false), 'trackpad'),
           const SizedBox(height: 10),
-          door('kbd', '0E', 'Keyboard', "Type with this phone's keyboard, voice too", why(true), () => openPad(context, keyboard: true), 'keyboard'),
+          door('kbd', '0E', 'Keyboard', "Type with this phone's keyboard, voice too", 'keys', why(true), () => openPad(context, keyboard: true), 'keyboard'),
           const SizedBox(height: 10),
-          door('pad', '0B', 'Gamepad', 'A controller on the computer, one per phone', why(false), () => openGamepad(context), 'gamepad'),
+          door('pad', '0B', 'Gamepad', 'A controller on the computer, one per phone', 'gamepad', why(false), () => openGamepad(context), 'gamepad'),
         ]);
       },
     );

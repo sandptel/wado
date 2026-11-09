@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/core_host.dart';
 import '../../wado/host.dart';
+import '../../wado/host_caps.dart';
 import '../../wado/nav.dart';
 import '../../wado/relay_link.dart';
 import '../computer/quick.dart' show WifiOff;
@@ -15,6 +16,7 @@ import 'push_card.dart';
 import '../theme/look.dart';
 import '../widgets/basics.dart';
 import '../widgets/fields.dart';
+import '../widgets/soon.dart';
 import 'display_session.dart' show HeadCard;
 import 'host_settings.dart';
 
@@ -45,10 +47,9 @@ class ConnectionTrust extends StatelessWidget {
           const SizedBox(height: 12),
           const PasskeyCard(),
           const SizedBox(height: 12),
-          const PushCard(),
-          const Sect('Its Wi-Fi'),
-          const SizedBox(height: 8),
-          const _Wifi(),
+          ?gated('notifications', const PushCard()),
+          // A Mac's Wi-Fi is its own Control Centre's: "On this Mac" says so.
+          if (HostCaps.now.state('wifi').cap != Cap.off) ...[const Sect('Its Wi-Fi'), const SizedBox(height: 8), ?gated('wifi', const _Wifi())],
           const SizedBox(height: 12),
           const HostNotes(),
           const OwnerOnly(),
@@ -218,6 +219,7 @@ class Fetch extends StatelessWidget {
         'arch' || 'endeavouros' || 'manjaro' => '      /\\\n     /  \\\n    /\\   \\\n   /  __  \\\n  /  (  )  \\\n / __|  |__\\\n/.`        `.\\',
         'ubuntu' || 'pop' => '        _\n    ---(_)\n_/  ---  \\\n(_) |   |\n  \\  --- _/\n     ---(_)',
         'debian' => '  _____\n /  __ \\\n|  /    |\n|  \\___-\n-_\n  --_',
+        'macos' => "        .:'\n    __ :'__\n .'`  `-'  ``.\n:          .-'\n:         :\n :         `-;\n  `.__.-.__.'",
         'fedora' => '      _____\n     /   __)\\\n     |  /  \\ \\\n  ___|  |__/ /\n / (_    _)_/\n/ /  |  |\n\\ \\__/  |\n \\(_____/',
         _ => '    .--.\n   |o_o |\n   |:_/ |\n  //   \\ \\\n (|     | )\n/\'\\_   _/`\\\n\\___)=(___/',
       };
