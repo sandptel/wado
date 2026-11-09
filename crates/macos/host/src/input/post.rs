@@ -20,6 +20,26 @@ pub enum Phase {
     MomentumEnded,
 }
 
+/// The Dock's own gestures, which follow the fingers. The value is the Dock's motion number.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Dock {
+    /// Between Spaces and full-screen apps.
+    Spaces = 1,
+    /// Mission Control (up) and App Exposé (down).
+    Mission = 2,
+    /// Launchpad (pinch in) and Show Desktop (spread).
+    Pinch = 3,
+}
+
+/// Where a followed gesture is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Stage {
+    Began,
+    Changed,
+    Ended,
+    Cancelled,
+}
+
 /// Modifier flags, as `CGEventFlags` spells them.
 pub mod flag {
     pub const SHIFT: u64 = 0x0002_0000;
@@ -45,6 +65,11 @@ pub trait Poster: Send {
     fn key(&mut self, kvk: u16, down: bool, flags: u64);
     /// Committed text, typed whatever the keyboard layout.
     fn text(&mut self, s: &str);
+    /// A Dock gesture at `progress` (±1.0 ≈ one whole Space, or Mission Control fully open),
+    /// signed as the Dock reads it; `exit`: its speed as the fingers lift.
+    fn dock(&mut self, kind: Dock, progress: f64, stage: Stage, exit: f64);
+    /// A two-finger pinch: `by` is the change in scale since the last one (positive: zoom in).
+    fn magnify(&mut self, by: f64, stage: Stage);
 }
 
 #[cfg(test)]
@@ -59,6 +84,8 @@ pub mod fake {
         Scroll((f64, f64), Phase),
         Key(u16, bool, u64),
         Text(String),
+        Dock(Dock, f64, Stage),
+        Magnify(f64, Stage),
     }
 
     pub struct Rec {
@@ -90,6 +117,15 @@ pub mod fake {
                 .iter()
                 .filter_map(|e| match e {
                     Ev::Scroll(_, p) => Some(*p),
+                    _ => None,
+                })
+                .collect()
+        }
+        pub fn docks(&self) -> Vec<(Dock, f64, Stage)> {
+            self.evs
+                .iter()
+                .filter_map(|e| match e {
+                    Ev::Dock(k, p, s) => Some((*k, *p, *s)),
                     _ => None,
                 })
                 .collect()
@@ -127,6 +163,12 @@ pub mod fake {
         }
         fn text(&mut self, s: &str) {
             self.evs.push(Ev::Text(s.to_string()));
+        }
+        fn dock(&mut self, kind: Dock, progress: f64, stage: Stage, _exit: f64) {
+            self.evs.push(Ev::Dock(kind, progress, stage));
+        }
+        fn magnify(&mut self, by: f64, stage: Stage) {
+            self.evs.push(Ev::Magnify(by, stage));
         }
     }
 }

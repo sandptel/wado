@@ -6,7 +6,7 @@
 
 use std::ffi::c_void;
 
-use super::post::{Button, Phase, Poster};
+use super::post::{Button, Dock, Phase, Poster, Stage};
 
 type Ref = *mut c_void;
 
@@ -84,6 +84,81 @@ const POINT_DELTA_2: u32 = 97;
 const SCROLL_PHASE: u32 = 99;
 const MOMENTUM_PHASE: u32 = 123;
 
+// Gesture events, as a trackpad's reach the Dock and apps. These fields are undocumented; the
+// numbers are the ones Mac Mouse Fix found (`TouchSimulator.m`, its pre-macOS-27 path).
+const SESSION_TAP: u32 = 1;
+const F_TYPE: u32 = 55;
+const F_41: u32 = 41;
+const V_41: f64 = 33231.0;
+const F_SUBTYPE: u32 = 110;
+const F_ZOOM: u32 = 113;
+const F_MOTION_BITS: u32 = 119;
+const F_MOTION: u32 = 123;
+const F_PROGRESS: u32 = 124;
+const F_EXIT_X: u32 = 129;
+const F_EXIT_Y: u32 = 130;
+const F_PHASE: u32 = 132;
+const F_PHASE_2: u32 = 134;
+const F_PROGRESS_BITS: u32 = 135;
+const F_INVERTED: u32 = 136;
+const F_MOTION_BITS_2: u32 = 139;
+const F_MOTION_2: u32 = 165;
+const T_GESTURE: i64 = 29;
+const T_DOCK: i64 = 30;
+const SUB_ZOOM: i64 = 8;
+const SUB_DOCK_SWIPE: i64 = 23;
+
+/// `IOHIDEventPhaseBits`.
+fn phase_bits(s: Stage) -> i64 {
+    match s {
+        Stage::Began => 1,
+        Stage::Changed => 2,
+        Stage::Ended => 4,
+        Stage::Cancelled => 8,
+    }
+}
+
+/// Bumped by every Dock gesture that begins, so a late repeat of an end never ends a newer one.
+static DOCK_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Post one Dock swipe: a type-30 event with the motion, followed by a bare gesture event.
+fn post_dock(kind: Dock, progress: f64, stage: Stage, exit: f64) {
+    let (phase, motion) = (phase_bits(stage) as f64, kind as i64);
+    // SAFETY: events we create, fill, post and release once each.
+    unsafe {
+        let e30 = CGEventCreate(std::ptr::null_mut());
+        let e29 = CGEventCreate(std::ptr::null_mut());
+        if e30.is_null() || e29.is_null() {
+            return;
+        }
+        CGEventSetDoubleValueField(e30, F_TYPE, T_DOCK as f64);
+        CGEventSetDoubleValueField(e30, F_SUBTYPE, SUB_DOCK_SWIPE as f64);
+        CGEventSetDoubleValueField(e30, F_PHASE, phase);
+        CGEventSetDoubleValueField(e30, F_PHASE_2, phase);
+        CGEventSetDoubleValueField(e30, F_PROGRESS, progress);
+        CGEventSetIntegerValueField(e30, F_PROGRESS_BITS, i64::from((progress as f32).to_bits()));
+        CGEventSetDoubleValueField(e30, F_41, V_41);
+        // The motion again, as the bits of a float.
+        let bits = f64::from(f32::from_bits(motion as u32));
+        CGEventSetDoubleValueField(e30, F_MOTION_BITS, bits);
+        CGEventSetDoubleValueField(e30, F_MOTION_BITS_2, bits);
+        CGEventSetDoubleValueField(e30, F_MOTION, motion as f64);
+        CGEventSetDoubleValueField(e30, F_MOTION_2, motion as f64);
+        // Progress is given as natural scrolling reads it (content follows the fingers).
+        CGEventSetIntegerValueField(e30, F_INVERTED, 1);
+        if matches!(stage, Stage::Ended | Stage::Cancelled) {
+            CGEventSetDoubleValueField(e30, F_EXIT_X, exit);
+            CGEventSetDoubleValueField(e30, F_EXIT_Y, exit);
+        }
+        CGEventSetDoubleValueField(e29, F_TYPE, T_GESTURE as f64);
+        CGEventSetDoubleValueField(e29, F_41, V_41);
+        CGEventPost(SESSION_TAP, e30);
+        CGEventPost(SESSION_TAP, e29);
+        CFRelease(e30);
+        CFRelease(e29);
+    }
+}
+
 /// The modifiers a phone holds: pointer events carry exactly these, never a stray one.
 fn held_flags() -> u64 {
     super::HELD.load(std::sync::atomic::Ordering::Relaxed)
@@ -137,9 +212,12 @@ impl Drop for CgPoster {
 }
 
 /// Post an event someone else made (and still owns) at the HID level.
-pub fn post_event(e: Ref) {
+///
+/// # Safety
+/// `e` is null or a live `CGEventRef` the caller keeps alive for this call.
+pub unsafe fn post_event(e: Ref) {
     if !e.is_null() {
-        // SAFETY: a live event the caller keeps alive for this call.
+        // SAFETY: the caller's promise above.
         unsafe { CGEventPost(HID_TAP, e) };
     }
 }
@@ -283,6 +361,49 @@ impl Poster for CgPoster {
             }
             CGEventSetFlags(e, flags);
             self.post(e);
+        }
+    }
+
+    fn dock(&mut self, kind: Dock, progress: f64, stage: Stage, exit: f64) {
+        use std::sync::atomic::Ordering::Relaxed;
+        if stage == Stage::Began {
+            DOCK_GEN.fetch_add(1, Relaxed);
+        }
+        tracing::debug!(?kind, progress, ?stage, "pad: dock");
+        post_dock(kind, progress, stage, exit);
+        // A busy Dock sometimes misses the end and stays mid-transition; sent again 200 ms
+        // later, as Mac Mouse Fix does, unless another gesture has begun since.
+        if matches!(stage, Stage::Ended | Stage::Cancelled) {
+            let generation = DOCK_GEN.load(Relaxed);
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(200));
+                if DOCK_GEN.load(Relaxed) == generation {
+                    post_dock(kind, progress, stage, exit);
+                }
+            });
+        }
+    }
+
+    fn magnify(&mut self, by: f64, stage: Stage) {
+        // SAFETY: an event we create, fill, post and release once.
+        unsafe {
+            let e = CGEventCreate(std::ptr::null_mut());
+            if e.is_null() {
+                return;
+            }
+            CGEventSetIntegerValueField(e, F_TYPE, T_GESTURE);
+            CGEventSetIntegerValueField(e, F_SUBTYPE, SUB_ZOOM);
+            CGEventSetIntegerValueField(e, F_PHASE, phase_bits(stage));
+            CGEventSetDoubleValueField(e, F_ZOOM, by);
+            CGEventSetLocation(
+                e,
+                CGPoint {
+                    x: self.cursor().0,
+                    y: self.cursor().1,
+                },
+            );
+            CGEventPost(SESSION_TAP, e);
+            CFRelease(e);
         }
     }
 

@@ -72,6 +72,42 @@ fn send(core: &Core, id: &str, v: Value) {
     );
 }
 
+/// How many windows the Dock has on screen: Mission Control adds its own.
+fn dock_windows() -> usize {
+    let out = Command::new("/usr/bin/osascript")
+        .args(["-l", "JavaScript", "-e", "ObjC.import('CoreGraphics'); ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo(1, 0))).filter(w => w.kCGWindowOwnerName == 'Dock').length"])
+        .output()
+        .unwrap();
+    String::from_utf8_lossy(&out.stdout)
+        .trim()
+        .parse()
+        .unwrap_or(0)
+}
+
+/// The current Space's index on the main display, and how many there are.
+fn space() -> (usize, usize) {
+    let js = "ObjC.import('CoreGraphics'); ObjC.bindFunction('CGSMainConnectionID', ['int', []]); \
+        ObjC.bindFunction('CGSCopyManagedDisplaySpaces', ['id', ['int']]); \
+        var d = ObjC.deepUnwrap($.CGSCopyManagedDisplaySpaces($.CGSMainConnectionID()))[0]; \
+        d.Spaces.map(s => s.ManagedSpaceID).indexOf(d['Current Space'].ManagedSpaceID) + ',' + d.Spaces.length";
+    let out = Command::new("/usr/bin/osascript")
+        .args(["-l", "JavaScript", "-e", js])
+        .output()
+        .unwrap();
+    let s = String::from_utf8_lossy(&out.stdout);
+    let (a, b) = s.trim().split_once(',').unwrap_or(("0", "0"));
+    (a.parse().unwrap_or(0), b.parse().unwrap_or(0))
+}
+
+/// The frontmost ordinary window: its owner and where it is.
+fn first_window() -> Option<String> {
+    let out = Command::new("/usr/bin/osascript")
+        .args(["-l", "JavaScript", "-e", "ObjC.import('CoreGraphics'); var w = ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo(1, 0))).filter(w => w.kCGWindowLayer == 0)[0]; w ? w.kCGWindowOwnerName + '@' + Math.round(w.kCGWindowBounds.X) + ',' + Math.round(w.kCGWindowBounds.Y) : ''"])
+        .output()
+        .unwrap();
+    Some(String::from_utf8_lossy(&out.stdout).trim().to_string()).filter(|s| !s.is_empty())
+}
+
 /// Where the pointer is, read by this process (not the daemon).
 fn pointer() -> (f64, f64) {
     let out = Command::new("/usr/bin/osascript")
@@ -106,11 +142,18 @@ fn the_mac_from_a_phone() {
     .expect("a pairing outcome in time")
     .expect("pairs");
     let st = Command::new(env("WADO_E2E_WADO"))
-        .args(["allow", "Mac e2e", "host", "clipboard"])
+        .args(["allow", "Mac e2e", "host", "clipboard", "input"])
         .env("XDG_CONFIG_HOME", env("WADO_E2E_CFG"))
         .status()
         .unwrap();
     assert!(st.success(), "wado allow");
+    // A throwaway device with no passkey: the trackpad is behind one unless its owner says not.
+    let st = Command::new(env("WADO_E2E_WADO"))
+        .args(["passkey", "require", "Mac e2e", "off"])
+        .env("XDG_CONFIG_HOME", env("WADO_E2E_CFG"))
+        .status()
+        .unwrap();
+    assert!(st.success(), "wado passkey require off");
 
     let room = core
         .open_room(key.clone(), Room::Control)
@@ -198,13 +241,33 @@ fn the_mac_from_a_phone() {
 
     // The touchpad moves the real pointer (only when Accessibility is granted to Wado).
     if on.iter().any(|c| c == "touch") {
+        // Touch rides the seat, as the phone's trackpad does; never the control room.
+        let room = core
+            .open_room(
+                key.clone(),
+                Room::Seat {
+                    takeover: true,
+                    instance: String::new(),
+                },
+            )
+            .expect("the seat");
+        wait(&core, 8000, |e| match e {
+            CoreEvent::RoomState { id, view } if *id == room => {
+                matches!(view.state, LinkState::Open { .. }).then_some(())
+            }
+            _ => None,
+        })
+        .expect("the seat opens");
         let before = pointer();
         send(
             &core,
             &room,
             json!({"type": "pad_in", "msg": {"k": "size", "w": 400, "h": 300}}),
         );
-        for (i, x) in [10000u32, 14000, 18000, 22000, 26000].iter().enumerate() {
+        // Toward the middle of the screen, from wherever the pointer is.
+        let right = before.0 < 800.0;
+        let xs = [10000u32, 14000, 18000, 22000, 26000].map(|x| if right { x } else { 36000 - x });
+        for (i, x) in xs.iter().enumerate() {
             send(
                 &core,
                 &room,
@@ -220,10 +283,129 @@ fn the_mac_from_a_phone() {
         std::thread::sleep(Duration::from_millis(400));
         let after = pointer();
         eprintln!("pointer {before:?} → {after:?}");
-        assert!(
-            after.0 > before.0 + 20.0,
-            "the pointer moved right: {before:?} → {after:?}"
-        );
+        let moved = if right {
+            after.0 - before.0
+        } else {
+            before.0 - after.0
+        };
+        assert!(moved > 20.0, "the pointer moved: {before:?} → {after:?}");
+
+        // Three fingers up open Mission Control, as the Mac's trackpad does; down closes it.
+        let calm = dock_windows();
+        let mut seq = 10;
+        let mut swipe = |ys: &[u32]| {
+            for y in ys {
+                let c = json!([[1, 20000, y], [2, 30000, y], [3, 40000, y]]);
+                send(
+                    &core,
+                    &room,
+                    json!({"type": "pad_in", "msg": {"k": "frame", "seq": seq, "t": 16 * seq, "c": c}}),
+                );
+                seq += 1;
+                std::thread::sleep(Duration::from_millis(16));
+            }
+            send(
+                &core,
+                &room,
+                json!({"type": "pad_in", "msg": {"k": "frame", "seq": seq, "t": 16 * seq, "c": []}}),
+            );
+            seq += 1;
+        };
+        // The Dock draws Mission Control in its own time: wait for it, up to 3 s.
+        let settle = |want: &dyn Fn(usize) -> bool| {
+            let until = Instant::now() + Duration::from_secs(3);
+            loop {
+                let n = dock_windows();
+                if want(n) || Instant::now() > until {
+                    return n;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+        };
+        swipe(&[55000, 50000, 44000, 38000, 32000, 26000, 20000]);
+        let open = settle(&|n| n > calm);
+        swipe(&[20000, 26000, 32000, 38000, 44000, 50000, 55000]);
+        let closed = settle(&|n| n == calm);
+        eprintln!("Dock windows: calm {calm}, after up {open}, after down {closed}");
+
+        // Three fingers left bring in the Space on the right (the content follows the fingers),
+        // right bring it back. Only from the first of several Spaces.
+        let at = space();
+        if at.0 == 0 && at.1 > 1 {
+            let mut side = |xs: &[u32]| {
+                for x in xs {
+                    let c = json!([[1, x, 30000], [2, x + 6000, 30000], [3, x + 12000, 30000]]);
+                    send(
+                        &core,
+                        &room,
+                        json!({"type": "pad_in", "msg": {"k": "frame", "seq": seq, "t": 16 * seq, "c": c}}),
+                    );
+                    seq += 1;
+                    std::thread::sleep(Duration::from_millis(16));
+                }
+                send(
+                    &core,
+                    &room,
+                    json!({"type": "pad_in", "msg": {"k": "frame", "seq": seq, "t": 16 * seq, "c": []}}),
+                );
+                seq += 1;
+                std::thread::sleep(Duration::from_millis(1500));
+            };
+            side(&[45000, 40000, 34000, 28000, 22000, 16000, 10000]);
+            let next = space();
+            side(&[10000, 16000, 22000, 28000, 34000, 40000, 45000]);
+            let back = space();
+            eprintln!("Spaces: {at:?} → left {next:?} → right {back:?}");
+            assert_eq!(next.0, 1, "three fingers left: the next Space");
+            assert_eq!(back.0, 0, "three fingers right: back again");
+        }
+
+        // Four fingers spreading show the desktop (the windows slide off), pinching bring them
+        // back. Only when a window is open to watch.
+        if let Some(was) = first_window() {
+            let mut pinch = |rs: &[u32]| {
+                for r in rs {
+                    let (cx, cy) = (32000u32, 32000u32);
+                    let c = json!([
+                        [1, cx - r, cy],
+                        [2, cx + r, cy],
+                        [3, cx, cy - r],
+                        [4, cx, cy + r]
+                    ]);
+                    send(
+                        &core,
+                        &room,
+                        json!({"type": "pad_in", "msg": {"k": "frame", "seq": seq, "t": 16 * seq, "c": c}}),
+                    );
+                    seq += 1;
+                    std::thread::sleep(Duration::from_millis(16));
+                }
+                send(
+                    &core,
+                    &room,
+                    json!({"type": "pad_in", "msg": {"k": "frame", "seq": seq, "t": 16 * seq, "c": []}}),
+                );
+                seq += 1;
+                std::thread::sleep(Duration::from_millis(1500));
+            };
+            pinch(&[4000, 6000, 8000, 10000, 12000, 14000]);
+            let away = first_window();
+            pinch(&[14000, 12000, 10000, 8000, 6000, 4000]);
+            let home = first_window();
+            eprintln!("Show Desktop: {was:?} → spread {away:?} → pinch {home:?}");
+            assert_ne!(
+                away,
+                Some(was.clone()),
+                "four fingers spread showed the desktop"
+            );
+            assert_eq!(
+                home,
+                Some(was),
+                "four fingers pinched brought the windows back"
+            );
+        }
+        assert!(open > calm, "three fingers up opened Mission Control");
+        assert_eq!(closed, calm, "three fingers down closed it");
     } else {
         eprintln!("touch is off (no Accessibility for Wado yet) — the pointer check is skipped");
     }

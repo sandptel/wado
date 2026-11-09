@@ -2,12 +2,14 @@
 //!
 //! macOS has no public way to inject touches, so the fingers are interpreted here and posted as
 //! what a trackpad produces: pointer moves, clicks, drags, scrolling with its phases and glide,
-//! and three-finger swipes as the Mac's own Mission Control and Spaces shortcuts.
+//! pinch-to-zoom, and the Dock's own gestures, which follow the fingers as they move.
 //!
 //! - One finger moves the pointer; a quick tap clicks; tap, then touch again and move: a drag.
 //! - Two fingers scroll (natural: the content follows the fingers), then glide; a quick
-//!   two-finger tap is a right click; spreading or pinching zooms (⌘+ / ⌘−).
-//! - Three fingers: up Mission Control, down App Exposé, left/right the next Space.
+//!   two-finger tap is a right click; spreading or pinching zooms.
+//! - Three and four fingers do what this Mac's Trackpad settings say ([`super::prefs`]):
+//!   left/right between Spaces (or pages), up Mission Control, down App Exposé; four fingers
+//!   pinching in Launchpad, spreading Show Desktop.
 //!
 //! Pure: it is handed the time and a [`Poster`], so every rule is tested without a Mac.
 
@@ -16,8 +18,8 @@ use std::time::{Duration, Instant};
 
 use wado_protocol::pad::Contact;
 
-use super::hotkeys::Hotkey;
-use super::post::{Button, Phase, Poster, flag};
+use super::post::{Button, Dock, Phase, Poster, Stage, flag};
+use super::prefs::{Horiz, Settings};
 
 /// A touch shorter than this, that moved less than [`TAP_SLOP`], is a tap.
 pub const TAP_MS: u64 = 180;
@@ -27,9 +29,11 @@ pub const TAP_SLOP: f64 = 8.0;
 pub const DRAG_WINDOW_MS: u64 = 250;
 /// Two clicks this close are a double click.
 pub const DOUBLE_MS: u64 = 350;
-/// Pointer points per pad px at rest, and the most acceleration adds.
-pub const GAIN: f64 = 1.6;
-pub const ACCEL_MAX: f64 = 2.5;
+/// Pointer points per pad px at rest; how fast acceleration grows with speed (per pad px/ms);
+/// and the most it multiplies by. A phone's pad is far smaller than a Mac's, so it runs hotter.
+pub const GAIN: f64 = 2.4;
+pub const ACCEL: f64 = 1.5;
+pub const ACCEL_MAX: f64 = 3.5;
 /// Scroll points per pad px.
 pub const SCROLL_GAIN: f64 = 1.0;
 /// Glide: per-16 ms decay, and the speed (points/ms) under which it stops.
@@ -37,11 +41,13 @@ pub const GLIDE_DECAY: f64 = 0.95;
 pub const GLIDE_STOP: f64 = 0.02;
 /// A glide starts only from at least this speed (points/ms).
 pub const GLIDE_START: f64 = 0.3;
-/// A three-finger swipe fires after this share of the pad.
+/// Three or more fingers decide what they are after this much motion, in pad px.
+pub const GESTURE_SLOP: f64 = 10.0;
+/// A swipe between pages fires after this share of the pad.
 pub const SWIPE_SHARE: f64 = 0.25;
-/// A pinch fires at this ratio of finger spread, then re-arms from there.
-pub const PINCH_IN: f64 = 0.8;
-pub const PINCH_OUT: f64 = 1.25;
+/// A Dock gesture's whole way (one Space, Mission Control fully open) over this share of the
+/// pad; a pinch's over half of it.
+pub const DOCK_SHARE: f64 = 0.5;
 
 /// What the current touch is doing.
 #[derive(Debug, Clone, PartialEq)]
@@ -54,11 +60,23 @@ enum Gesture {
     /// Two fingers, before they have decided between scrolling and zooming.
     Two,
     Scroll,
-    Pinch {
-        from: f64,
+    /// Two fingers zooming; `last` their spread at the last step.
+    Zoom {
+        last: f64,
     },
-    /// Three or more fingers; `fired` once the swipe has sent its shortcut.
-    Swipe {
+    /// Three or more fingers, before they have decided.
+    Many {
+        from: (f64, f64),
+        spread: f64,
+    },
+    /// A Dock gesture under way: how far along, and the last step (its direction at the end).
+    Dock {
+        kind: Dock,
+        progress: f64,
+        last: f64,
+    },
+    /// A swipe between pages; `fired` once it has gone back or forward.
+    Pages {
         from: (f64, f64),
         fired: bool,
     },
@@ -96,7 +114,8 @@ pub struct Interpreter {
     rest: (f64, f64),
     /// Where two fingers started, and how far apart: what tells a scroll from a pinch.
     two_from: ((f64, f64), f64),
-    pub hotkeys: super::hotkeys::Table,
+    /// What three and four fingers do on this Mac.
+    pub prefs: Settings,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -123,7 +142,7 @@ impl Interpreter {
             glide: None,
             rest: (0.0, 0.0),
             two_from: ((0.0, 0.0), 0.0),
-            hotkeys: super::hotkeys::Table::defaults(),
+            prefs: Settings::default(),
         };
         i.resize(400, 300);
         i
@@ -239,9 +258,9 @@ impl Interpreter {
                 self.two_from = (centroid(next), spread(next));
                 Gesture::Two
             }
-            _ => Gesture::Swipe {
+            _ => Gesture::Many {
                 from: centroid(next),
-                fired: false,
+                spread: spread(next),
             },
         };
     }
@@ -265,11 +284,12 @@ impl Interpreter {
                 Gesture::Point {
                     drag: DragState::None,
                 }
-                | Gesture::Two,
+                | Gesture::Two
+                | Gesture::Many { .. },
                 _,
-            ) if n >= 3 && early => Gesture::Swipe {
+            ) if n >= 3 && early => Gesture::Many {
                 from: centroid(next),
-                fired: false,
+                spread: spread(next),
             },
             (g, _) => g.clone(),
         };
@@ -286,7 +306,43 @@ impl Interpreter {
                 drag: DragState::Dragging,
             } => {}
             Gesture::Point { .. } => {}
-            _ => self.gesture = Gesture::Done,
+            _ => {
+                self.finish(out);
+                self.gesture = Gesture::Done;
+            }
+        }
+    }
+
+    /// End a Dock gesture or a zoom. A Dock gesture whose last step went back the way it came
+    /// is cancelled, so the Space or Mission Control snaps back as a trackpad's does.
+    fn finish(&mut self, out: &mut dyn Poster) {
+        match self.gesture {
+            Gesture::Dock {
+                kind,
+                progress,
+                last,
+            } => {
+                let stage = if last.signum() == progress.signum() {
+                    Stage::Ended
+                } else {
+                    Stage::Cancelled
+                };
+                out.dock(kind, progress, stage, last * 100.0);
+            }
+            Gesture::Zoom { .. } => out.magnify(0.0, Stage::Ended),
+            _ => {}
+        }
+    }
+
+    /// How far `d` (the fingers' mean motion) and `grew` (their spread's change) move `kind`.
+    fn dock_step(&self, kind: Dock, d: (f64, f64), grew: f64) -> f64 {
+        let (w, h) = self.size;
+        match kind {
+            // The Dock reads all three the other way round from the fingers (measured on macOS
+            // 26: negative opens Mission Control, goes a Space right, and opens Show Desktop).
+            Dock::Spaces => -d.0 / (w * DOCK_SHARE),
+            Dock::Mission => d.1 / (h * DOCK_SHARE),
+            Dock::Pinch => -grew / (w * DOCK_SHARE * 0.5),
         }
     }
 
@@ -315,7 +371,8 @@ impl Interpreter {
                 let change = (spread(next) - s0).abs();
                 self.moved = self.moved.max(travel.max(change));
                 if change >= TAP_SLOP && change > travel {
-                    self.gesture = Gesture::Pinch { from: s0 };
+                    out.magnify(0.0, Stage::Began);
+                    self.gesture = Gesture::Zoom { last: s0 };
                     self.moved_by(now, next, out);
                 } else if travel >= TAP_SLOP {
                     out.scroll(self.carry(scaled(d, SCROLL_GAIN)), Phase::Began);
@@ -328,49 +385,73 @@ impl Interpreter {
                 out.scroll(self.carry(s), Phase::Changed);
                 self.step(now, s);
             }
-            Gesture::Pinch { from } => {
-                let ratio = spread(next) / from.max(1.0);
-                let key = if ratio >= PINCH_OUT {
-                    Some(24) // =, with ⌘: zoom in
-                } else if ratio <= PINCH_IN {
-                    Some(27) // -, with ⌘: zoom out
-                } else {
-                    None
-                };
-                if let Some(k) = key {
-                    chord(out, k, flag::CMD);
-                    self.gesture = Gesture::Pinch { from: spread(next) };
+            Gesture::Zoom { last } => {
+                let now_s = spread(next);
+                let by = now_s / last.max(1.0) - 1.0;
+                if by != 0.0 {
+                    out.magnify(by, Stage::Changed);
+                    self.gesture = Gesture::Zoom { last: now_s };
                 }
             }
-            Gesture::Swipe { from, fired: false } => {
+            Gesture::Many { from, spread: s0 } => {
+                let n = next.len();
                 let c = centroid(next);
                 let (dx, dy) = (c.0 - from.0, c.1 - from.1);
-                let (w, h) = self.size;
-                let hot = if dy.abs() >= dx.abs() {
-                    (dy.abs() >= h * SWIPE_SHARE).then(|| {
-                        if dy < 0.0 {
-                            Hotkey::MissionControl
-                        } else {
-                            Hotkey::AppWindows
+                let travel = dx.hypot(dy);
+                let grew = spread(next) - s0;
+                self.moved = self.moved.max(travel.max(grew.abs()));
+                if travel.max(grew.abs()) < GESTURE_SLOP {
+                    return;
+                }
+                let p = self.prefs;
+                let kind = if n >= 4 && p.pinch && grew.abs() > travel {
+                    Some(Dock::Pinch)
+                } else if dx.abs() >= dy.abs() {
+                    match p.horiz(n) {
+                        Horiz::Spaces => Some(Dock::Spaces),
+                        Horiz::Pages => {
+                            self.gesture = Gesture::Pages { from, fired: false };
+                            return self.moved_by(now, next, out);
                         }
-                    })
+                        Horiz::Off => None,
+                    }
                 } else {
-                    // Content follows the fingers: swiping left brings in the Space on the right.
-                    (dx.abs() >= w * SWIPE_SHARE).then(|| {
-                        if dx < 0.0 {
-                            Hotkey::SpaceRight
-                        } else {
-                            Hotkey::SpaceLeft
-                        }
-                    })
+                    p.vert(n).then_some(Dock::Mission)
                 };
-                if let Some(hk) = hot {
-                    let (k, f) = self.hotkeys.get(hk);
-                    chord(out, k, f);
-                    self.gesture = Gesture::Swipe { from, fired: true };
+                self.gesture = match kind {
+                    Some(kind) => {
+                        let first = self.dock_step(kind, (dx, dy), grew);
+                        out.dock(kind, first, Stage::Began, 0.0);
+                        Gesture::Dock {
+                            kind,
+                            progress: first,
+                            last: first,
+                        }
+                    }
+                    None => Gesture::Done,
+                };
+            }
+            Gesture::Dock { kind, progress, .. } => {
+                let step = self.dock_step(kind, d, spread(next) - spread(&self.fingers));
+                if step != 0.0 {
+                    let progress = progress + step;
+                    out.dock(kind, progress, Stage::Changed, 0.0);
+                    self.gesture = Gesture::Dock {
+                        kind,
+                        progress,
+                        last: step,
+                    };
                 }
             }
-            Gesture::Swipe { .. } | Gesture::Idle | Gesture::Done => {}
+            Gesture::Pages { from, fired: false } => {
+                let dx = centroid(next).0 - from.0;
+                if dx.abs() >= self.size.0 * SWIPE_SHARE {
+                    // ⌘[ back when the fingers go right (the page follows them), ⌘] forward.
+                    chord(out, if dx > 0.0 { 33 } else { 30 }, flag::CMD);
+                    self.gesture = Gesture::Pages { from, fired: true };
+                }
+            }
+            Gesture::Pages { .. } | Gesture::Idle | Gesture::Done => {}
         }
     }
 
@@ -383,7 +464,7 @@ impl Interpreter {
             .max(1.0);
         self.last_step = Some(now);
         let speed = d.0.hypot(d.1) / dt; // pad px per ms
-        let gain = GAIN * (1.0 + speed).min(ACCEL_MAX);
+        let gain = GAIN * (1.0 + ACCEL * speed).min(ACCEL_MAX);
         let delta = (d.0 * gain, d.1 * gain);
         let from = out.cursor();
         let to = out.clamp((from.0 + delta.0, from.1 + delta.1), from);
@@ -456,7 +537,10 @@ impl Interpreter {
                 out.scroll((0.0, 0.0), Phase::Ended);
                 self.begin_glide(now);
             }
-            _ => self.last_tap = None,
+            _ => {
+                self.finish(out);
+                self.last_tap = None;
+            }
         }
         self.gesture = Gesture::Idle;
     }
@@ -670,46 +754,124 @@ mod tests {
         assert!(!t.i.gliding());
     }
 
-    #[test]
-    fn three_finger_up_sends_mission_control() {
-        let mut t = T::new();
-        let three = |y: f64| [c(1, 100.0, y), c(2, 140.0, y), c(3, 180.0, y)];
-        t.f(0, &three(250.0));
-        t.f(16, &three(200.0));
-        t.f(32, &three(150.0));
-        t.f(48, &three(100.0));
-        t.f(64, &[]);
-        let (k, f) = t.i.hotkeys.get(Hotkey::MissionControl);
-        let keys = t.r.keys();
-        assert_eq!(keys.len(), 2, "one chord only: {keys:?}");
-        assert_eq!(keys[0].0, k);
-        assert_eq!(keys[0].2 & f, f);
+    fn three(x: f64, y: f64) -> [Contact; 3] {
+        [c(1, x, y), c(2, x + 40.0, y), c(3, x + 80.0, y)]
     }
 
     #[test]
-    fn three_finger_left_moves_a_space_right() {
+    fn three_finger_up_follows_mission_control() {
         let mut t = T::new();
-        let three = |x: f64| [c(1, x, 150.0), c(2, x + 40.0, 150.0), c(3, x + 80.0, 150.0)];
-        t.f(0, &three(250.0));
-        t.f(16, &three(180.0));
-        t.f(32, &three(120.0));
-        let (k, _) = t.i.hotkeys.get(Hotkey::SpaceRight);
-        assert_eq!(t.r.keys()[0].0, k);
+        for (k, y) in [250.0, 230.0, 200.0, 150.0, 100.0].into_iter().enumerate() {
+            t.f(16 * k as u64, &three(100.0, y));
+        }
+        t.f(100, &[]);
+        let d = t.r.docks();
+        assert_eq!(d[0].0, Dock::Mission, "{d:?}");
+        assert_eq!(d[0].2, Stage::Began);
+        assert!(
+            d.windows(2).all(|w| w[1].1 <= w[0].1),
+            "progress one way: {d:?}"
+        );
+        let last = d.last().unwrap();
+        assert_eq!(last.2, Stage::Ended);
+        // 150 px of a 300 px pad: the whole way.
+        assert!((last.1 + 1.0).abs() < 0.01, "{last:?}");
+        assert!(t.r.keys().is_empty());
     }
 
     #[test]
-    fn pinch_out_sends_cmd_plus() {
+    fn four_fingers_left_follow_spaces() {
+        let mut t = T::new();
+        let four = |x: f64| {
+            [
+                c(1, x, 150.0),
+                c(2, x + 30.0, 150.0),
+                c(3, x + 60.0, 150.0),
+                c(4, x + 90.0, 150.0),
+            ]
+        };
+        t.f(0, &four(250.0));
+        t.f(16, &four(200.0));
+        t.f(32, &four(150.0));
+        t.f(48, &[]);
+        let d = t.r.docks();
+        assert_eq!(d[0].0, Dock::Spaces);
+        assert!(
+            d.last().unwrap().1 > 0.0 && d.last().unwrap().2 == Stage::Ended,
+            "{d:?}"
+        );
+    }
+
+    #[test]
+    fn turning_back_cancels() {
+        let mut t = T::new();
+        t.f(0, &three(150.0, 150.0));
+        t.f(16, &three(200.0, 150.0));
+        t.f(32, &three(190.0, 150.0));
+        t.f(48, &[]);
+        assert_eq!(t.r.docks().last().unwrap().2, Stage::Cancelled);
+    }
+
+    #[test]
+    fn a_swipe_turned_off_does_nothing() {
+        let mut t = T::new();
+        t.i.prefs.three_v = false;
+        t.f(0, &three(100.0, 250.0));
+        t.f(16, &three(100.0, 150.0));
+        t.f(32, &[]);
+        assert!(t.r.evs.is_empty(), "{:?}", t.r.evs);
+    }
+
+    #[test]
+    fn pages_setting_goes_back() {
+        let mut t = T::new();
+        t.i.prefs.three_h = Horiz::Pages;
+        t.f(0, &three(50.0, 150.0));
+        t.f(16, &three(100.0, 150.0));
+        t.f(32, &three(160.0, 150.0));
+        assert_eq!(t.r.keys()[0], (33, true, flag::CMD));
+        assert!(t.r.docks().is_empty());
+    }
+
+    #[test]
+    fn four_finger_spread_is_show_desktop() {
+        let mut t = T::new();
+        let four = |r: f64| {
+            [
+                c(1, 200.0 - r, 150.0),
+                c(2, 200.0 + r, 150.0),
+                c(3, 200.0, 150.0 - r),
+                c(4, 200.0, 150.0 + r),
+            ]
+        };
+        t.f(0, &four(30.0));
+        t.f(16, &four(50.0));
+        t.f(32, &four(70.0));
+        t.f(48, &[]);
+        let d = t.r.docks();
+        assert_eq!(d[0].0, Dock::Pinch);
+        assert!(d.last().unwrap().1 < 0.0, "{d:?}");
+    }
+
+    #[test]
+    fn pinch_out_zooms_in() {
         let mut t = T::new();
         t.f(0, &[c(1, 180.0, 150.0), c(2, 220.0, 150.0)]);
         t.f(16, &[c(1, 160.0, 150.0), c(2, 240.0, 150.0)]);
         t.f(32, &[c(1, 140.0, 150.0), c(2, 260.0, 150.0)]);
-        t.f(48, &[c(1, 120.0, 150.0), c(2, 280.0, 150.0)]);
-        let keys = t.r.keys();
-        assert!(
-            keys.contains(&(24, true, flag::CMD)),
-            "{keys:?} {:?}",
+        t.f(48, &[]);
+        let z: Vec<_> =
             t.r.evs
-        );
+                .iter()
+                .filter_map(|e| match e {
+                    Ev::Magnify(b, s) => Some((*b, *s)),
+                    _ => None,
+                })
+                .collect();
+        assert_eq!(z.first().map(|z| z.1), Some(Stage::Began), "{z:?}");
+        assert!(z.iter().any(|(b, s)| *s == Stage::Changed && *b > 0.0));
+        assert_eq!(z.last().map(|z| z.1), Some(Stage::Ended));
         assert!(t.r.phases().is_empty(), "a pinch does not scroll");
+        assert!(t.r.keys().is_empty());
     }
 }

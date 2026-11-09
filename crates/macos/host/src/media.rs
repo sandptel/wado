@@ -166,11 +166,14 @@ pub fn press(key: i64) -> Res<()> {
         )
         .ok_or("macOS would not make the media key")?;
         let cg = ev.CGEvent().ok_or("macOS would not post the media key")?;
-        crate::input::cg::post_event(
-            (&*cg as *const objc2_core_graphics::CGEvent)
-                .cast_mut()
-                .cast(),
-        );
+        // SAFETY: `cg` is a live event, held until after the post.
+        unsafe {
+            crate::input::cg::post_event(
+                (&*cg as *const objc2_core_graphics::CGEvent)
+                    .cast_mut()
+                    .cast(),
+            )
+        };
     }
     Ok(())
 }

@@ -2,17 +2,17 @@
 //! CoreGraphics events. Needs the Accessibility grant — without it macOS drops every event
 //! silently, so nothing here is offered until it is granted.
 //!
-//! - `pad.rs` — fingers read as a Mac trackpad; `hotkeys.rs` — the Mac's Mission Control and
-//!   Spaces shortcuts; `keys.rs` — keys and text; `gamepad.rs` — the controller as keys;
+//! - `pad.rs` — fingers read as a Mac trackpad; `prefs.rs` — what this Mac does with three and four
+//!   fingers; `keys.rs` — keys and text; `gamepad.rs` — the controller as keys;
 //!   `keymap.rs` — evdev → macOS key codes; `post.rs` — the calls; `cg.rs` — CoreGraphics.
 
 pub mod cg;
 pub mod gamepad;
-pub mod hotkeys;
 pub mod keymap;
 pub mod keys;
 pub mod pad;
 pub mod post;
+pub mod prefs;
 
 use std::sync::atomic::AtomicU64;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
@@ -64,7 +64,7 @@ impl MacTouch {
 fn run(rx: Receiver<Msg>) {
     let mut out = cg::CgPoster::new();
     let mut i = pad::Interpreter::new(Instant::now());
-    i.hotkeys = hotkeys::Table::read();
+    i.prefs = prefs::read();
     loop {
         let msg = if i.gliding() {
             match rx.recv_timeout(Duration::from_millis(8)) {
