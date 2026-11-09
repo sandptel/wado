@@ -4,6 +4,7 @@
 //! says why, naming the System Settings pane when a permission is the reason.
 #![cfg(target_os = "macos")]
 
+pub mod clip;
 pub mod cmd;
 pub mod input;
 pub mod launch;
@@ -13,6 +14,7 @@ pub mod tcc;
 
 use std::sync::{Arc, OnceLock};
 
+use wado_platform::clip::Clipboard;
 use wado_platform::desktop::{Launcher, Screenshot};
 use wado_platform::input::{
     GamepadInjector, InputError, KeyInjector, Opener, TextInjector, TouchInjector,
@@ -37,6 +39,7 @@ fn when<T: ?Sized>(probe: Result<(), String>, imp: impl FnOnce() -> Arc<T>) -> O
 #[derive(Default)]
 pub struct MacProvider {
     awake: OnceLock<Arc<power::MacAwake>>,
+    clipboard: OnceLock<Arc<clip::MacClipboard>>,
 }
 
 impl Provider for MacProvider {
@@ -81,6 +84,14 @@ impl Provider for MacProvider {
         when(tcc::need_accessibility(), || {
             Arc::new(input::keys::MacText) as Arc<dyn TextInjector>
         })
+    }
+
+    fn clipboard(&self) -> Offer<dyn Clipboard> {
+        here(
+            self.clipboard
+                .get_or_init(|| Arc::new(clip::MacClipboard::new()))
+                .clone(),
+        )
     }
 
     fn sys_info(&self) -> Offer<dyn SysInfoSource> {

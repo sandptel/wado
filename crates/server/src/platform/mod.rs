@@ -120,6 +120,11 @@ fn mark(mut set: wado_protocol::caps::CapSet) -> wado_protocol::caps::CapSet {
     for name in DAEMON {
         set.on.push(name.to_string());
     }
+    // Without the desktop's own history wado keeps one, in memory (`crate::clip::ram`).
+    if set.on.iter().any(|c| c == "clipboard") && !set.on.iter().any(|c| c == "clip_history") {
+        set.off.retain(|o| o.cap != "clip_history");
+        set.on.push("clip_history".to_string());
+    }
     let (on, mut off): (Vec<_>, Vec<_>) = set
         .on
         .into_iter()
