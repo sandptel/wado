@@ -4,11 +4,14 @@
 //! says why, naming the System Settings pane when a permission is the reason.
 #![cfg(target_os = "macos")]
 
+pub mod audio;
+pub mod brightness;
 pub mod clip;
 pub mod cmd;
 pub mod files;
 pub mod input;
 pub mod launch;
+pub mod media;
 pub mod power;
 pub mod sysinfo;
 pub mod tcc;
@@ -16,12 +19,15 @@ pub mod tcc;
 use std::path::Path;
 use std::sync::{Arc, OnceLock};
 
+use wado_platform::audio::AudioMixer;
 use wado_platform::clip::Clipboard;
 use wado_platform::desktop::{Launcher, Screenshot};
+use wado_platform::display::Brightness;
 use wado_platform::files::{Thumbnailer, Trash};
 use wado_platform::input::{
     GamepadInjector, InputError, KeyInjector, Opener, TextInjector, TouchInjector,
 };
+use wado_platform::media::MediaPlayers;
 use wado_platform::power::{PowerInhibit, SystemPower};
 use wado_platform::sysinfo::SysInfoSource;
 use wado_platform::{Offer, Provider, ProviderId};
@@ -43,6 +49,9 @@ fn when<T: ?Sized>(probe: Result<(), String>, imp: impl FnOnce() -> Arc<T>) -> O
 pub struct MacProvider {
     awake: OnceLock<Arc<power::MacAwake>>,
     clipboard: OnceLock<Arc<clip::MacClipboard>>,
+    audio: OnceLock<Arc<audio::MacAudio>>,
+    media: OnceLock<Arc<media::MacMedia>>,
+    brightness: OnceLock<Arc<brightness::MacBrightness>>,
 }
 
 impl Provider for MacProvider {
@@ -107,6 +116,33 @@ impl Provider for MacProvider {
             .then_some(())
             .ok_or_else(|| "this Mac has no Quick Look (qlmanage)".to_string());
         when(probe, || Arc::new(files::MacThumbs) as Arc<dyn Thumbnailer>)
+    }
+
+    fn audio(&self) -> Offer<dyn AudioMixer> {
+        here(
+            self.audio
+                .get_or_init(|| Arc::new(audio::MacAudio::new()))
+                .clone(),
+        )
+    }
+
+    fn media(&self) -> Offer<dyn MediaPlayers> {
+        here(
+            self.media
+                .get_or_init(|| Arc::new(media::MacMedia::new()))
+                .clone(),
+        )
+    }
+
+    fn brightness(&self) -> Offer<dyn Brightness> {
+        if let Some(b) = self.brightness.get() {
+            return here(b.clone());
+        }
+        Some(
+            brightness::MacBrightness::probe().map(|b| {
+                self.brightness.get_or_init(|| Arc::new(b)).clone() as Arc<dyn Brightness>
+            }),
+        )
     }
 
     fn sys_info(&self) -> Offer<dyn SysInfoSource> {

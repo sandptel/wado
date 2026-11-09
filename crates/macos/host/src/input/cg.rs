@@ -136,6 +136,14 @@ impl Drop for CgPoster {
     }
 }
 
+/// Post an event someone else made (and still owns) at the HID level.
+pub fn post_event(e: Ref) {
+    if !e.is_null() {
+        // SAFETY: a live event the caller keeps alive for this call.
+        unsafe { CGEventPost(HID_TAP, e) };
+    }
+}
+
 /// The displays' bounds, in global points.
 pub fn displays() -> Vec<CGRect> {
     let mut ids = [0u32; 16];
