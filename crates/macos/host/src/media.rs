@@ -262,7 +262,11 @@ impl MediaPlayers for MacMedia {
                     }
                 }
             }
-            self.state.publish(read().await);
+            // With the adapter, its stream publishes what the key did; re-reading here would put
+            // the AppleScript fallback's cards over it.
+            if self.adapter.is_none() {
+                self.state.publish(read().await);
+            }
             Ok(())
         })
     }
