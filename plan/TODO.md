@@ -36,6 +36,8 @@ Spec/plan: `plan/superpowers/{specs,plans}/2026-11-09-macos-host*`. Memory: `mem
 - [x] Media: mediaremote-adapter (any app, art, live), pushed to the viewer as it changes (`pushed` flag).
 - [x] Ponytail cleanup (−168 lines; CG via objc2).
 - [ ] **User:** install APK, check haptic strengths, right click, live media; Cloudflare key optional.
+- [x] File manager, both clients: sort name/date/size/type + folders first, list/grid (3 sizes) with thumbnails, hidden, breadcrumbs, filter, cut/copy/paste bar, duplicate, undo (move/copy/rename), select all/invert, properties, pins, folder .zip, trash + restore. Web adds drag-to-move, arrow keys, Ctrl+X/C/V/Z/D. Server: move/copy answer `{to}`, clashes refused up front. Checks: `scripts/files-ops-check.mjs`, `files-order-check.mjs`, app `test/files_view_test.dart`.
+- [ ] Files later: compress / extract on the computer (needs deflate or `unzip`), trash undo (platform trash must return its path), batch rename, open on the computer from the app.
 - [ ] Later on macOS: sound to phone (virtual audio driver), notifications, app menus, window/Space controls; three-finger drag, Look Up, Notification Centre edge swipe, tracking speed; media app icon; Dock gestures on macOS 27 need the IOHIDEvent path.
 
 ## ▣ RUN — 2026-11-05, Android app smoothness (ui lane; code review, no phone attached)
