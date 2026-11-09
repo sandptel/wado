@@ -41,6 +41,13 @@ pub fn mac(c: &ConfigState) -> bool {
     c.platform == "macos"
 }
 
+/// A Mac whose own apps — its Dock, what runs, what is in front — can be opened and quit from
+/// here, with no session (`desk_apps`, `ui::computer::desk`). On, never "later": it is named in
+/// `on` only by a daemon that has it.
+pub fn desk_apps(c: &ConfigState) -> bool {
+    mac(c) && c.host_caps.on.iter().any(|n| n == "desk_apps")
+}
+
 pub fn cap_state(c: &ConfigState, name: &str) -> Cap {
     if !mac(c) {
         return Cap::On;
@@ -106,6 +113,7 @@ pub fn label(name: &str) -> &str {
         "sound" => "Sound in a session",
         "notifications" => "Notifications",
         "menus" => "App menus",
+        "desk_apps" => "Its apps and Dock",
         other => other,
     }
 }
@@ -150,5 +158,10 @@ mod tests {
         assert!(cap_state(&c, "touch").why().starts_with("Allow wado"));
         assert_eq!(cap_state(&c, "audio"), Cap::On);
         assert_eq!(cap_state(&c, "teleport"), Cap::On);
+        assert!(!desk_apps(&c));
+        let with = config(r#"{"platform":"macos","host_caps":{"on":["desk_apps"],"off":[]}}"#);
+        assert!(desk_apps(&with));
+        let linux = config(r#"{"platform":"linux","host_caps":{"on":["desk_apps"],"off":[]}}"#);
+        assert!(!desk_apps(&linux));
     }
 }

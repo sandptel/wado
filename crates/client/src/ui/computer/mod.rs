@@ -15,6 +15,7 @@
 //! | [`sessions`] | Sessions: who is in each, Join / Take over / End, Start new |
 //! | [`session_row`] | one session in it |
 //! | [`linkmeter`] | the link speed test, shown |
+//! | [`desk`] | a Mac's own apps with no session: the Apps dock in place of Sessions, and its page |
 //! | [`this_mac`] | On this Mac: what a Mac cannot do here, and what is coming |
 //!
 //! It is reached from its card on home by a shared-element transition (`js/hero_flip.js`): the
@@ -24,6 +25,7 @@
 
 pub mod actions;
 pub mod clips;
+pub mod desk;
 pub mod grant;
 pub mod hero;
 pub mod hops;

@@ -20,6 +20,8 @@ pub fn form(ui: Ui) -> wado_ux::form::Form {
 pub fn Sheet(
     title: String,
     sub: Option<String>,
+    /// A picture beside the title (an app's icon).
+    icon: Option<String>,
     on_close: EventHandler<()>,
     children: Element,
 ) -> Element {
@@ -37,7 +39,8 @@ pub fn Sheet(
                 onmounted: move |e| { let _ = e.data().set_focus(true); },
                 onclick: move |e| e.stop_propagation(),
                 div { class: "ugrab", "aria-hidden": "true" }
-                div { class: "uhead",
+                div { class: if icon.is_some() { "uhead withicon" } else { "uhead" },
+                    if let Some(src) = icon.as_ref() { img { src: "{src}", alt: "" } }
                     b { "{title}" }
                     if let Some(s) = sub { span { "{s}" } }
                 }

@@ -56,6 +56,8 @@ pub enum Page {
     InputTouchpad,
     InputKeyboard,
     InputGamepad,
+    /// A Mac's own apps, all of them (`ui::computer::desk`).
+    Apps,
     // ── about this phone ──
     Appearance,
     InputFeel,
@@ -80,6 +82,7 @@ impl Page {
             Page::InputTouchpad => "Touchpad",
             Page::InputKeyboard => "Keyboard",
             Page::InputGamepad => "Gamepad",
+            Page::Apps => "Apps",
             Page::Tiles => "Quick tiles",
             Page::Diagnostics => "Diagnostics",
             Page::AddComputer => "Add a computer",
@@ -99,6 +102,7 @@ impl Page {
                 | Page::InputTouchpad
                 | Page::InputKeyboard
                 | Page::InputGamepad
+                | Page::Apps
         )
     }
 
@@ -145,6 +149,7 @@ pub fn render(ui: Ui, page: Page) -> Element {
             "vi_gamepad",
             crate::ui::computer::input::gamepad::render,
         ),
+        Page::Apps => crate::ui::scoped(ui, "desk_apps", crate::ui::computer::desk::page::render),
         Page::Tiles => tiles::render(ui),
         Page::Diagnostics => diagnostics::render(ui),
         Page::AddComputer => crate::ui::scoped(ui, "add_computer", h::add_computer::render),

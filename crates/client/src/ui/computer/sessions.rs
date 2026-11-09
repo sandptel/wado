@@ -28,6 +28,10 @@ pub fn Sessions(ui: Ui, r: Reach) -> Element {
         let watch = !(live.session_on)();
         bridge::call(format!("window.__wado.sessionsWatch({watch});"));
     });
+    // A Mac with its apps: the Apps dock stands here instead (`desk`).
+    if r.config.as_ref().is_some_and(crate::host_caps::desk_apps) {
+        return rsx! { crate::ui::computer::desk::dock::Dock { ui, r } };
+    }
     let (here, list) = (live.sessions)();
     let m = (live.multi)();
     let rooms = m.rooms();

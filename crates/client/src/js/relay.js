@@ -495,19 +495,27 @@ W.relayOn("timing", (msg) => { W._lastTiming = msg.timings || null; });
 W.appIcons = (() => { try { return JSON.parse(localStorage.getItem("wado.appIcons") || "{}"); } catch (_) { return {}; } })();
 const keepIcons = () => { try { localStorage.setItem("wado.appIcons", JSON.stringify(W.appIcons)); } catch (_) {} };
 const withIcons = (list) => list.map((a) => (a.icon || !W.appIcons[a.exec] ? a : { ...a, icon: W.appIcons[a.exec] }));
+// Each icon is asked once per page: a Mac's list comes every 3 s while its apps are on screen
+// (desk_apps.js), and one with no icon to give stays a letter. Its Dock's and running apps first.
 let iconsWanted = [];
+const iconsAsked = new Set();
 const askIcons = () => {
   if (!iconsWanted.length) return;
-  W.relaySendMsg({ type: "apps_icons", execs: iconsWanted.slice(0, 24) });
+  const execs = iconsWanted.slice(0, 24);
+  for (const e of execs) iconsAsked.add(e);
+  W.relaySendMsg({ type: "apps_icons", execs });
   iconsWanted = iconsWanted.slice(24);
 };
+const iconFirst = (a) => (a.dock != null ? a.dock : a.running ? 1e4 : 2e4);
 W.relayOn("apps_list", (msg) => {
   const list = msg.apps || [];
-  for (const a of list) if (a.icon) W.appIcons[a.exec] = a.icon;
-  keepIcons();
+  let inline = false;
+  for (const a of list) if (a.icon) { W.appIcons[a.exec] = a.icon; inline = true; }
+  if (inline) keepIcons();
   W.appsList = withIcons(list);
   emit({ type: "apps", apps: W.appsList });
-  iconsWanted = list.filter((a) => !a.hidden && !W.appIcons[a.exec]).map((a) => a.exec);
+  iconsWanted = list.filter((a) => !a.hidden && !W.appIcons[a.exec] && !iconsAsked.has(a.exec))
+    .sort((a, b) => iconFirst(a) - iconFirst(b)).map((a) => a.exec);
   askIcons();
 });
 W.relayOn("apps_icons_list", (msg) => {

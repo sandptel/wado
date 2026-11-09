@@ -145,6 +145,9 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/apps.js"),
     "\n",
+    // After `relay.js`: it chains the `apps_list` handler registered there.
+    include_str!("js/desk_apps.js"),
+    "\n",
     include_str!("js/pty.js"),
     "\n",
     include_str!("js/clipboard.js"),
@@ -1003,6 +1006,7 @@ pub fn run(ui: Ui) {
                     live.win_menu.set(msg.get("id").and_then(|v| v.as_u64()));
                 }
                 "rotate" => crate::actions::rotate(ui, &string("to")),
+                "deskAppMenu" | "deskLaunching" => crate::ui::computer::desk::on_event(kind, &msg),
                 "apps" => {
                     live.apps.set(
                         msg.get("apps")

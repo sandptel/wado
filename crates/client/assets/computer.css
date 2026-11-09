@@ -234,3 +234,48 @@ button.hcell:active:not(:disabled) { scale: .97; }
 .seg3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .mono.big { font: 700 1.25rem var(--mono); color: var(--bright); letter-spacing: .04em; }
 .devqr { width: min(100%, 240px); aspect-ratio: 1; justify-self: center; border-radius: var(--r2); shape-rendering: crispEdges; }
+
+/* ── a Mac's own apps (ui/computer/desk): the dock in place of Sessions, the Apps page ─────
+ * The shelf is the macOS Dock's: translucent, rounded, its own Dock's apps then a hairline and
+ * what else runs. State moves on --spring / --pop: the dot grows in, the front app lifts and
+ * glows, a hidden one dims, one starting bounces (at most ~10 s, js/desk_apps.js ends it). */
+.dshelf { display: flex; align-items: flex-end; justify-content: safe center; gap: 4px; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain;
+  padding: 16px 10px 6px; border-radius: var(--r3); border: 1px solid color-mix(in oklab, var(--bright), transparent 88%);
+  background: color-mix(in oklab, var(--s2), transparent 35%); -webkit-backdrop-filter: blur(24px) saturate(1.4); backdrop-filter: blur(24px) saturate(1.4);
+  box-shadow: inset 0 1px 0 color-mix(in oklab, var(--bright), transparent 90%), 0 14px 34px -22px #000; }
+.dshelf::-webkit-scrollbar { display: none; }
+.dshelf.dwait { justify-content: center; align-items: center; min-height: 82px; padding: 10px; color: var(--dim); font-size: .8125rem; }
+.dsep { flex: none; align-self: stretch; width: 1px; margin: 2px 5px 12px; background: color-mix(in oklab, var(--bright), transparent 78%); }
+
+.dtile { flex: none; display: grid; justify-items: center; gap: 5px; padding: 0 2px 2px; min-width: 0;
+  -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+.dicon { width: 52px; height: 52px; display: grid; place-items: center;
+  transition: translate var(--dur) var(--spring), scale var(--dur) var(--spring), opacity var(--dur) var(--ease), filter var(--dur) var(--ease); }
+.dicon img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; -webkit-user-drag: none; }
+.dletter { width: 86%; height: 86%; border-radius: 24%; display: grid; place-items: center; font: 700 1.375rem var(--display); color: var(--bright);
+  background: linear-gradient(color-mix(in oklab, var(--hue), var(--s3) 45%), color-mix(in oklab, var(--hue), var(--s1) 72%)); }
+.ddot { width: 4px; height: 4px; border-radius: 50%; background: var(--bright); opacity: 0; scale: 0;
+  transition: opacity var(--dur) var(--ease), scale var(--dur) var(--pop), background var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
+.dtile.run .ddot { opacity: .7; scale: 1; }
+.dtile.front .ddot { opacity: 1; background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+.dtile.front .dicon { translate: 0 -3px; filter: drop-shadow(0 6px 10px color-mix(in oklab, var(--accent), transparent 62%)); }
+.dtile.away .dicon { opacity: .55; }
+.dtile.launching .dicon { animation: dbounce 900ms cubic-bezier(.3, .7, .4, 1) 11; }
+@keyframes dbounce { 0%, 100% { translate: 0 0; } 32% { translate: 0 -12px; } 62% { translate: 0 0; } 78% { translate: 0 -3px; } }
+:root[data-motion="reduced"] .dtile.launching .dicon { animation-name: dfade; }
+@keyframes dfade { 50% { opacity: .45; } }
+@media (hover: hover) {
+  .dshelf .dtile:hover .dicon { translate: 0 -5px; scale: 1.08; }
+  .dgrid .dtile:hover { background: var(--s1); }
+}
+
+.dsearch { margin-top: 4px; }
+.dgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 10px 4px; }
+.dgrid .dtile { padding: 8px 2px 6px; border-radius: var(--r2); align-content: start; }
+.dgrid .dicon { width: 56px; height: 56px; }
+.dname { max-width: 100%; font-size: .6875rem; line-height: 1.25; color: var(--text); text-align: center; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; transition: color var(--dur) var(--ease); }
+.dtile.away .dname { color: var(--dim); }
+.dnone { margin: 4px; }
+.dmenu .gpickrow.bad { color: var(--bad); }
+.dconfirm { margin: 0 2px 4px; font-size: .875rem; color: var(--text); }
