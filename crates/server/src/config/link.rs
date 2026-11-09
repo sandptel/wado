@@ -5,10 +5,6 @@ use wado_protocol::{ConfigState, HostLimits, PinnedInput};
 
 use crate::gate::Gate;
 
-/// What this daemon can do that an older one could not, as `ConfigState::caps` names it:
-/// `pad-gamepad` — the pad link carries a gamepad (`crate::pad::game`); `pad-hypr` — running
-/// under Hyprland, so a phone's touchpad speed, scroll, tapping and drag settings are applied
-/// (`crate::platform::linux::hypr_device`). Without it the phone says they are not available.
 /// Whether the desktop is Hyprland, whose touchpad the pad's settings drive.
 fn hypr_available() -> bool {
     #[cfg(target_os = "linux")]
@@ -17,6 +13,10 @@ fn hypr_available() -> bool {
     return false;
 }
 
+/// What this daemon can do that an older one could not, as `ConfigState::caps` names it:
+/// `pad-gamepad` — the pad link carries a gamepad (`crate::pad::game`); `pad-hypr` — running
+/// under Hyprland, so a phone's touchpad speed, scroll, tapping and drag settings are applied
+/// (`crate::platform::linux::hypr_device`). Without it the phone says they are not available.
 pub fn caps(hypr: bool) -> Vec<String> {
     let mut caps = vec!["pad-gamepad"];
     if hypr {

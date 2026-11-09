@@ -2,7 +2,7 @@
 # Build mediaremote-adapter (github.com/ungive/mediaremote-adapter, BSD-3-Clause) into
 # target/media-adapter/: its Perl script and MediaRemoteAdapter.framework. Apple's own
 # /usr/bin/perl may read "now playing" since macOS 15.4, so wado runs the script with it
-# (crates/macos/host/src/media.rs). Needs git, cmake and the Xcode command-line tools.
+# (crates/macos/host/src/nowplaying.rs). Needs git, cmake and the Xcode command-line tools.
 # Built once per tag; scripts/mac-app.sh bundles the result.
 set -eu
 cd "$(git rev-parse --show-toplevel)"

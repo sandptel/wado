@@ -71,22 +71,23 @@ fn mint(key: &str, token: &str) -> Result<Vec<IceServer>, String> {
 pub fn parse(body: &str) -> Result<Vec<IceServer>, String> {
     let v: Value = serde_json::from_str(body).map_err(|e| format!("an unreadable answer: {e}"))?;
     let list = match &v["iceServers"] {
-        Value::Array(a) => a.clone(),
-        o @ Value::Object(_) => vec![o.clone()],
+        Value::Array(a) => a.as_slice(),
+        o @ Value::Object(_) => std::slice::from_ref(o),
         _ => return Err("no iceServers in the answer".into()),
     };
     let out: Vec<IceServer> = list
         .iter()
         .filter_map(|s| {
             let urls: Vec<String> = match &s["urls"] {
-                Value::String(u) => vec![u.clone()],
-                Value::Array(a) => a
-                    .iter()
-                    .filter_map(|u| u.as_str().map(String::from))
-                    .collect(),
-                _ => vec![],
-            };
-            let urls: Vec<String> = urls.into_iter().filter(|u| !on_port_53(u)).collect();
+                u @ Value::String(_) => std::slice::from_ref(u),
+                Value::Array(a) => a.as_slice(),
+                _ => &[],
+            }
+            .iter()
+            .filter_map(Value::as_str)
+            .filter(|u| !on_port_53(u))
+            .map(String::from)
+            .collect();
             (!urls.is_empty()).then(|| IceServer {
                 urls,
                 username: s["username"].as_str().unwrap_or("").to_string(),
