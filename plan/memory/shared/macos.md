@@ -28,3 +28,24 @@ Branch `macos`. Spec `plan/superpowers/specs/2026-11-09-macos-host-design.md`, p
 - MediaRemote is locked to Apple since 15.4 → AppleScript for Music/Spotify + media keys.
 - `scripts/mac-e2e.mjs` (local relay + Wado.app + `client-core/tests/mac_live.rs`) — pairing,
   platform, caps, outputs, clipboard both ways, pointer move (when Accessibility is granted).
+
+## 2026-11-09 — Dock gestures, IPv6
+
+- **Trackpad 3/4-finger gestures are real Dock swipes** (`input/cg.rs` `post_dock`): CGEvent type 30,
+  subtype 23, fields from Mac Mouse Fix `TouchSimulator.m` (pre-macOS-27 path). Posted at the
+  session tap. **Signs are opposite to the fingers**, measured on macOS 26 with
+  `scripts/mac-e2e.mjs`: negative progress opens Mission Control, goes one Space right, and
+  opens Show Desktop. macOS 27 ignores these fields (needs an IOHIDEvent via `CGEventSetHIDEvent`,
+  see MMF) — re-check on upgrade.
+- What 3 vs 4 fingers do is read from `defaults read com.apple.AppleMultitouchTrackpad`
+  (`input/prefs.rs`), so it matches the Mac's own Trackpad settings. Three-finger drag not done.
+- e2e detection without Screen Recording: Mission Control = Dock windows incl. a 102×109 "+"
+  button; Space index = `CGSCopyManagedDisplaySpaces` via JXA `ObjC.bindFunction`; Show Desktop =
+  frontmost layer-0 window jumps to the screen edge.
+- **Direct connections**: `has_global_ipv6` used `/proc/net/if_inet6`, so every Mac gathered IPv4
+  only → phone on Jio (CGNAT, IPv4 via CLAT 192.0.0.4) always fell to the relay. Now `getifaddrs`.
+  With the corporate VPN on (utun4, `fc00::` default v6 route, v4 exits via 167.103.x = symmetric),
+  a socket **bound** to en0's global v6 address still leaves via en0 (scoped routing; STUN
+  mapped it to itself), so host v6 candidates connect direct through the VPN.
+- e2e device needs `wado passkey require "Mac e2e" off` and the seat room for touch (control room
+  refuses `pad_in`).
