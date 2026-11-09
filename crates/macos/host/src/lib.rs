@@ -6,16 +6,19 @@
 
 pub mod clip;
 pub mod cmd;
+pub mod files;
 pub mod input;
 pub mod launch;
 pub mod power;
 pub mod sysinfo;
 pub mod tcc;
 
+use std::path::Path;
 use std::sync::{Arc, OnceLock};
 
 use wado_platform::clip::Clipboard;
 use wado_platform::desktop::{Launcher, Screenshot};
+use wado_platform::files::{Thumbnailer, Trash};
 use wado_platform::input::{
     GamepadInjector, InputError, KeyInjector, Opener, TextInjector, TouchInjector,
 };
@@ -92,6 +95,18 @@ impl Provider for MacProvider {
                 .get_or_init(|| Arc::new(clip::MacClipboard::new()))
                 .clone(),
         )
+    }
+
+    fn trash(&self) -> Offer<dyn Trash> {
+        here(Arc::new(files::MacTrash::new()))
+    }
+
+    fn thumbnailer(&self) -> Offer<dyn Thumbnailer> {
+        let probe = Path::new("/usr/bin/qlmanage")
+            .exists()
+            .then_some(())
+            .ok_or_else(|| "this Mac has no Quick Look (qlmanage)".to_string());
+        when(probe, || Arc::new(files::MacThumbs) as Arc<dyn Thumbnailer>)
     }
 
     fn sys_info(&self) -> Offer<dyn SysInfoSource> {
