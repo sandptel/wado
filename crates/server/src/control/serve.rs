@@ -215,5 +215,13 @@ async fn run(msg: RelayMsg, who: &Who, cx: &Ctx) {
 async fn state(cx: &Ctx, ack: u32) {
     let mut state = crate::host::state().await;
     cx.sent.trim(&mut state);
-    send(&cx.out, &RelayMsg::HostState { ack, state }).await;
+    send(
+        &cx.out,
+        &RelayMsg::HostState {
+            ack,
+            state,
+            pushed: false,
+        },
+    )
+    .await;
 }

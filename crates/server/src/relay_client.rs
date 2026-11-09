@@ -147,6 +147,8 @@ struct RelayCtx {
     viewer: Arc<Mutex<(String, String)>>,
     /// The cover art and icons this viewer already has — see [`crate::host::trim`].
     media_sent: Arc<crate::host::trim::Sent>,
+    /// Which viewer's media push is current ([`push_media`]); bumped by each new one.
+    media_gen: Arc<std::sync::atomic::AtomicU64>,
     /// The accessibility-tree client that answers `TargetsRequest` — see [`crate::a11y`].
     /// Shared, because each question runs as its own task.
     a11y: Arc<crate::a11y::A11y>,
@@ -502,6 +504,7 @@ async fn run(
         files_pc: Arc::default(),
         pad: crate::pad::Live::default(),
         media_sent: Arc::default(),
+        media_gen: Arc::default(),
         hub,
         seat_origin: Arc::default(),
         a11y,
@@ -1360,6 +1363,11 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     // The audio sink appears for this device, named after it.
                     tokio::spawn(crate::host::viewer(Some(client_name.clone())));
                     ctx.media_sent.clear();
+                    tokio::spawn(push_media(
+                        out_tx.clone(),
+                        Arc::clone(&ctx.media_sent),
+                        Arc::clone(&ctx.media_gen),
+                    ));
                     clip_live.store(false, Ordering::SeqCst);
                     ctx.viewer_ok.store(!relay_gates, Ordering::SeqCst);
                     info!(room_id = %room_id, client = %client_addr, device = %client_name, "relay client: peer connected");
@@ -2181,9 +2189,16 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     tokio::spawn(async move {
                         let mut state = crate::host::state().await;
                         sent.trim(&mut state);
-                        send_relay(&out_tx, &RelayMsg::HostState { ack, state })
-                            .await
-                            .ok();
+                        send_relay(
+                            &out_tx,
+                            &RelayMsg::HostState {
+                                ack,
+                                state,
+                                pushed: false,
+                            },
+                        )
+                        .await
+                        .ok();
                     });
                 }
 
@@ -2220,9 +2235,16 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                         tokio::time::sleep(std::time::Duration::from_millis(250)).await;
                         let mut state = crate::host::state().await;
                         sent.trim(&mut state);
-                        send_relay(&out_tx, &RelayMsg::HostState { ack, state })
-                            .await
-                            .ok();
+                        send_relay(
+                            &out_tx,
+                            &RelayMsg::HostState {
+                                ack,
+                                state,
+                                pushed: false,
+                            },
+                        )
+                        .await
+                        .ok();
                     });
                 }
 
@@ -2924,6 +2946,43 @@ const VIEWER_GRACE: std::time::Duration = std::time::Duration::from_secs(1800);
 /// clock, and it earns its place: a viewer whose WebRTC is down but who is re-offering through the
 /// relay right now is *present*, and killing the session it is trying to rejoin is the worst
 /// available move. Both must be old before anything is stopped.
+/// What is playing goes to the viewer the moment it changes on the computer, not when the viewer
+/// next asks: a pause on the Mac shows on the phone at once. Ends when a newer viewer starts its
+/// own, or the link is gone.
+async fn push_media(
+    out_tx: mpsc::Sender<String>,
+    sent: Arc<crate::host::trim::Sent>,
+    generation: Arc<std::sync::atomic::AtomicU64>,
+) {
+    let me = generation.fetch_add(1, Ordering::SeqCst) + 1;
+    let Ok(m) = crate::platform::get().media() else {
+        return;
+    };
+    let mut rx = m.state();
+    rx.borrow_and_update();
+    while rx.changed().await.is_ok() && generation.load(Ordering::SeqCst) == me {
+        // A burst (title, art, state) goes as one.
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        let mut state = crate::host::state().await;
+        // Reading the state may publish again; that is this answer, not a new change.
+        rx.borrow_and_update();
+        sent.trim(&mut state);
+        if send_relay(
+            &out_tx,
+            &RelayMsg::HostState {
+                ack: 0,
+                state,
+                pushed: true,
+            },
+        )
+        .await
+        .is_err()
+        {
+            return;
+        }
+    }
+}
+
 async fn viewer_watchdog(
     cmd_tx: CommandSender,
     last_connected: Arc<AtomicU64>,

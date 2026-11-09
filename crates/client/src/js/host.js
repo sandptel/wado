@@ -10,9 +10,12 @@
 let hostGets = 0, hostDos = 0, hostDrop = 0;
 const hostPics = {};
 W.relayOn("host_state", (msg) => {
-  if (hostDrop > 0) { hostDrop--; hostGets = Math.max(0, hostGets - 1); return; }
-  if (hostDos > 0) hostDos--;
-  else hostGets = Math.max(0, hostGets - 1);
+  // `pushed`: sent unasked (what is playing changed) — no request of ours to count.
+  if (!msg.pushed) {
+    if (hostDrop > 0) { hostDrop--; hostGets = Math.max(0, hostGets - 1); return; }
+    if (hostDos > 0) hostDos--;
+    else hostGets = Math.max(0, hostGets - 1);
+  }
   W.hostState = msg.state || null;
   // Pictures come once per viewer (server::host::trim); a repeat says `*_same` — keep ours.
   for (const p of (W.hostState && W.hostState.media) || []) {

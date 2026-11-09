@@ -48,15 +48,18 @@ class Host {
   }
 
   void _state(Map<String, dynamic> msg) {
-    if (_drop > 0) {
-      _drop--;
-      _gets = (_gets - 1).clamp(0, 1 << 30);
-      return;
-    }
-    if (_dos > 0) {
-      _dos--;
-    } else {
-      _gets = (_gets - 1).clamp(0, 1 << 30);
+    // `pushed`: sent unasked (what is playing changed) — no request of ours to count.
+    if (msg['pushed'] != true) {
+      if (_drop > 0) {
+        _drop--;
+        _gets = (_gets - 1).clamp(0, 1 << 30);
+        return;
+      }
+      if (_dos > 0) {
+        _dos--;
+      } else {
+        _gets = (_gets - 1).clamp(0, 1 << 30);
+      }
     }
     // The core saw this answer repeat the last one byte for byte (crates/app-bridge repeats.rs):
     // counted above, nothing to read. ponytail: a value changed here optimistically (a volume

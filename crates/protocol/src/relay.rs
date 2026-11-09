@@ -637,6 +637,10 @@ pub enum RelayMsg {
         /// The `ack` of the request this answers; 0 when it answers none.
         #[serde(default, skip_serializing_if = "crate::relay::is_zero")]
         ack: u32,
+        /// Sent unasked, because something changed (what is playing): answers no request, so a
+        /// client counting its requests' answers leaves it out of the count.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        pushed: bool,
     },
     /// Client → server: do this to the computer.
     HostDo {
