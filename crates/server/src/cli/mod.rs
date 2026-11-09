@@ -9,6 +9,8 @@ pub mod countdown;
 pub mod devices;
 pub mod files;
 pub mod landing;
+#[cfg(target_os = "macos")]
+pub mod login_item;
 pub mod msg;
 pub mod pair_ask;
 pub mod passkey;
@@ -68,6 +70,10 @@ pub fn dispatch(args: &[String]) -> Run {
         Some("claude") => claude::run(rest),
         Some("claude-event") => crate::claude::hook_cli::run(),
         Some("validate") => validate::run(rest.first().map(String::as_str)),
+        #[cfg(target_os = "macos")]
+        Some("install") => login_item::install(),
+        #[cfg(target_os = "macos")]
+        Some("uninstall") => login_item::uninstall(),
         Some(other) => {
             eprintln!("  {} is not a wado command", style::bad(other));
             match landing::suggest(other) {
