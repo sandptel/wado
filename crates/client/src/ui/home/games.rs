@@ -32,6 +32,9 @@ fn icon_of(apps: &[AppEntry], exec: &str) -> Option<String> {
 
 /// Grow the poster into the game (`js/launch.js`), then open it.
 fn play(ui: Ui, p: Profile, from: &str) {
+    if crate::host_caps::refused(ui, "session") {
+        return;
+    }
     let mut live = ui.live;
     live.launching.set(Some((p.name.clone(), hue(&p.name))));
     bridge::call(format!("window.__wado.launchGrow({});", bridge::js(&from)));
@@ -68,10 +71,22 @@ pub fn render(ui: Ui) -> Element {
     let here = game_mode::computer(ui);
     let list = recent::list(ui);
     let now = crate::profile::now_s();
+    let session = crate::host_caps::here(ui, "session");
+    if !all && matches!(session, crate::host_caps::Cap::Off(_)) {
+        return rsx! {};
+    }
+    let soon = (!session.on()).then(|| session.why().to_string());
 
     rsx! {
         if all {
             {everything(ui, &list, now)}
+        } else if let Some(why) = soon {
+            // A game is a session: on a computer that has none yet, its shelf shows, dimmed, and a
+            // tap says why.
+            div { class: "sect", span { "Games" } span { class: "whenbadge later", "{crate::host_caps::SOON}" } }
+            div { class: "soon", onclick: move |_| crate::host_caps::tell(ui, &why),
+                {shelf(ui, game_mode::on(ui), &apps, setup, picking)}
+            }
         } else {
             {lately(ui, &list, &here, now, &apps)}
             div { class: "sect", span { "Games" } }

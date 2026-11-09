@@ -43,6 +43,13 @@ impl Reach {
         self.config.as_ref().and_then(|c| c.grants.clone())
     }
 
+    /// Can the computer do `name` (`crate::host_caps`)? Not known yet counts as on.
+    pub fn cap(&self, name: &str) -> crate::host_caps::Cap {
+        self.config.as_ref().map_or(crate::host_caps::Cap::On, |c| {
+            crate::host_caps::cap_state(c, name)
+        })
+    }
+
     /// May this phone use `token` (`host`, `input`, `clipboard`, `shells`) here? Unknown counts
     /// as yes, for the reason above.
     pub fn may(&self, token: &str) -> bool {

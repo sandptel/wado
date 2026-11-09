@@ -12,11 +12,17 @@ pub fn NavRow(
     title: String,
     sub: String,
     onopen: EventHandler<()>,
+    /// Coming to this OS (`crate::host_caps`): dimmed and badged; `onopen` says why.
+    #[props(default)]
+    later: bool,
 ) -> Element {
     rsx! {
-        button { class: "navrow", onclick: move |_| onopen.call(()),
+        button { class: if later { "navrow soon" } else { "navrow" }, onclick: move |_| onopen.call(()),
             span { class: "disc", style: "--hue:var(--base{hue})", Icon { name: icon } }
-            span { class: "navtext", b { "{title}" } small { "{sub}" } }
+            span { class: "navtext",
+                b { "{title}" if later { " " span { class: "whenbadge later", "{crate::host_caps::SOON}" } } }
+                small { "{sub}" }
+            }
             Icon { name: "right" }
         }
     }

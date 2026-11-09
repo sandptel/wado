@@ -25,10 +25,24 @@ pub fn shut(ui: Ui, r: &Reach, door: Door) -> Option<String> {
     if !r.may("input") {
         return Some("Not allowed for this phone".into());
     }
+    if let Some(why) = missing(r, door) {
+        return Some(why);
+    }
     if door == Door::Gamepad && too_old(r) {
         return Some("Update wado on the computer".into());
     }
     None
+}
+
+/// The computer cannot do this door at all (`crate::host_caps`): why, in its own words — on a
+/// Mac, "Not on macOS: …" or the permission to grant.
+pub fn missing(r: &Reach, door: Door) -> Option<String> {
+    let cap = r.cap(match door {
+        Door::Touchpad => "touch",
+        Door::Keyboard => "keys",
+        Door::Gamepad => "gamepad",
+    });
+    (!cap.on()).then(|| cap.why().to_string())
 }
 
 /// The daemon has answered and cannot carry the gamepad away from a session.
@@ -39,6 +53,12 @@ pub fn too_old(r: &Reach) -> bool {
 }
 
 pub fn open(ui: Ui, door: Door) {
+    // Every way in comes through here — a shortcut too: a door the computer cannot do says why.
+    let r = crate::reach::of(ui, &crate::profile::current_key(ui));
+    if let Some(why) = missing(&r, door) {
+        crate::host_caps::tell(ui, &why);
+        return;
+    }
     let name = crate::profile::current_name(ui);
     match door {
         Door::Touchpad => bridge::call(

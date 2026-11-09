@@ -9,6 +9,7 @@ use dioxus::prelude::*;
 use wado_protocol::{HostAction, HostState};
 
 use crate::{
+    host_caps::Cap,
     reach::Reach,
     route,
     state::Ui,
@@ -66,6 +67,10 @@ pub fn Quick(ui: Ui, pk: String, name: String, h: HostState, r: Reach) -> Elemen
             .unwrap_or_else(|| "On".into()),
     };
     let uplink = wifi.as_ref().is_some_and(|w| w.uplink);
+    // Not on this computer (a Mac, `crate::host_caps`): gone, or dimmed and saying why.
+    let (wifi_cap, bt_cap) = (r.cap("wifi"), r.cap("bluetooth"));
+    let (wifi_why, bt_why) = (wifi_cap.why().to_string(), bt_cap.why().to_string());
+    let wifi_cap_on = wifi_cap.on();
 
     rsx! {
         if let Some(s) = speaker {
@@ -106,20 +111,36 @@ pub fn Quick(ui: Ui, pk: String, name: String, h: HostState, r: Reach) -> Elemen
                 sub: if h.awake { "Won't sleep" } else { "Sleeps as usual" },
                 onflip: move |_| a4(HostAction::KeepAwake { on: !h.awake }),
             }
-            Toggle {
-                icon: "wifi", title: "Wi-Fi", on: wifi_on, sub: wifi_sub,
-                disabled: wifi.is_none() || !owner,
-                onflip: move |_| if wifi_on { ask_wifi.set(true) } else { host::act_on(ui, &pk, HostAction::WifiRadio { on: true, minutes: None }) },
-                onmore: move |_| route::go(ui, Page::ConnectionTrust),
+            match wifi_cap {
+                Cap::On => rsx! {
+                    Toggle {
+                        icon: "wifi", title: "Wi-Fi", on: wifi_on, sub: wifi_sub,
+                        disabled: wifi.is_none() || !owner,
+                        onflip: move |_| if wifi_on { ask_wifi.set(true) } else { host::act_on(ui, &pk, HostAction::WifiRadio { on: true, minutes: None }) },
+                        onmore: move |_| route::go(ui, Page::ConnectionTrust),
+                    }
+                },
+                Cap::Later(_) => rsx! {
+                    Toggle { icon: "wifi", title: "Wi-Fi", on: false, sub: "", later: true, onflip: move |_| crate::host_caps::tell(ui, &wifi_why) }
+                },
+                Cap::Off(_) => rsx! {},
             }
-            Toggle {
-                icon: "bt", title: "Bluetooth", on: bt_on, sub: bt_sub,
-                disabled: bt.is_none(),
-                onflip: move |_| a5(HostAction::BtPower { on: !bt_on }),
-                onmore: move |_| route::go(ui, Page::SoundDevices),
+            match bt_cap {
+                Cap::On => rsx! {
+                    Toggle {
+                        icon: "bt", title: "Bluetooth", on: bt_on, sub: bt_sub,
+                        disabled: bt.is_none(),
+                        onflip: move |_| a5(HostAction::BtPower { on: !bt_on }),
+                        onmore: move |_| route::go(ui, Page::SoundDevices),
+                    }
+                },
+                Cap::Later(_) => rsx! {
+                    Toggle { icon: "bt", title: "Bluetooth", on: false, sub: "", later: true, onflip: move |_| crate::host_caps::tell(ui, &bt_why) }
+                },
+                Cap::Off(_) => rsx! {},
             }
         }
-        if wifi.is_some() && !owner {
+        if wifi.is_some() && !owner && wifi_cap_on {
             p { class: "why", "Only the owner device can change {name}'s Wi-Fi." }
         }
         if ask_wifi() {
@@ -138,16 +159,21 @@ fn Toggle(
     #[props(default)] disabled: bool,
     onflip: EventHandler<()>,
     #[props(default)] onmore: Option<EventHandler<()>>,
+    /// Coming to this OS: dimmed, badged, and `onflip` says why.
+    #[props(default)]
+    later: bool,
 ) -> Element {
     rsx! {
         button {
-            class: if on { "qt on" } else { "qt" },
+            class: if later { "qt soon" } else if on { "qt on" } else { "qt" },
             disabled,
             "aria-pressed": "{on}",
             onclick: move |_| onflip.call(()),
             oncontextmenu: move |e| if let Some(m) = onmore { e.prevent_default(); m.call(()); },
             span { class: "ic", span { key: "{on}", class: "glyph bump", Icon { name: icon } } }
-            span { class: "qtl", b { "{title}" } small { "{sub}" } }
+            span { class: "qtl", b { "{title}" }
+                if later { span { class: "whenbadge later", "{crate::host_caps::SOON}" } } else { small { "{sub}" } }
+            }
         }
     }
 }

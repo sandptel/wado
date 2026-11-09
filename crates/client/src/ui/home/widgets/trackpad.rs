@@ -57,11 +57,14 @@ pub fn Trackpad(cx: Ctx) -> Element {
         .filter_map(|id| actions.iter().find(|a| &a.id == id).cloned())
         .collect();
     let relayed = cx.r.selected && (ui.live.link)().state == "relayed";
+    let no_touch = input::missing(&cx.r, input::Door::Touchpad);
     let name = cx.name.clone();
     let k = pk.clone();
     rsx! {
         button {
             class: "padw",
+            disabled: no_touch.is_some(),
+            title: no_touch.clone().unwrap_or_default(),
             "aria-label": "Use {name}'s pointer — opens the trackpad",
             onclick: move |_| {
                 if let Some(i) = crate::route::index_of(ui, &k) {
@@ -71,15 +74,18 @@ pub fn Trackpad(cx: Ctx) -> Element {
             },
             Icon { name: "trackpad" }
             span { "Touch to use {name}'s pointer"
-                small { if relayed { "Relayed — plays a little behind your finger" } else { "Opens the trackpad" } }
+                small { if let Some(w) = &no_touch { "{w}" } else if relayed { "Relayed — plays a little behind your finger" } else { "Opens the trackpad" } }
             }
         }
         div { class: "videoorsw", role: "group", "aria-label": "Use {name} as its",
             for (door, label, icon) in [(input::Door::Touchpad, "Touchpad", "trackpad"), (input::Door::Keyboard, "Keyboard", "kbd"), (input::Door::Gamepad, "Gamepad", "pad")] {
                 {
                     let k = pk.clone();
+                    let why = input::missing(&cx.r, door);
                     rsx! {
                         button { key: "{label}", class: "vidoorw",
+                            disabled: why.is_some(),
+                            title: why.unwrap_or_default(),
                             onclick: move |_| {
                                 if let Some(i) = crate::route::index_of(ui, &k) {
                                     if (ui.set.profile)() != i { crate::profile::select(ui, i); }

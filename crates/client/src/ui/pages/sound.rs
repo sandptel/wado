@@ -128,6 +128,8 @@ pub fn render(ui: Ui) -> Element {
                 }
             }
         }
-        p { class: "why", "\"This device\" plays on the device you are holding. Moving an app there sends its sound here instead of out of the computer." }
+        if !crate::host_caps::gone(ui, "viewer_sink") {
+            p { class: "why", "\"This device\" plays on the device you are holding. Moving an app there sends its sound here instead of out of the computer." }
+        }
     }
 }

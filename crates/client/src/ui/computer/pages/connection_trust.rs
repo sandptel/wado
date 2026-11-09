@@ -65,8 +65,10 @@ pub fn render(ui: Ui) -> Element {
         {crate::ui::scoped(ui, "push", crate::ui::push::render)}
         {crate::ui::passkey::card::render((ui.live.host)().grants.map(|g| crate::ui::passkey::card::typed(&g.name)).unwrap_or_else(|| "<this device>".into()))}
         if host::relay_only(ui) {
-            div { class: "sect", span { "Its Wi-Fi" } }
-            {crate::ui::scoped(ui, "wifi", network::wifi)}
+            if !crate::host_caps::gone(ui, "wifi") {
+                div { class: "sect", span { "Its Wi-Fi" } }
+                {crate::ui::scoped(ui, "wifi", network::wifi)}
+            }
             {host::notes(ui)}
             {crate::ui::scoped(ui, "owner_only", host::owner_only)}
         }

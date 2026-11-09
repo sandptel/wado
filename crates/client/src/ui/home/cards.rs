@@ -100,6 +100,9 @@ pub fn render(ui: Ui) -> Element {
                     let os = if os.is_empty() { p.address() } else { os };
                     let k1 = key.clone();
                     let name = p.display();
+                    // A computer with no sessions yet (a Mac): ▶ stays, dimmed; a tap says why.
+                    let session = r.cap("session");
+                    let why = session.why().to_string();
                     rsx! {
                         div { key: "{key}", class: "ccard", "data-key": "{key}", style: "--hue:var(--base{profile::hue(i)})",
                             button { class: "cpick", "aria-label": "{name} — open its page",
@@ -114,12 +117,26 @@ pub fn render(ui: Ui) -> Element {
                                     }
                                 }
                             }
-                            button {
-                                class: if n > 0 { "cgo live" } else { "cgo" },
-                                disabled: !r.online && !r.busy,
-                                "aria-label": if n > 0 { "Rejoin the desktop on {name}" } else { "Start a desktop on {name}" },
-                                onclick: move |_| go(ui, i),
-                                Icon { name: "play", fill: true }
+                            match session {
+                                crate::host_caps::Cap::On => rsx! {
+                                    button {
+                                        class: if n > 0 { "cgo live" } else { "cgo" },
+                                        disabled: !r.online && !r.busy,
+                                        "aria-label": if n > 0 { "Rejoin the desktop on {name}" } else { "Start a desktop on {name}" },
+                                        onclick: move |_| go(ui, i),
+                                        Icon { name: "play", fill: true }
+                                    }
+                                },
+                                crate::host_caps::Cap::Later(_) => rsx! {
+                                    button {
+                                        class: "cgo soon",
+                                        "aria-label": "Desktop on {name}: {crate::host_caps::SOON}",
+                                        title: "{crate::host_caps::SOON}",
+                                        onclick: move |_| crate::host_caps::tell(ui, &why),
+                                        Icon { name: "play", fill: true }
+                                    }
+                                },
+                                crate::host_caps::Cap::Off(_) => rsx! {},
                             }
                         }
                     }

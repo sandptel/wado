@@ -161,6 +161,10 @@ details.card > summary { cursor: pointer; font-weight: 600; color: var(--bright)
 .whenbadge.apply { color: var(--accent); background: color-mix(in oklab, var(--accent), transparent 86%); }
 .whenbadge.restart { color: var(--base0A); background: color-mix(in oklab, var(--base0A), transparent 86%); }
 .whenbadge.host { color: var(--base0E); background: color-mix(in oklab, var(--base0E), transparent 86%); }
+/* "Coming to macOS" (`host_caps.rs`): the control stays, dimmed; a tap anywhere on it says why. */
+.whenbadge.later { color: var(--dim); background: var(--s3); }
+.soon { opacity: .5; }
+.soon * { pointer-events: none; }
 
 /* Segmented control. Equal widths, so the knob is placed by --i / --n alone. */
 .seg { position: relative; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; padding: 4px; border-radius: var(--r2); background: var(--s0); }

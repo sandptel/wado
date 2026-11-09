@@ -8,6 +8,9 @@ use dioxus::prelude::*;
 use crate::{bridge, cfg, state::Ui};
 
 pub fn start(ui: Ui) {
+    if crate::host_caps::refused(ui, "session") {
+        return;
+    }
     let mut live = ui.live;
     let s = ui.set;
     let config = cfg::build(ui);

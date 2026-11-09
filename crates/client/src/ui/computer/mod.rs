@@ -15,6 +15,7 @@
 //! | [`sessions`] | Sessions: who is in each, Join / Take over / End, Start new |
 //! | [`session_row`] | one session in it |
 //! | [`linkmeter`] | the link speed test, shown |
+//! | [`this_mac`] | On this Mac: what a Mac cannot do here, and what is coming |
 //!
 //! It is reached from its card on home by a shared-element transition (`js/hero_flip.js`): the
 //! card's surface, disc and name grow into the hero's. The page is laid out by Rust; the motion
@@ -34,6 +35,7 @@ pub mod quick;
 pub mod session_row;
 pub mod sessions;
 pub mod settings_list;
+pub mod this_mac;
 
 use dioxus::prelude::*;
 
@@ -120,6 +122,7 @@ pub fn render(ui: Ui) -> Element {
                             div { class: "sect", span { "This computer" } }
                             {settings_list::render(ui)}
                         }
+                        this_mac::ThisMac { r: r.clone() }
                     }
                     div { class: "col",
                         if !off {

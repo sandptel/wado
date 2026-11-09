@@ -8,6 +8,7 @@ use dioxus::prelude::*;
 
 use crate::{
     bridge,
+    host_caps::Cap,
     reach::Reach,
     state::Ui,
     ui::{home::sessions, widgets::Icon},
@@ -87,19 +88,32 @@ pub fn Actions(ui: Ui, r: Reach, name: String) -> Element {
         "Start at this screen's size".into()
     };
 
+    // No session on this computer yet (`crate::host_caps`): the door stays, dimmed, and says why.
+    let session = r.cap("session");
+    let later = matches!(session, Cap::Later(_));
+    let desk_sub = if later {
+        session.why().to_string()
+    } else {
+        desk_sub
+    };
+
     rsx! {
         section { class: "acts sx o2", style: "--n:1", "aria-label": "Open",
-            button {
-                class: "act primary",
-                disabled: off && !r.busy,
-                onclick: {
-                    let r = r.clone();
-                    move |_| desktop(ui, &r)
-                },
-                if running && !r.busy { span { class: "badge", "running" } }
-                if r.busy && !idle_elsewhere { span { class: "badge", "take over" } }
-                span { class: "aic", Icon { name: "play", fill: true } }
-                span { b { "Desktop" } small { "{desk_sub}" } }
+            if !matches!(session, Cap::Off(_)) {
+                button {
+                    class: if later { "act primary soon" } else { "act primary" },
+                    disabled: off && !r.busy,
+                    onclick: {
+                        let r = r.clone();
+                        let why = session.why().to_string();
+                        move |_| if later { crate::host_caps::tell(ui, &why) } else { desktop(ui, &r) }
+                    },
+                    if later { span { class: "badge", "{crate::host_caps::SOON}" } }
+                    if running && !r.busy && !later { span { class: "badge", "running" } }
+                    if r.busy && !idle_elsewhere && !later { span { class: "badge", "take over" } }
+                    span { class: "aic", Icon { name: "play", fill: true } }
+                    span { b { "Desktop" } small { "{desk_sub}" } }
+                }
             }
             crate::ui::computer::input::tile::Tile { ui, r: r.clone() }
             button {

@@ -40,6 +40,22 @@ pub fn Sessions(ui: Ui, r: Reach) -> Element {
         .filter(|h| h.max_sessions > 0)
         .map(|h| h.max_sessions.saturating_sub(h.sessions));
     let full = free == Some(0);
+    // A computer with no sessions yet (a Mac, `crate::host_caps`): the section says so, dimmed.
+    match r.cap("session") {
+        crate::host_caps::Cap::On => {}
+        crate::host_caps::Cap::Off(_) => return rsx! {},
+        crate::host_caps::Cap::Later(why) => {
+            return rsx! {
+                section { class: "sx sessions2 o2", style: "--n:2", "aria-label": "Sessions",
+                    div { class: "sect", span { "Sessions" } span { class: "whenbadge later", "{crate::host_caps::SOON}" } }
+                    div { class: "sempty",
+                        span { class: "semptyart", "aria-hidden": "true", i {} i {} i {} }
+                        p { "{why}" }
+                    }
+                }
+            };
+        }
+    }
 
     rsx! {
         section { class: "sx sessions2 o2", style: "--n:2", "aria-label": "Sessions",

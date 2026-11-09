@@ -77,9 +77,17 @@ pub fn render(ui: Ui) -> Element {
     };
     let may_devices = (live.host)().grants.is_some_and(|g| g.devices);
     let go = move |p: Page| route::go(ui, p);
+    // A computer with no sessions yet (a Mac): its session page waits for them.
+    let session = crate::host_caps::here(ui, "session");
+    let later = !session.on();
+    let why = session.why().to_string();
     rsx! {
         div { class: "list",
-            NavRow { icon: "monitor", hue: "0D", title: "Display & session", sub: display, onopen: move |_| go(Page::DisplaySession) }
+            if !matches!(session, crate::host_caps::Cap::Off(_)) {
+                NavRow { icon: "monitor", hue: "0D", title: "Display & session", sub: display, later,
+                    onopen: move |_| if later { crate::host_caps::tell(ui, &why) } else { go(Page::DisplaySession) },
+                }
+            }
             NavRow { icon: "phone", hue: "0C", title: "Virtual input", sub: pad, onopen: move |_| go(Page::Input) }
             NavRow { icon: "sound", hue: "0E", title: "Sound & devices", sub: sound, onopen: move |_| go(Page::SoundDevices) }
             NavRow { icon: "net", hue: "09", title: "Connection & trust", sub: conn, onopen: move |_| go(Page::ConnectionTrust) }

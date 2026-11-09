@@ -104,6 +104,9 @@ fn shadow_js(p: &Profile) -> String {
 /// Open `p`'s app as a game: a session shaped by its rules, its console choices shadowed, and the
 /// app launched once it is up (`ui::home::games` launcher) — or straight into the running session.
 pub fn open(ui: Ui, p: Profile) {
+    if crate::host_caps::refused(ui, "session") {
+        return;
+    }
     let mut live = ui.live;
     crate::recent::note(ui, "game", &p.name, &p.exec);
     bridge::call(shadow_js(&p));

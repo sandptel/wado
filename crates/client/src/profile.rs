@@ -93,6 +93,13 @@ pub fn select(ui: Ui, i: usize) {
     // Another computer's state is not this one's.
     let mut live = ui.live;
     live.hoststate.set(None);
+    // Nor what it is: a Mac's "no session here" must not hold for the next computer before it
+    // has said what it is (`crate::host_caps`).
+    {
+        let mut c = live.host.write();
+        c.platform.clear();
+        c.host_caps = Default::default();
+    }
     if p.conn_mode == "relay" {
         // A light link to it goes first: the relay will not hold two sockets of one device for
         // one computer, and this one is about to carry everything.
@@ -237,9 +244,12 @@ pub fn hue(i: usize) -> &'static str {
     ["0D", "0E", "0C", "0B", "0A", "09"][i % 6]
 }
 
-/// A laptop if it has a backlight, else a monitor.
+/// An Apple for a Mac (its OS says "macOS 15.6"), else a laptop if it has a backlight, else a
+/// monitor.
 pub fn icon(p: &Profile) -> &'static str {
-    if p.laptop {
+    if p.os.starts_with("macOS") {
+        "apple"
+    } else if p.laptop {
         "laptop"
     } else {
         "monitor"

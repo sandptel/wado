@@ -15,6 +15,7 @@ mod claude;
 mod debug;
 mod deeplink;
 mod game_mode;
+mod host_caps;
 mod lane;
 mod link;
 mod multi;

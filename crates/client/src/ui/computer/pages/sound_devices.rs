@@ -11,7 +11,9 @@ use crate::{
 pub fn render(ui: Ui) -> Element {
     rsx! {
         {sound::render(ui)}
-        div { class: "sect", span { "Bluetooth" } }
-        {network::bluetooth(ui)}
+        if !crate::host_caps::gone(ui, "bluetooth") {
+            div { class: "sect", span { "Bluetooth" } }
+            {network::bluetooth(ui)}
+        }
     }
 }
