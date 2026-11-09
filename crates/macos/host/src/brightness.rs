@@ -15,12 +15,6 @@ const LIB: &std::ffi::CStr =
 type Get = unsafe extern "C" fn(u32, *mut f32) -> i32;
 type Set = unsafe extern "C" fn(u32, f32) -> i32;
 
-#[link(name = "CoreGraphics", kind = "framework")]
-unsafe extern "C" {
-    fn CGGetActiveDisplayList(max: u32, ids: *mut u32, count: *mut u32) -> i32;
-    fn CGDisplayIsBuiltin(id: u32) -> bool;
-}
-
 /// One brightness step, as the keys take it.
 pub const STEP: f32 = 1.0 / 16.0;
 
@@ -31,24 +25,10 @@ pub struct MacBrightness {
     state: Published<Option<f32>>,
 }
 
-/// The built-in display, when there is one.
-fn builtin() -> Option<u32> {
-    let mut ids = [0u32; 16];
-    let mut n = 0u32;
-    // SAFETY: room for 16 ids, and the count written back.
-    if unsafe { CGGetActiveDisplayList(16, ids.as_mut_ptr(), &mut n) } != 0 {
-        return None;
-    }
-    // SAFETY: ids CoreGraphics just listed.
-    ids[..n as usize]
-        .iter()
-        .copied()
-        .find(|&id| unsafe { CGDisplayIsBuiltin(id) })
-}
-
 impl MacBrightness {
     pub fn probe() -> Result<MacBrightness, String> {
-        let display = builtin()
+        let display = crate::input::cg::display_ids()
+            .find(|&id| objc2_core_graphics::CGDisplayIsBuiltin(id))
             .ok_or("Not on macOS for external displays yet — this Mac has no built-in display.")?;
         // SAFETY: dlopen/dlsym with NUL-terminated names; the symbols, when present, have these
         // signatures on every macOS that ships them.

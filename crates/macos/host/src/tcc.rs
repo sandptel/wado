@@ -12,12 +12,6 @@ unsafe extern "C" {
     fn AXIsProcessTrustedWithOptions(options: *const std::ffi::c_void) -> bool;
 }
 
-#[link(name = "CoreGraphics", kind = "framework")]
-unsafe extern "C" {
-    fn CGPreflightScreenCaptureAccess() -> bool;
-    fn CGRequestScreenCaptureAccess() -> bool;
-}
-
 /// Events this process posts reach other apps.
 pub fn accessibility() -> bool {
     // SAFETY: no arguments; reads this process's grant.
@@ -26,14 +20,7 @@ pub fn accessibility() -> bool {
 
 /// This process may capture the screen.
 pub fn screen_recording() -> bool {
-    // SAFETY: no arguments; reads this process's grant.
-    unsafe { CGPreflightScreenCaptureAccess() }
-}
-
-/// Ask for Screen Recording once (macOS shows its prompt, or opens the pane).
-pub fn ask_screen_recording() -> bool {
-    // SAFETY: no arguments.
-    unsafe { CGRequestScreenCaptureAccess() }
+    objc2_core_graphics::CGPreflightScreenCaptureAccess()
 }
 
 /// At start, ask macOS for what is missing, once: it shows its own prompts and lists Wado in
@@ -52,7 +39,8 @@ pub fn ask_missing() {
         };
     }
     if !screen_recording() {
-        ask_screen_recording();
+        // macOS shows its prompt, or opens the pane.
+        objc2_core_graphics::CGRequestScreenCaptureAccess();
     }
 }
 

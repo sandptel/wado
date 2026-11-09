@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use objc2_app_kit::{NSEvent, NSEventModifierFlags, NSEventType, NSRunningApplication};
+use objc2_core_graphics::{CGEvent, CGEventTapLocation};
 use objc2_foundation::{NSPoint, NSString};
 use tokio::sync::watch;
 use wado_platform::media::MediaPlayers;
@@ -202,14 +203,7 @@ pub fn press(key: i64) -> Res<()> {
         )
         .ok_or("macOS would not make the media key")?;
         let cg = ev.CGEvent().ok_or("macOS would not post the media key")?;
-        // SAFETY: `cg` is a live event, held until after the post.
-        unsafe {
-            crate::input::cg::post_event(
-                (&*cg as *const objc2_core_graphics::CGEvent)
-                    .cast_mut()
-                    .cast(),
-            )
-        };
+        CGEvent::post(CGEventTapLocation::HIDEventTap, Some(&cg));
     }
     Ok(())
 }
