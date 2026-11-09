@@ -1,8 +1,8 @@
 //! What is playing on the Mac, and its controls.
 //!
 //! Whatever app is now playing — a browser tab, Spotify, Music, Podcasts, VLC — comes from
-//! mediaremote-adapter ([`crate::nowplaying`]), streamed: every change is published as it happens.
-//! Without the adapter, the card comes from the two players that answer AppleScript — Music and
+//! the now-playing helper ([`crate::nowplaying`]), streamed: every change is published as it happens.
+//! Without the helper, the card comes from the two players that answer AppleScript — Music and
 //! Spotify (each asks once to be controlled, in Privacy & Security › Automation), read when asked.
 //! With neither, the media keys, which every Mac app obeys, on a card that has no track to show.
 
@@ -18,7 +18,7 @@ use wado_platform::state::Published;
 use wado_platform::{Fut, Res};
 use wado_protocol::host::{MediaOp, Player};
 
-use crate::nowplaying::{Adapter, Stream, epoch_micros};
+use crate::nowplaying::{Adapter, Stream, epoch_secs};
 
 /// The players read by AppleScript: bundle id, and the name AppleScript knows it by.
 const SCRIPTABLE: [(&str, &str); 2] = [
@@ -50,7 +50,7 @@ impl MacMedia {
                 let st = state.clone();
                 let stream = a
                     .clone()
-                    .stream(move |n| st.publish(cards(n.player(epoch_micros()))));
+                    .stream(move |n| st.publish(cards(n.player(epoch_secs()))));
                 Some((a, stream))
             }
             Err(why) => {
