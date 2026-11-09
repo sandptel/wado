@@ -24,6 +24,9 @@ const _os = MethodChannel('wado/os');
 /// Kinds shown here, fetched whole; their limit.
 const _shown = {'image', 'text', 'markdown', 'json', 'csv'};
 const _imageMax = 40 << 20;
+/// Bigger than this, a file is not opened from here: it is downloaded to the phone first (as it
+/// arrives, never whole in memory) and opened from there.
+const openMax = 100 << 20;
 /// Kinds handed to this phone's own app.
 const _handed = {'pdf', 'video', 'audio'};
 
@@ -31,14 +34,16 @@ void openViewer(BuildContext context, String path, Map<String, dynamic> e) {
   Navigator.of(context).push(MaterialPageRoute(builder: (_) => _Viewer(path: path, e: e)));
 }
 
-/// Fetch a file into the cache and open it in the phone's app for its kind. False: no app.
+/// Fetch a file into the cache, as it arrives, and open it in the phone's app for its kind.
+/// False: no app.
 Future<bool> openOnPhone(String path, String name, {void Function(double)? progress}) async {
-  final bytes = await Files.I.get(path, progress: progress);
   final dir = Directory('${(await getTemporaryDirectory()).path}/open')..createSync(recursive: true);
-  final f = File('${dir.path}/$name');
-  await f.writeAsBytes(bytes);
-  return await _os.invokeMethod<bool>('view', {'path': f.path, 'mime': mimeOf(name)}) ?? false;
+  final f = await getToFile(path, File('${dir.path}/$name'), progress: progress);
+  return viewOnPhone(f, name);
 }
+
+/// Open a file already on the phone in its app for the kind. False: no app.
+Future<bool> viewOnPhone(File f, String name) async => await _os.invokeMethod<bool>('view', {'path': f.path, 'mime': mimeOf(name)}) ?? false;
 
 class _Viewer extends StatefulWidget {
   const _Viewer({required this.path, required this.e});
@@ -54,6 +59,24 @@ class _ViewerState extends State<_Viewer> {
   String _err = '';
   double _p = 0;
   bool _source = false, _opening = false;
+  /// A big file downloaded to the phone, ready to open from there.
+  File? _saved;
+
+  bool get _big => size > openMax;
+
+  Future<void> _download({bool offer = true}) async {
+    setState(() {
+      _opening = true;
+      _p = 0;
+    });
+    try {
+      final f = await downloadToPhone(widget.path, name, offer: offer, progress: (p) => mounted ? setState(() => _p = p) : null);
+      if (mounted) setState(() => _saved = f);
+    } catch (e) {
+      if (mounted) setState(() => _err = '$e');
+    }
+    if (mounted) setState(() => _opening = false);
+  }
   late final String name = widget.path.split('/').last;
   late final String kind = kindOf(name);
   late final int size = ((widget.e['size'] ?? 0) as num).toInt();
@@ -113,7 +136,7 @@ class _ViewerState extends State<_Viewer> {
         actions: [
           if (kind == 'markdown' && _bytes != null)
             IconBtn('term', label: _source ? 'Formatted' : 'Source', color: _source ? t.accent : fg, onTap: () => setState(() => _source = !_source)),
-          IconBtn('down', label: 'Download to this phone', color: fg, onTap: () async => keepOnPhone(name, _bytes ?? await Files.I.get(widget.path))),
+          IconBtn('down', label: 'Download to this phone', color: fg, onTap: _opening ? null : () => _bytes != null ? keepOnPhone(name, _bytes!) : _download()),
         ],
       ),
       body: _body(context),
@@ -123,6 +146,22 @@ class _ViewerState extends State<_Viewer> {
   Widget _body(BuildContext context) {
     final t = Tok.of(context);
     if (_err.isNotEmpty) return _card(context, why: _err, bad: true);
+    // Too big to bring through the app: to the phone's storage first, then opened from there.
+    if (_big && (_handed.contains(kind) || !_fetch)) {
+      return _card(
+        context,
+        icon: kind == 'video' ? 'play' : 'down',
+        title: _saved == null ? 'Too big to open here' : 'On this phone',
+        why: _saved == null
+            ? '${fmtSize(size)} is more than wado opens directly (${fmtSize(openMax)}). Download it to this phone first — it goes straight to storage — then open it from there.'
+            : 'Downloaded. Open it in your ${kind == 'video' ? 'video player' : 'phone'} — or find it with your other downloads.',
+        act: _saved == null
+            ? Btn(_opening ? 'Downloading… ${(_p * 100).round()}%' : 'Download to this phone', primary: true, icon: 'down', busy: _opening, onTap: _opening ? null : () => _download(offer: false))
+            : Btn('Open it', primary: true, icon: 'play', onTap: () async {
+                if (!await viewOnPhone(_saved!, name) && mounted) setState(() => _err = 'No app on this phone opens ${typeOf(name)}s.');
+              }),
+      );
+    }
     if (_handed.contains(kind)) {
       final what = switch (kind) { 'pdf' => 'PDF app', 'video' => 'video player', _ => 'music player' };
       return _card(
@@ -204,7 +243,7 @@ class _ViewerState extends State<_Viewer> {
         Text(why, style: body(context, color: bad ? t.bad : t.text)),
         _facts(context),
         ?act,
-        if (act == null) Btn('Download to this phone', primary: !bad, icon: 'down', onTap: () async => keepOnPhone(name, await Files.I.get(widget.path))),
+        if (act == null) Btn(_opening ? 'Downloading… ${(_p * 100).round()}%' : 'Download to this phone', primary: !bad, icon: 'down', busy: _opening, onTap: _opening ? null : _download),
       ]),
     ]);
   }

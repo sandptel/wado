@@ -155,6 +155,18 @@ class MainActivity : FlutterFragmentActivity() {
                     volumeKeys = call.arguments == true
                     result.success(null)
                 }
+                "readOpen" -> Thread {
+                    val r = Inbound.readOpen(call.argument<String>("uri")!!, contentResolver)
+                    runOnUiThread { result.success(r) }
+                }.start()
+                "readNext" -> Thread {
+                    val b = Inbound.readNext(call.argument<Int>("id")!!, call.argument<Int>("max") ?: (1 shl 20))
+                    runOnUiThread { result.success(b) }
+                }.start()
+                "readClose" -> {
+                    Inbound.readClose(call.argument<Int>("id")!!)
+                    result.success(null)
+                }
                 "read" -> Thread {
                     val bytes = Inbound.read(call.argument<String>("uri")!!, contentResolver)
                     runOnUiThread { result.success(bytes) }

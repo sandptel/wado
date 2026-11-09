@@ -3,6 +3,7 @@
 // (`files_in` / `files_out` / `files_chunk`). Requests are `{id, op, …}` JSON; bytes come back
 // framed with their request id (4 bytes, big-endian) before the payload.
 import 'dart:async';
+import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -246,6 +247,37 @@ class Files {
     });
     return c.future;
   }
+}
+
+/// Fetch `path` (a folder as a zip) straight into the file `out`, a frame at a time: a film never
+/// sits in the phone's memory whole. Progress 0..1.
+Future<File> getToFile(String path, File out, {bool zip = false, void Function(double)? progress}) async {
+  final sink = out.openWrite();
+  final done = Completer<void>();
+  var size = 0, got = 0;
+  Files.I.stream(zip ? 'zip' : 'get', {'path': path}, (m) {
+    if ((m['err'] ?? '') != '') {
+      done.completeError(Exception(m['err']));
+      return true;
+    }
+    if (m['size'] != null) size = (m['size'] as num).toInt();
+    if (m['done'] == true) {
+      done.complete();
+      return true;
+    }
+    return false;
+  }, (u8) {
+    got += u8.length;
+    sink.add(u8);
+    if (size > 0) progress?.call(got / size);
+  });
+  try {
+    await done.future;
+    await sink.flush();
+  } finally {
+    await sink.close();
+  }
+  return out;
 }
 
 /// Upload one file (files_xfer.js): `put` → bytes in chunks under a buffer ceiling → `put_end`

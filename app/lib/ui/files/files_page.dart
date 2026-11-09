@@ -59,11 +59,25 @@ String iconFor(Map<String, dynamic> e) {
   return 'text';
 }
 
+Future<Directory> _phoneDir() async =>
+    Platform.isAndroid ? (await getExternalStorageDirectory() ?? await getApplicationDocumentsDirectory()) : (await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory());
+
 /// Save bytes on the phone and offer them to its apps.
 Future<void> keepOnPhone(String name, List<int> bytes) async {
-  final dir = Platform.isAndroid ? (await getExternalStorageDirectory() ?? await getApplicationDocumentsDirectory()) : (await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory());
-  final f = File('${dir.path}/$name');
+  final f = File('${(await _phoneDir()).path}/$name');
   await f.writeAsBytes(bytes);
+  await _offer(f);
+}
+
+/// Bring `path` from the computer onto the phone as it arrives (any size), then offer it to the
+/// phone's apps. The file it landed in.
+Future<File> downloadToPhone(String path, String name, {bool zip = false, void Function(double)? progress, bool offer = true}) async {
+  final f = await getToFile(path, File('${(await _phoneDir()).path}/$name'), zip: zip, progress: progress);
+  if (offer) await _offer(f);
+  return f;
+}
+
+Future<void> _offer(File f) async {
   if (Platform.isAndroid || Platform.isIOS) {
     await SharePlus.instance.share(ShareParams(files: [XFile(f.path)]));
   }
@@ -353,11 +367,10 @@ class _FilesPageState extends State<FilesPage> {
     setState(() => _jobs['↓ $name'] = 0);
     Lane.I.transfer(1, lane: Files.I.lane);
     try {
-      final bytes = await Files.I.get(path, zip: dir, progress: (p) {
+      await downloadToPhone(path, name, zip: dir, progress: (p) {
         Lane.I.moved();
         setState(() => _jobs['↓ $name'] = p);
       });
-      await keepOnPhone(name, bytes);
     } catch (err) {
       if (mounted) _say("Couldn't download $name: $err", bad: true);
     }

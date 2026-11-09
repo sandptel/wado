@@ -55,4 +55,36 @@ object Inbound {
 
     fun read(uri: String, resolver: ContentResolver): ByteArray? =
         runCatching { resolver.openInputStream(Uri.parse(uri))?.use { it.readBytes() } }.getOrNull()
+
+    /** Shared files read a piece at a time (`readOpen` / `readNext` / `readClose`): a long video
+     * never sits in the app's memory whole. */
+    private val open = java.util.concurrent.ConcurrentHashMap<Int, java.io.InputStream>()
+    private val next = java.util.concurrent.atomic.AtomicInteger(1)
+
+    /** (id, size): the size from the file itself when the sharing app did not say. */
+    fun readOpen(uri: String, resolver: ContentResolver): Map<String, Any>? = runCatching {
+        val u = Uri.parse(uri)
+        val size = runCatching { resolver.openAssetFileDescriptor(u, "r")?.use { it.length } }.getOrNull() ?: -1L
+        val s = resolver.openInputStream(u) ?: return null
+        val id = next.getAndIncrement()
+        open[id] = s
+        mapOf("id" to id, "size" to size)
+    }.getOrNull()
+
+    /** Up to `max` bytes; empty at the end. */
+    fun readNext(id: Int, max: Int): ByteArray {
+        val s = open[id] ?: return ByteArray(0)
+        val buf = ByteArray(max)
+        var got = 0
+        while (got < max) {
+            val n = s.read(buf, got, max - got)
+            if (n < 0) break
+            got += n
+        }
+        return if (got == max) buf else buf.copyOf(got)
+    }
+
+    fun readClose(id: Int) {
+        open.remove(id)?.close()
+    }
 }

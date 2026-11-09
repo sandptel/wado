@@ -219,16 +219,44 @@ class _SendSheetState extends State<SendSheet> {
     });
     try {
       for (var i = 0; i < p.files.length; i++) {
-        final f = p.files[i];
-        final bytes = await os.invokeMethod<Uint8List>('read', {'uri': f['uri']});
-        if (bytes == null) throw 'could not read ${f['name']}';
-        await upload(_dir!, '${f['name']}', bytes, progress: (x) {
+        await _sendOne(p.files[i], (x) {
           if (mounted) setState(() => _progress = (i + x) / p.files.length);
         });
       }
       _finish('In ${_dirName(_dir!)} on ${_to!.name}.');
     } catch (e) {
       _fail('$e'.replaceFirst('Exception: ', ''));
+    }
+  }
+
+  /// One shared file, read from the phone a megabyte at a time as it goes up — a long video never
+  /// sits in the app's memory whole.
+  Future<void> _sendOne(Map<String, dynamic> f, void Function(double) progress) async {
+    final name = '${f['name']}';
+    final o = await os.invokeMethod<Map>('readOpen', {'uri': f['uri']});
+    if (o == null) throw 'could not read $name';
+    final id = o['id'] as int;
+    var size = (o['size'] as num? ?? -1).toInt();
+    if (size < 0) size = (f['size'] as num? ?? -1).toInt();
+    try {
+      if (size < 0) {
+        // Neither the sharing app nor the file says how big it is: read whole (rare, and small).
+        final bytes = await os.invokeMethod<Uint8List>('read', {'uri': f['uri']});
+        if (bytes == null) throw 'could not read $name';
+        await upload(_dir!, name, bytes, progress: progress);
+        return;
+      }
+      Stream<List<int>> pieces() async* {
+        while (true) {
+          final b = await os.invokeMethod<Uint8List>('readNext', {'id': id, 'max': 1 << 20});
+          if (b == null || b.isEmpty) break;
+          yield b;
+        }
+      }
+
+      await uploadStream(_dir!, name, size, pieces, progress: progress);
+    } finally {
+      await os.invokeMethod('readClose', {'id': id});
     }
   }
 
