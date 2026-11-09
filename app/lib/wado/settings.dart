@@ -68,6 +68,13 @@ const defaults = <String, Object>{
   'console_open': 'console',
   'console_deck': true,
   'pad_coach_seen': false,
+  // Files: how a folder is shown (files_view.dart).
+  'files_sort': 'name',
+  'files_desc': false,
+  'files_dirs_first': true,
+  'files_hidden': false,
+  'files_grid': false,
+  'files_tile': 1,
   'gpad_layout': 'xbox',
   // The gamepad editor's changes: {"<layout>:<l|p>": {"<control>": [dx, dy, scale, hidden]}}.
   'gpad_edits': '{}',

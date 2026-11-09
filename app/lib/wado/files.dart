@@ -224,12 +224,12 @@ class Files {
     _dc?.send(RTCDataChannelMessage.fromBinary(f));
   }
 
-  /// Fetch a whole file (`get`) into memory, with progress 0..1.
-  Future<Uint8List> get(String path, {void Function(double)? progress}) {
+  /// Fetch a whole file (`get`) — or a folder as a zip (`zip`) — into memory, with progress 0..1.
+  Future<Uint8List> get(String path, {bool zip = false, void Function(double)? progress}) {
     final c = Completer<Uint8List>();
     final b = BytesBuilder(copy: false);
     var size = 0;
-    stream('get', {'path': path}, (m) {
+    stream(zip ? 'zip' : 'get', {'path': path}, (m) {
       if ((m['err'] ?? '') != '') {
         c.completeError(Exception(m['err']));
         return true;
