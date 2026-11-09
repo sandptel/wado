@@ -41,3 +41,19 @@ pub fn need_accessibility() -> Result<(), String> {
         .then_some(())
         .ok_or_else(|| NEEDS_ACCESSIBILITY.to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn untrusted_probe_is_off_with_accessibility_reason() {
+        match need_accessibility() {
+            Ok(()) => assert!(accessibility()),
+            Err(why) => {
+                assert!(!accessibility());
+                assert!(why.contains("Privacy & Security › Accessibility"), "{why}");
+            }
+        }
+    }
+}

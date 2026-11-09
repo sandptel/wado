@@ -108,6 +108,10 @@ fn never(_cap: &str) -> Option<&'static str> {
 /// Every host feature's state as the clients read it: the probed capabilities, then the
 /// daemon's own, each on, off for a reason, or coming to this OS later.
 pub fn host_caps() -> wado_protocol::caps::CapSet {
+    // On a Mac a grant (Accessibility, Screen Recording) turns a capability on with no restart:
+    // look again at what has been missing a few seconds. Cheap there — each probe is one call.
+    #[cfg(target_os = "macos")]
+    get().reprobe_stale(std::time::Duration::from_secs(5));
     mark(get().caps())
 }
 

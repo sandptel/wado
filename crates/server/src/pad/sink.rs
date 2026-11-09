@@ -37,9 +37,9 @@ impl Devices {
 
     /// The platform's devices. A capability that is missing fails every use with why.
     pub fn from_platform(p: &Platform) -> Devices {
-        // Off Linux nothing provides input yet: said as that, not as a missing provider.
+        // Off Linux and macOS nothing provides input yet: said as that, not as a missing provider.
         let absent = |a: wado_platform::Absent| {
-            InputError::Unavailable(if cfg!(target_os = "linux") {
+            InputError::Unavailable(if cfg!(any(target_os = "linux", target_os = "macos")) {
                 a.why
             } else {
                 UNSUPPORTED.into()

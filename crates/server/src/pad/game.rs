@@ -100,7 +100,7 @@ impl Game {
             p.reprobe(wado_platform::Capability::Gamepad);
         }
         let open = p.gamepad().map_err(|a| {
-            InputError::Unavailable(if cfg!(target_os = "linux") {
+            InputError::Unavailable(if cfg!(any(target_os = "linux", target_os = "macos")) {
                 a.why
             } else {
                 super::sink::UNSUPPORTED.into()
