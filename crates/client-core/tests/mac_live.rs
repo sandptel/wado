@@ -258,6 +258,14 @@ fn the_mac_from_a_phone() {
             _ => None,
         })
         .expect("the seat opens");
+        // The servers a phone gathers with for its own peer connections.
+        send(&core, &room, json!({"type": "ice_get"}));
+        let ice = msg(&core, &room, "ice", 4000).expect("ice after ice_get");
+        assert!(
+            ice["servers"].as_array().is_some_and(|s| !s.is_empty())
+                && ice["ttl"].as_u64() > Some(0),
+            "{ice}"
+        );
         let before = pointer();
         send(
             &core,
