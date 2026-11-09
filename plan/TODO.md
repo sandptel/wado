@@ -3,7 +3,7 @@
 Working list for runs. The repo's `TODO.md` holds project milestones; this holds the loop.
 Newest concerns first. Keep it short — close items or move them to memory.
 
-Last updated: `2026-10-03`
+Last updated: `2026-11-09`
 
 ---
 
