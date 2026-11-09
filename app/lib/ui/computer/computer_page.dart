@@ -113,10 +113,12 @@ class _ComputerPageState extends State<ComputerPage> {
             controller: _scroll,
             padding: EdgeInsets.fromLTRB(16, 56 + mq.padding.top, 16, 32 + mq.padding.bottom),
             children: [
-              Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 520),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              // One column on a phone; from 900 px (a tablet, a phone on its side) two — what you
+              // act on at the left, what the computer is doing at the right — so nothing is a long
+              // way down and nothing is stretched across a wide screen.
+              LayoutBuilder(builder: (context, box) {
+                final macApps = HostCaps.now.mac && HostCaps.now.has('desk_apps') && r.online;
+                final primary = <Widget>[
                     _Hero(c: c, hue: hue, r: r),
                     if (off) ...[
                       const SizedBox(height: 12),
@@ -133,6 +135,21 @@ class _ComputerPageState extends State<ComputerPage> {
                       sx(const MacDock())
                     else
                       ?gated('session', sx(Sessions(r: r))),
+                ];
+                final secondary = <Widget>[
+                                        if (!off) ...[
+                      sx(Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        const Sect('Now playing'),
+                        const SizedBox(height: 8),
+                        host == null ? _Empty(icon: 'music', text: 'Asking ${c.name}…') : Playing(h: host),
+                      ])),
+                      sx(Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        const Sect('Quick'),
+                        const SizedBox(height: 8),
+                        host == null ? const _Empty(icon: 'sliders', text: 'Its controls show once it answers.') : Quick(h: host, name: c.name),
+                      ])),
+                    ],
+                    if (!off) ?gated('clipboard', sx(const Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Sect('Clipboard'), SizedBox(height: 8), Clips()]))),
                     // Claude's cards come over the selected computer's own link.
                     if (r.selected && !off && ((Host.I.config.value?['grants'] as Map?)?['shells'] ?? true) == true)
                       sx(const Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Sect('Claude'), SizedBox(height: 8), ClaudeSection()]))
@@ -147,24 +164,26 @@ class _ComputerPageState extends State<ComputerPage> {
                       ])),
                     if (r.online && Passkey.I.view.value.state.isNotEmpty && Passkey.I.view.value.required)
                       sx(const Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Sect('Passkey'), SizedBox(height: 8), PasskeyCard()])),
-                    if (!off) ...[
-                      sx(Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                        const Sect('Now playing'),
-                        const SizedBox(height: 8),
-                        host == null ? _Empty(icon: 'music', text: 'Asking ${c.name}…') : Playing(h: host),
-                      ])),
-                      sx(Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                        const Sect('Quick'),
-                        const SizedBox(height: 8),
-                        host == null ? const _Empty(icon: 'sliders', text: 'Its controls show once it answers.') : Quick(h: host, name: c.name),
-                      ])),
-                    ],
                     sx(const Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Sect('This computer'), SizedBox(height: 8), _SettingsList()])),
-                    if (!off) ?gated('clipboard', sx(const Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Sect('Clipboard'), SizedBox(height: 8), Clips()]))),
                     if (HostCaps.now.mac) sx(const Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Sect('On this Mac'), SizedBox(height: 8), _OnThisMac()])),
-                  ]),
-                ),
-              ),
+                    // A Mac has no session to start: the link test is for later, not first.
+                    if (macApps) sx(const Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Sect('Link'), SizedBox(height: 8), LinkMeter(intent: 'start')])),
+                ];
+                Widget col(List<Widget> c) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: c);
+                if (box.maxWidth < 900) {
+                  return Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 520), child: col([...primary, ...secondary])));
+                }
+                return Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1100),
+                    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Expanded(child: col(primary)),
+                      const SizedBox(width: 24),
+                      Expanded(child: col([const SizedBox(height: 12), ...secondary])),
+                    ]),
+                  ),
+                );
+              }),
             ],
           ),
           Positioned(

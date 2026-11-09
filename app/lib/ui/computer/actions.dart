@@ -97,8 +97,7 @@ class ActionTiles extends StatelessWidget {
     } else {
       deskSub = "Start at this screen's size";
     }
-    final tiles = <Widget>[
-      ?gated('session', _Act(
+    final desk = gated('session', _Act(
         icon: 'play',
         fill: true,
         title: 'Desktop',
@@ -106,7 +105,11 @@ class ActionTiles extends StatelessWidget {
         primary: true,
         badge: running && !r.busy ? 'running' : (r.busy && !idleElsewhere ? 'take over' : null),
         onTap: off && !r.busy ? null : () => desktop(r),
-      )),
+      ));
+    // A Mac's desktop is still to come: what works here comes first, it comes last.
+    final mac = HostCaps.now.mac;
+    final tiles = <Widget>[
+      if (!mac) ?desk,
       _ViTile(r: r),
       _Act(
         icon: 'folder',
@@ -121,6 +124,7 @@ class ActionTiles extends StatelessWidget {
         badge: shellsOpen > 0 ? '$shellsOpen open' : null,
         onTap: off ? null : (shellOk ? () => Nav.I.openPage('shells') : () => notAllowed('Shells', 'shells').show(context)),
       )),
+      if (mac) ?desk,
     ];
     // `repeat(auto-fit, minmax(max(8.5rem, 50% - 4px), 1fr))`: two to a row, rows as tall as
     // their tallest tile; one to a row when the column is too narrow for two.

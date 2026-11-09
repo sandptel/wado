@@ -1,11 +1,19 @@
-// The Mac's own apps on its computer page (desk_apps.dart): a dock like the Mac's — the apps
-// its Dock keeps, in its order, then (past a divider) those running that it does not. A dot
-// under what runs, the one in front lit and raised, a hidden one dimmed, one just opened bouncing
-// until it runs. Tap opens or brings it forward; a long press is the Dock's menu — Show, Hide,
-// Quit, Force Quit. "All apps" opens every app on the Mac, searchable, those open now first.
+// The Mac's own apps (desk_apps.dart): a shelf like its Dock on the computer page, every app on
+// a page of its own ("All apps"), and the same launcher as a sheet over the touchpad and keyboard
+// for opening something while you drive the Mac.
+//
+// The shelf holds what the Mac's Dock keeps, in its order, then — past a divider — what runs that
+// the Dock does not. Each icon says its state the way the Dock does: a dot under what runs, the
+// app in front raised and lit, a hidden one dimmed and set back, one just opened bouncing until
+// it runs. Tap opens it or brings it forward; a long press is the Dock's menu.
+//
+// Motion (DESIGN.md): --pop for what a finger flipped (the dot), --spring for travel (the lift, the
+// set-back), --dur everywhere; the launch bounce is the Dock's own: up decelerating, down
+// accelerating, until the app runs. Reduced motion keeps every state and drops the travel.
 import 'package:flutter/material.dart';
 
 import '../../wado/desk_apps.dart';
+import '../../wado/host_caps.dart';
 import '../../wado/nav.dart';
 import '../../wado/session.dart';
 import '../motion/feel.dart';
@@ -13,7 +21,9 @@ import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/basics.dart';
 import '../widgets/data_image.dart';
-import 'sessions.dart' show LinkMeter;
+
+/// The selected computer is a Mac with its own apps.
+bool get macApps => HostCaps.now.mac && HostCaps.now.has('desk_apps');
 
 /// Keeps the list fresh while it is on screen.
 mixin _Watching<T extends StatefulWidget> on State<T> {
@@ -30,6 +40,7 @@ mixin _Watching<T extends StatefulWidget> on State<T> {
   }
 }
 
+/// The shelf on the computer page.
 class MacDock extends StatefulWidget {
   const MacDock({super.key});
   @override
@@ -47,39 +58,49 @@ class _MacDockState extends State<MacDock> with _Watching {
         valueListenable: Session.I.apps,
         builder: (context, all, _) {
           final (kept, extra) = dockGroups(all);
+          if (all.isEmpty) return _Waiting(t: t);
           return Container(
-            height: 92,
-            decoration: BoxDecoration(
-              color: fade(t.s2, 20),
-              borderRadius: BorderRadius.circular(t.r4),
-              border: Border.all(color: t.line),
-            ),
-            child: all.isEmpty
-                ? Center(child: Text('Asking the Mac what it has…', style: body(context, size: .8125, color: t.dim)))
-                : ListView(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    children: [
-                      for (final a in kept) AppIcon(a: a, key: ValueKey(a['exec'])),
-                      if (kept.isNotEmpty && extra.isNotEmpty)
-                        Container(width: 1, margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 10), color: t.line),
-                      for (final a in extra) AppIcon(a: a, key: ValueKey('x${a['exec']}')),
-                      if (kept.isEmpty && extra.isEmpty)
-                        Center(child: Text('Nothing open — All apps has everything', style: body(context, size: .8125, color: t.dim))),
-                    ],
-                  ),
+            decoration: BoxDecoration(color: t.s1, borderRadius: BorderRadius.circular(t.r4)),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: LayoutBuilder(builder: (context, box) {
+              const w = 80.0;
+              final icons = [
+                for (final a in kept) AppIcon(a: a, key: ValueKey('k${a['exec']}')),
+                if (kept.isNotEmpty && extra.isNotEmpty) Container(key: const ValueKey('div'), width: 1, height: 56, margin: const EdgeInsets.only(top: 4), color: t.line),
+                for (final a in extra) AppIcon(a: a, key: ValueKey('x${a['exec']}')),
+              ];
+              // Room for every icon: they all show, in rows. Otherwise a strip the thumb scrolls.
+              final fits = (kept.length + extra.length) * w + 24 <= box.maxWidth * 2;
+              if (fits && box.maxWidth >= 600) {
+                return Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: Wrap(alignment: WrapAlignment.center, runSpacing: 12, children: icons));
+              }
+              return SizedBox(
+                height: 108,
+                child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 8), children: icons),
+              );
+            }),
           );
         },
       ),
-      const SizedBox(height: 8),
-      const LinkMeter(intent: 'start'),
     ]);
   }
 }
 
-/// One app: its icon (a letter tile until it arrives), name, and state.
+class _Waiting extends StatelessWidget {
+  const _Waiting({required this.t});
+  final Tokens t;
+  @override
+  Widget build(BuildContext context) => Container(
+        height: 132,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(color: t.s1, borderRadius: BorderRadius.circular(t.r4)),
+        child: Text('Asking the Mac what it has…', style: body(context, size: .8125, color: t.dim)),
+      );
+}
+
+/// One app: its icon (a letter tile until the icon arrives), its name, its state.
 class AppIcon extends StatefulWidget {
-  const AppIcon({super.key, required this.a, this.size = 48, this.width = 64});
+  const AppIcon({super.key, required this.a, this.size = 64, this.width = 80});
   final App a;
   final double size, width;
   @override
@@ -87,10 +108,36 @@ class AppIcon extends StatefulWidget {
 }
 
 class _AppIconState extends State<AppIcon> with SingleTickerProviderStateMixin {
-  late final _bounce = AnimationController(vsync: this, duration: const Duration(milliseconds: 520));
+  late final _bounce = AnimationController(vsync: this, duration: const Duration(milliseconds: 360));
+
+  String get _exec => '${widget.a['exec']}';
+
+  @override
+  void initState() {
+    super.initState();
+    DeskApps.I.launching.addListener(_launching);
+    _launching();
+  }
+
+  @override
+  void didUpdateWidget(AppIcon old) {
+    super.didUpdateWidget(old);
+    _launching();
+  }
+
+  /// The Dock's launch bounce: up and down until the app runs, then it settles.
+  void _launching() {
+    final on = DeskApps.I.launching.value.contains(_exec) && widget.a['running'] != true;
+    if (on && !_bounce.isAnimating) {
+      _bounce.repeat(reverse: true);
+    } else if (!on && _bounce.isAnimating) {
+      _bounce.animateBack(0, duration: const Duration(milliseconds: 160), curve: Curves.easeOut);
+    }
+  }
 
   @override
   void dispose() {
+    DeskApps.I.launching.removeListener(_launching);
     _bounce.dispose();
     super.dispose();
   }
@@ -101,74 +148,78 @@ class _AppIconState extends State<AppIcon> with SingleTickerProviderStateMixin {
     final a = widget.a;
     final run = a['running'] == true, front = a['front'] == true, away = a['away'] == true;
     final name = '${a['name']}';
-    return ValueListenableBuilder(
-      valueListenable: DeskApps.I.launching,
-      builder: (context, launching, _) {
-        final bouncing = launching.contains('${a['exec']}') && !run;
-        if (bouncing && !_bounce.isAnimating) {
-          _bounce.repeat(reverse: true);
-        } else if (!bouncing && _bounce.isAnimating) {
-          _bounce.animateTo(0, duration: const Duration(milliseconds: 160));
-        }
-        final tile = Container(
-          width: widget.size,
-          height: widget.size,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(color: t.s3, borderRadius: BorderRadius.circular(widget.size * .24)),
-          child: Text(name.isEmpty ? '?' : name.characters.first.toUpperCase(), style: body(context, w: FontWeight.w700, color: t.bright)),
-        );
-        return Semantics(
-          button: true,
-          label: '$name, ${stateOf(a)}',
-          child: Press(
-            onTap: () {
-              feel('tap');
-              DeskApps.I.act(a, tapAction(a));
-            },
-            onLongPress: () {
-              feel('claim');
-              showAppMenu(context, a);
-            },
-            label: name,
-            child: SizedBox(
-              width: widget.width,
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                AnimatedBuilder(
-                  animation: _bounce,
-                  builder: (context, child) => Transform.translate(
-                    offset: Offset(0, -10 * Curves.easeOut.transform(_bounce.value) - (front ? 3 : 0)),
-                    child: child,
-                  ),
-                  child: AnimatedOpacity(
+    final s = widget.size;
+    final r = BorderRadius.circular(s * .225);
+    final tile = DecoratedBox(
+      decoration: BoxDecoration(color: t.s3, borderRadius: r),
+      child: Center(child: Text(name.isEmpty ? '?' : name.characters.first.toUpperCase(), style: display(context, s * .42).copyWith(color: t.bright))),
+    );
+    return Semantics(
+      button: true,
+      label: '$name, ${stateOf(a)}',
+      child: Press(
+        onTap: () {
+          feel('tap');
+          DeskApps.I.act(a, tapAction(a));
+        },
+        onLongPress: () {
+          feel('claim');
+          showAppMenu(context, a);
+        },
+        label: name,
+        child: SizedBox(
+          width: widget.width,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            SizedBox(
+              width: s,
+              height: s + 8,
+              child: AnimatedBuilder(
+                animation: _bounce,
+                builder: (context, child) {
+                  // Up decelerating, down accelerating: a ball, not a spring. Reduced motion: still.
+                  final hop = t.reduced ? 0.0 : Curves.easeOut.transform(_bounce.value) * 12;
+                  return Transform.translate(offset: Offset(0, 8 - hop), child: child);
+                },
+                child: AnimatedSlide(
+                  // The app in front stands a little proud of the rest.
+                  offset: Offset(0, front && !t.reduced ? -.06 : 0),
+                  duration: t.dur,
+                  curve: Tokens.spring,
+                  child: AnimatedScale(
+                    // A hidden app is set back as well as dimmed: its state is not colour alone.
+                    scale: away ? .9 : 1,
                     duration: t.dur,
-                    opacity: away ? .5 : 1,
-                    child: AnimatedContainer(
+                    curve: Tokens.spring,
+                    child: AnimatedOpacity(
+                      opacity: away ? .45 : 1,
                       duration: t.dur,
-                      curve: Tokens.spring,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(widget.size * .24),
-                        boxShadow: front ? [BoxShadow(color: fade(t.accent, 60), blurRadius: 14, spreadRadius: 1)] : const [],
-                      ),
-                      child: DataPicture(a['icon'] as String?, size: widget.size, fallback: tile),
+                      child: SizedBox(width: s, height: s, child: DataPicture(a['icon'] as String?, size: s, fallback: tile)),
                     ),
                   ),
                 ),
-                const SizedBox(height: 3),
-                // The running dot: lit for the app in front.
-                AnimatedContainer(
-                  duration: t.dur,
-                  curve: Tokens.spring,
-                  width: run ? (front ? 6 : 4) : 0,
-                  height: run ? (front ? 6 : 4) : 0,
-                  decoration: BoxDecoration(color: front ? t.accent : t.dim, shape: BoxShape.circle),
-                ),
-                const SizedBox(height: 2),
-                Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: body(context, size: .625, color: away ? t.dim : t.text)),
-              ]),
+              ),
             ),
-          ),
-        );
-      },
+            const SizedBox(height: 6),
+            // The running dot pops in (--pop); lit for the app in front.
+            SizedBox(
+              height: 6,
+              child: AnimatedScale(
+                scale: run ? 1 : 0,
+                duration: t.dur,
+                curve: t.pop,
+                child: AnimatedContainer(
+                  duration: t.dur,
+                  width: front ? 6 : 5,
+                  height: front ? 6 : 5,
+                  decoration: BoxDecoration(color: front ? t.accent : t.text, shape: BoxShape.circle),
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: body(context, size: .75, color: away ? t.dim : t.text)),
+          ]),
+        ),
+      ),
     );
   }
 }
@@ -180,17 +231,27 @@ void showAppMenu(BuildContext context, App a) {
   showModalBottomSheet(
     context: context,
     backgroundColor: t.s1,
+    showDragHandle: true,
     builder: (s) => SafeArea(
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        ListTile(
-          leading: DataPicture(a['icon'] as String?, size: 36, fallback: WIcon('apps', color: t.bright)),
-          title: Text(name, style: body(context, w: FontWeight.w600, color: t.bright)),
-          subtitle: Text(stateOf(a), style: body(context, size: .75, color: a['front'] == true ? t.accent : t.dim)),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+          child: Row(children: [
+            SizedBox(width: 48, height: 48, child: DataPicture(a['icon'] as String?, size: 48, fallback: WIcon('apps', color: t.bright))),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: display(context, rem(context, 1.125))),
+                Text(stateOf(a), style: body(context, size: .8125, color: a['front'] == true ? t.accent : t.dim)),
+              ]),
+            ),
+          ]),
         ),
         for (final (action, label, danger) in menuFor(a))
           ListTile(
+            minTileHeight: 52,
             leading: WIcon(switch (action) { 'hide' => 'eye', 'quit' => 'x', 'force_quit' => 'alert', _ => 'play' }, color: danger ? t.bad : t.bright),
-            title: Text(label, style: TextStyle(color: danger ? t.bad : null)),
+            title: Text(label, style: body(context, w: FontWeight.w600, color: danger ? t.bad : t.bright)),
             onTap: () async {
               Navigator.pop(s);
               if (action == 'force_quit') {
@@ -216,9 +277,12 @@ void showAppMenu(BuildContext context, App a) {
   );
 }
 
-/// Every app on the Mac: those open now, then all of them A–Z; a search narrows both.
+/// Every app on the Mac: those open now, then all of them A–Z; a search narrows both. A page of
+/// its own, or (`sheet`) the launcher over the touchpad and keyboard.
 class MacAppsPage extends StatefulWidget {
-  const MacAppsPage({super.key});
+  const MacAppsPage({super.key, this.scroll});
+  /// The sheet's own scroll, so dragging the list drags the sheet.
+  final ScrollController? scroll;
   @override
   State<MacAppsPage> createState() => _MacAppsPageState();
 }
@@ -242,42 +306,67 @@ class _MacAppsPageState extends State<MacAppsPage> with _Watching {
         bool hit(App a) => q.isEmpty || '${a['name']}'.toLowerCase().contains(q);
         final now = openNow(all).where(hit).toList();
         final every = [for (final a in all) if (hit(a)) a]..sort((a, b) => '${a['name']}'.toLowerCase().compareTo('${b['name']}'.toLowerCase()));
-        SliverGrid grid(List<App> l) => SliverGrid(
-              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 88, mainAxisExtent: 96, crossAxisSpacing: 4, mainAxisSpacing: 8),
-              delegate: SliverChildBuilderDelegate((context, i) => Center(child: AppIcon(a: l[i], size: 52, width: 80, key: ValueKey(l[i]['exec']))), childCount: l.length),
+        SliverGrid grid(List<App> l, String tag) => SliverGrid(
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 96, mainAxisExtent: 116, crossAxisSpacing: 4, mainAxisSpacing: 12),
+              delegate: SliverChildBuilderDelegate((context, i) => Center(child: AppIcon(a: l[i], key: ValueKey('$tag${l[i]['exec']}'))), childCount: l.length),
             );
-        Widget head(String s) => SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.fromLTRB(4, 16, 4, 8), child: Text(s, style: body(context, size: .75, w: FontWeight.w600, color: t.dim))));
-        return CustomScrollView(slivers: [
+        Widget head(String s) => SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.fromLTRB(4, 20, 4, 10), child: Text(s, style: body(context, w: FontWeight.w600, color: t.dim))));
+        return CustomScrollView(controller: widget.scroll, slivers: [
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             sliver: SliverToBoxAdapter(
               child: TextField(
                 controller: _q,
                 onChanged: (_) => setState(() {}),
+                style: body(context, size: 1),
                 decoration: InputDecoration(
-                  isDense: true,
                   hintText: 'Search the Mac’s apps',
-                  prefixIcon: Padding(padding: const EdgeInsets.all(10), child: WIcon('search', color: t.dim)),
+                  prefixIcon: Padding(padding: const EdgeInsets.all(12), child: WIcon('search', color: t.dim)),
                   filled: true,
-                  fillColor: t.s1,
+                  fillColor: t.s2,
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(t.r3), borderSide: BorderSide.none),
                 ),
               ),
             ),
           ),
           SliverPadding(
-            padding: EdgeInsets.fromLTRB(16, 0, 16, 32 + MediaQuery.of(context).padding.bottom),
+            padding: EdgeInsets.fromLTRB(12, 0, 12, 32 + MediaQuery.of(context).padding.bottom),
             sliver: SliverMainAxisGroup(slivers: [
-              if (now.isNotEmpty) ...[head('OPEN NOW'), grid(now)],
-              head(q.isEmpty ? 'ALL APPS' : 'MATCHES'),
+              if (now.isNotEmpty) ...[head('Open now'), grid(now, 'n')],
+              head(q.isEmpty ? 'All apps' : 'Matches'),
               if (every.isEmpty)
-                SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.all(24), child: Center(child: Text(all.isEmpty ? 'Asking the Mac what it has…' : 'No app by that name.', style: body(context, color: t.dim)))))
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Center(child: Text(all.isEmpty ? 'Asking the Mac what it has…' : 'No app is called “${_q.text.trim()}”.', style: body(context, color: t.dim))),
+                  ),
+                )
               else
-                grid(every),
+                grid(every, 'a'),
             ]),
           ),
         ]);
       },
     );
   }
+}
+
+/// The launcher over whatever is on screen (the touchpad, the keyboard): drag it up for more,
+/// down to go back to driving.
+void showAppsSheet(BuildContext context) {
+  final t = Tok.of(context);
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: t.s1,
+    isScrollControlled: true,
+    showDragHandle: true,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(t.r4))),
+    builder: (s) => DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: .62,
+      minChildSize: .35,
+      maxChildSize: .94,
+      builder: (context, scroll) => MacAppsPage(scroll: scroll),
+    ),
+  );
 }

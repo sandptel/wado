@@ -5,6 +5,8 @@
 // why-card sits over the surface when the computer says no; the passkey sheet comes first when the
 // computer asks for one.
 import 'package:flutter/material.dart';
+
+import '../computer/mac_dock.dart' show macApps, showAppsSheet;
 import 'package:flutter/services.dart';
 
 import '../../wado/nav.dart';
@@ -137,6 +139,8 @@ class _PadScreenState extends State<PadScreen> {
     );
     final close = IconBtn('x', label: 'Close trackpad', color: t.bright, onTap: () => Navigator.of(context).maybePop());
     final gear = IconBtn('sliders', label: 'Trackpad settings', color: t.text, onTap: _settings);
+    // The Mac's apps, a tap away while driving it: the launcher as a sheet over the pad.
+    final apps = macApps ? IconBtn('apps', label: 'Open an app on the Mac', color: t.bright, onTap: () => showAppsSheet(context)) : null;
     final whyText = _why ? _Why(state: Pad.I.state.value) : null;
     return Scaffold(
       backgroundColor: t.s0,
@@ -161,7 +165,7 @@ class _PadScreenState extends State<PadScreen> {
                       const SizedBox(height: 8),
                       Enter(delay: const Duration(milliseconds: 8 * 26), ms: 420, dy: 0, dx: -14, scale: .94, fadeOnClose: false, child: _TypeBtn(onTap: () => _type(true))),
                       const SizedBox(height: 8),
-                      Center(child: gear),
+                      Row(mainAxisAlignment: MainAxisAlignment.center, children: [?apps, gear]),
                     ]),
                   ),
                 if (rail != 'none') const SizedBox(width: 12),
@@ -184,6 +188,7 @@ class _PadScreenState extends State<PadScreen> {
                   child: Row(children: [
                     _Pill(onTap: () => setState(() => _why = !_why)),
                     const Spacer(),
+                    ?apps,
                     gear,
                     close,
                   ]),
