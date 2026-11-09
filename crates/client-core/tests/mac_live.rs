@@ -369,8 +369,9 @@ fn the_mac_from_a_phone() {
         }
 
         // Four fingers spreading show the desktop (the windows slide off), pinching bring them
-        // back. Only when a window is open to watch.
-        if let Some(was) = first_window() {
+        // back. Only on the first desktop (a full-screen app's Space has no desktop to show),
+        // and when a window is open to watch.
+        if let Some(was) = first_window().filter(|_| space().0 == 0) {
             let mut pinch = |rs: &[u32]| {
                 for r in rs {
                     let (cx, cy) = (32000u32, 32000u32);
