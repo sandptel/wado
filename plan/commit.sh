@@ -16,5 +16,4 @@ else
   git update-ref refs/heads/plan "$commit" ${parent:-}
   echo "plan: $(git rev-parse --short "$commit") $msg"
 fi
-unset GIT_INDEX_FILE
 git push -q origin plan
