@@ -88,9 +88,6 @@ fn later(_cap: &str) -> Option<&'static str> {
 #[cfg(target_os = "macos")]
 fn never(cap: &str) -> Option<&'static str> {
     Some(match cap {
-        "gamepad" => {
-            "Not on macOS: a virtual game controller needs a driver Apple has to approve. The pad's keys mode works."
-        }
         "viewer_sink" => {
             "Not on macOS: playing this Mac's sound on your phone needs a virtual audio driver."
         }

@@ -9,6 +9,7 @@ pub const NEEDS_SCREEN_RECORDING: &str =
 #[link(name = "ApplicationServices", kind = "framework")]
 unsafe extern "C" {
     fn AXIsProcessTrusted() -> bool;
+    fn AXIsProcessTrustedWithOptions(options: *const std::ffi::c_void) -> bool;
 }
 
 #[link(name = "CoreGraphics", kind = "framework")]
@@ -33,6 +34,26 @@ pub fn screen_recording() -> bool {
 pub fn ask_screen_recording() -> bool {
     // SAFETY: no arguments.
     unsafe { CGRequestScreenCaptureAccess() }
+}
+
+/// At start, ask macOS for what is missing, once: it shows its own prompts and lists Wado in
+/// System Settings, unticked, for the person to allow. Nothing is asked when all is granted.
+pub fn ask_missing() {
+    use objc2_foundation::{NSDictionary, NSNumber, NSString};
+    if !accessibility() {
+        let key = NSString::from_str("AXTrustedCheckOptionPrompt");
+        let yes = NSNumber::new_bool(true);
+        let opts = NSDictionary::from_slices(&[&*key], &[&*yes]);
+        // SAFETY: an NSDictionary is a CFDictionary (toll-free bridged), alive for the call.
+        unsafe {
+            AXIsProcessTrustedWithOptions(
+                (&*opts as *const NSDictionary<NSString, NSNumber>).cast(),
+            )
+        };
+    }
+    if !screen_recording() {
+        ask_screen_recording();
+    }
 }
 
 /// `Ok` when Accessibility is granted, else the reason.

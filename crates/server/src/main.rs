@@ -44,6 +44,11 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     }
     // Probe the host's capabilities now, while the desktop's display is still the one captured
     // above, and off the async paths that answer viewers.
+    // A Mac asks for its privacy grants once, at start, so Wado is listed in System Settings.
+    #[cfg(target_os = "macos")]
+    if std::env::var_os("WADO_NO_PROMPTS").is_none() {
+        wado::platform::macos::tcc::ask_missing();
+    }
     let caps = wado::platform::get().caps();
     tracing::info!(on = ?caps.on, off = caps.off.len(), "host capabilities probed");
     for off in &caps.off {
