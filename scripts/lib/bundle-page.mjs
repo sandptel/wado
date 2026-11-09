@@ -51,8 +51,8 @@ ${parts.map((_, i) => `<script src="/b/${i}.js"></script>`).join("\n")}
 </body></html>`;
   const http = createServer((req, res) => {
     const m = /^\/b\/(\d+)\.js$/.exec(req.url);
-    if (m) { res.writeHead(200, { "content-type": "text/javascript" }); return res.end(parts[+m[1]].code); }
-    res.writeHead(200, { "content-type": "text/html" });
+    if (m) { res.writeHead(200, { "content-type": "text/javascript; charset=utf-8" }); return res.end(parts[+m[1]].code); }
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     res.end(page);
   });
   await new Promise((r) => http.listen(httpPort, "127.0.0.1", r));
