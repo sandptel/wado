@@ -4,8 +4,8 @@
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
+use crate::compositor::{CompositorCommand, InputEvent};
 use tracing::{info, warn};
-use wado_compositor::{CompositorCommand, InputEvent};
 use wado_protocol::{INPUT_CHANNEL, MOTION_CHANNEL};
 use webrtc::data_channel::RTCDataChannel;
 use webrtc::data_channel::data_channel_message::DataChannelMessage;

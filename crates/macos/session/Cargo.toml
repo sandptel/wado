@@ -1,0 +1,16 @@
+[package]
+name = "wado-session-macos"
+version = "0.0.4"
+edition = "2024"
+license = "AGPL-3.0-only"
+description = "The compositor boundary on macOS, before a macOS session exists: the same names the server drives, every session command answered as coming to macOS."
+
+[dependencies]
+wado-protocol = { path = "../../protocol" }
+wado-platform = { path = "../../platform" }
+thiserror = "1"
+tokio = { version = "1", features = ["sync"] }
+tracing = "0.1"
+
+[dev-dependencies]
+serde_json = "1"

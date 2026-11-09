@@ -19,6 +19,7 @@
 //! The wire is `wado_protocol::files`. The compositor never sees any of this.
 
 pub mod audit;
+mod beneath;
 pub mod channel;
 pub mod entries;
 pub mod find;
@@ -74,6 +75,7 @@ pub fn tool(prog: &str) -> tokio::process::Command {
     // SAFETY: prctl and setpriority are async-signal-safe and touch only this child.
     unsafe {
         cmd.pre_exec(|| {
+            #[cfg(target_os = "linux")]
             libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
             libc::setpriority(libc::PRIO_PROCESS, 0, 19);
             Ok(())

@@ -22,7 +22,7 @@ pub fn list(sc: &Scope, path: &str) -> Result<Value, Refusal> {
         let md = if link {
             match sc.open(
                 &format!("{}/{name}", path.trim_end_matches('/')),
-                libc::O_PATH,
+                super::scope::O_PATH,
             ) {
                 Ok(o) => o.file.metadata().unwrap_or(md),
                 Err(_) => md,

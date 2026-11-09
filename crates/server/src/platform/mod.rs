@@ -7,7 +7,10 @@
 //!
 //! - [`linux`] — the Linux providers.
 
+#[cfg(target_os = "linux")]
 pub mod linux;
+#[cfg(target_os = "macos")]
+pub use wado_host_macos as macos;
 
 use std::sync::OnceLock;
 
@@ -16,8 +19,15 @@ use wado_platform::{Platform, PlatformBuilder};
 static PLATFORM: OnceLock<Platform> = OnceLock::new();
 
 /// This OS's providers, in the order they are asked.
+#[cfg(target_os = "linux")]
 pub fn os_default() -> PlatformBuilder {
     PlatformBuilder::empty().with(linux::LinuxProvider::default())
+}
+
+/// This OS's providers, in the order they are asked.
+#[cfg(target_os = "macos")]
+pub fn os_default() -> PlatformBuilder {
+    PlatformBuilder::empty().with(macos::MacProvider::default())
 }
 
 /// The daemon's platform, probed on first use. The daemon probes it at start, after capturing

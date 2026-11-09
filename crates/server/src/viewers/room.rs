@@ -14,10 +14,10 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use crate::compositor::CompositorCommand;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 use tracing::{info, warn};
-use wado_compositor::CompositorCommand;
 use wado_protocol::relay::RelayMsg;
 use wado_protocol::{SessionConfig, SessionInfo};
 
@@ -78,7 +78,7 @@ async fn send(out: &mpsc::Sender<String>, msg: &RelayMsg) {
 }
 
 /// The session the compositor is running, if any.
-pub async fn live_session(cmd_tx: &wado_compositor::CommandSender) -> Option<SessionInfo> {
+pub async fn live_session(cmd_tx: &crate::compositor::CommandSender) -> Option<SessionInfo> {
     let (tx, rx) = oneshot::channel();
     cmd_tx.send(CompositorCommand::Status { reply: tx }).ok()?;
     tokio::time::timeout(Duration::from_secs(2), rx)
@@ -91,7 +91,7 @@ pub async fn live_session(cmd_tx: &wado_compositor::CommandSender) -> Option<Ses
 /// Rebuild the running session at `config` (a fresh `Output` when the shape changes — invariant
 /// 8), bounded like every other compositor round trip.
 pub async fn reconfigure(
-    cmd_tx: &wado_compositor::CommandSender,
+    cmd_tx: &crate::compositor::CommandSender,
     config: SessionConfig,
 ) -> Result<SessionInfo, String> {
     let (reply, rx) = oneshot::channel();
@@ -308,7 +308,7 @@ pub async fn handle(hub: &Arc<Hub>, room: &ViewRoom, who: &Who, text: &str, cx: 
             send(out, &RelayMsg::SessionWindowed { ack }).await;
         }
         RelayMsg::ClipboardSet { ack, text } if member() => {
-            let clip = wado_compositor::clipboard::Clip {
+            let clip = crate::compositor::clipboard::Clip {
                 mime: "text/plain;charset=utf-8".into(),
                 data: text.into_bytes().into(),
                 secret: false,

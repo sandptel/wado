@@ -37,8 +37,11 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     }
 
     // Before `build`, which points WAYLAND_DISPLAY at the session for the apps it launches.
-    wado::clip::env::capture();
-    wado::platform::linux::hyprland::capture();
+    #[cfg(target_os = "linux")]
+    {
+        wado::clip::env::capture();
+        wado::platform::linux::hyprland::capture();
+    }
     // Probe the host's capabilities now, while the desktop's display is still the one captured
     // above, and off the async paths that answer viewers.
     let caps = wado::platform::get().caps();
@@ -48,7 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     }
     let (frame_tx, frame_rx) = tokio::sync::mpsc::channel(FRAME_CHANNEL_CAPACITY);
     // The video backend: wado's own Smithay session, driven only through its handles.
-    let (runner, handles) = Box::new(wado_compositor::backend::Smithay).build(frame_tx)?;
+    let (runner, handles) = Box::new(wado::compositor::Backend).build(frame_tx)?;
 
     // ── Mode selection ───────────────────────────────────────────────────────
     // Relay mode, the default: the public relay (`wado_config::schema::server::DEFAULT_RELAY`)

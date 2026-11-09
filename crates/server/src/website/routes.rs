@@ -5,11 +5,11 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
+use crate::compositor::CompositorCommand;
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpStream;
 use tokio::sync::oneshot;
 use tracing::{error, warn};
-use wado_compositor::CompositorCommand;
 use wado_protocol::{SessionControl, SessionInfo};
 
 use super::http::{find_subsequence, write_preflight, write_response};

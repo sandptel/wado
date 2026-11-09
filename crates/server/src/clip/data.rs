@@ -2,7 +2,7 @@
 
 use base64::Engine;
 
-use wado_compositor::clipboard::Clip;
+use crate::compositor::clipboard::Clip;
 
 pub fn to_wire(clip: &Clip) -> String {
     if clip.is_text() {

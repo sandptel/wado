@@ -1,6 +1,6 @@
 //! Native menu sheets (M-P S7): the menu open in an app, read from its accessibility tree.
 //!
-//! One job: turn "a popup is open on the focused window" (`wado_compositor::hit::MenuSpot`)
+//! One job: turn "a popup is open on the focused window" (`crate::compositor::hit::MenuSpot`)
 //! into the rows the phone draws as a bottom sheet, and activate the row picked. Tree access
 //! is `crate::a11y`'s; this module only knows what a menu looks like in it.
 //!
@@ -10,8 +10,8 @@
 
 use std::time::Duration;
 
+use crate::compositor::hit::MenuSpot;
 use tracing::debug;
-use wado_compositor::hit::MenuSpot;
 use wado_protocol::{MenuItem, MenuSheet};
 use zbus::zvariant::OwnedObjectPath;
 

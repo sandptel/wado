@@ -169,7 +169,7 @@ impl Provider for LinuxProvider {
     }
 
     fn gamepad(&self) -> Offer<dyn Opener<dyn GamepadInjector>> {
-        offer(uinput(), wado_compositor::input::gamepad::opener)
+        offer(uinput(), crate::compositor::input::gamepad::opener)
     }
 
     fn text(&self) -> Offer<dyn TextInjector> {

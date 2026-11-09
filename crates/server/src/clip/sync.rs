@@ -5,8 +5,8 @@
 //! side it was copied on**: the desktop's password is not put into the session, the session's not
 //! onto the desktop, and neither reaches a device.
 
+use crate::compositor::{CommandSender, CompositorCommand, clipboard::Clip};
 use tokio::sync::watch;
-use wado_compositor::{CommandSender, CompositorCommand, clipboard::Clip};
 
 use super::hub::{self, Noted, Origin};
 

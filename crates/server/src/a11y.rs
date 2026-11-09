@@ -1,6 +1,6 @@
 //! Tap targets from an application's accessibility tree (M-P S5).
 //!
-//! One job: given the window under a finger (from the compositor, `wado_compositor::hit`),
+//! One job: given the window under a finger (from the compositor, `crate::compositor::hit`),
 //! list the actionable elements — buttons, toggles, menu items, links, fields — whose extents
 //! lie within a fingertip of the point. The client uses the answer to snap a tap onto the one
 //! target it obviously meant, or to open the lens when several compete.
@@ -24,9 +24,9 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
+use crate::compositor::hit::HitWindow;
 use tokio::sync::Mutex;
 use tracing::debug;
-use wado_compositor::hit::HitWindow;
 use zbus::Connection;
 use zbus::zvariant::{OwnedObjectPath, OwnedValue};
 
@@ -237,7 +237,7 @@ const HIT_TIMEOUT: Duration = Duration::from_millis(100);
 /// width) of normalized `(x, y)`, answered in normalized output coordinates. `None` means "no
 /// tree here" — no window, no accessibility bus, or an app that exposes none.
 pub async fn tap_targets(
-    cmd_tx: &wado_compositor::CommandSender,
+    cmd_tx: &crate::compositor::CommandSender,
     a11y: &A11y,
     x: f64,
     y: f64,
@@ -245,7 +245,7 @@ pub async fn tap_targets(
 ) -> Option<Vec<wado_protocol::Target>> {
     let (reply, rx) = tokio::sync::oneshot::channel();
     cmd_tx
-        .send(wado_compositor::CompositorCommand::HitWindow { x, y, reply })
+        .send(crate::compositor::CompositorCommand::HitWindow { x, y, reply })
         .ok()?;
     let hit = tokio::time::timeout(HIT_TIMEOUT, rx).await.ok()?.ok()??;
     // The radius arrives in output terms; the tree speaks the window's own, which differ by the

@@ -288,6 +288,7 @@ mod tests {
     /// with the sandbox off.
     #[tokio::test]
     #[ignore]
+    #[cfg(target_os = "linux")]
     async fn live_lists_the_window_group() {
         crate::platform::linux::hyprland::capture();
         crate::clip::env::capture();
@@ -300,6 +301,7 @@ mod tests {
     /// Live: next then previous workspace leaves the desktop where it was.
     #[tokio::test]
     #[ignore]
+    #[cfg(target_os = "linux")]
     async fn live_workspace_next_then_prev_returns() {
         use crate::platform::linux::hyprland;
         hyprland::capture();

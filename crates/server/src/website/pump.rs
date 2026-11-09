@@ -4,10 +4,10 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use crate::compositor::FrameMsg;
 use bytes::Bytes;
 use tokio::sync::mpsc;
 use tracing::warn;
-use wado_compositor::FrameMsg;
 use webrtc::media::Sample;
 use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
 

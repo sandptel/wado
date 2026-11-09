@@ -25,3 +25,12 @@ jobs:
         run: nix develop -c cargo check -p wado -p wado-compositor -p wado-platform -p wado-protocol -p wado-config --all-targets
       - name: test
         run: nix develop -c cargo test -p wado -p wado-platform -p wado-protocol -p wado-config
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: test
+        run: cargo test -p wado -p wado-host-macos -p wado-session-macos -p wado-platform -p wado-protocol -p wado-config

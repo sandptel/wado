@@ -7,9 +7,6 @@ license = "AGPL-3.0-only"
 [dependencies]
 wado-protocol = { path = "../protocol" }
 wado-config = { path = "../config" }
-# The compositor library. The server drives it only through the typed command/frame
-# boundary it exposes (build / CompositorCommand / FrameMsg) — no Smithay here.
-wado-compositor = { path = "../compositor" }
 # Host capabilities behind traits (`platform/`): the providers here, the seams there.
 wado-platform = { path = "../platform" }
 tracing = "0.1"
@@ -28,9 +25,6 @@ futures-util = "0.3"
 # Remote ID generation (already in the dep tree via webrtc).
 rand = "0.8"
 portable-pty = "0.9.0"
-# Opus for the audio track (`audio/`). The same binding and version the compositor's video
-# encoder already links, so it costs no new build and no new system library.
-ffmpeg-the-third = "5.0.0"
 # PR_SET_PDEATHSIG for the helpers that must die with the daemon (`host/`).
 libc = "0.2"
 # Local cover art (`file://`) goes to the viewer as a data: URI (`host/media.rs`). Already in the tree.
@@ -52,6 +46,21 @@ crc = "3"
 md-5 = "0.10"
 percent-encoding = "2"
 zbus = { version = "5", default-features = false, features = ["tokio"] }
+
+# The session's compositor, by OS: the server names it only as `crate::compositor`.
+[target.'cfg(target_os = "linux")'.dependencies]
+# The compositor library. The server drives it only through the typed command/frame
+# boundary it exposes (build / CompositorCommand / FrameMsg) — no Smithay here.
+wado-compositor = { path = "../compositor" }
+# Opus for the audio track (`audio/`). The same binding and version the compositor's video
+# encoder already links, so it costs no new build and no new system library.
+ffmpeg-the-third = "5.0.0"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# No session on a Mac yet: the same boundary, every session command answered as coming.
+wado-session-macos = { path = "../macos/session" }
+# The macOS providers behind the platform traits.
+wado-host-macos = { path = "../macos/host" }
 
 [dev-dependencies]
 # Paused time for the pad tick's tests (`pad/ticker.rs`): the same tokio, one more feature.

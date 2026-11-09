@@ -213,6 +213,7 @@ mod tests {
     /// `cargo test -p wado host::tests::live_poll_cost -- --ignored --nocapture`.
     #[tokio::test]
     #[ignore = "runs the host's tools"]
+    #[cfg(target_os = "linux")]
     async fn live_poll_cost() {
         use crate::platform::linux::cmd::spawned;
         crate::clip::env::capture();

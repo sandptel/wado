@@ -9,7 +9,7 @@
 use std::collections::VecDeque;
 use std::sync::Mutex;
 
-use wado_compositor::clipboard::Clip;
+use crate::compositor::clipboard::Clip;
 use wado_platform::clip::ClipHistory;
 use wado_platform::{Fut, Res};
 use wado_protocol::{ClipEntry, ClipKind};

@@ -38,7 +38,7 @@ use webrtc::peer_connection::RTCPeerConnection;
 use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
 use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
 
-use wado_compositor::{CommandSender, CompositorCommand, FrameMsg, InputSender};
+use crate::compositor::{CommandSender, CompositorCommand, FrameMsg, InputSender};
 use wado_protocol::{relay::RelayMsg, relay::display_remote_id};
 
 use crate::e2e::link::Inbound;
@@ -92,8 +92,8 @@ struct RelayCtx {
     /// same shape as `text_input`.
     windows: tokio::sync::watch::Receiver<wado_protocol::WindowList>,
     /// The menu open on the focused window, read into a sheet for the phone (M-P S7).
-    menu: tokio::sync::watch::Receiver<Option<wado_compositor::hit::MenuSpot>>,
-    clipboard: tokio::sync::watch::Receiver<wado_compositor::clipboard::Clip>,
+    menu: tokio::sync::watch::Receiver<Option<crate::compositor::hit::MenuSpot>>,
+    clipboard: tokio::sync::watch::Receiver<crate::compositor::clipboard::Clip>,
     /// Bitrate actually written to the video track over the last stretch, in kbps. Forwarded to
     /// the viewer — see [`wado_protocol::RelayMsg::SentKbps`] for why it has to be.
     sent_kbps: tokio::sync::watch::Receiver<u32>,
@@ -166,7 +166,7 @@ fn now_ms() -> u64 {
 /// near-identical types passed by position is how the audio sink once received the D-Bus
 /// address instead.
 pub fn start(
-    handles: wado_compositor::CompositorHandles,
+    handles: crate::compositor::CompositorHandles,
     frame_rx: mpsc::Receiver<FrameMsg>,
     relay_url: String,
     remote_id: String,
@@ -185,7 +185,7 @@ pub fn start(
                     return;
                 }
             };
-            let wado_compositor::CompositorHandles {
+            let crate::compositor::CompositorHandles {
                 commands: cmd_tx,
                 input: input_tx,
                 timings,
@@ -224,8 +224,8 @@ async fn run(
     text_input: tokio::sync::watch::Receiver<bool>,
     shedding: tokio::sync::watch::Receiver<u32>,
     windows: tokio::sync::watch::Receiver<wado_protocol::WindowList>,
-    menu: tokio::sync::watch::Receiver<Option<wado_compositor::hit::MenuSpot>>,
-    clipboard: tokio::sync::watch::Receiver<wado_compositor::clipboard::Clip>,
+    menu: tokio::sync::watch::Receiver<Option<crate::compositor::hit::MenuSpot>>,
+    clipboard: tokio::sync::watch::Receiver<crate::compositor::clipboard::Clip>,
     mut frame_rx: mpsc::Receiver<FrameMsg>,
     relay_url: String,
     remote_id: String,
@@ -249,6 +249,7 @@ async fn run(
     let (audio_low_tx, audio_low) = tokio::sync::watch::channel(false);
     if let Some(sink) = crate::host::start() {
         let _ = cmd_tx.send(CompositorCommand::AudioSink(Some(sink.clone())));
+        #[cfg(target_os = "linux")]
         tokio::spawn(crate::audio::run(
             sink,
             listening,
@@ -256,6 +257,8 @@ async fn run(
             Arc::clone(&audio_track),
         ));
     }
+    #[cfg(not(target_os = "linux"))]
+    let _ = (listening, audio_low);
 
     // What actually leaves this process, measured at the track. Published for the viewer, which
     // otherwise sees only what arrived and must guess which end lost the difference.
@@ -2061,7 +2064,7 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
 
                 RelayMsg::ClipboardSet { ack, text } => {
                     if ctx.viewer_ok.load(Ordering::SeqCst) {
-                        let clip = wado_compositor::clipboard::Clip {
+                        let clip = crate::compositor::clipboard::Clip {
                             mime: "text/plain;charset=utf-8".into(),
                             data: text.into_bytes().into(),
                             secret: false,

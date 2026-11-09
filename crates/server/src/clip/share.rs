@@ -104,9 +104,9 @@ async fn follow_on(
 mod tests {
     use super::*;
     use crate::clip::hub::Origin;
+    use crate::compositor::clipboard::Clip;
     use std::sync::Mutex;
     use std::time::Duration;
-    use wado_compositor::clipboard::Clip;
 
     fn text(s: &str) -> Clip {
         Clip {

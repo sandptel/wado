@@ -35,7 +35,7 @@ use crate::gate::{Admitted, Gate};
 pub struct Shared {
     pub gate: Gate,
     pub host_key: Arc<HostKey>,
-    pub cmd_tx: Option<wado_compositor::CommandSender>,
+    pub cmd_tx: Option<crate::compositor::CommandSender>,
     pub relay: mpsc::Sender<String>,
     /// The session's participants (`crate::viewers`): a room whose first message is
     /// `room_hello{view}` is a device joining the session, served there instead of here.

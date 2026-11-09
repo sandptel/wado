@@ -40,12 +40,26 @@ pub struct Opened {
 impl Opened {
     /// `name` inside this directory, as a path the kernel resolves through the descriptor.
     /// Valid only while `self` is alive.
+    #[cfg(target_os = "linux")]
     pub fn at(&self, name: &str) -> PathBuf {
         PathBuf::from(format!("/proc/self/fd/{}/{name}", self.file.as_raw_fd()))
     }
     /// This directory itself, the same way.
+    #[cfg(target_os = "linux")]
     pub fn here(&self) -> PathBuf {
         PathBuf::from(format!("/proc/self/fd/{}", self.file.as_raw_fd()))
+    }
+
+    /// `name` inside this directory. macOS has no `/proc/self/fd` to resolve through, so it is
+    /// named from where the descriptor is *now* (`F_GETPATH`), which follows a renamed parent.
+    #[cfg(target_os = "macos")]
+    pub fn at(&self, name: &str) -> PathBuf {
+        self.here().join(name)
+    }
+    /// This directory itself, where it is now.
+    #[cfg(target_os = "macos")]
+    pub fn here(&self) -> PathBuf {
+        real_of(&self.file).unwrap_or_else(|_| self.real.clone())
     }
 
     /// Open one checked `name` inside this directory, never following a symlink at it.
@@ -86,8 +100,21 @@ impl Opened {
         replace: bool,
     ) -> io::Result<()> {
         let (a, b) = (cname(name)?, cname(to_name)?);
+        #[cfg(target_os = "macos")]
+        return check(unsafe {
+            // SAFETY: valid dir fds and NUL-terminated names.
+            libc::renameatx_np(
+                self.file.as_raw_fd(),
+                a.as_ptr(),
+                to.file.as_raw_fd(),
+                b.as_ptr(),
+                if replace { 0 } else { libc::RENAME_EXCL },
+            )
+        });
+        #[cfg(target_os = "linux")]
         let flags = if replace { 0 } else { libc::RENAME_NOREPLACE };
         // SAFETY: valid dir fds and NUL-terminated names.
+        #[cfg(target_os = "linux")]
         check(unsafe {
             libc::renameat2(
                 self.file.as_raw_fd(),
@@ -155,6 +182,7 @@ pub fn check_name(name: &str) -> Result<&str, Refusal> {
     Ok(name)
 }
 
+#[cfg(target_os = "linux")]
 fn openat2(dir: &File, rel: &Path, flags: i32, resolve: u64) -> io::Result<File> {
     use std::os::unix::ffi::OsStrExt;
     let rel = if rel.as_os_str().is_empty() {
@@ -184,9 +212,28 @@ fn openat2(dir: &File, rel: &Path, flags: i32, resolve: u64) -> io::Result<File>
     Ok(unsafe { File::from_raw_fd(fd as i32) })
 }
 
+#[cfg(target_os = "linux")]
 fn real_of(f: &File) -> io::Result<PathBuf> {
     std::fs::read_link(format!("/proc/self/fd/{}", f.as_raw_fd()))
 }
+
+/// Where an open file really is: `F_GETPATH`, macOS's answer to `/proc/self/fd`.
+#[cfg(target_os = "macos")]
+fn real_of(f: &File) -> io::Result<PathBuf> {
+    use std::os::unix::ffi::OsStrExt;
+    let mut buf = vec![0u8; libc::PATH_MAX as usize];
+    // SAFETY: a valid fd and a buffer of PATH_MAX bytes, as F_GETPATH requires.
+    check(unsafe { libc::fcntl(f.as_raw_fd(), libc::F_GETPATH, buf.as_mut_ptr()) })?;
+    let end = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
+    Ok(PathBuf::from(std::ffi::OsStr::from_bytes(&buf[..end])))
+}
+
+/// Open only to name a file (stat it, keep it as a directory handle), not to read it:
+/// `O_PATH` on Linux, `O_EVTONLY` on macOS, which also needs no read permission.
+#[cfg(target_os = "linux")]
+pub const O_PATH: i32 = libc::O_PATH;
+#[cfg(target_os = "macos")]
+pub const O_PATH: i32 = libc::O_EVTONLY;
 
 pub fn say(e: io::Error) -> Refusal {
     match e.raw_os_error() {
@@ -265,18 +312,23 @@ impl Scope {
     pub fn open(&self, path: &str, flags: i32) -> Result<Opened, Refusal> {
         let (root, rel) = self.split(path)?;
         let root = File::open(root).map_err(say)?;
+        #[cfg(target_os = "linux")]
         let mut resolve = libc::RESOLVE_BENEATH | libc::RESOLVE_NO_MAGICLINKS;
+        #[cfg(target_os = "linux")]
         if !self.follow {
             resolve |= libc::RESOLVE_NO_SYMLINKS;
         }
         // O_NONBLOCK: opening a FIFO for reading would otherwise hang this task forever.
         // Not with O_PATH, which opens nothing: openat2 refuses it any other flag (EINVAL).
-        let extra = if flags & libc::O_PATH != 0 {
+        let extra = if flags & O_PATH != 0 {
             0
         } else {
             libc::O_NOCTTY | libc::O_NONBLOCK
         };
+        #[cfg(target_os = "linux")]
         let file = openat2(&root, &rel, flags | extra, resolve).map_err(say)?;
+        #[cfg(target_os = "macos")]
+        let file = super::beneath::open(&root, &rel, flags | extra, self.follow).map_err(say)?;
         let real = real_of(&file).map_err(say)?;
         if self.denied(&real) {
             return Err("that path is private on this computer".into());
@@ -361,7 +413,7 @@ pub mod tests {
         symlink("docs", r.join("in")).unwrap();
         assert!(sc.open(&s(r.join("in/a.txt")), libc::O_RDONLY).is_ok());
         assert!(
-            sc.open(&s(r.join("in/a.txt")), libc::O_PATH).is_ok(),
+            sc.open(&s(r.join("in/a.txt")), O_PATH).is_ok(),
             "O_PATH, as listings use"
         );
         // …but not into the denied tree, by any name.

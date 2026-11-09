@@ -7,8 +7,12 @@
 //!
 //! - [`capture`] — PCM from PipeWire.
 //! - [`opus`] — the encoder.
+//!
+//! Capture and Opus run on Linux only until macOS has sound; the track exists everywhere.
+#![cfg_attr(not(target_os = "linux"), allow(unused))]
 
 pub mod capture;
+#[cfg(target_os = "linux")]
 pub mod opus;
 
 use std::{sync::Arc, time::Duration};
@@ -35,6 +39,7 @@ pub fn track() -> Arc<TrackLocalStaticSample> {
 
 /// Stream the phone sink while someone is listening — a peer connection that asked for audio
 /// is up — and stop when nobody is, so an idle daemon encodes nothing.
+#[cfg(target_os = "linux")]
 pub async fn run(
     sink: String,
     mut listening: watch::Receiver<bool>,
@@ -120,6 +125,7 @@ impl Spacing {
     }
 }
 
+#[cfg(target_os = "linux")]
 fn pump(sink: &str, frame_ms: u32, tx: mpsc::Sender<Bytes>, stop: std::sync::mpsc::Receiver<()>) {
     let kbps = wado_config::live::current()
         .session

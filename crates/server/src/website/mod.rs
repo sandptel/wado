@@ -62,8 +62,8 @@ use webrtc::peer_connection::RTCPeerConnection;
 use webrtc::rtp_transceiver::rtp_codec::RTCRtpCodecCapability;
 use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
 
+use crate::compositor::{CommandSender, FrameMsg, InputSender};
 use logbus::LogBus;
-use wado_compositor::{CommandSender, FrameMsg, InputSender};
 use wado_protocol::StageTimings;
 
 /// Bounded so encoded frames never pile up behind a slow/absent network.
@@ -115,7 +115,7 @@ fn now_ms() -> u64 {
 /// own thread. The compositor owns the calloop loop; this server only holds the command
 /// `Sender` (to drive sessions) and the frame `Receiver` (the WebRTC pump) — it never
 /// touches `Wado` or any Smithay type. Both channels are created by the caller (`main`)
-/// and handed to [`wado_compositor::build`] and here respectively.
+/// and handed to [`crate::compositor::build`] and here respectively.
 pub fn start(
     cmd_tx: CommandSender,
     input_tx: InputSender,

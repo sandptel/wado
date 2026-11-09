@@ -50,6 +50,7 @@ mod tests {
     use wado_config::schema::files::Files;
 
     #[test]
+    #[cfg(target_os = "linux")]
     fn trashing_moves_it_and_records_where_from() {
         let (t, sc) = crate::files::scope::tests::sandbox("trash");
         // The test's own trash, on the same filesystem as the sandbox.

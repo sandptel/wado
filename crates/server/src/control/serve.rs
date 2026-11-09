@@ -28,7 +28,7 @@ pub struct Ctx {
     pub gate: Gate,
     /// `None` only in tests, which have no compositor; a clipboard push then reaches the desktop
     /// alone.
-    pub cmd_tx: Option<wado_compositor::CommandSender>,
+    pub cmd_tx: Option<crate::compositor::CommandSender>,
     pub sent: Arc<crate::host::trim::Sent>,
     pub clip: Arc<ClipFollow>,
     pub out: mpsc::Sender<String>,

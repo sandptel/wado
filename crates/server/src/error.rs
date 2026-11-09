@@ -1,5 +1,5 @@
 //! The server crate's error type, covering the control plane (HTTP signaling,
-//! WebRTC) and wrapping the compositor's [`wado_compositor::CompositorError`].
+//! WebRTC) and wrapping the compositor's [`crate::compositor::CompositorError`].
 //!
 //! `WadoError` is `Send + Sync` so it crosses the tokio/calloop boundary freely.
 //! `main` returns `Box<dyn Error + Send + Sync>`; `WadoError` converts into it.
@@ -25,7 +25,7 @@ pub enum WadoError {
 
     /// An error surfaced by the compositor library.
     #[error("compositor error: {0}")]
-    Compositor(#[from] wado_compositor::CompositorError),
+    Compositor(#[from] crate::compositor::CompositorError),
 
     /// Anything that does not fit the categories above.
     #[error("{0}")]

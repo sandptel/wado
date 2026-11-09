@@ -34,7 +34,7 @@ use webrtc::data_channel::RTCDataChannel;
 use webrtc::peer_connection::RTCPeerConnection;
 use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
 
-use wado_compositor::{CommandSender, CompositorCommand, InputEvent, InputSender};
+use crate::compositor::{CommandSender, CompositorCommand, InputEvent, InputSender};
 use wado_protocol::multi::{LinkVerdict, Participant};
 use wado_protocol::relay::RelayMsg;
 use wado_protocol::{Quality, SessionConfig, SessionInfo};
@@ -53,8 +53,8 @@ pub struct Feeds {
     pub text_input: watch::Receiver<bool>,
     pub shedding: watch::Receiver<u32>,
     pub windows: watch::Receiver<wado_protocol::WindowList>,
-    pub menu: watch::Receiver<Option<wado_compositor::hit::MenuSpot>>,
-    pub clipboard: watch::Receiver<wado_compositor::clipboard::Clip>,
+    pub menu: watch::Receiver<Option<crate::compositor::hit::MenuSpot>>,
+    pub clipboard: watch::Receiver<crate::compositor::clipboard::Clip>,
     pub sent_kbps: watch::Receiver<u32>,
     pub timings: watch::Receiver<wado_protocol::StageTimings>,
     pub queue_us: Arc<AtomicU64>,
@@ -190,7 +190,7 @@ impl Hub {
     pub fn origin(&self) -> Origin {
         loop {
             let o = self.next.fetch_add(1, Ordering::Relaxed);
-            if o != wado_compositor::PRIMARY {
+            if o != crate::compositor::PRIMARY {
                 return o;
             }
         }

@@ -3,7 +3,7 @@
 //! lane's limit is (`crate::files::lane`). Every link to a device is the lane today, so the check
 //! is unconditional.
 
-use wado_compositor::clipboard::Clip;
+use crate::compositor::clipboard::Clip;
 use wado_protocol::clip::LANE_MAX;
 use wado_protocol::relay::RelayMsg;
 

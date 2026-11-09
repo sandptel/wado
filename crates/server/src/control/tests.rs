@@ -258,7 +258,7 @@ async fn a_trusted_device_gets_controls_and_nothing_else() {
         .await;
     tokio::time::sleep(Duration::from_millis(100)).await;
     crate::clip::hub::get().note(
-        wado_compositor::clipboard::Clip {
+        crate::compositor::clipboard::Clip {
             mime: "text/plain".into(),
             data: b"copied on the desktop 41".as_slice().into(),
             secret: false,

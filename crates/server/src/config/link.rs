@@ -9,6 +9,14 @@ use crate::gate::Gate;
 /// `pad-gamepad` — the pad link carries a gamepad (`crate::pad::game`); `pad-hypr` — running
 /// under Hyprland, so a phone's touchpad speed, scroll, tapping and drag settings are applied
 /// (`crate::platform::linux::hypr_device`). Without it the phone says they are not available.
+/// Whether the desktop is Hyprland, whose touchpad the pad's settings drive.
+fn hypr_available() -> bool {
+    #[cfg(target_os = "linux")]
+    return crate::platform::linux::hypr_device::available();
+    #[cfg(not(target_os = "linux"))]
+    return false;
+}
+
 pub fn caps(hypr: bool) -> Vec<String> {
     let mut caps = vec!["pad-gamepad"];
     if hypr {
@@ -61,7 +69,7 @@ pub fn state_for(key: &str, gate: &Gate) -> ConfigState {
             .get(key)
             .and_then(|d| d.keyboard.as_ref())
             .map(Into::into),
-        caps: caps(crate::platform::linux::hypr_device::available()),
+        caps: caps(hypr_available()),
         input_host: Some(wado_protocol::InputHost {
             enabled: cfg.trackpad.enabled,
             smoothing: cfg.trackpad.smoothing,

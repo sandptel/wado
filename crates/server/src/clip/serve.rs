@@ -3,8 +3,8 @@
 
 use std::sync::Arc;
 
+use crate::compositor::CommandSender;
 use tokio::sync::mpsc;
-use wado_compositor::CommandSender;
 use wado_platform::clip::ClipHistory;
 use wado_protocol::relay::RelayMsg;
 
@@ -175,7 +175,7 @@ mod tests {
             });
         }
         hub::get().note(
-            wado_compositor::clipboard::Clip {
+            crate::compositor::clipboard::Clip {
                 mime: "text/plain".into(),
                 data: b"correct  horse\nbattery".as_slice().into(),
                 secret: true,

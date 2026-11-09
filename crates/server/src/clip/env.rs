@@ -1,4 +1,4 @@
-//! The desktop's `WAYLAND_DISPLAY`, read once before `wado_compositor::build` overwrites it with
+//! The desktop's `WAYLAND_DISPLAY`, read once before `crate::compositor::build` overwrites it with
 //! the session's own socket for the apps it launches.
 
 use std::sync::OnceLock;

@@ -10,6 +10,7 @@ pub mod audio;
 pub mod claude;
 pub mod cli;
 pub mod clip;
+pub mod compositor;
 pub mod config;
 pub mod control;
 pub mod desks;

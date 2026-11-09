@@ -18,6 +18,7 @@
 //! encoder hot path and would be a great deal more code here. Hardware (VA-API) transcode is the
 //! upgrade if CPU becomes the limit.
 
+#[cfg(target_os = "linux")]
 use std::os::fd::AsRawFd;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -50,8 +51,15 @@ const TEXT_SUBS: &[&str] = &[
     "subrip", "ass", "ssa", "webvtt", "mov_text", "text", "srt", "microdvd",
 ];
 
+#[cfg(target_os = "linux")]
 fn src(o: &Opened) -> String {
     format!("/proc/{}/fd/{}", std::process::id(), o.file.as_raw_fd())
+}
+
+/// macOS has no `/proc/<pid>/fd` for ffmpeg to open, so it is the file's path as it is now.
+#[cfg(target_os = "macos")]
+fn src(o: &Opened) -> String {
+    o.here().to_string_lossy().into_owned()
 }
 
 async fn ffprobe(o: &Opened) -> Result<Value, Refusal> {

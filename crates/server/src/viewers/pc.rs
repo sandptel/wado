@@ -22,7 +22,7 @@ use webrtc::rtcp::payload_feedbacks::picture_loss_indication::PictureLossIndicat
 use webrtc::rtcp::receiver_report::ReceiverReport;
 use webrtc::track::track_local::TrackLocal;
 
-use wado_compositor::InputEvent;
+use crate::compositor::InputEvent;
 use wado_protocol::{FAST_CHANNEL, INPUT_CHANNEL, MOTION_CHANNEL, multi::PRESENCE_CHANNEL};
 
 use super::Hub;

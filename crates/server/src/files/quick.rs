@@ -116,7 +116,7 @@ pub fn quick(sc: &Scope) -> Value {
     // Recents: the xbel list, then the newest files directly in the pinned folders.
     let mut recent: Vec<(String, u64, u64)> = Vec::new();
     let mut add = |sc: &Scope, path: String| {
-        if let Ok(o) = sc.open(&path, libc::O_PATH)
+        if let Ok(o) = sc.open(&path, super::scope::O_PATH)
             && let Ok(md) = o.file.metadata()
             && md.is_file()
         {

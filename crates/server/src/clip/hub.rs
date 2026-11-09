@@ -17,8 +17,8 @@
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex, OnceLock};
 
+use crate::compositor::clipboard::Clip;
 use tokio::sync::watch;
-use wado_compositor::clipboard::Clip;
 
 use super::ram::Ram;
 

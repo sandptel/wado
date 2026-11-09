@@ -44,9 +44,12 @@ fn apply(key: &str) {
         .get(key)
         .and_then(|d| d.trackpad.clone())
         .unwrap_or_default();
+    #[cfg(target_os = "linux")]
     if let Ok(rt) = tokio::runtime::Handle::try_current() {
         rt.spawn(crate::platform::linux::hypr_device::apply(t));
     }
+    #[cfg(not(target_os = "linux"))]
+    let _ = t;
 }
 
 #[cfg(test)]

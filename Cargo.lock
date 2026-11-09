@@ -6426,8 +6426,10 @@ dependencies = [
  "tracing-subscriber",
  "wado-compositor",
  "wado-config",
+ "wado-host-macos",
  "wado-platform",
  "wado-protocol",
+ "wado-session-macos",
  "webpki-roots 0.26.11",
  "webrtc",
  "zbus",
@@ -6511,6 +6513,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "wado-host-macos"
+version = "0.0.4"
+dependencies = [
+ "wado-platform",
+]
+
+[[package]]
 name = "wado-mobile-core"
 version = "0.0.4"
 dependencies = [
@@ -6559,6 +6568,18 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+ "wado-protocol",
+]
+
+[[package]]
+name = "wado-session-macos"
+version = "0.0.4"
+dependencies = [
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "wado-platform",
  "wado-protocol",
 ]
 

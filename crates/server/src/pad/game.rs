@@ -108,7 +108,7 @@ impl Game {
         });
         Game::new(
             open,
-            wado_compositor::input::gamepad::live_count,
+            crate::compositor::input::gamepad::live_count,
             key_silence_ms,
         )
     }
