@@ -54,7 +54,12 @@ pub fn png_uri(tiff: &[u8], side: usize) -> Option<String> {
                 usize::MAX / 2 + (side - w)
             }
         })?;
-    let rep = draw(&best, side, side, true)?;
+    png_of(&best, side)
+}
+
+/// `rep` as a `side`-pixel PNG `data:` URI, transparency kept.
+pub fn png_of(rep: &NSBitmapImageRep, side: usize) -> Option<String> {
+    let rep = draw(rep, side, side, true)?;
     // SAFETY: empty properties are valid for PNG.
     let png = unsafe {
         rep.representationUsingType_properties(NSBitmapImageFileType::PNG, &NSDictionary::new())

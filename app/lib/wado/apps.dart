@@ -20,22 +20,32 @@ import 'session.dart';
 
 class Apps {
   Apps._() {
-    // After Session's own handler, which takes the list as it came.
     RelayLink.I.on('apps_list', (m) {
       _wait?.cancel();
       asking.value = false;
       final key = Nav.I.selected;
       final list = (m['apps'] as List? ?? const []).cast<Map<String, dynamic>>();
+      var gotIcons = false;
       for (final a in list) {
         final i = a['icon'];
+        if (i is String && i.isNotEmpty) gotIcons = _icons['${a['exec']}'] != i || gotIcons;
         if (i is String && i.isNotEmpty) _icons['${a['exec']}'] = i;
       }
-      _show(list);
-      if (key.isNotEmpty) _save(key);
-      _missing = [for (final a in list) if (a['hidden'] != true && !_icons.containsKey('${a['exec']}')) '${a['exec']}'];
-      _ask();
+      // A refresh that changed nothing (the Mac's dock asks every 3 s) changes nothing on screen.
+      final shape = jsonEncode([for (final a in list) {...a}..remove('icon')]);
+      if (shape != _shape || gotIcons) {
+        _shape = shape;
+        _show(list);
+        if (key.isNotEmpty) _save(key);
+      }
+      // What runs and what the Dock keeps first: those are on screen.
+      final want = [for (final a in list) if (a['hidden'] != true && !_icons.containsKey('${a['exec']}') && !_asked.contains('${a['exec']}')) a]
+        ..sort((a, b) => _rank(a).compareTo(_rank(b)));
+      _missing = [..._missing.where((e) => !_icons.containsKey(e)), for (final a in want) if (!_missing.contains('${a['exec']}')) '${a['exec']}'];
+      if (_inFlight == 0) _ask();
     });
     RelayLink.I.on('apps_icons_list', (m) {
+      _inFlight = 0;
       (m['icons'] as Map? ?? const {}).forEach((k, v) => _icons['$k'] = '$v');
       _show(Session.I.apps.value);
       final key = Nav.I.selected;
@@ -64,13 +74,30 @@ class Apps {
     });
   }
 
-  /// The next few icons this phone lacks; one ask at a time, so the lane never fills.
+  /// The next few icons this phone lacks; one ask at a time, so the lane never fills, and an
+  /// icon asked for is never asked again while its answer is on the way.
   void _ask() {
-    if (_missing.isEmpty) return;
+    if (_missing.isEmpty || _inFlight > 0) return;
     final batch = _missing.take(24).toList();
     _missing = _missing.skip(24).toList();
-    RelayLink.I.send({'type': 'apps_icons', 'execs': batch}, urgent: false);
+    _asked.addAll(batch);
+    if (RelayLink.I.send({'type': 'apps_icons', 'execs': batch}, urgent: false)) {
+      _inFlight = batch.length;
+      // An answer that never comes does not stop the rest.
+      Timer(const Duration(seconds: 20), () {
+        if (_inFlight > 0) {
+          _inFlight = 0;
+          _ask();
+        }
+      });
+    }
   }
+
+  /// Running first, then the Dock's order, then the rest.
+  static int _rank(Map<String, dynamic> a) => a['running'] == true ? 0 : (a['dock'] is num ? 1 + (a['dock'] as num).toInt() : 1000);
+  final _asked = <String>{};
+  int _inFlight = 0;
+  String _shape = '';
 
   /// The list, each app with the icon kept for it.
   void _show(List<Map<String, dynamic>> list) {
@@ -86,6 +113,9 @@ class Apps {
     final key = Nav.I.selected;
     if (key.isEmpty || key == _loaded) return;
     _loaded = key;
+    // Another computer: its own icons to ask for.
+    _asked.clear();
+    _shape = '';
     try {
       final f = await _file(key);
       if (!await f.exists()) return;

@@ -57,7 +57,7 @@ class Session {
         await pc!.addCandidate(RTCIceCandidate(j['candidate'] as String?, j['sdpMid'] as String?, j['sdpMLineIndex'] as int?));
       } catch (_) {}
     });
-    l.on('apps_list', (m) => apps.value = (m['apps'] as List? ?? []).cast<Map<String, dynamic>>());
+    // `apps_list` is Apps' (apps.dart): it puts each app's kept icon back before showing it.
     l.on('log', (m) {
       if (m['line'] is String) rlog(m['line'] as String);
     });

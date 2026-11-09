@@ -12,8 +12,9 @@ use std::path::Path;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use objc2_app_kit::{NSRunningApplication, NSWorkspace};
-use objc2_foundation::{NSString, NSURL};
+use objc2::AllocAnyThread;
+use objc2_app_kit::{NSBitmapImageRep, NSRunningApplication, NSWorkspace};
+use objc2_foundation::{NSPoint, NSRect, NSSize, NSString, NSURL};
 use wado_platform::desktop::DeskApps;
 use wado_platform::{Fut, Res};
 use wado_protocol::{AppAction, AppEntry};
@@ -225,6 +226,8 @@ fn scan() -> Vec<String> {
 #[derive(Default)]
 pub struct MacApps {
     installed: Mutex<Option<(Instant, Vec<String>)>>,
+    /// Icons drawn already, by key: an icon is asked by every device, every list.
+    icons: std::sync::Arc<Mutex<HashMap<String, Option<String>>>>,
 }
 
 impl MacApps {
@@ -251,10 +254,16 @@ impl MacApps {
     }
 }
 
+/// `path`'s icon at [`ICON_PX`], drawn from the one size macOS picks for it — not every size it
+/// holds (encoding all of them up to 1024 px cost 0.1–1.3 s an app, measured; this is a few ms).
 fn icon(path: &str) -> Option<String> {
     let img = NSWorkspace::sharedWorkspace().iconForFile(&NSString::from_str(path));
-    let tiff = img.TIFFRepresentation()?;
-    crate::art::png_uri(&tiff.to_vec(), ICON_PX)
+    let side = ICON_PX as f64;
+    let mut r = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(side, side));
+    // SAFETY: a valid rect for the call to adjust; no context or hints.
+    let cg = unsafe { img.CGImageForProposedRect_context_hints(&mut r, None, None) }?;
+    let rep = NSBitmapImageRep::initWithCGImage(NSBitmapImageRep::alloc(), &cg);
+    crate::art::png_of(&rep, ICON_PX)
 }
 
 /// The running app at `exec`, by its bundle's key.
@@ -407,13 +416,29 @@ impl DeskApps for MacApps {
     }
 
     fn icons(&self, execs: Vec<String>) -> Fut<'_, BTreeMap<String, String>> {
+        let cache = std::sync::Arc::clone(&self.icons);
         Box::pin(async move {
             tokio::task::spawn_blocking(move || {
-                let mut seen = HashMap::new();
                 execs
                     .into_iter()
                     .filter_map(|e| {
-                        let uri = seen.entry(key(&e)).or_insert_with(|| icon(&e)).clone()?;
+                        let k = key(&e);
+                        let hit = cache
+                            .lock()
+                            .unwrap_or_else(|p| p.into_inner())
+                            .get(&k)
+                            .cloned();
+                        let uri = match hit {
+                            Some(u) => u,
+                            None => {
+                                let u = icon(&e);
+                                cache
+                                    .lock()
+                                    .unwrap_or_else(|p| p.into_inner())
+                                    .insert(k, u.clone());
+                                u
+                            }
+                        }?;
                         Some((e, uri))
                     })
                     .collect()
@@ -502,6 +527,22 @@ mod tests {
         assert!(
             default.is_some_and(|d| d.ends_with(".app")) && !apps.is_empty(),
             "a browser opens the web"
+        );
+    }
+
+    #[test]
+    fn icons_are_quick_and_small() {
+        let t = Instant::now();
+        let u = icon("/System/Applications/Mail.app").unwrap();
+        assert!(
+            t.elapsed() < Duration::from_millis(300),
+            "{:?}",
+            t.elapsed()
+        );
+        assert!(
+            u.starts_with("data:image/png;base64,") && u.len() < 40_000,
+            "{}",
+            u.len()
         );
     }
 
