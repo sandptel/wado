@@ -47,6 +47,16 @@ pub use crate::relay_wire::{
     display_remote_id, normalize_remote_id, RELAY_JOIN_BASE_PATH, RELAY_REGISTER_PATH, WIRE_VERSION,
 };
 
+/// One ICE server, as WebRTC's `RTCIceServer` spells it.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct IceServer {
+    pub urls: Vec<String>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub username: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub credential: String,
+}
+
 /// Every relay WebSocket frame is a JSON-serialised `RelayMsg`.
 ///
 /// Handshake messages are consumed/emitted by the relay itself. All other
@@ -1001,6 +1011,15 @@ pub enum RelayMsg {
     FilesChunk {
         id: u32,
         b: String,
+    },
+
+    // ── ICE servers for a device's own peer connections ─────────────────────
+    /// Client → server: which STUN/TURN servers to gather with, before an offer.
+    IceGet,
+    /// Server → client: the servers, TURN credentials included, good for `ttl` seconds.
+    Ice {
+        servers: Vec<IceServer>,
+        ttl: u64,
     },
 
     // ── Trackpad mode: its own peer connection (see `crate::pad`) ─────────────

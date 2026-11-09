@@ -11,6 +11,7 @@ server {
     // remote-id "123456789"           // pin the Remote ID (default: generated once, saved)
     // udp-slice 0                     // which 100-port UDP range this daemon uses
     // turn { url "turn:turn.example:3478"; user "wado"; pass "secret"; }
+    // turn { cloudflare-key "<TURN key ID>"; cloudflare-token "<API token>"; }  // Cloudflare TURN
     // public-relay "https://relay.example"   // the relay as a phone reaches it — for `wado qr`
     // client-url "https://sandptel.github.io/wado/"
     // max-sessions 4                  // sessions this computer runs at once; "Start new" starts a daemon per session up to this

@@ -17,6 +17,7 @@ import 'console_layout.dart' show pictureRoom;
 import 'host_caps.dart';
 import 'latency.dart';
 import 'log.dart';
+import 'ice.dart';
 import 'relay_link.dart';
 import 'multi.dart';
 import 'presence.dart';
@@ -595,10 +596,7 @@ class Session {
     await warm();
     _closePc();
     final p = await createPeerConnection({
-      'iceServers': [
-        {'urls': 'stun:stun.l.google.com:19302'},
-        {'urls': 'stun:stun1.l.google.com:19302'},
-      ],
+      'iceServers': await Ice.I.servers(),
       'sdpSemantics': 'unified-plan',
       'candidateNetworkPolicy': 'all',
       'continualGatheringPolicy': 'gather_continually',

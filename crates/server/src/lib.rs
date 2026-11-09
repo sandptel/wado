@@ -46,6 +46,7 @@ pub mod shells;
 pub mod slot;
 pub mod slow;
 pub mod tui;
+pub mod turn_cf;
 pub mod viewers;
 pub mod webrtc_settings;
 pub mod website;

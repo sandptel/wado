@@ -513,6 +513,7 @@ async fn run(
     // Asked once, at startup, for the same reason the IPv6 probe is: it describes the host, not
     // the connection. A verdict here explains every later ICE failure at once.
     tokio::spawn(crate::nat::report());
+    tokio::spawn(crate::turn_cf::keep());
 
     tokio::spawn(viewer_watchdog(
         ctx.cmd_tx.clone(),
@@ -1948,6 +1949,13 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                         }
                     };
                     send_relay(&out_tx, &msg).await.ok();
+                }
+
+                RelayMsg::IceGet => {
+                    let (servers, ttl) = crate::ice::for_devices();
+                    send_relay(&out_tx, &RelayMsg::Ice { servers, ttl })
+                        .await
+                        .ok();
                 }
 
                 RelayMsg::PadOffer { sdp } => {

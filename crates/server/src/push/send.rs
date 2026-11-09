@@ -62,12 +62,23 @@ fn split(url: &str) -> Result<(String, u16, String), String> {
 
 /// POST `body` with `headers` to `url`; the HTTP status.
 pub fn post(url: &str, headers: &[(&str, String)], body: &[u8]) -> Result<u16, String> {
+    post_reading(url, headers, body).map(|(status, _)| status)
+}
+
+/// POST `body` with `headers` to `url`; the HTTP status and the response body. Also how the
+/// daemon asks Cloudflare for TURN credentials (`crate::turn_cf`): one request shape, no client
+/// crate.
+pub fn post_reading(
+    url: &str,
+    headers: &[(&str, String)],
+    body: &[u8],
+) -> Result<(u16, String), String> {
     let (host, port, path) = split(url)?;
     let addr: SocketAddr = (host.as_str(), port)
         .to_socket_addrs()
         .map_err(|e| format!("could not look up {host}: {e}"))?
         .find(|a| allowed(a.ip()))
-        .ok_or_else(|| format!("{host} is not a place this computer sends notifications"))?;
+        .ok_or_else(|| format!("{host} is not a place this computer sends to"))?;
     let roots = rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
     let cfg = rustls::ClientConfig::builder_with_provider(Arc::new(
         rustls::crypto::ring::default_provider(),
@@ -95,22 +106,55 @@ pub fn post(url: &str, headers: &[(&str, String)], body: &[u8]) -> Result<u16, S
     req.push_str("\r\n");
     tls.write_all(req.as_bytes()).map_err(|e| e.to_string())?;
     tls.write_all(body).map_err(|e| e.to_string())?;
-    let mut head = [0u8; 64];
-    let mut got = 0;
-    // The status line is all that is read: the body says nothing a retry would act on.
-    while got < 12 {
-        match tls.read(&mut head[got..]) {
+    let mut raw = Vec::new();
+    // `Connection: close`: the response ends where the stream does.
+    let mut buf = [0u8; 4096];
+    loop {
+        match tls.read(&mut buf) {
             Ok(0) => break,
-            Ok(n) => got += n,
+            Ok(n) if raw.len() < MAX_RESPONSE => raw.extend_from_slice(&buf[..n]),
+            Ok(_) => return Err("the answer was too long".into()),
+            // A close without close_notify, or a server that keeps the line open past its
+            // answer: what came is the answer.
+            Err(_) if !raw.is_empty() => break,
             Err(e) => return Err(e.to_string()),
         }
     }
-    let line = String::from_utf8_lossy(&head[..got]);
-    line.split(' ')
+    response(&raw)
+}
+
+/// More than this is not an answer the daemon asked for.
+const MAX_RESPONSE: usize = 256 * 1024;
+
+/// The status and body of a raw HTTP/1.1 response, de-chunked when it was sent in chunks.
+fn response(raw: &[u8]) -> Result<(u16, String), String> {
+    let text = String::from_utf8_lossy(raw);
+    let (head, body) = text.split_once("\r\n\r\n").unwrap_or((&text, ""));
+    let status = head
+        .split(' ')
         .nth(1)
         .and_then(|c| c.get(..3))
         .and_then(|c| c.parse().ok())
-        .ok_or_else(|| "the push service gave no answer".to_string())
+        .ok_or_else(|| "the server gave no answer".to_string())?;
+    let chunked = head.lines().any(|l| {
+        let l = l.to_ascii_lowercase();
+        l.starts_with("transfer-encoding:") && l.contains("chunked")
+    });
+    if !chunked {
+        return Ok((status, body.to_string()));
+    }
+    let mut out = String::new();
+    let mut rest = body;
+    while let Some((size, after)) = rest.split_once("\r\n") {
+        let n = usize::from_str_radix(size.split(';').next().unwrap_or("").trim(), 16)
+            .map_err(|_| "a bad chunk")?;
+        if n == 0 {
+            break;
+        }
+        out.push_str(after.get(..n).ok_or("a short chunk")?);
+        rest = after.get(n..).unwrap_or("").trim_start_matches("\r\n");
+    }
+    Ok((status, out))
 }
 
 #[cfg(test)]
@@ -133,6 +177,15 @@ mod tests {
         for ok in ["192.168.1.20", "10.0.0.5", "142.250.1.1", "2606:4700::1"] {
             assert!(allowed(ok.parse().unwrap()), "{ok}");
         }
+    }
+
+    #[test]
+    fn responses_read_plain_and_chunked() {
+        let plain = b"HTTP/1.1 201 Created\r\nContent-Length: 2\r\n\r\n{}";
+        assert_eq!(response(plain).unwrap(), (201, "{}".to_string()));
+        let chunked =
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4\r\n{\"a\"\r\n2\r\n:1\r\n1\r\n}\r\n0\r\n\r\n";
+        assert_eq!(response(chunked).unwrap(), (200, "{\"a\":1}".to_string()));
     }
 
     #[test]

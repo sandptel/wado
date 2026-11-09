@@ -49,6 +49,18 @@ fn overlay_from(cfg: &mut Config, get: impl Fn(&str) -> Option<String>) -> Vec<&
     if let Some(v) = take("WADO_TURN_PASS") {
         cfg.server.turn.get_or_insert_with(Turn::default).pass = v;
     }
+    if let Some(v) = take("WADO_TURN_CF_KEY") {
+        cfg.server
+            .turn
+            .get_or_insert_with(Turn::default)
+            .cloudflare_key = v.trim().to_string();
+    }
+    if let Some(v) = take("WADO_TURN_CF_TOKEN") {
+        cfg.server
+            .turn
+            .get_or_insert_with(Turn::default)
+            .cloudflare_token = v.trim().to_string();
+    }
     if let Some(v) = take("WADO_PUBLIC_RELAY") {
         cfg.server.public_relay = Some(v);
     }

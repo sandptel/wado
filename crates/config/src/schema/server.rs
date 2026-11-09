@@ -79,14 +79,18 @@ impl Server {
     }
 }
 
-/// `turn { url "turn:host:3478"; user "u"; pass "p" }`
+/// `turn { url "turn:host:3478"; user "u"; pass "p" }`, or Cloudflare's TURN:
+/// `turn { cloudflare-key "<TURN key ID>"; cloudflare-token "<its API token>" }` — the daemon
+/// then asks Cloudflare for credentials that last a day and hands them to each device.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(default, deny_unknown_fields)]
+#[serde(default, deny_unknown_fields, rename_all = "kebab-case")]
 pub struct Turn {
     #[serde(deserialize_with = "super::de::one_or_many")]
     pub url: Vec<String>,
     pub user: String,
     pub pass: String,
+    pub cloudflare_key: String,
+    pub cloudflare_token: String,
 }
 
 #[cfg(test)]

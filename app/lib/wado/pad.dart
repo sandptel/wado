@@ -11,6 +11,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import 'log.dart';
+import 'ice.dart';
 import 'relay_link.dart';
 
 Uint8List encodeFrame(int seq, int t, List<List<int>> c) {
@@ -145,10 +146,7 @@ class Pad {
     _offering = true;
     try {
       final me = await createPeerConnection({
-        'iceServers': [
-          {'urls': 'stun:stun.l.google.com:19302'},
-          {'urls': 'stun:stun1.l.google.com:19302'},
-        ],
+        'iceServers': await Ice.I.servers(),
         'candidateNetworkPolicy': 'all',
       });
       _pc = me;

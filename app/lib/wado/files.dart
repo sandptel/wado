@@ -12,6 +12,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import 'lane.dart';
 import 'log.dart';
+import 'ice.dart';
 import 'relay_link.dart';
 
 class _H {
@@ -102,10 +103,7 @@ class Files {
   Future<Map<String, dynamic>> _open() async {
     if (!RelayLink.I.up.value) throw Exception('not connected to the computer yet');
     final pc = await createPeerConnection({
-      'iceServers': [
-        {'urls': 'stun:stun.l.google.com:19302'},
-        {'urls': 'stun:stun1.l.google.com:19302'},
-      ],
+      'iceServers': await Ice.I.servers(),
       'candidateNetworkPolicy': 'all',
     });
     final dc = await pc.createDataChannel('files', RTCDataChannelInit()..ordered = true);

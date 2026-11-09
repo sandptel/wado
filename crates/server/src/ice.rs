@@ -16,6 +16,7 @@
 
 use std::time::Duration;
 
+use wado_protocol::relay::IceServer;
 use webrtc::ice_transport::ice_server::RTCIceServer;
 
 /// How long to wait for ICE gathering before sending the answer with whatever is in hand.
@@ -91,7 +92,7 @@ fn turn_from(turn: wado_config::schema::Turn) -> Option<RTCIceServer> {
 /// Whether a TURN server is configured at all. Read by [`crate::nat`] so the symmetric-NAT
 /// warning can say whether anything will rescue it.
 pub fn has_turn() -> bool {
-    turn().is_some()
+    turn().is_some() || crate::turn_cf::is_configured()
 }
 
 /// The ICE configuration for every peer connection wado makes, in both relay and direct mode.
@@ -111,7 +112,52 @@ pub fn servers() -> Vec<RTCIceServer> {
         tracing::info!(urls = ?t.urls, "TURN configured — relayed candidates are available");
         out.push(t);
     }
+    // Cloudflare's, as far as webrtc-rs can use them: TURN over UDP.
+    if let Some((cf, _)) = crate::turn_cf::current() {
+        out.extend(cf.into_iter().filter_map(|s| {
+            let urls: Vec<String> = s
+                .urls
+                .into_iter()
+                .filter(|u| u.starts_with("turn:") && !u.contains("transport=tcp"))
+                .collect();
+            (!urls.is_empty()).then_some(RTCIceServer {
+                urls,
+                username: s.username,
+                credential: s.credential,
+            })
+        }));
+    }
     out
+}
+
+/// What a device should gather with for its own peer connections (`ice_get`): the STUN
+/// servers, the configured TURN server, and Cloudflare's — every transport, since the phone's
+/// WebRTC can use TURN over TCP and TLS when UDP is blocked. With how many seconds it is good
+/// for.
+pub fn for_devices() -> (Vec<IceServer>, u64) {
+    let mut out: Vec<IceServer> = STUN
+        .iter()
+        .map(|u| IceServer {
+            urls: vec![(*u).to_owned()],
+            ..Default::default()
+        })
+        .collect();
+    if let Some(t) = turn() {
+        out.push(IceServer {
+            urls: t.urls,
+            username: t.username,
+            credential: t.credential,
+        });
+    }
+    let mut ttl = 3600;
+    if let Some((cf, left)) = crate::turn_cf::current() {
+        out.extend(
+            cf.into_iter()
+                .filter(|s| s.urls.iter().any(|u| u.starts_with("turn"))),
+        );
+        ttl = left.min(ttl);
+    }
+    (out, ttl)
 }
 
 #[cfg(test)]
