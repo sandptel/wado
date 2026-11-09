@@ -49,12 +49,26 @@ pub trait Launcher: Send + Sync {
 
 /// The desktop's own apps, with no session: what is installed and running (and in front, hidden,
 /// in its dock), each one's icon, and opening, showing, hiding and quitting them there.
+///
+/// Provided on macOS (`wado-host-macos` `apps.rs`). TODO(linux): provide it from
+/// `crate::platform::linux` for a desktop wado did not start — installed apps from the XDG entries
+/// `crates/server/src/apps` already reads; running/front/hidden from the compositor's toplevels
+/// (wlr-foreign-toplevel or the desktop's own IPC: hyprctl, swaymsg, GNOME's Shell D-Bus);
+/// `dock` from the desktop's favourites (GNOME `org.gnome.shell favorite-apps`, KDE task manager);
+/// open via `gtk-launch`/`gio launch`; hide/quit via the toplevel protocol; `url_apps` from
+/// `gio mime x-scheme-handler/https` (`xdg-mime query default` for the default); `open_url` via
+/// `gio open` / `gtk-launch <app> <url>`. The clients need no change — they follow `desk_apps`.
 pub trait DeskApps: Send + Sync {
     /// Installed and running apps, without icons; `exec` names each one for [`DeskApps::act`].
     fn list(&self) -> Fut<'_, Res<Vec<wado_protocol::AppEntry>>>;
     /// Icons as `data:` URIs, by `exec`; an app with none is left out.
     fn icons(&self, execs: Vec<String>) -> Fut<'_, std::collections::BTreeMap<String, String>>;
     fn act(&self, exec: String, action: wado_protocol::AppAction) -> Fut<'_, Res<()>>;
+    /// The apps that can open `url`, and which one does by default (its `exec`).
+    fn url_apps(&self, url: String)
+    -> Fut<'_, Res<(Option<String>, Vec<wado_protocol::AppEntry>)>>;
+    /// Open `url` in the app `exec`, or the default one.
+    fn open_url(&self, url: String, exec: Option<String>) -> Fut<'_, Res<()>>;
 }
 
 /// Screenshots of the desktop, saved as PNG.

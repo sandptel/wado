@@ -2317,6 +2317,48 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     });
                 }
 
+                RelayMsg::UrlApps { url } if crate::platform::get().desk_apps().is_ok() => {
+                    let out_tx = out_tx.clone();
+                    tokio::spawn(async move {
+                        let Ok(d) = crate::platform::get().desk_apps() else {
+                            return;
+                        };
+                        let msg = match d.url_apps(url.clone()).await {
+                            Ok((default, apps)) => RelayMsg::UrlAppsList { url, default, apps },
+                            Err(message) => RelayMsg::HostError { message, ack: 0 },
+                        };
+                        send_relay(&out_tx, &msg).await.ok();
+                    });
+                }
+
+                RelayMsg::OpenUrl { url, exec } => {
+                    let device = ctx
+                        .viewer
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .0
+                        .clone();
+                    let allowed = if !ctx.viewer_ok.load(Ordering::SeqCst) {
+                        Err("this device has not been approved yet".to_string())
+                    } else if !ctx.gate.grants(&device).host {
+                        Err("this device may not control the computer — on the computer: wado allow <device> host".to_string())
+                    } else {
+                        crate::platform::get().desk_apps().map_err(|a| a.why)
+                    };
+                    let out_tx = out_tx.clone();
+                    tokio::spawn(async move {
+                        info!(device, ?exec, "open a link");
+                        let msg = match allowed {
+                            Ok(d) => match d.open_url(url.clone(), exec).await {
+                                Ok(()) => RelayMsg::UrlOpened { url },
+                                Err(message) => RelayMsg::HostError { message, ack: 0 },
+                            },
+                            Err(message) => RelayMsg::HostError { message, ack: 0 },
+                        };
+                        send_relay(&out_tx, &msg).await.ok();
+                    });
+                }
+
                 RelayMsg::AppDo { exec, action } => {
                     let device = ctx
                         .viewer

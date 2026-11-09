@@ -13,7 +13,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use objc2_app_kit::{NSRunningApplication, NSWorkspace};
-use objc2_foundation::NSString;
+use objc2_foundation::{NSString, NSURL};
 use wado_platform::desktop::DeskApps;
 use wado_platform::{Fut, Res};
 use wado_protocol::{AppAction, AppEntry};
@@ -300,7 +300,108 @@ fn act(exec: &str, action: AppAction) -> Res<()> {
     }
 }
 
+/// A link a phone may have opened here: the web and mail only — never `file:` or an app's own
+/// scheme, which could reach what the phone itself may not.
+pub fn openable(url: &str) -> bool {
+    let u = url.trim();
+    let lower = u.to_ascii_lowercase();
+    (lower.starts_with("https://") || lower.starts_with("http://") || lower.starts_with("mailto:"))
+        && u.len() < 8192
+        && !u.chars().any(char::is_control)
+}
+
+/// The apps that open `url`, and the default one, as paths.
+fn url_apps(url: &str) -> Res<(Option<String>, Vec<String>)> {
+    if !openable(url) {
+        return Err("Only web and mail links open from here.".into());
+    }
+    let u = NSURL::URLWithString(&NSString::from_str(url))
+        .ok_or("That is not a link macOS can read.")?;
+    let ws = NSWorkspace::sharedWorkspace();
+    let path = |u: &NSURL| u.path().map(|p| p.to_string());
+    let default = ws.URLForApplicationToOpenURL(&u).as_deref().and_then(path);
+    let all = ws
+        .URLsForApplicationsToOpenURL(&u)
+        .iter()
+        .filter_map(|a| path(&a))
+        .collect();
+    Ok((default, all))
+}
+
+fn open_url(url: &str, exec: Option<&str>) -> Res<()> {
+    if !openable(url) {
+        return Err("Only web and mail links open from here.".into());
+    }
+    let mut c = std::process::Command::new("/usr/bin/open");
+    if let Some(app) = exec {
+        if !app.ends_with(".app") || !Path::new(app).exists() {
+            return Err("That app is not on this Mac any more.".into());
+        }
+        c.args(["-a", app]);
+    }
+    // `--` so a link can never be read as one of `open`'s own options.
+    let ok = c
+        .arg("--")
+        .arg(url.trim())
+        .status()
+        .is_ok_and(|s| s.success());
+    if ok {
+        Ok(())
+    } else {
+        Err("macOS would not open it.".into())
+    }
+}
+
 impl DeskApps for MacApps {
+    fn url_apps(&self, url: String) -> Fut<'_, Res<(Option<String>, Vec<AppEntry>)>> {
+        Box::pin(async move {
+            let (default, paths) = tokio::task::spawn_blocking(move || url_apps(&url))
+                .await
+                .map_err(|e| e.to_string())??;
+            // The Mac's own list names and marks them; an app only Launch Services knows of
+            // (a browser in Downloads) is named by its bundle.
+            let known = self.now();
+            let mut out: Vec<AppEntry> = Vec::new();
+            for p in paths {
+                let k = key(&p);
+                if out.iter().any(|a| key(&a.exec) == k) {
+                    continue;
+                }
+                out.push(
+                    known
+                        .iter()
+                        .find(|a| key(&a.exec) == k)
+                        .cloned()
+                        .unwrap_or(AppEntry {
+                            name: Path::new(&p)
+                                .file_stem()
+                                .map(|s| s.to_string_lossy().into_owned())
+                                .unwrap_or_default(),
+                            exec: p,
+                            ..Default::default()
+                        }),
+                );
+            }
+            // The default first, then what runs, then by name.
+            let dk = default.as_deref().map(key);
+            out.sort_by_key(|a| (Some(key(&a.exec)) != dk, !a.running, a.name.to_lowercase()));
+            let default = dk.and_then(|k| {
+                out.iter()
+                    .find(|a| key(&a.exec) == k)
+                    .map(|a| a.exec.clone())
+            });
+            Ok((default, out))
+        })
+    }
+
+    fn open_url(&self, url: String, exec: Option<String>) -> Fut<'_, Res<()>> {
+        Box::pin(async move {
+            tokio::task::spawn_blocking(move || open_url(&url, exec.as_deref()))
+                .await
+                .map_err(|e| e.to_string())?
+        })
+    }
+
     fn list(&self) -> Fut<'_, Res<Vec<AppEntry>>> {
         Box::pin(async move { Ok(self.now()) })
     }
@@ -375,6 +476,32 @@ mod tests {
                 "/System/Volumes/Preboot/Cryptexes/App/System/Applications/Safari.app/",
                 "/Applications/Visual Studio Code.app/"
             ]
+        );
+    }
+
+    #[test]
+    fn only_web_and_mail_links_open() {
+        for ok in [
+            "https://example.com/a?b=c",
+            "http://x.org",
+            "mailto:a@b.c",
+            "HTTPS://X.ORG",
+        ] {
+            assert!(openable(ok), "{ok}");
+        }
+        for bad in [
+            "file:///etc/passwd",
+            "x-apple.systempreferences:com.apple",
+            "javascript:alert(1)",
+            "-a Terminal",
+            "https://x\nhttps://y",
+        ] {
+            assert!(!openable(&bad.replace("\\n", "\n")), "{bad}");
+        }
+        let (default, apps) = url_apps("https://example.com").unwrap();
+        assert!(
+            default.is_some_and(|d| d.ends_with(".app")) && !apps.is_empty(),
+            "a browser opens the web"
         );
     }
 

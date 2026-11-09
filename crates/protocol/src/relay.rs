@@ -353,6 +353,29 @@ pub enum RelayMsg {
         exec: String,
         action: crate::AppAction,
     },
+    /// Client → server: which of the desktop's apps can open `url` (a link shared from the
+    /// phone), answered with [`RelayMsg::UrlAppsList`].
+    UrlApps {
+        url: String,
+    },
+    /// Server → client: the apps that open `url` (icons asked separately, by `exec`), and the
+    /// one that opens it by default.
+    UrlAppsList {
+        url: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        default: Option<String>,
+        apps: Vec<crate::AppEntry>,
+    },
+    /// Client → server: open `url` on the desktop — in the app `exec`, or the default one.
+    /// Answered [`RelayMsg::UrlOpened`], or [`RelayMsg::HostError`] saying why not.
+    OpenUrl {
+        url: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        exec: Option<String>,
+    },
+    UrlOpened {
+        url: String,
+    },
     /// Client → server: the icons of these apps, by `exec`, as [`RelayMsg::AppsIconsList`].
     AppsIcons {
         execs: Vec<String>,
