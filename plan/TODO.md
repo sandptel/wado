@@ -28,6 +28,16 @@ Spec/plan: `plan/superpowers/{specs,plans}/2026-11-09-macos-host*`. Memory: `mem
 - [ ] Tune trackpad constants from the phone check (`crates/macos/host/src/input/pad.rs`).
 
 
+### 2026-11-09 (later) — macOS round 2, on `macos`
+- [x] Real Dock gestures (Spaces / Mission Control / Show Desktop / Launchpad) per the Mac's Trackpad settings; measured signs (`plan/memory/shared/macos.md`).
+- [x] Direct connections: IPv6 found on macOS (getifaddrs). TURN optional: `turn { url … }` or `cloudflare-key`/`cloudflare-token`; devices fetch servers with `ice_get` (app + web).
+- [x] Jitter: relay pacer delay up to 120 ms; smoothed pointer speed; staggered two-finger tap right-clicks.
+- [x] Touchpad haptics per gesture (app: Android composition primitives; web: vibrate patterns).
+- [x] Media: mediaremote-adapter (any app, art, live), pushed to the viewer as it changes (`pushed` flag).
+- [x] Ponytail cleanup (−168 lines; CG via objc2).
+- [ ] **User:** install APK, check haptic strengths, right click, live media; Cloudflare key optional.
+- [ ] Later on macOS: sound to phone (virtual audio driver), notifications, app menus, window/Space controls; three-finger drag, Look Up, Notification Centre edge swipe, tracking speed; media app icon; Dock gestures on macOS 27 need the IOHIDEvent path.
+
 ## ▣ RUN — 2026-11-05, Android app smoothness (ui lane; code review, no phone attached)
 
 Pushed 3d6faf9..cfb2b59; release APK `~/Downloads/wado-0.4.0-release.apk` (22:16). **Nothing measured** —
