@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.core.content.IntentCompat
+import androidx.core.content.pm.ShortcutManagerCompat
 
 /**
  * What opened the app, for Dart (`wado/os` → `intent`): a link (`wado://pair?…`, `wado://go/<door>`,
@@ -27,6 +28,10 @@ object Inbound {
                 "kind" to "share",
                 "text" to (intent.getStringExtra(Intent.EXTRA_TEXT) ?: ""),
                 "files" to uris.map { describe(it, resolver, intent.type) },
+                // Which of the share sheet's wado entries: ShareSend · ShareOpen · ShareCopy.
+                "via" to (intent.component?.className?.substringAfterLast('.') ?: ""),
+                // A computer picked in the sheet's top row (Shortcut.shareTargets): its key.
+                "computer" to (intent.getStringExtra(ShortcutManagerCompat.EXTRA_SHORTCUT_ID)?.removePrefix(Shortcut.TO) ?: ""),
             )
         }
         val data = intent.dataString ?: return null

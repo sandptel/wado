@@ -7,6 +7,7 @@
     <string name="sc_shell">Shell</string>
     <string name="sc_shell_long">A terminal on your last computer</string>
     <string name="sc_session">Desktop</string>
+    <string name="share_to">Send to %1$s</string>
     <string name="sc_session_on">Desktop on %1$s</string>
     <string name="ch_ask">Computer needs you</string>
     <string name="ch_done">Finished on your computer</string>

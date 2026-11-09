@@ -39,4 +39,10 @@
             android:targetClass="io.github.sandptel.wado.MainActivity"
             android:data="wado://go/shell" />
     </shortcut>
+    <!-- Each paired computer in the share sheet's top row (Shortcut.shareTargets): a share
+         picked there opens "Send to computer" with that computer already chosen. -->
+    <share-target android:targetClass="io.github.sandptel.wado.ShareSend">
+        <data android:mimeType="*/*" />
+        <category android:name="io.github.sandptel.wado.SHARE_TO_COMPUTER" />
+    </share-target>
 </shortcuts>

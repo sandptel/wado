@@ -37,6 +37,12 @@ class Inbound {
 
     Nav.I.view.addListener(follow);
     follow();
+    // The paired computers in the share sheet's top row (Shortcut.shareTargets).
+    void targets() => os.invokeMethod('shareTargets', {
+          'computers': [for (final c in CoreHost.I.computers.value) {'key': c.key, 'name': c.name}],
+        });
+    CoreHost.I.computers.addListener(targets);
+    targets();
     final first = await os.invokeMethod<Map>('intent');
     if (first != null) {
       // After the first frame: the shell (and its navigator) must be up.

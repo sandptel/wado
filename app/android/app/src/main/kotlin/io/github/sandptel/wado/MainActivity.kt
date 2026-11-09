@@ -186,6 +186,11 @@ class MainActivity : FlutterFragmentActivity() {
                     active(call.argument<Boolean>("on") == true)
                     result.success(null)
                 }
+                "shareTargets" -> {
+                    val list = call.argument<List<Map<String, String>>>("computers").orEmpty()
+                    Shortcut.shareTargets(this, list.map { (it["key"] ?: "") to (it["name"] ?: "") }.filter { it.first.isNotEmpty() })
+                    result.success(null)
+                }
                 "shortcut" -> {
                     Shortcut.desktop(this, call.argument<String>("key").orEmpty(), call.argument<String>("title").orEmpty())
                     result.success(null)
