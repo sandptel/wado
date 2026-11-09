@@ -34,6 +34,8 @@ pub const DOUBLE_MS: u64 = 350;
 pub const GAIN: f64 = 2.4;
 pub const ACCEL: f64 = 1.5;
 pub const ACCEL_MAX: f64 = 3.5;
+/// How much of each frame's speed enters the smoothed speed acceleration reads.
+pub const SPEED_SMOOTH: f64 = 0.3;
 /// Scroll points per pad px.
 pub const SCROLL_GAIN: f64 = 1.0;
 /// Glide: per-16 ms decay, and the speed (points/ms) under which it stops.
@@ -108,6 +110,8 @@ pub struct Interpreter {
     last_click: Option<Instant>,
     /// Scroll speed (points/ms), smoothed, and when the last scroll step was.
     vel: (f64, f64),
+    /// Pointer speed (pad px/ms), smoothed: one late frame must not spike the acceleration.
+    speed: f64,
     last_step: Option<Instant>,
     glide: Option<Glide>,
     /// Fractions of a point not yet scrolled, carried so slow scrolls are not lost.
@@ -138,6 +142,7 @@ impl Interpreter {
             last_tap: None,
             last_click: None,
             vel: (0.0, 0.0),
+            speed: 0.0,
             last_step: None,
             glide: None,
             rest: (0.0, 0.0),
@@ -239,6 +244,7 @@ impl Interpreter {
         self.moved = 0.0;
         self.most = next.len();
         self.vel = (0.0, 0.0);
+        self.speed = 0.0;
         self.last_step = None;
         self.rest = (0.0, 0.0);
         self.gesture = match next.len() {
@@ -306,6 +312,8 @@ impl Interpreter {
                 drag: DragState::Dragging,
             } => {}
             Gesture::Point { .. } => {}
+            // Fingers lift one after the other: a two-finger tap is still a tap until the last.
+            Gesture::Two => {}
             _ => {
                 self.finish(out);
                 self.gesture = Gesture::Done;
@@ -362,7 +370,7 @@ impl Interpreter {
                 self.gesture = Gesture::Point { drag };
                 self.point(now, d, drag == DragState::Dragging, out);
             }
-            Gesture::Two => {
+            Gesture::Two if next.len() == 2 => {
                 // Decided on the first real motion: a zoom if the fingers spread or closed more
                 // than they travelled together, else a scroll.
                 let (c0, s0) = self.two_from;
@@ -451,7 +459,7 @@ impl Interpreter {
                     self.gesture = Gesture::Pages { from, fired: true };
                 }
             }
-            Gesture::Pages { .. } | Gesture::Idle | Gesture::Done => {}
+            Gesture::Two | Gesture::Pages { .. } | Gesture::Idle | Gesture::Done => {}
         }
     }
 
@@ -463,8 +471,10 @@ impl Interpreter {
             })
             .max(1.0);
         self.last_step = Some(now);
-        let speed = d.0.hypot(d.1) / dt; // pad px per ms
-        let gain = GAIN * (1.0 + ACCEL * speed).min(ACCEL_MAX);
+        // Smoothed over about four frames, as a trackpad's own acceleration is: a frame that
+        // lands late carries a burst of motion in one step, and its raw speed would multiply it.
+        self.speed += (d.0.hypot(d.1) / dt - self.speed) * SPEED_SMOOTH;
+        let gain = GAIN * (1.0 + ACCEL * self.speed).min(ACCEL_MAX);
         let delta = (d.0 * gain, d.1 * gain);
         let from = out.cursor();
         let to = out.clamp((from.0 + delta.0, from.1 + delta.1), from);
@@ -668,9 +678,36 @@ mod tests {
     }
 
     #[test]
+    fn a_burst_after_a_stall_is_not_flung() {
+        // Steady motion, one frame that carries three frames' worth (a late arrival), then
+        // steady again: the burst moves about as far as the three frames would have.
+        let mut t = T::new();
+        t.f(0, &[c(1, 100.0, 100.0)]);
+        for k in 1..=5u64 {
+            t.f(8 * k, &[c(1, 100.0 + 2.0 * k as f64, 100.0)]);
+        }
+        let before = t.r.at.0;
+        t.f(48, &[c(1, 116.0, 100.0)]);
+        let jump = t.r.at.0 - before;
+        assert!(jump < 6.0 * GAIN * 1.6, "a burst of 6 px went {jump} pt");
+    }
+
+    #[test]
     fn two_finger_tap_right_clicks() {
         let mut t = T::new();
         t.f(0, &[c(1, 100.0, 100.0), c(2, 140.0, 100.0)]);
+        t.f(90, &[]);
+        assert_eq!(
+            t.r.buttons(),
+            [(Button::Right, true, 1), (Button::Right, false, 1)]
+        );
+    }
+
+    #[test]
+    fn two_finger_tap_lifting_one_at_a_time_right_clicks() {
+        let mut t = T::new();
+        t.f(0, &[c(1, 100.0, 100.0), c(2, 140.0, 100.0)]);
+        t.f(60, &[c(2, 140.0, 100.0)]);
         t.f(90, &[]);
         assert_eq!(
             t.r.buttons(),
