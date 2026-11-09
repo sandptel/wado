@@ -7,6 +7,18 @@ Last updated: `2026-10-03`
 
 ---
 
+## ▣ RUN — 2026-11-09, macOS host without the compositor (branch `macos`)
+
+Spec/plan: `plan/superpowers/{specs,plans}/2026-11-09-macos-host*`. Memory: `memory/shared/macos.md`.
+- [x] Daemon builds/runs on macOS; Linux CI (nix) + macOS CI green per push.
+- [x] Platform + capability states on the wire; Mac providers: input (trackpad interpreter, keys,
+      text, gamepad-as-keys), clipboard, files (trash, thumbnails), media, volume, brightness,
+      sysinfo, awake/lock/sleep, launcher, screenshot, shells.
+- [x] Wado.app signed `wado-dev`; `wado install` exists, **not enabled** (user: later use).
+- [x] App macOS variant ("Coming to macOS" / "On this Mac"); Apple logo.
+- [ ] Web variant (agent running) · APK build · user grants + phone checklist · merge to main (user).
+
+
 ## ▣ RUN — 2026-11-05, Android app smoothness (ui lane; code review, no phone attached)
 
 Pushed 3d6faf9..cfb2b59; release APK `~/Downloads/wado-0.4.0-release.apk` (22:16). **Nothing measured** —
