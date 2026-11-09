@@ -619,8 +619,8 @@ it are in `plan/memory/shared/environment.md`.
       resolution-aware bitrate? This decides whether the bitrate work is finished.
 - [ ] **v0.0.1 tag predates the flake**, so the tag cannot be `nix build`-ed. Move the tag,
       or let packaging land in v0.0.2? Moving a published tag is normally bad practice.
-- [ ] **Track the planning docs?** `CLAUDE.md`, `TODO.md`, `WADO_PLAN.md`, `CHALLENGES.md`
-      are gitignored, so edits to them never reach a clone. Deliberate, or an accident?
+- [x] **Track the planning docs** — `2026-11-09`: all agent files moved into `plan/` and tracked on
+      the `plan` branch; `CLAUDE.md` rebuilt there. `WADO_PLAN.md` and `CHALLENGES.md` were lost.
 - [ ] Two-finger scroll — implemented, never confirmed by a human.
 - [ ] **Fractional scale actually applies now** (8f363e6, integer half floored in afc7c80).
       Connect a phone at scale 1.25 and check the daemon log says

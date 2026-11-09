@@ -54,12 +54,11 @@ Sandboxed access to a DRM render node is killed outright and the exit code looks
 fine — the *builder's* network namespace is restricted. Use `--option sandbox false`. This is
 local, not a property of the flake.
 
-## The planning docs are gitignored
+## Agent files live only on the `plan` branch
 
-`CLAUDE.md`, `TODO.md`, `WADO_PLAN.md`, `CHALLENGES.md` are in `.gitignore` and have been
-since the first commit. Editing them is useful **on this machine only** — the changes never
-reach a clone, and a commit message claiming to have updated them is wrong. Unresolved
-whether that is deliberate.
+`plan/` is ignored on `main`; `git status` never shows edits there. Commit them with
+`plan/commit.sh "msg"` (commits + pushes the orphan branch). The old root `CLAUDE.md`,
+`WADO_PLAN.md`, `TODO.md`, `CHALLENGES.md` were ignored and never committed — lost `2026-11-09`.
 
 ## Bringing the rig up: `scripts/rig.sh`
 

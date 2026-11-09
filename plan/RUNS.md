@@ -4,7 +4,7 @@ A **run** is one iteration of the loop we work in. Say *"start a run"* and this 
 procedure. It is a handoff document: a session that has lost its context should be able to
 read this plus `plan/memory/` and pick the loop back up without asking what happened before.
 
-Not in git (`plan/` is ignored) — this is our working surface, not a project artifact.
+Ignored on `main`, tracked on the orphan branch `plan` — commit with `plan/commit.sh` (see `CLAUDE.md`).
 
 ---
 
@@ -21,10 +21,10 @@ and the next thing is unclear — not because the list is empty.
 
 Read, in this order:
 
-1. `plan/memory/00-environment.md` — the operational traps. Reading this late costs an hour.
+1. `plan/memory/shared/environment.md` — the operational traps. Reading this late costs an hour.
 2. `plan/TODO.md` — what is open, what is blocked, what is awaiting the user.
 3. The rest of `plan/memory/` as the subject demands.
-4. `CLAUDE.md` → `TODO.md` → `WADO_PLAN.md` in the repo, for direction and invariants.
+4. `plan/CLAUDE.md` (invariants, hazards, pins) → `plan/HANDOVER.md` → `plan/issues.md`.
 
 Never re-derive a fact that memory already holds. Never trust a memory that names a file,
 flag or function without checking it still exists.

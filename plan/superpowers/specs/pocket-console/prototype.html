@@ -1,0 +1,972 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-arr="console">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>wado — Pocket Console prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" />
+<style>
+/* ── tokens: assets/base.css, verbatim ──────────────────────────────────────────────────── */
+:root {
+  --base00:#181818; --base01:#282828; --base02:#383838; --base03:#585858;
+  --base04:#b8b8b8; --base05:#d8d8d8; --base06:#e8e8e8; --base07:#f8f8f8;
+  --base08:#ab4642; --base09:#dc9656; --base0A:#f7ca88; --base0B:#a1b56c;
+  --base0C:#86c1b9; --base0D:#7cafc2; --base0E:#ba8baf; --base0F:#a16946;
+  color-scheme: dark;
+}
+/* catppuccin-latte, from crates/client/src/schemes.json */
+:root[data-theme="light"] {
+  --base00:#eff1f5; --base01:#e6e9ef; --base02:#ccd0da; --base03:#bcc0cc;
+  --base04:#acb0be; --base05:#4c4f69; --base06:#dc8a78; --base07:#7287fd;
+  --base08:#d20f39; --base09:#fe640b; --base0A:#df8e1d; --base0B:#40a02b;
+  --base0C:#179299; --base0D:#1e66f5; --base0E:#8839ef; --base0F:#dd7878;
+  color-scheme: light;
+}
+:root {
+  --s0: var(--base00);
+  --s1: color-mix(in oklab, var(--base00), var(--base05) 6%);
+  --s2: color-mix(in oklab, var(--base00), var(--base05) 11%);
+  --s3: color-mix(in oklab, var(--base00), var(--base05) 18%);
+  --line: color-mix(in oklab, var(--base00), var(--base05) 14%);
+  --bright: var(--base05);
+  --text: color-mix(in oklab, var(--base05), var(--base00) 10%);
+  --dim: color-mix(in oklab, var(--base05), var(--base00) 42%);
+  --accent: var(--base0D); --on-accent: var(--base00);
+  --good: var(--base0B); --warn: var(--base09); --bad: var(--base08); --caution: var(--base0A);
+  --r1:10px; --r2:16px; --r3:22px; --r4:28px; --gap:10px;
+  --display: "Bricolage Grotesque", "Figtree", system-ui, sans-serif;
+  --body: "Figtree", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --spring: cubic-bezier(.32, .72, 0, 1);
+  --pop: cubic-bezier(.34, 1.56, .64, 1);
+  --ease: var(--spring);
+  --dur: 220ms; --dur-sheet: 480ms; --dur-hero: 520ms; --dur-press: 120ms; --stagger: 40ms;
+  /* proposed (design-spec.md §6): the stage morph. A duration, not a curve. */
+  --dur-stage: 620ms; --dur-stage-out: 520ms;
+  --dur-now: var(--dur-stage);
+  --hue: var(--base0D);              /* the computer's hue (Framework) */
+}
+:root[data-motion="reduced"] { --dur: 120ms; --dur-sheet: 200ms; --dur-hero: 160ms; --stagger: 0ms; --pop: var(--spring);
+  --dur-stage: 160ms; --dur-stage-out: 160ms; }
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; font: 14px/1.45 var(--body); color: var(--text);
+  overscroll-behavior: none; -webkit-tap-highlight-color: transparent; }
+/* The stage is black whatever the theme (The Untouchable Picture Rule). The console's ground
+   is a layer above it that fades away when the picture takes the whole display. */
+body { background: #000; }
+svg.i { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; padding: 0;
+  transition: scale var(--dur-press) var(--ease), background var(--dur) var(--ease), color var(--dur) var(--ease); }
+button:active:not(:disabled) { scale: .96; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#safe { position: fixed; inset: 0; pointer-events: none; visibility: hidden;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+
+/* ── the console's ground ────────────────────────────────────────────────────────────────── */
+#stage { position: fixed; inset: 0; overflow: hidden; z-index: 1; }
+#shell { position: fixed; inset: 0; z-index: 0;
+  background:
+    radial-gradient(70% 30% at 50% 0%, color-mix(in oklab, var(--hue), transparent 86%), transparent 70%),
+    radial-gradient(60% 26% at 100% 100%, color-mix(in oklab, var(--base0E), transparent 92%), transparent 70%),
+    var(--s0); }
+[data-arr="cockpit"] #shell { opacity: 0; }
+
+/* ── the picture: always laid out at the session's own size; the console is a transform ── */
+#pic { position: absolute; left: 0; top: 0; z-index: 2; transform-origin: 0 0; overflow: hidden; background: #000;
+  border-radius: var(--pr, 0px); box-shadow: 0 0 0 var(--ring, 0px) var(--line); }
+
+/* ── plates: the surfaces the controls sit on. Plates cross-fade; buttons fly. ─────────── */
+.plate { position: absolute; z-index: 1; transform-origin: 0 0; pointer-events: none; }
+#pl-bezel { background: var(--s1); border-radius: var(--r4); }
+#pl-deck { background: var(--s1); border-radius: var(--r3); }
+.plate.dock { z-index: 3; border-radius: 999px; background: color-mix(in oklab, var(--s1), transparent 12%);
+  border: 1px solid color-mix(in oklab, var(--line), transparent 30%); box-shadow: 0 6px 24px -10px rgb(0 0 0 / .55); }
+.plate.wson { border-radius: 999px; background: color-mix(in oklab, var(--accent), transparent 80%); }
+
+/* ── keyed controls: one element each, two arrangements ──────────────────────────────── */
+.k { position: absolute; z-index: 4; transform-origin: 0 0; }
+.k.w { overflow: hidden; white-space: nowrap; transition: width var(--dur-now) var(--spring), scale var(--dur-press) var(--ease); }
+.k .lbl { transition: opacity 160ms var(--ease) 200ms; }
+[data-arr="cockpit"] .k .lbl { opacity: 0; transition-delay: 0ms; }
+.k[data-o="0"] { pointer-events: none; }
+
+.barbtn { display: inline-grid; place-items: center; width: 44px; height: 44px; border-radius: 999px; color: var(--text); }
+.barbtn:hover { background: var(--s2); color: var(--bright); }
+.barbtn.on { background: var(--accent); color: var(--on-accent); }
+.barbtn.wide { width: 54px; } .barbtn.home { width: 62px; }
+.homering { width: 20px; height: 20px; border-radius: 50%; border: 2.2px solid currentColor; }
+#k-more::after { content: ""; position: absolute; top: 9px; right: 13px; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--good); box-shadow: 0 0 0 2px var(--s1); }
+.sw #k-more::after { background: var(--warn); animation: breathe 2.4s ease-in-out infinite; }
+#k-more svg { stroke-width: 3.2; }
+
+/* status: link pill, people chip, computer name, encoder chip */
+.pill { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px 0 12px; border-radius: 999px;
+  background: var(--s1); border: 1px solid var(--line); color: var(--bright); font-weight: 600; font-size: 12.5px; }
+[data-arr="cockpit"] .pill { background: color-mix(in oklab, var(--s1), transparent 12%); box-shadow: 0 6px 24px -10px rgb(0 0 0 / .55); }
+.ldot { position: relative; width: 8px; height: 8px; border-radius: 50%; background: var(--tone, var(--good)); flex: none; }
+.ldot::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--tone, var(--good)); opacity: 0;
+  animation: ripple 2s cubic-bezier(.2, 0, 0, 1) infinite; }
+@keyframes ripple { 0% { opacity: .55; scale: 1; } 45%, 100% { opacity: 0; scale: 2.8; } }
+@keyframes breathe { 50% { opacity: .35; } }
+#k-link { padding: 0 12px 0 11px; }
+#k-link .lbl b { color: var(--good); font-weight: 600; }
+#k-link .ms { font-family: var(--mono); font-weight: 600; font-size: 11.5px; color: var(--text); }
+#k-name { display: inline-flex; align-items: center; gap: 8px; height: 32px; font: 700 15px var(--display); color: var(--bright); letter-spacing: -.01em; }
+#k-name i { width: 8px; height: 8px; border-radius: 50%; background: var(--hue); flex: none; }
+#k-enc { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  color: var(--warn); background: color-mix(in oklab, var(--warn), transparent 85%); }
+#k-enc .ldot { --tone: var(--warn); }
+#k-enc .ldot::after { animation: none; } #k-enc .ldot { animation: breathe 2.4s ease-in-out infinite; }
+#k-people { padding: 0 10px 0 4px; gap: 6px; }
+.avs { display: flex; }
+.av { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font: 700 10.5px var(--body);
+  color: var(--s0); background: var(--c); box-shadow: 0 0 0 2px var(--s1); }
+.av + .av { margin-left: -7px; }
+.av.me { background: var(--s3); color: var(--bright); }
+.av.me svg { width: 13px; height: 13px; }
+#k-people .lbl { font-family: var(--mono); font-size: 12px; }
+
+/* full screen: labelled in the console, an icon in the cockpit */
+#k-full { display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 14px 0 12px; border-radius: 999px;
+  background: color-mix(in oklab, var(--accent), transparent 82%); color: var(--accent); font-weight: 600; font-size: 13px; }
+[data-arr="cockpit"] #k-full { background: none; color: var(--text); padding: 0 12px; }
+#k-full .ic-min { display: none; }
+[data-arr="cockpit"] #k-full .ic-max { display: none; } [data-arr="cockpit"] #k-full .ic-min { display: block; }
+
+/* workspaces (ui/workspaces.rs, reused) */
+.wsnum { width: 36px; height: 36px; border-radius: 999px; display: grid; place-items: center; font: 700 13px var(--mono); color: var(--dim); background: var(--s2); }
+.wsnum.on { background: var(--accent); color: var(--on-accent); }
+.wsnum.add { background: none; border: 1.5px dashed var(--line); }
+.wsnum.add svg { width: 15px; height: 15px; }
+.wsnum .dots { display: none; }
+.wsapp { width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; }
+.wsapp .glyph { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: #fff; }
+.wsapp .glyph svg { width: 16px; height: 16px; stroke-width: 2.2; }
+.wsapp.on::after { content: ""; position: absolute; bottom: -1px; left: 12px; width: 12px; height: 3px; border-radius: 2px; background: var(--accent); }
+.wsapp.vert.on::after { left: -3px; bottom: 12px; width: 3px; height: 12px; }
+
+/* window strip */
+#k-wtitle { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 10px 0 6px; border-radius: var(--r2); text-align: left; min-width: 0; }
+#k-wtitle .glyph { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: #fff; flex: none; }
+#k-wtitle .glyph svg { width: 16px; height: 16px; stroke-width: 2.2; }
+#k-wtitle .tt { min-width: 0; display: grid; }
+#k-wtitle b { color: var(--bright); font-weight: 600; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#k-wtitle small { color: var(--dim); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#k-wtitle:hover { background: var(--s2); }
+.wbtn { width: 44px; height: 44px; border-radius: var(--r2); display: grid; place-items: center; color: var(--bright); background: var(--s2); }
+.wbtn:hover { background: var(--s3); }
+#k-wclose { color: var(--bad); background: color-mix(in oklab, var(--bad), transparent 86%); }
+#k-wmax .ic-restore { display: none; } #k-wmax.restored .ic-restore { display: block; } #k-wmax.restored .ic-max2 { display: none; }
+
+/* face switcher: four input faces for the deck */
+.fbtn { width: 44px; height: 44px; border-radius: var(--r2); display: grid; place-items: center; color: var(--dim);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease), border-radius 360ms var(--spring), scale var(--dur-press) var(--ease); }
+.fbtn.on { background: var(--accent); color: var(--on-accent); border-radius: 999px; }
+.fbtn:not(.on):hover { background: var(--s2); color: var(--bright); }
+.fbtn.wide { width: 48px; }
+
+/* ── the deck: the input face below / beside the picture ─────────────────────────────── */
+#k-deck { padding: 8px; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+.face { display: none; min-height: 0; min-width: 0; grid-template-columns: minmax(0, 1fr); }
+.face.on { display: grid; animation: facein 360ms var(--spring) both; }
+@keyframes facein { from { opacity: 0; translate: 0 10px; } }
+.col .face.on { animation-name: faceinx; } @keyframes faceinx { from { opacity: 0; translate: 10px 0; } }
+
+/* pad face — the trackpad's surface (pad_touch / pad_pointer), mounted in the deck */
+.face[data-face="pad"] { grid-template-rows: minmax(0, 1fr) 30px; gap: 0; border-radius: var(--r2); overflow: hidden; background: var(--s0); border: 1px solid var(--line); }
+.padsurf { position: relative; display: grid; place-items: center; text-align: center; color: var(--dim); cursor: crosshair; touch-action: none; overflow: hidden; }
+.padsurf b { display: block; font-size: 12.5px; color: var(--text); font-weight: 600; }
+.padsurf small { display: block; font-size: 11px; }
+.padbtns { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--line); }
+.padbtns button { font-size: 11px; color: var(--dim); font-weight: 600; letter-spacing: .04em; }
+.padbtns button + button { border-left: 1px solid var(--line); }
+.padbtns button:active { background: var(--s2); scale: 1; }
+.touch { position: absolute; width: 44px; height: 44px; margin: -22px; border-radius: 50%; background: color-mix(in oklab, var(--accent), transparent 70%);
+  pointer-events: none; animation: touch 520ms cubic-bezier(.2, 0, 0, 1) forwards; }
+@keyframes touch { from { scale: .4; opacity: 1; } to { scale: 2.2; opacity: 0; } }
+.pptr { position: absolute; width: 10px; height: 10px; margin: -5px; border-radius: 50%; background: var(--accent); pointer-events: none; }
+
+/* keys face — the rail's keys (pad_rail.js / pad.css .tpkey), reused */
+.keys { display: flex; flex-wrap: wrap; gap: 6px; align-content: center; }
+#k-deck:not(.col) { padding: 6px; }
+#k-deck:not(.col) .tpkey, #k-deck:not(.col) .tptype { height: 34px; }
+.col .keys { display: grid; grid-template-columns: 1fr 1fr; align-content: start; }
+.tpkey { flex: none; min-width: 44px; height: 40px; padding: 0 10px; border-radius: var(--r2); background: var(--s2); color: var(--bright); font: 600 12.5px var(--mono);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease), box-shadow var(--dur) var(--ease), border-radius var(--dur) var(--spring), scale 320ms var(--pop); }
+.col .tpkey { height: 44px; padding: 0; min-width: 0; }
+.tpkey.latched { color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); background: color-mix(in oklab, var(--accent), var(--s2) 88%); }
+.tptype { flex: 1 1 auto; height: 40px; min-width: 88px; border-radius: var(--r2); display: flex; align-items: center; justify-content: center; gap: 8px;
+  font-weight: 600; background: var(--accent); color: var(--on-accent); }
+.col .tptype { grid-column: 1 / -1; height: 48px; margin-top: 4px; }
+
+/* quick face — quick actions (pad_rail.js .tpact), reused, from `trackpad { quick }` */
+.quick { min-width: 0; min-height: 0; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; align-items: stretch; }
+.col .quick { flex-direction: column; overflow-x: hidden; overflow-y: auto; }
+.tpact { flex: 1 0 70px; min-height: 64px; padding: 8px 4px; border-radius: var(--r2); display: grid; justify-items: center; align-content: center; gap: 4px;
+  background: var(--s2); color: var(--bright); }
+.col .tpact { flex: 0 0 auto; }
+.tpact svg { width: 22px; height: 22px; }
+.tplabel { font-size: 11.5px; font-weight: 600; line-height: 1.2; text-align: center; }
+.tpact.ok { background: color-mix(in oklab, var(--good), var(--s2) 80%); }
+.tpact.ok svg { color: var(--good); }
+.face[data-face="quick"] { gap: 8px; grid-template-rows: minmax(0, 1fr); }
+.col .face[data-face="quick"] { grid-template-rows: minmax(0, 1fr) auto; }
+.npmini { display: none; }
+.col .npmini { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 8px; border-radius: var(--r2);
+  background: linear-gradient(135deg, color-mix(in oklab, var(--accent), var(--s1) 70%), color-mix(in oklab, var(--base0E), var(--s1) 78%)); }
+.npmini .cv { display: block; width: 100%; aspect-ratio: 1; border-radius: var(--r1); background-size: cover; }
+.npmini b { display: block; font: 700 13px/1.15 var(--display); color: var(--bright); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.npmini small { display: block; font-size: 11px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.npmini .ctl { display: flex; justify-content: space-between; }
+.npmini .ctl button { width: 30px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: var(--bright); }
+.npmini .ctl button.pp { background: var(--bright); color: var(--s0); }
+.npmini .ctl svg { width: 16px; height: 16px; }
+
+/* gamepad face — the on-screen pad's clusters (gamepad.js), re-seated into the surround */
+.gp { display: grid; place-items: center; font: 700 12px var(--mono); color: var(--bright); }
+.gpsurf { background: var(--s2); }
+[data-arr="cockpit"] .gpsurf { background: color-mix(in oklab, var(--s1), transparent 30%); box-shadow: 0 6px 24px -10px rgb(0 0 0 / .55); }
+#k-gpdpad { position: absolute; }
+.dpad { display: grid; grid-template: 1fr 1fr 1fr / 1fr 1fr 1fr; width: 100%; height: 100%; gap: 0; }
+.dpad button { border-radius: 10px; display: grid; place-items: center; color: var(--bright); font-size: 11px; }
+.dpad .u { grid-area: 1 / 2; } .dpad .l { grid-area: 2 / 1; } .dpad .r { grid-area: 2 / 3; } .dpad .d { grid-area: 3 / 2; }
+.dpad .c { grid-area: 2 / 2; }
+.dpad button:not(.c) { background: var(--s2); }
+[data-arr="cockpit"] .dpad button:not(.c) { background: color-mix(in oklab, var(--s1), transparent 25%); box-shadow: 0 6px 24px -10px rgb(0 0 0 / .55); }
+.abxy { position: relative; width: 100%; height: 100%; }
+.abxy button { position: absolute; width: 38%; height: 38%; border-radius: 50%; font: 700 14px var(--display); color: var(--bright); background: var(--s2); }
+[data-arr="cockpit"] .abxy button { background: color-mix(in oklab, var(--s1), transparent 25%); box-shadow: 0 6px 24px -10px rgb(0 0 0 / .55); }
+.abxy .y { left: 31%; top: 0; color: var(--base0A); } .abxy .x { left: 0; top: 31%; color: var(--base0D); }
+.abxy .b { right: 0; top: 31%; color: var(--base08); } .abxy .a { left: 31%; bottom: 0; color: var(--base0B); }
+.gprow { display: flex; gap: 6px; width: 100%; height: 100%; }
+.gprow button { flex: 1; border-radius: 999px; background: var(--s2); font: 700 11px var(--mono); color: var(--bright); }
+.gprow button.g { flex: 0 0 36px; }
+[data-arr="cockpit"] .gprow button { background: color-mix(in oklab, var(--s1), transparent 25%); box-shadow: 0 6px 24px -10px rgb(0 0 0 / .55); }
+.stick { width: 100%; height: 100%; border-radius: 50%; background: var(--s2); display: grid; place-items: center; }
+.stick i { width: 46%; height: 46%; border-radius: 50%; background: var(--s3); box-shadow: inset 0 0 0 2px var(--line); }
+[data-arr="cockpit"] .stick { background: color-mix(in oklab, var(--s1), transparent 30%); box-shadow: 0 6px 24px -10px rgb(0 0 0 / .55); }
+
+/* other participants' pointers (F6 presence), drawn by the client, never by the compositor */
+.ghost { display: flex; align-items: center; gap: 6px; pointer-events: none; z-index: 5; }
+.ghost .gd { width: 14px; height: 14px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 2px #000a, 0 0 0 5px color-mix(in oklab, var(--c), transparent 70%); flex: none; }
+.ghost .gl { padding: 2px 8px; border-radius: 999px; background: color-mix(in oklab, var(--s1), transparent 8%); color: var(--bright); font-size: 11px; font-weight: 600;
+  border: 1px solid color-mix(in oklab, var(--c), transparent 40%); white-space: nowrap; }
+.ghost.idle { opacity: .5 !important; }
+.ghost.idle .gl { display: none; }
+
+/* people card (F6) */
+#peoplecard { position: absolute; z-index: 30; width: min(340px, calc(100vw - 24px)); padding: 14px; border-radius: var(--r3); background: var(--s1);
+  border: 1px solid var(--line); box-shadow: 0 18px 50px -20px #000a; display: none; gap: 10px; }
+#peoplecard.on { display: grid; animation: popc 300ms var(--spring) both; }
+@keyframes popc { from { opacity: 0; translate: 0 -8px; scale: .97; } }
+.pch { display: flex; align-items: baseline; justify-content: space-between; }
+.pch b { font: 700 17px var(--display); color: var(--bright); }
+.pch small { font: 12px var(--mono); color: var(--dim); }
+.prow { display: flex; align-items: center; gap: 12px; min-height: 52px; }
+.prow .av { width: 34px; height: 34px; font-size: 13px; box-shadow: none; }
+.prow .av.me svg { width: 17px; height: 17px; }
+.pt { flex: 1; min-width: 0; display: grid; }
+.pt b { color: var(--bright); font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.pt small { font-size: 12px; color: var(--dim); display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.pt small .ldot { width: 7px; height: 7px; } .pt small .ldot::after { display: none; }
+.lead { font: 600 9.5px var(--body); letter-spacing: .08em; text-transform: uppercase; padding: 3px 7px; border-radius: 999px;
+  color: var(--accent); background: color-mix(in oklab, var(--accent), transparent 86%); }
+.pnote { margin: 0; font-size: 12px; color: var(--dim); }
+.btn { min-height: 44px; padding: 0 16px; border-radius: var(--r2); font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; }
+.btn.danger { background: color-mix(in oklab, var(--bad), transparent 82%); color: var(--bad); }
+
+/* announcements for screen readers */
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* prototype controls (not part of the design) */
+#proto { position: fixed; left: 50%; translate: -50% 0; top: 4px; z-index: 99; display: flex; gap: 4px; font: 600 10.5px var(--body); opacity: .9; }
+#proto button { padding: 5px 8px; border-radius: 999px; background: color-mix(in oklab, var(--base05), transparent 15%); color: var(--base00); }
+.bare #proto { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ldot::after, .face.on, #peoplecard.on { animation: none !important; }
+}
+:root[data-motion="off"] *, :root[data-motion="off"] *::before, :root[data-motion="off"] *::after { transition: none !important; animation: none !important; }
+
+/* ── the fake desktop inside the picture: CONTENT, not chrome, so literal colours are fine ── */
+.desk { position: absolute; inset: 0; font-family: "Figtree", system-ui, sans-serif; }
+.app-web { position: absolute; inset: 0; display: flex; flex-direction: column; background: #fbfaf7; color: #22201c; }
+.web-bar { display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: #ecebe7; border-bottom: 1px solid #d9d6cf; }
+.web-bar i { width: 12px; height: 12px; border-radius: 50%; background: #c9c5bc; flex: none; }
+.web-url { flex: 1; height: 30px; border-radius: 15px; background: #fff; border: 1px solid #d9d6cf; font: 13px "JetBrains Mono", monospace; color: #6a665d; display: flex; align-items: center; padding: 0 12px; white-space: nowrap; overflow: hidden; }
+.web-page { padding: 20px 20px; overflow: hidden; flex: 1; }
+.web-page .kicker { font: 600 12px "Figtree"; letter-spacing: .12em; text-transform: uppercase; color: #3f7a4f; }
+.web-page h1 { font: 700 34px/1.05 "Bricolage Grotesque", serif; margin: 8px 0 8px; letter-spacing: -.02em; }
+.web-page .meta { color: #7b766b; font-size: 13px; margin: 0 0 16px; }
+.web-hero { height: 190px; border-radius: 14px; margin-bottom: 18px;
+  background: radial-gradient(60% 80% at 30% 30%, #6fa36b, transparent 70%), radial-gradient(50% 70% at 75% 60%, #2f6b45, transparent 70%), linear-gradient(160deg, #cfe3c4, #7aa874); position: relative; }
+.web-hero::after { content: ""; position: absolute; left: 38%; bottom: 0; width: 24%; height: 34%; background: #b0673f; border-radius: 6px 6px 14px 14px; }
+.web-page p { font-size: 16px; line-height: 1.6; margin: 0 0 14px; color: #37342d; }
+.web-page h2 { font: 700 21px "Bricolage Grotesque"; margin: 20px 0 8px; }
+.web-page li { font-size: 16px; line-height: 1.6; color: #37342d; }
+.web-btn { position: absolute; right: 18px; bottom: 26px; padding: 12px 18px; border-radius: 24px; background: #2f6b45; color: #fff; font-weight: 600; font-size: 14px; box-shadow: 0 6px 18px #0003; }
+
+.app-split { position: absolute; inset: 0; display: grid; grid-template-columns: 1.15fr 1fr; background: #1d2021; color: #ebdbb2; font: 13.5px/1.55 "JetBrains Mono", monospace; }
+.ed { display: flex; flex-direction: column; border-right: 2px solid #111; min-width: 0; }
+.tabs { display: flex; gap: 2px; background: #151718; padding: 6px 6px 0; font-size: 12.5px; }
+.tabs span { padding: 6px 12px; border-radius: 6px 6px 0 0; color: #928374; }
+.tabs span.on { background: #1d2021; color: #ebdbb2; }
+.code { padding: 10px 14px; white-space: pre; overflow: hidden; flex: 1; }
+.code .n { color: #665c54; display: inline-block; width: 2.4em; }
+.kw { color: #fb4934; } .ty { color: #fabd2f; } .fn { color: #b8bb26; } .st { color: #8ec07c; } .cm { color: #7c6f64; font-style: italic; } .nu { color: #d3869b; }
+.term { padding: 10px 14px; white-space: pre; overflow: hidden; background: #141617; }
+.term .p { color: #b8bb26; } .term .ok { color: #8ec07c; } .term .dimc { color: #7c6f64; }
+.caret { display: inline-block; width: 8px; height: 15px; background: #ebdbb2; vertical-align: -2px; }
+</style>
+</head>
+<body>
+<div id="safe"></div>
+<div id="shell"></div>
+
+<div id="stage">
+<!-- the picture: the streamed desktop, at the session's own size -->
+<div id="pic" role="application" aria-label="Framework's screen"><div class="desk" id="desk"></div></div>
+
+<!-- plates -->
+<div class="plate" id="pl-bezel"></div>
+<div class="plate" id="pl-deck"></div>
+<div class="plate wson" id="pl-wsonC"></div>
+<div class="plate dock" id="pl-ws"></div>
+<div class="plate wson" id="pl-wsonK" style="z-index:3"></div>
+<div class="plate dock" id="pl-mid"></div>
+<div class="plate dock" id="pl-more"></div>
+<div class="plate dock" id="pl-rail"></div>
+
+<!-- status -->
+<button class="k w pill" id="k-link" data-wave="1" aria-label="Link: direct, 23 milliseconds. Tap for details."><span class="ldot"></span><span class="lbl"><b>Direct</b> · <span class="ms">23 ms</span></span></button>
+<div class="k w" id="k-enc" data-wave="1" role="status"><span class="ldot"></span><span class="lbl">Software encoding</span></div>
+<button class="k w" id="k-name" data-wave="1" aria-label="Framework — open this computer"><i></i><span class="lbl">Framework</span></button>
+<button class="k w pill" id="k-people" data-wave="1" aria-haspopup="dialog" aria-expanded="false" aria-label="3 people in this session: you, Ana's iPad and ThinkPad">
+  <span class="avs"><span class="av me" aria-hidden="true"></span><span class="av" style="--c:var(--base0E)" aria-hidden="true">A</span><span class="av" style="--c:var(--base0C)" aria-hidden="true">T</span></span><span class="lbl">3</span></button>
+
+<!-- the quick rail's buttons -->
+<button class="k w" id="k-full" data-wave="0" aria-pressed="false" aria-label="Full screen"></button>
+<button class="k barbtn" id="k-rotate" data-wave="0" aria-label="Turn to landscape"></button>
+<button class="k barbtn" id="k-kbd" data-wave="0" aria-label="Keyboard"></button>
+
+<!-- the four input faces -->
+<button class="k fbtn" id="k-fpad" data-face="pad" data-wave="0" aria-label="Touchpad" title="Touchpad"></button>
+<button class="k fbtn" id="k-fkeys" data-face="keys" data-wave="0" aria-label="Keys" title="Keys"></button>
+<button class="k fbtn" id="k-fquick" data-face="quick" data-wave="0" aria-label="Quick actions" title="Quick actions"></button>
+<button class="k fbtn" id="k-fgame" data-face="gamepad" data-wave="0" aria-label="Gamepad" title="Gamepad"></button>
+
+<!-- dock: Apps · Home · Back, and ⋯ with the LED -->
+<button class="k barbtn wide" id="k-apps" data-wave="2" aria-label="Apps"></button>
+<button class="k barbtn home" id="k-home" data-wave="2" aria-label="Home — an empty workspace"><span class="homering"></span></button>
+<button class="k barbtn wide" id="k-back" data-wave="2" aria-label="Back"></button>
+<button class="k barbtn wide" id="k-more" data-wave="2" aria-label="Control centre"></button>
+
+<!-- workspaces -->
+<button class="k wsnum on" id="k-ws1" data-wave="0" aria-label="Workspace 1, 3 windows" aria-selected="true">1</button>
+<button class="k wsapp on" id="k-wsA" data-wave="0" data-app="0" aria-label="Firefox"></button>
+<button class="k wsapp" id="k-wsB" data-wave="0" data-app="1" aria-label="Foot"></button>
+<button class="k wsapp" id="k-wsC" data-wave="0" data-app="2" aria-label="Files"></button>
+<button class="k wsnum" id="k-ws2" data-wave="0" aria-label="Workspace 2, 1 window">2</button>
+<button class="k wsnum add" id="k-wsadd" data-wave="0" aria-label="New workspace"></button>
+
+<!-- window strip: the focused window -->
+<button class="k" id="k-wtitle" data-wave="0" aria-label="Window: Firefox. Open its window sheet."></button>
+<button class="k wbtn" id="k-wmin" data-wave="0" aria-label="Minimise Firefox"></button>
+<button class="k wbtn" id="k-wmax" data-wave="0" aria-label="Maximise Firefox"></button>
+<button class="k wbtn" id="k-wclose" data-wave="0" aria-label="Close Firefox"></button>
+
+<!-- the deck -->
+<div class="k" id="k-deck" data-wave="0" role="group" aria-label="Input">
+  <div class="face" data-face="pad">
+    <div class="padsurf" id="padsurf" aria-label="Touchpad: slide to move the pointer"><span><b>Touchpad</b><small>Slide to move · tap to click · two fingers to scroll</small></span></div>
+    <div class="padbtns"><button aria-label="Left click">LEFT</button><button aria-label="Right click">RIGHT</button></div>
+  </div>
+  <div class="face" data-face="keys"><div class="keys" id="keys"></div></div>
+  <div class="face" data-face="quick"><div class="quick" id="quick"></div>
+    <div class="npmini" aria-label="Now playing on Framework"><span class="cv" id="npcv"></span><span><b>Kerala</b><small>Bonobo</small></span>
+      <div class="ctl"><button aria-label="Previous track" id="npprev"></button><button class="pp" aria-label="Pause" id="nppp"></button><button aria-label="Next track" id="npnext"></button></div></div>
+  </div>
+</div>
+
+<!-- gamepad clusters (gamepad.js): shoulders, centre, d-pad, face buttons, sticks -->
+<div class="k gp" id="k-gpl" data-wave="0"><div class="gprow"><button>L2</button><button>L1</button></div></div>
+<div class="k gp" id="k-gpr" data-wave="0"><div class="gprow"><button>R1</button><button>R2</button></div></div>
+<div class="k gp" id="k-gpc" data-wave="1"><div class="gprow"><button>SELECT</button><button class="g" aria-label="Guide">⌂</button><button>START</button></div></div>
+<div class="k gp" id="k-gpdpad" data-wave="0"><div class="dpad"><button class="u" aria-label="Up">▲</button><button class="l" aria-label="Left">◀</button><span class="c"></span><button class="r" aria-label="Right">▶</button><button class="d" aria-label="Down">▼</button></div></div>
+<div class="k gp" id="k-gpabxy" data-wave="0"><div class="abxy"><button class="y">Y</button><button class="x">X</button><button class="b">B</button><button class="a">A</button></div></div>
+<div class="k gp" id="k-gpls" data-wave="0"><div class="stick"><i></i></div></div>
+<div class="k gp" id="k-gprs" data-wave="0"><div class="stick"><i></i></div></div>
+
+<!-- other participants' pointers -->
+<div class="k ghost" id="k-g1" data-wave="0" aria-hidden="true" style="--c:var(--base0E)"><span class="gd"></span><span class="gl">Ana's iPad</span></div>
+<div class="k ghost idle" id="k-g2" data-wave="0" aria-hidden="true" style="--c:var(--base0C)"><span class="gd"></span><span class="gl">ThinkPad</span></div>
+
+<div id="peoplecard" role="dialog" aria-label="People in this session">
+  <div class="pch"><b>In this session</b><small>3 of 4 places</small></div>
+  <div class="prow"><span class="av me" id="avme2"></span><span class="pt"><b>Pixel 8 <span style="font-weight:500;color:var(--dim)">· this phone</span> <span class="lead">lead</span></b><small><span class="ldot"></span>Direct · 23 ms · started 40 min ago</small></span></div>
+  <div class="prow"><span class="av" style="--c:var(--base0E)">A</span><span class="pt"><b>Ana's iPad</b><small><span class="ldot"></span>Direct · 31 ms · joined 4 min ago</small></span></div>
+  <div class="prow"><span class="av" style="--c:var(--base0C)">T</span><span class="pt"><b>ThinkPad</b><small><span class="ldot" style="--tone:var(--caution)"></span>Relayed · joined 12 min ago</small></span></div>
+  <p class="pnote">The screen is sized to this phone, because you started the session. Everyone here can use the mouse and keyboard.</p>
+  <button class="btn danger">End the session for everyone</button>
+</div>
+
+</div>
+<div class="sr" id="announce" aria-live="polite"></div>
+<div id="proto">
+  <button id="pFull" type="button">Full screen</button>
+  <button id="pPeople" type="button">People</button>
+  <button id="pSw" type="button">SW enc</button>
+  <button id="pTheme" type="button">Light</button>
+  <button id="pMotion" type="button">Motion: full</button>
+</div>
+
+<script>
+/* ═══════════════════════════════ icons (widgets/icon.rs + the new ones) ═══════════════════════════════ */
+const ICON = {
+  dots:"M5 12h.01M12 12h.01M19 12h.01", back:"M16 5v14L6 12z", apps:"M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z",
+  kbd:"M4 6h16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2zM6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10",
+  max:"M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3",
+  rotate:"M9 3h6a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM2 9a8 8 0 0 1 4-6M22 15a8 8 0 0 1-4 6M2 9l3 .5M22 15l-3-.5",
+  trackpad:"M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM3 15h18M12 15v5",
+  pad:"M6 11h4M8 9v4M15 12h.01M18 10h.01M17.3 5H6.7a4 4 0 0 0-3.96 3.43L2 14.6A2.9 2.9 0 0 0 7 17l1.5-2h7l1.5 2a2.9 2.9 0 0 0 5-2.4l-.74-6.17A4 4 0 0 0 17.3 5z",
+  x:"M18 6 6 18M6 6l12 12", plus:"M12 5v14M5 12h14", net:"M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M2 9a15 15 0 0 1 20 0M12 20h.01",
+  term:"M4 17l6-6-6-6M12 19h8", folder:"M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z",
+  left:"M15 18l-6-6 6-6", right:"M9 18l6-6-6-6", play:"M7 4v16l13-8z", pause:"M7 4h3v16H7zM14 4h3v16h-3z",
+  camera:"M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3zM12 10a3 3 0 1 0 0 6a3 3 0 1 0 0-6z",
+  lock:"M6 11h12a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2zM8 11V7a4 4 0 0 1 8 0v4",
+  phone:"M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zM11 18h2",
+  "prev-f":"M5 5h2.5v14H5zM20 5v14L9 12z", "next-f":"M16.5 5H19v14h-2.5zM4 5l11 7-11 7z",
+  /* new */
+  min:"M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3",
+  winmin:"M6 18h12", winmax:"M6 5h12a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z",
+  restore:"M9 9h10a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1zM5 15V5a1 1 0 0 1 1-1h10",
+  keys:"M10 4h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zM4 14h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1zM10 14h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1zM16 14h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1z",
+  bolt:"M13 2 4 14h8l-1 8 9-12h-8z",
+};
+const ic = (n, cls = "") => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICON[n]}"/></svg>`;
+const $ = (s) => document.querySelector(s);
+const K = {}; document.querySelectorAll(".k").forEach((el) => (K[el.id.slice(2)] = el));
+const PL = {}; document.querySelectorAll(".plate").forEach((el) => (PL[el.id.slice(3)] = el));
+const Q = new URLSearchParams(location.search);
+const root = document.documentElement;
+
+/* ═══════════════════════════════ content ═══════════════════════════════ */
+const APPS = [
+  { name: "Firefox", icon: "net", c: "#d9622b", title: "Repotting a monstera", sub: "plantcare.example" },
+  { name: "Foot", icon: "term", c: "#3a3f44", title: "~/src/wado — cargo test", sub: "Terminal" },
+  { name: "Files", icon: "folder", c: "#3b78c4", title: "Downloads", sub: "Files" },
+];
+const glyph = (a) => `<span class="glyph" style="background:${a.c}">${ic(a.icon)}</span>`;
+let focused = 0;
+K.wsA.innerHTML = glyph(APPS[0]); K.wsB.innerHTML = glyph(APPS[1]); K.wsC.innerHTML = glyph(APPS[2]);
+K.wsadd.innerHTML = ic("plus");
+function paintTitle() {
+  const a = APPS[focused];
+  K.wtitle.innerHTML = `${glyph(a)}<span class="tt"><b>${a.title}</b><small>${a.name}</small></span>`;
+  K.wtitle.setAttribute("aria-label", `Window: ${a.name}, ${a.title}. Open its window sheet.`);
+  K.wmin.setAttribute("aria-label", `Minimise ${a.name}`); K.wclose.setAttribute("aria-label", `Close ${a.name}`);
+  K.wmax.setAttribute("aria-label", `${K.wmax.classList.contains("restored") ? "Maximise" : "Restore"} ${a.name}`);
+  [K.wsA, K.wsB, K.wsC].forEach((b, i) => b.classList.toggle("on", i === focused));
+}
+K.wmin.innerHTML = ic("winmin"); K.wmax.innerHTML = ic("restore", "ic-max2") + ic("winmax", "ic-restore"); K.wclose.innerHTML = ic("x");
+K.full.innerHTML = ic("max", "ic-max") + ic("min", "ic-min") + `<span class="lbl">Full screen</span>`;
+K.rotate.innerHTML = ic("rotate"); K.kbd.innerHTML = ic("kbd");
+K.fpad.innerHTML = ic("trackpad"); K.fkeys.innerHTML = ic("keys"); K.fquick.innerHTML = ic("bolt"); K.fgame.innerHTML = ic("pad");
+K.apps.innerHTML = ic("apps"); K.back.innerHTML = ic("back"); K.more.innerHTML = ic("dots");
+document.querySelectorAll(".av.me").forEach((a) => (a.innerHTML = ic("phone")));
+$("#npprev").innerHTML = ic("prev-f"); $("#nppp").innerHTML = ic("pause"); $("#npnext").innerHTML = ic("next-f");
+$("#npcv").style.backgroundImage = `url('data:image/svg+xml,${encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='#173634'/><circle cx='64' cy='38' r='20' fill='#eaa25a'/><path d='M0 66Q25 52 50 64T100 58V100H0Z' fill='#2b5a51'/><path d='M0 78Q30 68 56 80T100 76V100H0Z' fill='#0e2321'/></svg>").replace(/'/g, "%27")}')`;
+
+const KEYS = [["Super", 1], ["Ctrl", 1], ["Alt", 1], ["Shift", 1], ["Esc"], ["Tab"], ["←"], ["→"], ["↑"], ["↓"]];
+$("#keys").innerHTML = KEYS.map(([k, m]) => `<button class="tpkey${k === "Ctrl" && Q.get("face") === "keys" ? " latched" : ""}" ${m ? 'aria-pressed="false"' : ""}>${k}</button>`).join("")
+  + `<button class="tptype">${ic("kbd")}<span>Type</span></button>`;
+const QUICK = [["Previous workspace", "left"], ["Next workspace", "right"], ["Play / pause", "play"], ["Screenshot", "camera"], ["Lock screen", "lock"]];
+$("#quick").innerHTML = QUICK.map(([n, i]) => `<button class="tpact">${ic(i)}<span class="tplabel">${n}</span></button>`).join("");
+
+function paintDesk(W, H) {
+  const d = $("#desk");
+  if (W < H) {
+    d.innerHTML = `<div class="app-web"><div class="web-bar"><i></i><span class="web-url">plantcare.example/monstera/repotting</span></div>
+      <div class="web-page"><div class="kicker">Houseplants</div><h1>Repotting a monstera</h1><p class="meta">8 min read · Updated 12 October</p>
+      <div class="web-hero"></div>
+      <p>Most monsteras want a new pot every two years, when roots start to circle the bottom or push out of the drainage holes.</p>
+      <h2>What you need</h2><ul><li>A pot 5 cm wider than the old one</li><li>Chunky aroid mix: bark, perlite, coir</li><li>A moss pole, if it is climbing</li></ul>
+      <p>Water the day before, so the root ball slides out in one piece.</p></div>
+      <span class="web-btn">Save for later</span></div>`;
+  } else {
+    d.innerHTML = `<div class="app-split"><div class="ed"><div class="tabs"><span class="on">layout.rs</span><span>mod.rs</span><span>deck.rs</span></div>
+      <div class="code">${[
+        `<span class="cm">//! Where the picture sits, and what sits around it.</span>`,
+        ``,
+        `<span class="kw">pub fn</span> <span class="fn">fit</span>(view: <span class="ty">Size</span>, out: <span class="ty">Size</span>, bands: <span class="ty">Bands</span>) -&gt; <span class="ty">Rect</span> {`,
+        `    <span class="kw">let</span> room = view.<span class="fn">inset</span>(bands);`,
+        `    <span class="kw">let</span> s = (room.w / out.w).<span class="fn">min</span>(room.h / out.h);`,
+        `    <span class="ty">Rect</span>::<span class="fn">centred</span>(room, out.w * s, out.h * s)`,
+        `}`,
+        ``,
+        `<span class="cm">// The gutter law: a band on one axis makes</span>`,
+        `<span class="cm">// gutters on the other. Fill both.</span>`,
+        `<span class="kw">pub fn</span> <span class="fn">gutters</span>(view: <span class="ty">Size</span>, pic: <span class="ty">Rect</span>) -&gt; <span class="ty">Gutters</span> {`,
+        `    <span class="ty">Gutters</span> { x: (view.w - pic.w) / <span class="nu">2.0</span>, y: view.h - pic.h }`,
+        `}`,
+      ].map((l, i) => `<span class="n">${i + 1}</span>${l}`).join("\n")}</div></div>
+      <div class="term"><span class="p">~/src/wado</span> $ cargo test -p wado-client surround
+<span class="dimc">   Compiling wado-client v0.1.0</span>
+<span class="dimc">    Finished test [unoptimized] target(s)</span>
+running 4 tests
+test surround::layout::portrait_rails_hug ... <span class="ok">ok</span>
+test surround::layout::landscape_columns ... <span class="ok">ok</span>
+test surround::layout::desktop_frame ... <span class="ok">ok</span>
+test surround::layout::joiner_letterbox ... <span class="ok">ok</span>
+
+test result: <span class="ok">ok</span>. 4 passed; 0 failed
+<span class="p">~/src/wado</span> $ <span class="caret"></span></div></div>`;
+  }
+}
+
+/* ═══════════════════════════════ state ═══════════════════════════════ */
+const S = { arr: "console", face: Q.get("face"), people: false, sw: Q.has("sw") };
+const formOf = (W, H) => {
+  if (Q.get("form")) return Q.get("form");
+  if (Math.min(W, H) < 600) return W > H ? "land" : "port";
+  if (matchMedia("(pointer: coarse)").matches) return W > H ? "tland" : "tport";
+  return "desk";
+};
+const defFace = (f) => (f === "desk" ? "quick" : "pad");
+
+function insets() {
+  const cs = getComputedStyle($("#safe"));
+  return { t: parseFloat(cs.paddingTop) || 0, r: parseFloat(cs.paddingRight) || 0, b: parseFloat(cs.paddingBottom) || 0, l: parseFloat(cs.paddingLeft) || 0 };
+}
+const NAT = {}, NATQ = {};
+function measure() {
+  for (const [arr, into] of [["console", NAT], ["cockpit", NATQ]]) {
+    root.dataset.arr = arr;
+    for (const k of ["link", "people", "name", "enc", "full"]) {
+      const el = K[k]; const w = el.style.width; el.style.width = "max-content"; el.style.transition = "none";
+      // a hidden label still takes its width; the quiet forms measure without it
+      const lbl = el.querySelector(".lbl"); if (arr === "cockpit" && lbl) lbl.style.display = "none";
+      into[k] = Math.ceil(el.getBoundingClientRect().width);
+      if (lbl) lbl.style.display = ""; el.style.width = w; el.style.transition = "";
+    }
+    for (const k of ["g1", "g2"]) into[k] = { w: Math.ceil(K[k].getBoundingClientRect().width), h: 22 };
+  }
+  root.dataset.arr = S.arr;
+}
+
+/* ═══════════════════════════════ layout: one function per arrangement × form ═══════════════════════════════
+   Every key gets a rect in every arrangement. A control that has no place in one arrangement is put where it
+   converges (into the control it folds into) at opacity 0, so the morph shows it folding rather than vanishing. */
+function layout() {
+  const W = innerWidth, H = innerHeight, sa = insets(), f = formOf(W, H);
+  let face = S.face || defFace(f);
+  if (f === "desk" && face === "pad") face = "quick";
+  const R = {}, P = {};
+  const put = (k, x, y, w, h, o = 1) => (R[k] = { x, y, w, h, o });
+  const plate = (k, x, y, w, h, o = 1) => (P[k] = { x, y, w, h, o });
+  const into = (k, ref, w, h) => { const r = R[ref]; put(k, r.x + r.w / 2 - w / 2, r.y + r.h / 2 - h / 2, w, h, 0); };
+  const keep = (k, w, h) => put(k, (R[k] && R[k].x) || W / 2 - w / 2, (R[k] && R[k].y) || H / 2, w, h, 0);
+  const bbox = (keys, pad = 5) => {
+    const rs = keys.map((k) => R[k]);
+    const x = Math.min(...rs.map((r) => r.x)) - pad, y = Math.min(...rs.map((r) => r.y)) - pad;
+    return { x, y, w: Math.max(...rs.map((r) => r.x + r.w)) + pad - x, h: Math.max(...rs.map((r) => r.y + r.h)) + pad - y };
+  };
+  const WS = ["ws1", "wsA", "wsB", "wsC", "ws2", "wsadd"];
+  const FACES = ["fpad", "fkeys", "fquick", "fgame"];
+  const GP = ["gpl", "gpr", "gpc", "gpdpad", "gpabxy", "gpls", "gprs"];
+  const gpSize = { gpl: [92, 34], gpr: [92, 34], gpc: [160, 32], gpdpad: [104, 104], gpabxy: [104, 104], gpls: [88, 88], gprs: [88, 88] };
+  const gp = face === "gamepad";
+  const ghosts = (pic) => {
+    put("g1", pic.x + .64 * pic.w - 7, pic.y + .41 * pic.h - 11, NAT.g1.w, 22);
+    put("g2", pic.x + .30 * pic.w - 7, pic.y + .70 * pic.h - 11, NAT.g2.w, 22);
+  };
+  let pic, deckCol = false, wsVert = false;
+
+  if (S.arr === "console" && (f === "port" || f === "tport")) {
+    const tab = f === "tport";
+    const e = 6, g = 6, rail = tab ? 56 : 48, top = tab ? 48 : 40, strip = 44, dock = tab ? 56 : 52, deckMin = tab ? 150 : 88;
+    const yTop = sa.t + e;
+    const availH = H - yTop - top - g - (g + strip + g + deckMin + g) - dock - e - sa.b;
+    const availW = W - sa.l - sa.r - 2 * e - 2 * rail - 2 * g;
+    const s = Math.min(availW / W, availH / H), pw = W * s, ph = H * s;
+    const px = (W - pw) / 2, py = yTop + top + g;
+    pic = { x: px, y: py, w: pw, h: ph, s };
+    // top band: status
+    put("link", sa.l + e + 2, yTop + (top - 32) / 2, NAT.link, 32);
+    put("people", W - sa.r - e - 2 - NAT.people, yTop + (top - 32) / 2, NAT.people, 32);
+    if (S.sw) { put("enc", R.link.x + R.link.w + 6, yTop + (top - 28) / 2, NAT.enc, 28); put("name", W / 2 - NAT.name / 2, yTop + (top - 32) / 2, NAT.name, 32, 0); }
+    else { put("name", R.link.x + R.link.w + 12, yTop + (top - 32) / 2, NAT.name, 32); put("enc", R.link.x + R.link.w + 6, yTop + (top - 28) / 2, NAT.enc, 28, 0); }
+    // left rail: where (workspaces)
+    const xl = px - g - rail, cxl = xl + (rail - 36) / 2;
+    let y = py + 6;
+    for (const k of WS) { if (k === "ws2") y += 10; put(k, cxl, y, 36, 36); y += 40; }
+    wsVert = true;
+    plate("wsonC", cxl - 4, R.ws1.y - 4, 44, R.wsC.y + 36 + 4 - (R.ws1.y - 4));
+    // right rail: how (input)
+    const xr = px + pw + g, cxr = xr + (rail - 44) / 2;
+    put("rotate", cxr, py + 4, 44, 44); put("kbd", cxr, py + 52, 44, 44);
+    FACES.forEach((k, i) => put(k, cxr, py + ph - 4 - 44 - (3 - i) * 50, 44, 44));
+    // window strip (the bezel's chin)
+    const sy = py + ph + g;
+    put("wclose", xr + rail - 44, sy, 44, 44, gp ? 0 : 1);
+    put("wmax", R.wclose.x - 10 - 44, sy, 44, 44, gp ? 0 : 1);
+    put("wmin", R.wmax.x - 6 - 44, sy, 44, 44, gp ? 0 : 1);
+    put("wtitle", xl, sy, R.wmin.x - 8 - xl, 44, gp ? 0 : 1);
+    plate("bezel", xl - 4, py - 6, rail * 2 + g * 2 + pw + 8, ph + 6 + g + strip + 6);
+    // dock row: full screen · Apps Home Back · ⋯ (stays put through the morph)
+    const dy = H - sa.b - e - dock, by = dy + (dock - 44) / 2;
+    put("full", sa.l + e + 2, by, NAT.full, 44);
+    const more = W - sa.r - e - 2 - 54, fr = R.full.x + R.full.w;
+    const mx = Math.max(fr + 4, fr + (more - fr - 178) / 2);
+    put("apps", mx, by, 54, 44); put("home", mx + 58, by, 62, 44); put("back", mx + 124, by, 54, 44);
+    put("more", W - sa.r - e - 2 - 54, by, 54, 44);
+    // the deck: whatever room is left
+    const deckY = gp ? sy : sy + strip + g, deckH = dy - g - deckY;
+    plate("deck", sa.l + e, deckY, W - sa.l - sa.r - 2 * e, deckH);
+    put("deck", sa.l + e, deckY, W - sa.l - sa.r - 2 * e, deckH, gp ? 0 : 1);
+    // gamepad clusters in the deck
+    if (gp) {
+      const gx = sa.l + e + 8, gr = W - sa.r - e - 8, gyy = deckY + 8, ds = Math.min(104, deckH - 16 - 40);
+      put("gpl", gx, gyy, 92, 34); put("gpr", gr - 92, gyy, 92, 34);
+      put("gpdpad", gx + 4, deckY + deckH - 8 - ds, ds, ds); put("gpabxy", gr - 4 - ds, deckY + deckH - 8 - ds, ds, ds);
+      put("gpc", W / 2 - 80, deckY + deckH / 2 - 16 + 14, 160, 32);
+      into("gpls", "gpdpad", 88, 88); into("gprs", "gpabxy", 88, 88);
+    } else GP.forEach((k) => put(k, W / 2 - gpSize[k][0] / 2, deckY + deckH / 2 - gpSize[k][1] / 2, ...gpSize[k], 0));
+  }
+
+  else if (S.arr === "console" && (f === "land" || f === "tland")) {
+    const tab = f === "tland";
+    const e = 6, g = 6, col = tab ? 140 : 104, top = 44, strip = 40;
+    const yTop = sa.t + e, y0 = yTop + top + g;
+    const availH = H - y0 - g - strip - e - sa.b;
+    const availW = W - sa.l - sa.r - 2 * e - 2 * col - 2 * g;
+    const s = Math.min(availW / W, availH / H), pw = W * s, ph = H * s;
+    const px = (W - pw) / 2, py = y0 + (availH - ph) / 2;
+    pic = { x: px, y: py, w: pw, h: ph, s };
+    const xl = px - g - col, xr = px + pw + g, colB = H - sa.b - e;
+    // top band: status, workspaces, rotate, keyboard
+    put("link", sa.l + e + 2, yTop + 6, NAT.link, 32);
+    if (S.sw) put("enc", R.link.x + R.link.w + 8, yTop + 8, NAT.enc, 28); else put("enc", R.link.x + R.link.w + 8, yTop + 8, NAT.enc, 28, 0);
+    put("name", (S.sw ? R.enc.x + R.enc.w : R.link.x + R.link.w) + 12, yTop + 6, NAT.name, 32, S.sw ? 0 : 1);
+    let x = W / 2 - 122;
+    for (const k of WS) { if (k === "ws2") x += 8; put(k, x, yTop + 4, 36, 36); x += 40; }
+    plate("wsonC", R.ws1.x - 4, yTop, R.wsC.x + 40 - R.ws1.x, 44);
+    if (gp) {
+      put("full", W - sa.r - e - 2 - NAT.full, yTop, NAT.full, 44);
+      put("people", R.full.x - 8 - NAT.people, yTop + 6, NAT.people, 32);
+      put("kbd", R.full.x, yTop, 44, 44, 0); put("rotate", R.full.x, yTop, 44, 44, 0);
+    } else {
+      put("kbd", W - sa.r - e - 44, yTop, 44, 44); put("rotate", R.kbd.x - 48, yTop, 44, 44);
+      put("people", R.rotate.x - 8 - NAT.people, yTop + 6, NAT.people, 32);
+    }
+    // bottom band under the picture: the window strip
+    const sy = py + ph + g;
+    if (!gp) {
+      put("wclose", px + pw - 44, sy - 2, 44, 44);
+      put("wmax", R.wclose.x - 10 - 44, sy - 2, 44, 44);
+      put("wmin", R.wmax.x - 6 - 44, sy - 2, 44, 44);
+      put("wtitle", px, sy - 2, R.wmin.x - 8 - px, 44);
+      // left column: nav 2×2, faces 2×2, full screen
+      put("apps", xl, y0, 48, 44); put("home", xl + 56, y0, 48, 44);
+      put("back", xl, y0 + 50, 48, 44); put("more", xl + 56, y0 + 50, 48, 44);
+      put("fpad", xl + 2, y0 + 112, 44, 44); put("fkeys", xl + 58, y0 + 112, 44, 44);
+      put("fquick", xl + 2, y0 + 162, 44, 44); put("fgame", xl + 58, y0 + 162, 44, 44);
+      put("full", xl + (col - NAT.full) / 2, colB - 44, NAT.full, 44);
+      plate("bezel", px - 6, py - 6, pw + 12, ph + g + strip + 6);
+      plate("deck", xr, y0, col, colB - y0); put("deck", xr, y0, col, colB - y0); deckCol = true;
+      GP.forEach((k) => put(k, xr + col / 2 - gpSize[k][0] / 2, y0 + 100, ...gpSize[k], 0));
+    } else {
+      // gamepad: both columns become the controller; nav drops to the band under the picture
+      ["wtitle", "wmin", "wmax", "wclose"].forEach((k) => put(k, px + pw / 2 - 22, sy, 44, 44, 0));
+      const by = sy - 2;
+      put("apps", px, by, 48, 44); put("home", px + 50, by, 52, 44); put("back", px + 104, by, 48, 44);
+      put("more", px + pw - 48, by, 48, 44);
+      FACES.forEach((k, i) => put(k, R.more.x - 8 - (4 - i) * 46, by, 44, 44));
+      put("gpc", (px + 160 + R.fpad.x) / 2 - 80, by + 6, 160, 32);
+      put("gpl", xl + (col - 92) / 2, y0, 92, 34); put("gpr", xr + (col - 92) / 2, y0, 92, 34);
+      put("gpls", xl + (col - 88) / 2, y0 + 46, 88, 88); put("gpdpad", xl + (col - 104) / 2, colB - 104, 104, 104);
+      put("gpabxy", xr + (col - 104) / 2, y0 + 46, 104, 104); put("gprs", xr + (col - 88) / 2, colB - 88, 88, 88);
+      plate("bezel", px - 6, py - 6, pw + 12, ph + g + strip + 6);
+      plate("deck", xr, y0, col, colB - y0, 0); put("deck", xr, y0, col, colB - y0, 0); deckCol = true;
+    }
+  }
+
+  else if (S.arr === "console") { /* desk: a framed window, nothing needs a thumb */
+    const e = 12, g = 10, top = 44, bottom = 48, rail = 56, col = 96;
+    const y0 = e + top + g;
+    const availH = H - y0 - g - bottom - e, availW = W - 2 * e - rail - col - 2 * g;
+    const s = Math.min(availW / W, availH / H), pw = W * s, ph = H * s;
+    const asm = rail + g + pw + g + col, ax = (W - asm) / 2;
+    const px = ax + rail + g, py = y0;
+    pic = { x: px, y: py, w: pw, h: ph, s };
+    put("link", ax, e + 6, NAT.link, 32);
+    if (S.sw) put("enc", R.link.x + R.link.w + 8, e + 8, NAT.enc, 28); else put("enc", R.link.x + R.link.w + 8, e + 8, NAT.enc, 28, 0);
+    put("name", (S.sw ? R.enc.x + R.enc.w : R.link.x + R.link.w) + 14, e + 6, NAT.name, 32);
+    put("full", ax + asm - NAT.full, e, NAT.full, 44);
+    put("people", R.full.x - 10 - NAT.people, e + 6, NAT.people, 32);
+    put("rotate", R.full.x, e, 44, 44, 0); put("kbd", R.full.x, e, 44, 44, 0);
+    const cxl = ax + (rail - 36) / 2; let y = py + 8;
+    for (const k of WS) { if (k === "ws2") y += 10; put(k, cxl, y, 36, 36); y += 40; }
+    wsVert = true;
+    plate("wsonC", cxl - 4, R.ws1.y - 4, 44, R.wsC.y + 40 - R.ws1.y);
+    plate("bezel", ax - 6, py - 6, rail + g + pw + 12, ph + 12);
+    const sy = py + ph + g + 2;
+    put("wtitle", px, sy, 240, 44); put("wmin", px + 248, sy, 44, 44); put("wmax", px + 298, sy, 44, 44); put("wclose", px + 352, sy, 44, 44);
+    const mx = W / 2 - 89;
+    put("apps", mx, sy, 54, 44); put("home", mx + 58, sy, 62, 44); put("back", mx + 124, sy, 54, 44);
+    put("more", ax + asm - 54, sy, 54, 44);
+    put("fgame", R.more.x - 10 - 44, sy, 44, 44); put("fquick", R.fgame.x - 48, sy, 44, 44); put("fkeys", R.fquick.x - 48, sy, 44, 44);
+    put("fpad", R.fkeys.x, sy, 44, 44, 0);
+    const xr = px + pw + g;
+    plate("deck", xr, py - 6, col, ph + 12); deckCol = true;
+    if (gp) {
+      put("deck", xr, py - 6, col, ph + 12, 0);
+      put("gpl", xr + 2, py + 4, 92, 34); put("gpr", xr + 2, py + 44, 92, 34);
+      put("gpabxy", xr - 4, py + 92, 104, 104); put("gprs", xr + 4, py + 206, 88, 88);
+      put("gpdpad", xr - 4, py + 304, 104, 104); put("gpls", xr + 4, py + 418, 88, 88);
+      put("gpc", xr - 32, py + ph - 40, 160, 32, 0);
+    } else {
+      put("deck", xr, py - 6, col, ph + 12);
+      GP.forEach((k) => put(k, xr + col / 2 - gpSize[k][0] / 2, py + ph / 2, ...gpSize[k], 0));
+    }
+  }
+
+  else { /* ── COCKPIT: the picture takes the display, the same controls float over it ── */
+    const s = Math.min(W / W, H / H);
+    pic = { x: 0, y: 0, w: W, h: H, s };
+    const narrow = W <= 430, desk = f === "desk";
+    put("link", sa.l + 10, sa.t + 10, NATQ.link, 32);
+    put("people", W - sa.r - 10 - NATQ.people, sa.t + 10, NATQ.people, 32);
+    const by = H - sa.b - 12 - 49; // buttons in the bottom row (plate padding 5)
+    let mx;
+    if (narrow) mx = sa.l + 10 + 5; else mx = W / 2 - 89;
+    put("apps", mx, by, 54, 44); put("home", mx + 58, by, 62, 44); put("back", mx + 124, by, 54, 44);
+    put("more", W - sa.r - 10 - 5 - 54, by, 54, 44);
+    const wy = narrow ? by - 10 - 46 : by;
+    let x = sa.l + 10 + 5 + (narrow ? 0 : 0);
+    for (const k of WS) { put(k, x, wy + 4, 36, 36); x += k === "wsC" ? 44 : 38; }
+    plate("ws", sa.l + 10, wy - 1, x - (sa.l + 10) + 1, 46);
+    plate("wsonK", R.ws1.x - 2, wy + 2, R.wsC.x + 38 - R.ws1.x + 2, 40);
+    plate("mid", R.apps.x - 5, by - 5, 188, 54); plate("more", R.more.x - 5, by - 5, 64, 54);
+    put("name", R.link.x, R.link.y, NAT.name, 32, 0);
+    put("enc", R.more.x + 27 - NAT.enc / 2, R.more.y + 8, NAT.enc, 28, 0);
+    // the quick rail on the right edge: the face, rotate, console, keyboard
+    const active = { pad: "fpad", keys: "fkeys", quick: "fquick", gamepad: "fgame" }[face];
+    const items = desk ? [active, "full"] : [active, "rotate", "full", "kbd"];
+    const rh = items.length * 44 + (items.length - 1) * 4;
+    const rx = W - sa.r - 8 - 49, ry = H / 2 - rh / 2 - (narrow ? 40 : 20);
+    items.forEach((k, i) => put(k, rx, ry + i * 48, 44, 44));
+    R.full.w = 44;
+    plate("rail", rx - 5, ry - 5, 54, rh + 10);
+    if (desk) { put("rotate", rx, ry + 48, 44, 44, 0); put("kbd", rx, ry + 48, 44, 44, 0); }
+    FACES.filter((k) => k !== active).forEach((k) => into(k, active, 44, 44));
+    // the window strip folds into the focused window's icon on the dock
+    const fk = ["wsA", "wsB", "wsC"][focused];
+    for (const k of ["wtitle", "wmin", "wmax", "wclose"]) into(k, fk, 44, 44);
+    // the deck stows: it sinks under the dock
+    put("deck", sa.l + 6, H, W - 12, 120, 0);
+    // the gamepad's clusters fly outward to the overlay's corners
+    if (gp) {
+      const low = narrow ? wy - 24 : by - 18;
+      put("gpl", sa.l + 12, sa.t + 54, 92, 34); put("gpr", W - sa.r - (narrow ? 12 : 72) - 92, sa.t + 54, 92, 34);
+      put("gpdpad", sa.l + 20, low - 104, 104, 104);
+      put("gpabxy", W - sa.r - (narrow ? 20 : 76) - 104, low - 104 - (narrow ? 0 : 0), 104, 104);
+      put("gpc", W / 2 - 80, low - 36, 160, 32);
+      if (narrow) { into("gpls", "gpdpad", 88, 88); into("gprs", "gpabxy", 88, 88); }
+      else { put("gpls", sa.l + 28, R.gpdpad.y - 100, 88, 88); put("gprs", R.gpabxy.x - 100, R.gpabxy.y + 8, 88, 88); }
+    } else GP.forEach((k) => put(k, W / 2 - gpSize[k][0] / 2, H - 60, ...gpSize[k], 0));
+  }
+
+  ghosts(pic);
+  // plates that belong to the other arrangement: born from (or dying into) their members
+  if (S.arr === "console") {
+    for (const [k, members] of [["ws", WS], ["mid", ["apps", "home", "back"]], ["more", ["more"]]]) { const b = bbox(members); plate(k, b.x, b.y, b.w, b.h, 0); }
+    const rb = bbox(["rotate", "kbd", ...FACES]); plate("rail", rb.x, rb.y, rb.w, rb.h, 0);
+    const wb = bbox(["ws1", "wsA", "wsB", "wsC"], 2); plate("wsonK", wb.x, wb.y, wb.w, wb.h, 0);
+  } else {
+    plate("bezel", -8, -8, W + 16, H + 16, 0);
+    plate("deck", sa.l + 6, H + 10, W - 12, 120, 0);
+    const wb = bbox(["ws1", "wsA", "wsB", "wsC"], 4); plate("wsonC", wb.x, wb.y, wb.w, wb.h, 0);
+  }
+  return { W, H, f, face, pic, R, P, deckCol, wsVert };
+}
+
+/* ═══════════════════════════════ apply ═══════════════════════════════ */
+let cur = null;
+function apply(L) {
+  root.dataset.arr = S.arr;
+  root.dataset.form = L.f;
+  document.body.classList.toggle("sw", S.sw);
+  const p = $("#pic");
+  p.style.width = L.W + "px"; p.style.height = L.H + "px";
+  p.style.transform = `translate(${L.pic.x}px, ${L.pic.y}px) scale(${L.pic.s})`;
+  p.style.setProperty("--pr", S.arr === "console" ? 16 / L.pic.s + "px" : "0px");
+  p.style.setProperty("--ring", S.arr === "console" ? 1 / L.pic.s + "px" : "0px");
+  for (const k in K) {
+    const r = L.R[k], el = K[k];
+    if (!r) { el.style.opacity = 0; el.dataset.o = "0"; continue; }
+    el.style.left = r.x + "px"; el.style.top = r.y + "px"; el.style.width = r.w + "px"; el.style.height = r.h + "px";
+    el.style.opacity = r.o; el.dataset.o = r.o ? "1" : "0";
+    el.toggleAttribute("inert", !r.o);
+  }
+  for (const k in PL) {
+    const r = L.P[k], el = PL[k];
+    if (!r) { el.style.opacity = 0; continue; }
+    el.style.left = r.x + "px"; el.style.top = r.y + "px"; el.style.width = r.w + "px"; el.style.height = r.h + "px"; el.style.opacity = r.o;
+  }
+  K.deck.classList.toggle("col", L.deckCol);
+  document.querySelectorAll(".vert-ws").forEach(() => {});
+  [K.ws1, K.wsA, K.wsB, K.wsC, K.ws2, K.wsadd].forEach((el) => el.classList.toggle("vert", S.arr === "console" && L.wsVert));
+  K.wsA.classList.toggle("vert", S.arr === "console" && L.wsVert); // indicator side
+  document.querySelectorAll(".wsapp").forEach((el) => el.closest && el.classList.contains("vert") && el.classList.add("vert"));
+  for (const [k, fc] of [["fpad", "pad"], ["fkeys", "keys"], ["fquick", "quick"], ["fgame", "gamepad"]]) {
+    K[k].classList.toggle("on", fc === L.face); K[k].setAttribute("aria-pressed", String(fc === L.face));
+  }
+  document.querySelectorAll(".face").forEach((el) => el.classList.toggle("on", el.dataset.face === L.face));
+  K.full.setAttribute("aria-pressed", String(S.arr === "cockpit"));
+  K.full.setAttribute("aria-label", S.arr === "cockpit" ? "Leave full screen" : "Full screen");
+  K.full.title = S.arr === "cockpit" ? "Leave full screen" : "Full screen";
+  K.rotate.setAttribute("aria-label", L.W > L.H ? "Turn to portrait" : "Turn to landscape");
+  placePeople(L);
+  cur = L;
+}
+function placePeople(L) {
+  const c = $("#peoplecard"), r = L.R.people;
+  c.classList.toggle("on", S.people);
+  K.people.setAttribute("aria-expanded", String(S.people));
+  if (!S.people) return;
+  const w = Math.min(340, L.W - 24);
+  c.style.left = Math.max(12, Math.min(L.W - w - 12, r.x + r.w - w)) + "px";
+  c.style.top = r.y + r.h + 8 + "px";
+}
+
+/* ═══════════════════════════════ the morph: buttons fly, plates cross-fade, the picture grows ═══════════════════════════════ */
+const SPRING = "cubic-bezier(.32, .72, 0, 1)";
+const motion = () => root.dataset.motion || (matchMedia("(prefers-reduced-motion: reduce)").matches ? "reduced" : "full");
+function snapshot() {
+  const m = {};
+  for (const k in K) { const r = K[k].getBoundingClientRect(); m["k" + k] = { r, o: +getComputedStyle(K[k]).opacity }; }
+  for (const k in PL) { const r = PL[k].getBoundingClientRect(); m["p" + k] = { r, o: +getComputedStyle(PL[k]).opacity }; }
+  m.pic = $("#pic").getBoundingClientRect();
+  m.shell = +getComputedStyle($("#shell")).opacity;
+  return m;
+}
+function flipEl(el, b, a, dur, delay, isPlate, toward) {
+  if (!b) return;
+  const ar = { x: a.x, y: a.y, w: a.w, h: a.h };
+  const noscale = el.classList.contains("w");
+  const sx = noscale || !ar.w ? 1 : b.r.width / ar.w, sy = noscale || !ar.h ? 1 : b.r.height / ar.h;
+  const dx = b.r.left - ar.x, dy = b.r.top - ar.y;
+  if (Math.abs(dx) < .5 && Math.abs(dy) < .5 && Math.abs(sx - 1) < .01 && Math.abs(sy - 1) < .01 && b.o === a.o) return;
+  const T = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
+  let frames;
+  if (b.o > 0 && a.o === 0) frames = [{ transform: T, opacity: b.o }, { opacity: 0, offset: isPlate ? .55 : .38 }, { transform: "none", opacity: 0 }];
+  else if (b.o === 0 && a.o > 0) frames = [{ transform: T, opacity: 0 }, { opacity: 0, offset: isPlate ? (toward === "cockpit" ? .45 : .3) : .4 }, { transform: "none", opacity: a.o }];
+  else frames = [{ transform: T, opacity: b.o }, { transform: "none", opacity: a.o }];
+  el.animate(frames, { duration: dur, delay, easing: SPRING, fill: "backwards" });
+}
+function arrange(change, opts = {}) {
+  const mo = motion();
+  const before = snapshot();
+  document.getAnimations().forEach((a) => { if (!(a instanceof CSSAnimation)) a.cancel(); });
+  const from = S.arr;
+  change();
+  const toward = S.arr;
+  const isMorph = from !== toward;
+  const dur = mo === "off" ? 0 : mo === "reduced" ? 160 : isMorph ? (toward === "cockpit" ? 620 : 520) : 420;
+  root.style.setProperty("--dur-now", dur + "ms");
+  const L = layout();
+  apply(L);
+  if (!isMorph) announceFace(L.face);
+  else announce(toward === "cockpit" ? "Full screen. The controls float over the picture." : "Console. The controls sit around the picture.");
+  if (!dur) return;
+  if (mo === "reduced") {
+    // no travel: the new arrangement fades in over the stage
+    for (const el of [...Object.values(K), ...Object.values(PL), $("#shell")]) el.animate([{ opacity: 0 }, {}], { duration: dur, easing: "linear" });
+    return;
+  }
+  const wave = (el) => (+el.dataset.wave || 0) * 24;
+  for (const k in K) flipEl(K[k], before["k" + k], L.R[k] || { x: 0, y: 0, w: 0, h: 0, o: 0 }, dur, wave(K[k]), false, toward);
+  for (const k in PL) flipEl(PL[k], before["p" + k], L.P[k] || { x: 0, y: 0, w: 0, h: 0, o: 0 }, dur, 0, true, toward);
+  // the picture: one transform, start to finish — no reflow, no new output, no keyframe on the wire
+  const b = before.pic;
+  const s0 = b.width / L.W, f0 = `translate(${b.left}px, ${b.top}px) scale(${s0})`, to = `translate(${L.pic.x}px, ${L.pic.y}px) scale(${L.pic.s})`;
+  if (toward === "cockpit") {
+    // anticipation: a 1.5% inhale about its own centre (≈90 ms), then the growth on the same spring
+    const k = .985, ax = b.left + b.width * (1 - k) / 2, ay = b.top + b.height * (1 - k) / 2;
+    $("#pic").animate([{ transform: f0, easing: SPRING }, { transform: `translate(${ax}px, ${ay}px) scale(${s0 * k})`, offset: .14, easing: SPRING }, { transform: to }],
+      { duration: dur, easing: "linear" });
+  } else $("#pic").animate([{ transform: f0 }, { transform: to }], { duration: dur, easing: SPRING });
+  // the ground leaves first and comes back first
+  const so = toward === "cockpit" ? 0 : 1;
+  $("#shell").animate([{ opacity: before.shell }, { opacity: so }], { duration: toward === "cockpit" ? dur * .58 : dur * .55, easing: toward === "cockpit" ? "cubic-bezier(.3, 0, 1, 1)" : SPRING, fill: "backwards" });
+}
+function announce(t) { $("#announce").textContent = t; }
+function announceFace(f) { announce({ pad: "Touchpad", keys: "Keys", quick: "Quick actions", gamepad: "Gamepad" }[f] + " below the picture."); }
+
+/* ═══════════════════════════════ wiring ═══════════════════════════════ */
+K.full.addEventListener("click", () => arrange(() => { S.arr = S.arr === "console" ? "cockpit" : "console"; S.people = false; }));
+$("#pFull").addEventListener("click", () => K.full.click());
+for (const k of ["fpad", "fkeys", "fquick", "fgame"]) K[k].addEventListener("click", () => {
+  const fc = K[k].dataset.face;
+  if (S.arr === "cockpit") { // in the cockpit the rail shows only the active face: a tap brings the console back to change it
+    arrange(() => { S.arr = "console"; }); return;
+  }
+  if ((S.face || defFace(cur.f)) === fc) return;
+  arrange(() => { S.face = fc; });
+});
+K.people.addEventListener("click", () => { S.people = !S.people; placePeople(cur); });
+$("#pPeople").addEventListener("click", () => K.people.click());
+$("#pSw").addEventListener("click", () => arrange(() => { S.sw = !S.sw; }));
+[K.wsA, K.wsB, K.wsC].forEach((b, i) => b.addEventListener("click", () => { focused = i; paintTitle(); }));
+K.wmax.addEventListener("click", () => { K.wmax.classList.toggle("restored"); paintTitle(); });
+document.addEventListener("click", (e) => { if (S.people && !e.target.closest("#peoplecard, #k-people")) { S.people = false; placePeople(cur); } });
+document.querySelectorAll(".tpkey[aria-pressed]").forEach((b) => b.addEventListener("click", () => { b.classList.toggle("latched"); b.setAttribute("aria-pressed", b.classList.contains("latched")); }));
+document.querySelectorAll(".tpact").forEach((b) => b.addEventListener("click", () => { b.classList.add("ok"); setTimeout(() => b.classList.remove("ok"), 600); }));
+// the pad face: a ring blooms under the finger, the pointer follows 1:1
+const ps = $("#padsurf");
+ps.addEventListener("pointerdown", (e) => {
+  const r = ps.getBoundingClientRect(), t = document.createElement("span");
+  t.className = "touch"; t.style.left = e.clientX - r.left + "px"; t.style.top = e.clientY - r.top + "px"; ps.appendChild(t); setTimeout(() => t.remove(), 600);
+});
+$("#pTheme").addEventListener("click", () => { const l = root.dataset.theme !== "light"; root.dataset.theme = l ? "light" : "dark"; $("#pTheme").textContent = l ? "Dark" : "Light"; });
+$("#pMotion").addEventListener("click", () => {
+  const m = { full: "reduced", reduced: "off", off: "full" }[root.dataset.motion || "full"];
+  if (m === "full") delete root.dataset.motion; else root.dataset.motion = m; $("#pMotion").textContent = "Motion: " + m;
+});
+addEventListener("resize", () => { measure(); apply(layout()); });
+
+/* ═══════════════════════════════ boot + deep links ═══════════════════════════════
+   ?state=console | cockpit | morph (&t=0.45, &dir=in|out) | people
+   &face=pad|keys|quick|gamepad  &sw  &theme=light  &motion=reduced|off  &form=port|land|desk|tport|tland  &bare */
+if (Q.has("bare")) root.classList.add("bare");
+if (Q.get("theme") === "light") root.dataset.theme = "light";
+if (Q.get("motion")) root.dataset.motion = Q.get("motion");
+paintDesk(innerWidth, innerHeight);
+if (innerWidth > innerHeight) focused = 1;
+paintTitle();
+document.fonts.ready.then(() => {
+  measure();
+  const st = Q.get("state") || "console";
+  if (st === "cockpit") S.arr = "cockpit";
+  if (st === "morph" && Q.get("dir") === "out") S.arr = "cockpit";
+  if (st === "people") S.people = true;
+  apply(layout());
+  if (st === "morph") {
+    const t = parseFloat(Q.get("t") || ".45");
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      arrange(() => { S.arr = S.arr === "console" ? "cockpit" : "console"; });
+      const total = S.arr === "cockpit" ? 620 : 520;
+      document.getAnimations().forEach((a) => { a.pause(); a.currentTime = t * total; });
+      root.dataset.frozen = "1";
+    }));
+  } else root.dataset.ready = "1";
+  if (st === "morph") setTimeout(() => (root.dataset.ready = "1"), 120);
+});
+</script>
+</body>
+</html>

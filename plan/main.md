@@ -79,12 +79,15 @@ True in every lane. **`environment.md` is read first, every run, whatever the la
 
 | | |
 |---|---|
-| Repo direction and invariants | `CLAUDE.md` (repo root) |
-| Project milestones | `TODO.md` (repo root) |
-| Architecture + Decision Log | `WADO_PLAN.md` (repo root) |
-| Input-handling war stories | `CHALLENGES.md` (repo root) |
+| Repo direction, invariants, hazards, pins | [`CLAUDE.md`](CLAUDE.md) |
+| State at v0.0.4 + Flutter port | [`HANDOVER.md`](HANDOVER.md) |
+| Observed, unfixed | [`issues.md`](issues.md) |
+| Visual system, product | [`design/`](design/) — `DESIGN.md`, `PRODUCT.md`, `.impeccable/` |
+| Specs, plans, research | [`superpowers/`](superpowers/) |
+| Shipped | `CHANGELOG.md` (on `main`) |
 
-⚠️ Those four are **gitignored** — edits stay on this machine and never reach a clone.
+`WADO_PLAN.md`, the old root `TODO.md` and `CHALLENGES.md` were gitignored, never committed, and
+are lost (`2026-11-09`). Everything agent-facing now lives here.
 
 ---
 
@@ -114,4 +117,4 @@ plan/commit.sh "what changed"
 ```
 
 It writes the commit straight to `refs/heads/plan` through a side index, so the working tree
-and `main`'s index are untouched. Push with `git push origin plan`.
+and `main`'s index are untouched, then pushes. New machine: `plan/setup.sh` (see `CLAUDE.md`).
