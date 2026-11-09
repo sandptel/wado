@@ -89,12 +89,12 @@ Layers, each of which has given a false pass here at least once:
 
 ### 7. Commit, push, rehost
 
-Standing authorisation: commit and push after each significant step, with an explanatory
-message. Then rebuild and restart whatever runs the changed code, and say so.
+Standing authorisation: commit and push after each significant step. Then rebuild and restart
+whatever runs the changed code, and say so.
 
-Commit messages explain **why**, including what was rejected and what the known ceiling is.
-Record withdrawn claims explicitly — a wrong conclusion left standing costs the next session
-more than the bug did.
+Commit messages are **short, one line** (`scope: what changed`) and **never mention Claude/AI**
+(no `Co-Authored-By`, no session links). The why — what was rejected, the known ceiling, withdrawn
+claims — goes in `plan/memory/` or `CHANGELOG.md`, not the commit.
 
 ### 8. Observe, then branch
 

@@ -91,6 +91,8 @@ So skills and code comments that name those paths still resolve. Write new specs
 - **Measure before fixing**, with a number before and after. Label estimates as estimates.
 - **Ambiguity → ask the user**; don't guess at intent.
 - `cargo fmt --all --check` green before committing to `main`.
+- **Commit messages: short, one line** (`scope: what changed`), no body. **Never mention Claude/AI**
+  — no `Co-Authored-By`, no session links, no "generated with". Same for PRs and the `plan` branch.
 
 ## This machine
 
