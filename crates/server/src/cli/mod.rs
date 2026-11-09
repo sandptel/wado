@@ -73,7 +73,13 @@ pub fn dispatch(args: &[String]) -> Run {
         #[cfg(target_os = "macos")]
         Some("grants") => {
             use crate::platform::macos::tcc;
-            let yes = |b: bool| if b { style::good("allowed") } else { style::bad("not allowed") };
+            let yes = |b: bool| {
+                if b {
+                    style::good("allowed")
+                } else {
+                    style::bad("not allowed")
+                }
+            };
             println!("  Accessibility         {}", yes(tcc::accessibility()));
             println!("  Screen Recording      {}", yes(tcc::screen_recording()));
             0
