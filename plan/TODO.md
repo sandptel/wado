@@ -40,6 +40,17 @@ Spec/plan: `plan/superpowers/{specs,plans}/2026-11-09-macos-host*`. Memory: `mem
 - [ ] Files later: compress / extract on the computer (needs deflate or `unzip`), trash undo (platform trash must return its path), batch rename, open on the computer from the app.
 - [ ] Later on macOS: sound to phone (virtual audio driver), notifications, app menus, window/Space controls; three-finger drag, Look Up, Notification Centre edge swipe, tracking speed; media app icon; Dock gestures on macOS 27 need the IOHIDEvent path.
 
+### TODO (Linux) — the desktop's own apps and links, no session (`desk_apps`)
+Mac done on `macos` (`crates/macos/host/src/apps.rs`); clients already follow the capability, so Linux
+only provides the trait `wado_platform::desktop::DeskApps` from `crates/server/src/platform/linux`
+(see the TODO(linux) note on the trait for the mechanisms) and registers it in its provider:
+- [ ] `list`: installed (reuse `crates/server/src/apps` XDG discovery; `exec` = desktop file id or Exec),
+      `running`/`front`/`away` from toplevels, `dock` from the desktop's favourites.
+- [ ] `icons`: reuse `crates/server/src/apps/icons`.
+- [ ] `act`: open (`gtk-launch`/`gio launch`), hide (minimise), quit (close toplevels), force quit (SIGKILL the app's pids).
+- [ ] `url_apps` (`gio mime x-scheme-handler/https`, default from `xdg-mime query default`), `open_url` (`gio open`, or the chosen app with the url).
+- [ ] e2e like `crates/client-core/tests/mac_live.rs`'s apps block (list, icon, open, quit; url_apps + open_url).
+
 ## ▣ RUN — 2026-11-05, Android app smoothness (ui lane; code review, no phone attached)
 
 Pushed 3d6faf9..cfb2b59; release APK `~/Downloads/wado-0.4.0-release.apk` (22:16). **Nothing measured** —
