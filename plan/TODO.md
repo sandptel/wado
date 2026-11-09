@@ -16,7 +16,16 @@ Spec/plan: `plan/superpowers/{specs,plans}/2026-11-09-macos-host*`. Memory: `mem
       sysinfo, awake/lock/sleep, launcher, screenshot, shells.
 - [x] Wado.app signed `wado-dev`; `wado install` exists, **not enabled** (user: later use).
 - [x] App macOS variant ("Coming to macOS" / "On this Mac"); Apple logo.
-- [ ] Web variant (agent running) · APK build · user grants + phone checklist · merge to main (user).
+- [x] Web variant (`crates/client/src/host_caps.rs`, "On this Mac" card). APK `~/Downloads/wado-0.4.0-release.apk`
+      (signed with this Mac's new debug key — uninstall the old app first; pairings re-done).
+- [x] Grants given (Accessibility, Screen Recording). `node scripts/mac-e2e.mjs` green: pairing, platform,
+      caps, outputs, clipboard both ways, touchpad moved the real pointer (+128 pt).
+- [ ] **Phone checklist (user)**: pair with `target/Wado.app/Contents/MacOS/wado pair`; trackpad feel
+      (tap, two-finger scroll + glide, 3-finger swipes, pinch), keys/typing, gamepad-as-keys, files
+      (Desktop/Documents/Downloads prompts; Trash browsing needs Full Disk Access), clipboard, media
+      (Automation prompt for Music/Spotify), volume/outputs, brightness, lock/sleep, "On this Mac" card.
+- [ ] Web variant only reaches Pages after merging `macos` → main (user decides).
+- [ ] Tune trackpad constants from the phone check (`crates/macos/host/src/input/pad.rs`).
 
 
 ## ▣ RUN — 2026-11-05, Android app smoothness (ui lane; code review, no phone attached)
