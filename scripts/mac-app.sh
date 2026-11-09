@@ -6,13 +6,17 @@
 set -eu
 cd "$(git rev-parse --show-toplevel)"
 cargo build --release -p wado
+scripts/mac-media-adapter.sh
 APP=target/Wado.app
 VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' crates/server/Cargo.toml | head -1)
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp target/release/wado "$APP/Contents/MacOS/wado"
+cp -R target/media-adapter "$APP/Contents/Resources/media-adapter"
 sed "s/VERSION/$VERSION/g" packaging/macos/Info.plist > "$APP/Contents/Info.plist"
 scripts/mac-cert.sh >/dev/null
+# Inside out: the nested framework first, then the app that seals it.
+codesign -f -s wado-dev "$APP/Contents/Resources/media-adapter/MediaRemoteAdapter.framework"
 codesign -f -s wado-dev --identifier io.github.sandptel.wado "$APP"
 codesign -dv "$APP" 2>&1 | grep -E "Identifier|Authority" || true
 if [ "${1:-}" = "--run" ]; then

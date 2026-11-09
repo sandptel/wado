@@ -1,10 +1,12 @@
 //! What is playing on the Mac, and its controls.
 //!
-//! macOS keeps "now playing" behind a framework only Apple's apps may read since macOS 15.4, so
-//! the card comes from the two players that answer AppleScript — Music and Spotify (each asks
-//! once to be controlled, in Privacy & Security › Automation). Anything else gets the media keys,
-//! which every Mac app obeys, on a card that says it has no track to show.
+//! Whatever app is now playing — a browser tab, Spotify, Music, Podcasts, VLC — comes from
+//! mediaremote-adapter ([`crate::nowplaying`]), streamed: every change is published as it happens.
+//! Without the adapter, the card comes from the two players that answer AppleScript — Music and
+//! Spotify (each asks once to be controlled, in Privacy & Security › Automation), read when asked.
+//! With neither, the media keys, which every Mac app obeys, on a card that has no track to show.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use objc2_app_kit::{NSEvent, NSEventModifierFlags, NSEventType, NSRunningApplication};
@@ -14,6 +16,8 @@ use wado_platform::media::MediaPlayers;
 use wado_platform::state::Published;
 use wado_platform::{Fut, Res};
 use wado_protocol::host::{MediaOp, Player};
+
+use crate::nowplaying::{Adapter, Stream, epoch_micros};
 
 /// The players read by AppleScript: bundle id, and the name AppleScript knows it by.
 const SCRIPTABLE: [(&str, &str); 2] = [
@@ -32,14 +36,28 @@ const AUTOMATION: &str =
     "Allow wado to control it in System Settings › Privacy & Security › Automation.";
 
 pub struct MacMedia {
-    state: Published<Vec<Player>>,
+    state: Arc<Published<Vec<Player>>>,
+    /// The adapter and its stream; `None` falls back to AppleScript.
+    adapter: Option<(Adapter, Stream)>,
 }
 
 impl MacMedia {
     pub fn new() -> MacMedia {
-        MacMedia {
-            state: Published::new(vec![keys_card()]),
-        }
+        let state = Arc::new(Published::new(vec![keys_card()]));
+        let adapter = match Adapter::find() {
+            Ok(a) => {
+                let st = state.clone();
+                let stream = a
+                    .clone()
+                    .stream(move |n| st.publish(cards(n.player(epoch_micros()))));
+                Some((a, stream))
+            }
+            Err(why) => {
+                tracing::warn!("now playing: {why}; only Music and Spotify, by AppleScript");
+                None
+            }
+        };
+        MacMedia { state, adapter }
     }
 }
 
@@ -59,6 +77,24 @@ fn keys_card() -> Player {
         can_prev: true,
         ..Player::default()
     }
+}
+
+/// The now-playing card, named for its app, or the keys card when nothing plays.
+fn cards(p: Option<Player>) -> Vec<Player> {
+    match p {
+        Some(mut p) => {
+            p.app = app_name(&p.bus).unwrap_or(p.app);
+            vec![p]
+        }
+        None => vec![keys_card()],
+    }
+}
+
+fn app_name(bundle: &str) -> Option<String> {
+    NSRunningApplication::runningApplicationsWithBundleIdentifier(&NSString::from_str(bundle))
+        .firstObject()?
+        .localizedName()
+        .map(|n| n.to_string())
 }
 
 fn running(bundle: &str) -> bool {
@@ -197,11 +233,25 @@ impl MediaPlayers for MacMedia {
     }
 
     fn fresh(&self, within: Duration) -> Fut<'_, ()> {
-        Box::pin(self.state.fresh(within, read))
+        Box::pin(async move {
+            match &self.adapter {
+                // The stream publishes every change; a read only brings the position up to now.
+                Some((_, s)) => {
+                    self.state
+                        .fresh(within, || async { cards(s.player()) })
+                        .await
+                }
+                None => self.state.fresh(within, read).await,
+            }
+        })
     }
 
     fn act(&self, bus: String, op: MediaOp) -> Fut<'_, Res<()>> {
         Box::pin(async move {
+            if let Some((a, _)) = self.adapter.as_ref().filter(|_| bus != KEYS) {
+                // The adapter commands the app now playing — the one card it shows.
+                return a.act(&op).await;
+            }
             if let Some((_, app)) = SCRIPTABLE.iter().find(|(b, _)| *b == bus) {
                 let src = script_op(&op, app)
                     .ok_or_else(|| format!("{app} does not take that from wado on macOS"))?;

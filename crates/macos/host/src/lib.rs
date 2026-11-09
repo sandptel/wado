@@ -4,6 +4,7 @@
 //! says why, naming the System Settings pane when a permission is the reason.
 #![cfg(target_os = "macos")]
 
+pub mod art;
 pub mod audio;
 pub mod brightness;
 pub mod clip;
@@ -12,6 +13,7 @@ pub mod files;
 pub mod input;
 pub mod launch;
 pub mod media;
+pub mod nowplaying;
 pub mod power;
 pub mod sysinfo;
 pub mod tcc;
