@@ -11,3 +11,11 @@ result-*
 
 # run planning + memory (local working surface)
 plan/
+
+# agent material lives on the orphan branch `plan` (see plan/CLAUDE.md);
+# these are local symlinks into plan/ made by plan/setup.sh
+/AGENTS.md
+/DESIGN.md
+/PRODUCT.md
+/.impeccable
+/docs/superpowers
