@@ -1,0 +1,27 @@
+# The daemon on each OS it builds for. Linux runs inside the flake's dev shell, so it links the
+# same libraries (FFmpeg 8, the GL/VA stack) as a developer machine; macOS needs none of them.
+name: host
+
+on:
+  push:
+    branches: [main, macos]
+    paths: ["crates/**", "Cargo.toml", "Cargo.lock", "flake.nix", "flake.lock", ".github/workflows/host.yml"]
+  pull_request:
+    paths: ["crates/**", "Cargo.toml", "Cargo.lock", "flake.nix", "flake.lock", ".github/workflows/host.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@v16
+      - uses: DeterminateSystems/magic-nix-cache-action@v8
+      - uses: Swatinem/rust-cache@v2
+      - name: check
+        run: nix develop -c cargo check -p wado -p wado-compositor -p wado-platform -p wado-protocol -p wado-config --all-targets
+      - name: test
+        run: nix develop -c cargo test -p wado -p wado-platform -p wado-protocol -p wado-config
