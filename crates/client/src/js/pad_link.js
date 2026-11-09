@@ -113,9 +113,7 @@
   async function tryDirect() {
     if (offering || !want || pc) return;
     offering = true;
-    const me = new RTCPeerConnection({
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }],
-    });
+    const me = new RTCPeerConnection({ iceServers: await W.iceServers() });
     pc = me;
     touch = me.createDataChannel("pad-touch", { ordered: false, maxRetransmits: 0 });
     keys = me.createDataChannel("pad-keys", { ordered: true });

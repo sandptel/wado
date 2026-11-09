@@ -108,9 +108,7 @@
 
   async function open() {
     if (!W.e2eReady) throw new Error("not connected to the computer yet");
-    const pc = new RTCPeerConnection({
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }],
-    });
+    const pc = new RTCPeerConnection({ iceServers: await W.iceServers() });
     const dc = pc.createDataChannel("files", { ordered: true });
     dc.binaryType = "arraybuffer";
     F.pc = pc;

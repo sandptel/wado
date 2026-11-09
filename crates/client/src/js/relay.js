@@ -528,12 +528,7 @@ W._relayNegotiate = async (opts = {}) => {
   if (W.pc) { try { W.pc.close(); } catch (_) {} }
   W._listenOnly = !!opts.audioOnly;
 
-  const pc = new RTCPeerConnection({
-    iceServers: [
-      { urls: "stun:stun.l.google.com:19302" },
-      { urls: "stun:stun1.l.google.com:19302" },
-    ],
-  });
+  const pc = new RTCPeerConnection({ iceServers: await W.iceServers() });
   W.pc = pc;
 
   if (!opts.audioOnly) pc.addTransceiver("video", { direction: "recvonly" });

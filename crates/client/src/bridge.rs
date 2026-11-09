@@ -75,6 +75,9 @@ pub const JS: &str = concat!(
     "\n",
     include_str!("js/relay_link.js"),
     "\n",
+    // After `relay_link.js`: it chains `__up`.
+    include_str!("js/ice.js"),
+    "\n",
     // After `relay_link.js`: it pairs through `relayKick`, and the link and the envelope call it.
     include_str!("js/pair.js"),
     "\n",
@@ -228,6 +231,8 @@ pub const JS: &str = concat!(
     include_str!("js/pad_orient.js"),
     "\n",
     include_str!("js/pad_touch.js"),
+    "\n",
+    include_str!("js/pad_haptics.js"),
     "\n",
     include_str!("js/pad_gestures.js"),
     "\n",

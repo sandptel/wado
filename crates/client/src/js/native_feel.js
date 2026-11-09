@@ -33,22 +33,6 @@
       return show(area, action, res, at);
     };
   }
-  // …and a tap — one finger down and up quickly without travelling — ticks like a touchpad's
-  // click. The tap itself is the computer's (libinput); this only mirrors what it will see.
-  if (W.padTouch && W.padTouch.input) {
-    const input = W.padTouch.input;
-    const downs = new Map();
-    W.padTouch.input = (type, p) => {
-      if (type === "down") downs.set(p.id, { x: p.x, y: p.y, t: performance.now(), n: downs.size + 1 });
-      else if (type === "up") {
-        const d = downs.get(p.id);
-        downs.delete(p.id);
-        if (d && d.n === 1 && downs.size === 0 && performance.now() - d.t < 180 &&
-            Math.hypot(p.x - d.x, p.y - d.y) < 10) haptic("tap");
-      }
-      return input(type, p);
-    };
-  }
   // Screen on + immersive while a session or the trackpad is up: the same moments the page
   // takes a wake lock (js/wakelock.js), which a WebView does not grant.
   let active = false;
