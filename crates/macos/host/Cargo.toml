@@ -3,6 +3,22 @@ name = "wado-host-macos"
 version = "0.0.4"
 edition = "2024"
 license = "AGPL-3.0-only"
+description = "wado's macOS providers: this Mac's capabilities behind wado-platform's traits."
 
 [dependencies]
 wado-platform = { path = "../../platform" }
+wado-protocol = { path = "../../protocol" }
+
+# Everything below is the Mac's own frameworks; on any other OS this crate is empty.
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"
+tokio = { version = "1", features = ["sync", "time", "process", "rt", "macros"] }
+tracing = "0.1"
+objc2 = "0.6"
+objc2-foundation = "0.3"
+objc2-core-foundation = "0.3"
+objc2-app-kit = { version = "0.3", features = ["NSPasteboard", "NSWorkspace", "NSImage", "NSImageRep", "NSBitmapImageRep", "NSGraphics", "NSRunningApplication"] }
+objc2-core-graphics = "0.3"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["sync", "time", "rt", "macros", "rt-multi-thread"] }

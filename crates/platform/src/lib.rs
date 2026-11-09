@@ -62,7 +62,7 @@ use std::future::Future;
 use std::pin::Pin;
 
 pub use cap::{Absent, Cap, ProviderId};
-pub use registry::{Platform, PlatformBuilder, Provider};
+pub use registry::{Offer, Platform, PlatformBuilder, Provider};
 pub use state::Published;
 pub use wado_protocol::caps::{CapSet, Capability};
 

@@ -1,6 +1,6 @@
 //! Shells on a pseudo-terminal, as the daemon allows them: whether shells are on at all, which
 //! program runs, where it starts. The terminal itself is the platform's
-//! (`wado_platform::pty`, provided on Linux by `crate::platform::linux::pty`).
+//! (`wado_platform::pty`, provided by `crate::platform::pty`).
 
 use tokio::sync::mpsc;
 use wado_platform::Platform;

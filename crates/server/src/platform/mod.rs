@@ -9,6 +9,7 @@
 
 #[cfg(target_os = "linux")]
 pub mod linux;
+pub mod pty;
 #[cfg(target_os = "macos")]
 pub use wado_host_macos as macos;
 
@@ -27,7 +28,24 @@ pub fn os_default() -> PlatformBuilder {
 /// This OS's providers, in the order they are asked.
 #[cfg(target_os = "macos")]
 pub fn os_default() -> PlatformBuilder {
-    PlatformBuilder::empty().with(macos::MacProvider::default())
+    PlatformBuilder::empty()
+        .with(macos::MacProvider::default())
+        .with(Portable)
+}
+
+/// What every OS gets from the same code, for an OS whose provider does not offer it.
+#[cfg(target_os = "macos")]
+struct Portable;
+
+#[cfg(target_os = "macos")]
+impl wado_platform::Provider for Portable {
+    fn id(&self) -> wado_platform::ProviderId {
+        wado_platform::ProviderId("portable")
+    }
+
+    fn pty(&self) -> wado_platform::Offer<dyn wado_platform::pty::PtySpawner> {
+        Some(Ok(std::sync::Arc::new(pty::NativePty)))
+    }
 }
 
 /// The daemon's platform, probed on first use. The daemon probes it at start, after capturing

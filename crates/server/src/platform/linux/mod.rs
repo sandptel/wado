@@ -47,7 +47,7 @@ pub mod nmcli;
 pub mod on_desktop;
 pub mod pipewire;
 pub mod probe;
-pub mod pty;
+pub use super::pty;
 pub mod sysinfo;
 pub mod thumbnails;
 pub mod touchpad;
