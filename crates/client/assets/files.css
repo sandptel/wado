@@ -128,7 +128,7 @@ html:has(#wado-files[data-layout="narrow"]:not([hidden]):not(.opening)) :is(#lan
 .frow:hover { background: var(--s1); }
 .frow.sel, .ftile.sel { background: color-mix(in oklab, var(--accent), transparent 82%); }
 .frow:focus-visible, .ftile:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.frow .c-size, .frow .c-mtime { display: none; }
+.frow .c-type, .frow .c-size, .frow .c-mtime { display: none; }
 .fname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; color: var(--bright); }
 .fname small { display: block; font-weight: 400; font-size: .75rem; color: var(--dim); overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
 .flink { color: var(--dim); font-style: normal; }
@@ -138,11 +138,11 @@ html:has(#wado-files[data-layout="narrow"]:not([hidden]):not(.opening)) :is(#lan
 .fdisc.thumb > .fi, .fart.thumb > .fi { visibility: hidden; }
 .frow.sel .fdisc:not(.thumb) { background: var(--accent); color: var(--on-accent); }
 .fmore { width: 36px; height: 36px; color: var(--dim); }
-.files[data-layout="wide"] .frow { grid-template-columns: 34px minmax(0, 1fr) 96px 132px 36px; min-height: 42px; padding: 3px 8px; gap: 12px; border-radius: var(--r1); }
+.files[data-layout="wide"] .frow { grid-template-columns: 34px minmax(0, 1fr) 64px 96px 132px 36px; min-height: 42px; padding: 3px 8px; gap: 12px; border-radius: var(--r1); }
 .files[data-layout="wide"] .frow .fdisc { width: 32px; height: 32px; border-radius: var(--r1); }
 .files[data-layout="wide"] .frow .fi .i { width: 18px; height: 18px; }
 .files[data-layout="wide"] .frow .fname small { display: none; }
-.files[data-layout="wide"] .frow .c-size, .files[data-layout="wide"] .frow .c-mtime { display: block; font-size: .8125rem; color: var(--dim); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.files[data-layout="wide"] .frow :is(.c-type, .c-size, .c-mtime) { display: block; font-size: .8125rem; color: var(--dim); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .files[data-layout="wide"] .fmore { opacity: 0; }
 .files[data-layout="wide"] .frow:hover .fmore, .files[data-layout="wide"] .frow.sel .fmore { opacity: 1; }
 .fhd { position: sticky; top: -8px; z-index: 1; background: var(--s0); min-height: 34px !important; border-bottom: 1px solid var(--line); border-radius: 0 !important; }
@@ -155,6 +155,13 @@ html:has(#wado-files[data-layout="narrow"]:not([hidden]):not(.opening)) :is(#lan
 /* ── grid: square cards, the picture is the card ── */
 .fgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; padding-top: 6px; }
 .files[data-layout="wide"] .fgrid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
+/* tile sizes: small / medium (the default above) / large */
+.fgrid.t-s { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; }
+.fgrid.t-l { grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); }
+.files[data-layout="wide"] .fgrid.t-s { grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); gap: 8px; }
+.files[data-layout="wide"] .fgrid.t-l { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.fgrid.t-s .fart .fi .i { width: 28px; height: 28px; }
+.fgrid.t-s .fmore { display: none; }
 .ftile { position: relative; display: grid; gap: 7px; padding: 6px; border-radius: var(--r3); user-select: none; -webkit-user-select: none;
   -webkit-touch-callout: none; transition: background .12s, transform var(--dur) var(--pop); }
 .ftile:hover { background: var(--s1); }
@@ -197,6 +204,9 @@ html:has(#wado-files[data-layout="narrow"]:not([hidden]):not(.opening)) :is(#lan
   pointer-events: none; font: 700 1.25rem var(--display); color: var(--bright);
   background: color-mix(in oklab, var(--accent), transparent 82%); outline: 3px dashed var(--accent); outline-offset: -14px; }
 .files.dropping .fdrop .fi .i { width: 44px; height: 44px; }
+/* an item dragged over a folder, a breadcrumb or a place */
+.fdropon { outline: 2px solid var(--accent); outline-offset: -2px; background: color-mix(in oklab, var(--accent), transparent 78%) !important; }
+.files:focus { outline: none; }
 
 /* ── properties ── */
 .fprophd { display: flex; align-items: center; gap: 12px; }
@@ -256,6 +266,9 @@ html:has(#wado-files[data-layout="narrow"]:not([hidden]):not(.opening)) :is(#lan
   padding: 10px 16px; border-radius: var(--r2); background: var(--base05); color: var(--base00); font-weight: 600; font-size: .875rem;
   box-shadow: 0 12px 30px rgb(0 0 0 / .4); animation: sheetup var(--dur) var(--pop) both; }
 .ftoast.bad { background: var(--bad); color: var(--base00); }
+.ftoast.act { display: flex; align-items: center; gap: 14px; padding: 6px 6px 6px 16px; }
+.ftoast button { padding: 7px 14px; border-radius: 99px; font-weight: 700; color: inherit; background: color-mix(in oklab, var(--base00), transparent 86%); }
+.ftoast button:hover { background: color-mix(in oklab, var(--base00), transparent 74%); }
 
 /* ── the media player (js/files_player.js over Plyr) ── */
 .fplayer { position: relative; width: 100%; height: 100%; display: grid; place-items: center; background: var(--stage); }

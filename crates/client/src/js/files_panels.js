@@ -99,10 +99,14 @@
     input.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); close(null); } });
   });
 
-  F.toast = (text, bad) => {
-    const t = h("div", { class: "ftoast" + (bad ? " bad" : ""), role: "status" }, text);
+  // `action` ({ label, run }) adds a button — Undo — and keeps the toast up longer; a newer one
+  // replaces it, so only the latest Undo is on screen.
+  F.toast = (text, bad, action) => {
+    for (const old of document.querySelectorAll(".ftoast.act")) old.remove();
+    const t = h("div", { class: "ftoast" + (bad ? " bad" : "") + (action ? " act" : ""), role: "status" }, text,
+      action ? h("button", { onclick: () => { t.remove(); action.run(); } }, action.label) : null);
     document.body.appendChild(t);
-    setTimeout(() => t.remove(), bad ? 5000 : 2500);
+    setTimeout(() => t.remove(), action ? 6000 : bad ? 5000 : 2500);
   };
 
   // Which devices may use files — for an `rw`, QR-paired device; the computer's own
