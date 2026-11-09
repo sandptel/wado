@@ -26,7 +26,7 @@ use wado_protocol::caps::{CapOff, CapSet, Capability};
 use crate::audio::{AudioMixer, ViewerSink};
 use crate::cap::{Absent, Cap, ProviderId};
 use crate::clip::{ClipHistory, Clipboard};
-use crate::desktop::{Launcher, Screenshot, WindowManager};
+use crate::desktop::{DeskApps, Launcher, Screenshot, WindowManager};
 use crate::display::Brightness;
 use crate::files::{Thumbnailer, Trash};
 use crate::input::{GamepadInjector, KeyInjector, Opener, TextInjector, TouchInjector};
@@ -127,6 +127,7 @@ registry! {
     trash: Trash => dyn Trash,
     thumbnailer: Thumbnailer => dyn Thumbnailer,
     pty: Pty => dyn PtySpawner,
+    desk_apps: DeskApps => dyn DeskApps,
 }
 
 fn read<T>(l: &RwLock<T>) -> std::sync::RwLockReadGuard<'_, T> {

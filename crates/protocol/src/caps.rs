@@ -52,11 +52,14 @@ pub enum Capability {
     Thumbnailer,
     /// Shells on a pseudo-terminal (`PtySpawner`).
     Pty,
+    /// The desktop's own apps — installed, running, in its dock — opened and quit there
+    /// (`DeskApps`), with no session.
+    DeskApps,
 }
 
 impl Capability {
     /// Every capability, in a fixed order.
-    pub const ALL: [Capability; 21] = [
+    pub const ALL: [Capability; 22] = [
         Capability::Touch,
         Capability::Keys,
         Capability::Gamepad,
@@ -78,6 +81,7 @@ impl Capability {
         Capability::Trash,
         Capability::Thumbnailer,
         Capability::Pty,
+        Capability::DeskApps,
     ];
 
     /// The wire name: snake_case, stable.
@@ -104,6 +108,7 @@ impl Capability {
             Capability::Trash => "trash",
             Capability::Thumbnailer => "thumbnailer",
             Capability::Pty => "pty",
+            Capability::DeskApps => "desk_apps",
         }
     }
 

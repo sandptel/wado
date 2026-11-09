@@ -47,6 +47,16 @@ pub trait Launcher: Send + Sync {
     fn open(&self, app: App) -> Res<()>;
 }
 
+/// The desktop's own apps, with no session: what is installed and running (and in front, hidden,
+/// in its dock), each one's icon, and opening, showing, hiding and quitting them there.
+pub trait DeskApps: Send + Sync {
+    /// Installed and running apps, without icons; `exec` names each one for [`DeskApps::act`].
+    fn list(&self) -> Fut<'_, Res<Vec<wado_protocol::AppEntry>>>;
+    /// Icons as `data:` URIs, by `exec`; an app with none is left out.
+    fn icons(&self, execs: Vec<String>) -> Fut<'_, std::collections::BTreeMap<String, String>>;
+    fn act(&self, exec: String, action: wado_protocol::AppAction) -> Fut<'_, Res<()>>;
+}
+
 /// Screenshots of the desktop, saved as PNG.
 pub trait Screenshot: Send + Sync {
     /// The person can choose an area (else only the whole screen) — or why not.

@@ -4,6 +4,7 @@
 //! says why, naming the System Settings pane when a permission is the reason.
 #![cfg(target_os = "macos")]
 
+pub mod apps;
 pub mod art;
 pub mod audio;
 pub mod brightness;
@@ -163,6 +164,10 @@ impl Provider for MacProvider {
 
     fn launcher(&self) -> Offer<dyn Launcher> {
         here(Arc::new(launch::MacLauncher))
+    }
+
+    fn desk_apps(&self) -> Offer<dyn wado_platform::desktop::DeskApps> {
+        here(Arc::new(apps::MacApps::default()))
     }
 
     fn screenshot(&self) -> Offer<dyn Screenshot> {

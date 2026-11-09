@@ -346,6 +346,13 @@ pub enum RelayMsg {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         lean: bool,
     },
+    /// Client → server: do `action` to the desktop's app `exec` (no session —
+    /// [`crate::caps::Capability::DeskApps`]). Answered with a fresh [`RelayMsg::AppsList`], or
+    /// [`RelayMsg::HostError`] saying why not.
+    AppDo {
+        exec: String,
+        action: crate::AppAction,
+    },
     /// Client → server: the icons of these apps, by `exec`, as [`RelayMsg::AppsIconsList`].
     AppsIcons {
         execs: Vec<String>,

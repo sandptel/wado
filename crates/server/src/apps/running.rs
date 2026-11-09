@@ -61,6 +61,7 @@ mod tests {
             running: false,
             hidden: false,
             app_ids: Vec::new(),
+            ..Default::default()
         }
     }
 

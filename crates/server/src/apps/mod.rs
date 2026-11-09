@@ -107,6 +107,7 @@ pub fn discover() -> Vec<AppEntry> {
                         running: false,
                         hidden: entry.no_display,
                         app_ids,
+                        ..Default::default()
                     },
                 );
             }

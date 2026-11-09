@@ -23,6 +23,7 @@ pub fn entries(commands: &[String], apps: &[AppEntry]) -> Vec<AppEntry> {
                     running: false,
                     hidden: false,
                     app_ids: Vec::new(),
+                    ..Default::default()
                 })
         })
         .collect()
@@ -41,6 +42,7 @@ mod tests {
             running: true,
             hidden: false,
             app_ids: Vec::new(),
+            ..Default::default()
         }];
         let got = entries(&["nautilus".into(), "htop -d 5".into()], &apps);
         // Order is the caller's: most recent first, and resolution must not reorder it.

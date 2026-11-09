@@ -12,8 +12,9 @@
 
 use serde::{Deserialize, Serialize};
 
-/// One launchable application, as discovered from an XDG desktop entry.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// One launchable application, as discovered from an XDG desktop entry (or, for the desktop's
+/// own apps on macOS, an `.app` bundle: `exec` is then its path).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AppEntry {
     /// Human-readable name (`Name=`), for display and filtering.
     pub name: String,
@@ -50,4 +51,29 @@ pub struct AppEntry {
     /// bar's icons; no icon travels in the window list itself.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub app_ids: Vec<String>,
+    /// The desktop's apps (no session, [`crate::caps::Capability::DeskApps`]): this running
+    /// app is the one in front.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub front: bool,
+    /// …is running but hidden (⌘H).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub away: bool,
+    /// …is kept in the desktop's own dock, at this place from its start.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dock: Option<u16>,
+}
+
+/// What to do to one of the desktop's apps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AppAction {
+    /// Start it, or bring it to the front if it runs.
+    Open,
+    Hide,
+    /// Show a hidden app again, in front.
+    Unhide,
+    /// Ask it to quit: it may ask to save first.
+    Quit,
+    /// Quit it now, unsaved work and all.
+    ForceQuit,
 }

@@ -39,11 +39,47 @@ pub fn data_uri(b64: &str) -> Option<String> {
     ))
 }
 
+/// An app icon (`tiff`: every size macOS holds of it) as a `side`-pixel PNG `data:` URI, its
+/// transparency kept: drawn from the smallest size at least that big.
+pub fn png_uri(tiff: &[u8], side: usize) -> Option<String> {
+    let reps = NSBitmapImageRep::imageRepsWithData(&NSData::with_bytes(tiff));
+    let best = reps
+        .iter()
+        .filter_map(|r| r.downcast::<NSBitmapImageRep>().ok())
+        .min_by_key(|r| {
+            let w = r.pixelsWide() as usize;
+            if w >= side {
+                w - side
+            } else {
+                usize::MAX / 2 + (side - w)
+            }
+        })?;
+    let rep = draw(&best, side, side, true)?;
+    // SAFETY: empty properties are valid for PNG.
+    let png = unsafe {
+        rep.representationUsingType_properties(NSBitmapImageFileType::PNG, &NSDictionary::new())
+    }?;
+    Some(format!(
+        "data:image/png;base64,{}",
+        STANDARD.encode(png.to_vec())
+    ))
+}
+
 /// `rep` drawn at `w`×`h`.
 fn scaled(
     rep: &NSBitmapImageRep,
     w: usize,
     h: usize,
+) -> Option<objc2::rc::Retained<NSBitmapImageRep>> {
+    draw(rep, w, h, false)
+}
+
+/// `rep` drawn at `w`×`h`; `alpha`: keep transparency (a PNG), else opaque (a JPEG).
+fn draw(
+    rep: &NSBitmapImageRep,
+    w: usize,
+    h: usize,
+    alpha: bool,
 ) -> Option<objc2::rc::Retained<NSBitmapImageRep>> {
     let img = rep.CGImage()?;
     let space = CGColorSpace::new_device_rgb()?;
@@ -56,7 +92,11 @@ fn scaled(
             8,
             0,
             Some(&space),
-            CGImageAlphaInfo::NoneSkipLast.0,
+            if alpha {
+                CGImageAlphaInfo::PremultipliedLast.0
+            } else {
+                CGImageAlphaInfo::NoneSkipLast.0
+            },
         )
     }?;
     let rect = CGRect::new(CGPoint::new(0.0, 0.0), CGSize::new(w as f64, h as f64));
@@ -72,6 +112,20 @@ fn scaled(
 mod tests {
     /// A 1×1 PNG.
     const DOT: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
+    #[test]
+    fn an_app_icon_becomes_a_png_uri() {
+        let img = objc2_app_kit::NSWorkspace::sharedWorkspace().iconForFile(
+            &objc2_foundation::NSString::from_str("/System/Applications/Calculator.app"),
+        );
+        let uri = super::png_uri(&img.TIFFRepresentation().unwrap().to_vec(), 96).unwrap();
+        assert!(
+            uri.starts_with("data:image/png;base64,iVBOR"),
+            "{}",
+            &uri[..40]
+        );
+        assert!(uri.len() < 40_000, "small: {}", uri.len());
+    }
 
     #[test]
     fn a_picture_becomes_a_jpeg_uri() {

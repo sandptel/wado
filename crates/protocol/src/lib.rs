@@ -33,7 +33,7 @@ use serde::{Deserialize, Serialize};
 
 /// HTTP endpoints the client talks to on the server. Shared as constants so the
 /// two sides cannot disagree on a path.
-pub use apps::AppEntry;
+pub use apps::{AppAction, AppEntry};
 pub use clip::{ClipEntry, ClipKind};
 pub use config::{
     ConfigState, ConsolePrefs, DeviceGrants, GamepadPrefs, HostLimits, InputHost, KeyboardPrefs,

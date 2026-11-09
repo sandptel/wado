@@ -2293,6 +2293,68 @@ async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
                     }
                 }
 
+                // The desktop's own apps (macOS): its list, icons and actions, no session.
+                RelayMsg::AppsRequest { .. } if crate::platform::get().desk_apps().is_ok() => {
+                    let out_tx = out_tx.clone();
+                    tokio::spawn(async move {
+                        if let Ok(d) = crate::platform::get().desk_apps()
+                            && let Ok(apps) = d.list().await
+                        {
+                            send_relay(&out_tx, &RelayMsg::AppsList { apps }).await.ok();
+                        }
+                    });
+                }
+
+                RelayMsg::AppsIcons { execs } if crate::platform::get().desk_apps().is_ok() => {
+                    let out_tx = out_tx.clone();
+                    tokio::spawn(async move {
+                        if let Ok(d) = crate::platform::get().desk_apps() {
+                            let icons = d.icons(execs).await;
+                            send_relay(&out_tx, &RelayMsg::AppsIconsList { icons })
+                                .await
+                                .ok();
+                        }
+                    });
+                }
+
+                RelayMsg::AppDo { exec, action } => {
+                    let device = ctx
+                        .viewer
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .0
+                        .clone();
+                    let allowed = if !ctx.viewer_ok.load(Ordering::SeqCst) {
+                        Err("this device has not been approved yet".to_string())
+                    } else if !ctx.gate.grants(&device).host {
+                        Err("this device may not control the computer — on the computer: wado allow <device> host".to_string())
+                    } else {
+                        crate::platform::get().desk_apps().map_err(|a| a.why)
+                    };
+                    let out_tx = out_tx.clone();
+                    tokio::spawn(async move {
+                        info!(device, ?action, exec, "app action");
+                        let r = match allowed {
+                            Ok(d) => d.act(exec, action).await.map(|()| d),
+                            Err(e) => Err(e),
+                        };
+                        match r {
+                            Ok(d) => {
+                                // The app takes a moment to start, hide or quit: then the list.
+                                tokio::time::sleep(Duration::from_millis(600)).await;
+                                if let Ok(apps) = d.list().await {
+                                    send_relay(&out_tx, &RelayMsg::AppsList { apps }).await.ok();
+                                }
+                            }
+                            Err(message) => {
+                                send_relay(&out_tx, &RelayMsg::HostError { message, ack: 0 })
+                                    .await
+                                    .ok();
+                            }
+                        }
+                    });
+                }
+
                 RelayMsg::AppsRequest { lean } => {
                     let mut apps = crate::apps::discover();
                     crate::apps::running::mark(&mut apps, &ctx.cmd_tx).await;

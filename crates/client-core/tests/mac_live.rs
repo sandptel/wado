@@ -205,7 +205,8 @@ fn the_mac_from_a_phone() {
             .as_array()
             .unwrap()
             .iter()
-            .any(|p| p["bus"] == "media-keys"),
+            // What plays now, or the media keys when nothing does.
+            .any(|p| p["bus"] == "media-keys" || p["title"].as_str().is_some_and(|t| !t.is_empty())),
         "{}",
         s["media"]
     );
@@ -266,6 +267,59 @@ fn the_mac_from_a_phone() {
                 && ice["ttl"].as_u64() > Some(0),
             "{ice}"
         );
+        // The Mac's own apps: listed with what runs and what the Dock keeps, an icon, and
+        // Calculator opened then quit — on the Mac's desktop, no session.
+        let calc = "/System/Applications/Calculator.app";
+        let running = |core: &Core| -> Option<bool> {
+            let l = msg(core, &room, "apps_list", 8000)?;
+            l["apps"]
+                .as_array()?
+                .iter()
+                .find(|a| a["exec"] == calc)
+                .map(|a| a["running"] == true)
+        };
+        send(&core, &room, json!({"type": "apps_request", "lean": true}));
+        let list = msg(&core, &room, "apps_list", 8000).expect("apps_list");
+        let apps = list["apps"].as_array().expect("apps");
+        assert!(
+            apps.iter().any(|a| a["exec"] == calc),
+            "Calculator is installed"
+        );
+        assert!(
+            apps.iter()
+                .any(|a| a["running"] == true && a["name"] == "Finder"),
+            "Finder runs"
+        );
+        send(&core, &room, json!({"type": "apps_icons", "execs": [calc]}));
+        let icons = msg(&core, &room, "apps_icons_list", 8000).expect("icons");
+        assert!(
+            icons["icons"][calc]
+                .as_str()
+                .is_some_and(|u| u.starts_with("data:image/png")),
+            "{icons}"
+        );
+        send(
+            &core,
+            &room,
+            json!({"type": "app_do", "exec": calc, "action": "open"}),
+        );
+        assert_eq!(running(&core), Some(true), "Calculator opened");
+        send(
+            &core,
+            &room,
+            json!({"type": "app_do", "exec": calc, "action": "quit"}),
+        );
+        let mut gone = running(&core);
+        for _ in 0..5 {
+            if gone == Some(false) {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(500));
+            send(&core, &room, json!({"type": "apps_request", "lean": true}));
+            gone = running(&core);
+        }
+        assert_eq!(gone, Some(false), "Calculator quit");
+
         let before = pointer();
         send(
             &core,
