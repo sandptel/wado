@@ -123,40 +123,65 @@ pub fn build_setting_engine() -> SettingEngine {
     engine
 }
 
-/// Whether this host has a globally-scoped IPv6 address.
+/// Whether this host has a globally-routable IPv6 address on any interface.
 ///
-/// Read from `/proc/net/if_inet6` rather than pulling in an interface-enumeration crate: the
-/// fourth column is the address scope, and `0` is global. Loopback (`::1`, scope `0x10`) and
-/// link-local (`fe80::`, scope `0x20`) are therefore excluded for free.
+/// Read with `getifaddrs`, which Linux and macOS both have (the old `/proc/net/if_inet6` read
+/// answered "no" on every Mac, so a Mac never offered IPv6 and a phone behind carrier NAT could
+/// only reach it through the relay). Loopback, link-local and unique-local (`fc00::/7`, which a
+/// VPN's tunnel often carries) do not count.
 ///
-/// A read failure answers "no IPv6", which is the safe direction: the worst case is that a
+/// A failure answers "no IPv6", which is the safe direction: the worst case is that a
 /// dual-stack host gathers IPv4 only, which still connects.
 fn has_global_ipv6() -> bool {
-    let Ok(text) = std::fs::read_to_string("/proc/net/if_inet6") else {
+    let mut head: *mut libc::ifaddrs = std::ptr::null_mut();
+    // SAFETY: getifaddrs fills `head` with a list we walk read-only and free once.
+    if unsafe { libc::getifaddrs(&mut head) } != 0 {
         return false;
-    };
-    text.lines()
-        .filter_map(|l| l.split_whitespace().nth(3))
-        .any(|scope| u32::from_str_radix(scope, 16) == Ok(0))
+    }
+    let mut found = false;
+    let mut at = head;
+    while !at.is_null() {
+        // SAFETY: a node of the list getifaddrs returned, alive until freeifaddrs.
+        let ifa = unsafe { &*at };
+        if !ifa.ifa_addr.is_null()
+            // SAFETY: a non-null sockaddr; its family says how long it is.
+            && i32::from(unsafe { (*ifa.ifa_addr).sa_family }) == libc::AF_INET6
+        {
+            // SAFETY: an AF_INET6 sockaddr is a sockaddr_in6.
+            let a = unsafe { &*(ifa.ifa_addr as *const libc::sockaddr_in6) };
+            found |= is_global(std::net::Ipv6Addr::from(a.sin6_addr.s6_addr));
+        }
+        at = ifa.ifa_next;
+    }
+    // SAFETY: the list getifaddrs gave us, freed once.
+    unsafe { libc::freeifaddrs(head) };
+    found
+}
+
+fn is_global(a: std::net::Ipv6Addr) -> bool {
+    !(a.is_loopback() || a.is_unspecified() || a.is_unicast_link_local() || a.is_unique_local())
 }
 
 #[cfg(test)]
 mod tests {
-    /// The parse, not the machine: this asserts how `/proc/net/if_inet6` is read, so the test
-    /// gives the same answer on a v6 host and a v4-only one.
+    use super::is_global;
+
     #[test]
-    fn scope_column_picks_global_only() {
-        fn global(text: &str) -> bool {
-            text.lines()
-                .filter_map(|l| l.split_whitespace().nth(3))
-                .any(|s| u32::from_str_radix(s, 16) == Ok(0))
+    fn only_routable_v6_counts() {
+        for (a, g) in [
+            ("::1", false),
+            ("fe80::14a4:fdc0:23e3:954a", false),
+            ("fc00::6440:1", false),
+            ("2409:40c4:273:efe3:10ea:49ab:5ceb:f569", true),
+            ("2401:db00::dead:1", true),
+        ] {
+            assert_eq!(is_global(a.parse().unwrap()), g, "{a}");
         }
-        // Loopback (scope 10) + link-local (scope 20) — what a v4-only host looks like.
-        let v4_only = "00000000000000000000000000000001 01 80 10 80 lo\n                       fe8000000000000067b459d52a91008c 03 40 20 80 wlp97s0";
-        assert!(!global(v4_only));
-        // Same, plus a global address (scope 00).
-        let dual = format!("{v4_only}\n2401db000000000000000000dead0001 03 40 00 80 wlp97s0");
-        assert!(global(&dual));
-        assert!(!global(""));
+    }
+
+    /// This host, whatever it has: the call must not crash or leak.
+    #[test]
+    fn reads_this_host() {
+        let _ = super::has_global_ipv6();
     }
 }
