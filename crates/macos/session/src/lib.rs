@@ -177,11 +177,6 @@ struct Held {
 }
 
 /// The handles, and the loop that answers them.
-pub fn build() -> (Box<dyn Runner>, CompositorHandles) {
-    let (lp, handles) = parts();
-    (Box::new(lp), handles)
-}
-
 fn parts() -> (Loop, CompositorHandles) {
     let (commands, rx) = channel();
     let (input_tx, input_rx) = channel();
@@ -279,7 +274,8 @@ pub mod backend {
             self: Box<Self>,
             _frames: mpsc::Sender<FrameMsg>,
         ) -> Res<(Box<dyn Runner>, CompositorHandles)> {
-            Ok(super::build())
+            let (lp, handles) = parts();
+            Ok((Box::new(lp), handles))
         }
     }
 }

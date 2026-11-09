@@ -52,7 +52,7 @@ pub const SWIPE_SHARE: f64 = 0.25;
 pub const DOCK_SHARE: f64 = 0.5;
 
 /// What the current touch is doing.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 enum Gesture {
     Idle,
     /// One finger: pointer, or a drag when it followed a tap.
@@ -297,7 +297,7 @@ impl Interpreter {
                 from: centroid(next),
                 spread: spread(next),
             },
-            (g, _) => g.clone(),
+            (g, _) => *g,
         };
     }
 
@@ -308,12 +308,8 @@ impl Interpreter {
                 self.begin_glide(now);
                 self.gesture = Gesture::Done;
             }
-            Gesture::Point {
-                drag: DragState::Dragging,
-            } => {}
-            Gesture::Point { .. } => {}
             // Fingers lift one after the other: a two-finger tap is still a tap until the last.
-            Gesture::Two => {}
+            Gesture::Point { .. } | Gesture::Two => {}
             _ => {
                 self.finish(out);
                 self.gesture = Gesture::Done;
@@ -358,7 +354,7 @@ impl Interpreter {
         let d = mean_delta(&self.fingers, next);
         let dist = d.0.hypot(d.1);
         self.moved += dist;
-        match self.gesture.clone() {
+        match self.gesture {
             Gesture::Point { drag } => {
                 let drag = if drag == DragState::Armed && self.moved > 3.0 {
                     let at = out.cursor();
@@ -383,8 +379,9 @@ impl Interpreter {
                     self.gesture = Gesture::Zoom { last: s0 };
                     self.moved_by(now, next, out);
                 } else if travel >= TAP_SLOP {
-                    out.scroll(self.carry(scaled(d, SCROLL_GAIN)), Phase::Began);
-                    self.step(now, scaled(d, SCROLL_GAIN));
+                    let s = scaled(d, SCROLL_GAIN);
+                    out.scroll(self.carry(s), Phase::Began);
+                    self.step(now, s);
                     self.gesture = Gesture::Scroll;
                 }
             }
@@ -517,7 +514,7 @@ impl Interpreter {
 
     fn end(&mut self, now: Instant, out: &mut dyn Poster) {
         let quick = now.saturating_duration_since(self.began) < ms(TAP_MS) && self.moved < TAP_SLOP;
-        match self.gesture.clone() {
+        match self.gesture {
             Gesture::Point {
                 drag: DragState::Dragging,
             } => {

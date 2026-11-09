@@ -46,6 +46,17 @@ fn when<T: ?Sized>(probe: Result<(), String>, imp: impl FnOnce() -> Arc<T>) -> O
     Some(probe.map(|()| imp()))
 }
 
+/// An input device: offered while Accessibility is granted, and asked again at each open, as a
+/// grant can be withdrawn.
+fn device<D: ?Sized + 'static>(open: fn() -> Result<Box<D>, InputError>) -> Offer<dyn Opener<D>> {
+    when(tcc::need_accessibility(), || {
+        Arc::new(move || {
+            tcc::need_accessibility().map_err(InputError::Unavailable)?;
+            open()
+        }) as Arc<dyn Opener<D>>
+    })
+}
+
 /// Every macOS provider in one. A stateful capability is one instance for the daemon's life.
 #[derive(Default)]
 pub struct MacProvider {
@@ -62,35 +73,22 @@ impl Provider for MacProvider {
     }
 
     fn touch(&self) -> Offer<dyn Opener<dyn TouchInjector>> {
-        when(tcc::need_accessibility(), || {
-            Arc::new(|| {
-                tcc::need_accessibility().map_err(InputError::Unavailable)?;
-                input::MacTouch::open().map(|t| Box::new(t) as Box<dyn TouchInjector>)
-            }) as Arc<dyn Opener<dyn TouchInjector>>
-        })
+        device(|| input::MacTouch::open().map(|t| Box::new(t) as Box<dyn TouchInjector>))
     }
 
     fn keys(&self) -> Offer<dyn Opener<dyn KeyInjector>> {
-        when(tcc::need_accessibility(), || {
-            Arc::new(|| {
-                tcc::need_accessibility().map_err(InputError::Unavailable)?;
-                Ok(
-                    Box::new(input::keys::MacKeys::new(input::cg::CgPoster::new()))
-                        as Box<dyn KeyInjector>,
-                )
-            }) as Arc<dyn Opener<dyn KeyInjector>>
+        device(|| {
+            Ok(Box::new(input::keys::MacKeys::new(
+                input::cg::CgPoster::new(),
+            )))
         })
     }
 
     fn gamepad(&self) -> Offer<dyn Opener<dyn GamepadInjector>> {
-        when(tcc::need_accessibility(), || {
-            Arc::new(|| {
-                tcc::need_accessibility().map_err(InputError::Unavailable)?;
-                Ok(
-                    Box::new(input::gamepad::PadKeys::new(input::cg::CgPoster::new()))
-                        as Box<dyn GamepadInjector>,
-                )
-            }) as Arc<dyn Opener<dyn GamepadInjector>>
+        device(|| {
+            Ok(Box::new(input::gamepad::PadKeys::new(
+                input::cg::CgPoster::new(),
+            )))
         })
     }
 

@@ -70,7 +70,7 @@ impl<P: Poster> KeyInjector for MacKeys<P> {
 
     fn hold(&mut self, mods: &[Mod]) -> InputRes {
         let mut f = flags_of(&self.held);
-        for m in self.held.clone().iter().filter(|m| !mods.contains(m)) {
+        for m in self.held.iter().filter(|m| !mods.contains(m)) {
             f &= !modkey(*m).1;
             self.out.key(modkey(*m).0, false, f);
         }

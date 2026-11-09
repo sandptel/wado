@@ -83,20 +83,19 @@ impl PowerInhibit for MacAwake {
 /// Lock the screen, or sleep.
 pub struct MacPower;
 
-const LOCK_LIB: &str = "/System/Library/PrivateFrameworks/login.framework/Versions/Current/login";
+const LOCK_LIB: &std::ffi::CStr =
+    c"/System/Library/PrivateFrameworks/login.framework/Versions/Current/login";
 
 /// The screen-lock call the menu bar's own "Lock Screen" uses, looked up at run time — it is
 /// private, so a Mac without it falls back to sleeping the display, which locks when the Mac
 /// asks for a password on wake.
 fn lock_now() -> Result<(), String> {
-    let lib = std::ffi::CString::new(LOCK_LIB).unwrap();
-    let sym = std::ffi::CString::new("SACLockScreenImmediate").unwrap();
     // SAFETY: dlopen/dlsym with NUL-terminated names; the symbol, when present, takes no
     // arguments and returns an int.
     unsafe {
-        let h = libc::dlopen(lib.as_ptr(), libc::RTLD_LAZY);
+        let h = libc::dlopen(LOCK_LIB.as_ptr(), libc::RTLD_LAZY);
         if !h.is_null() {
-            let f = libc::dlsym(h, sym.as_ptr());
+            let f = libc::dlsym(h, c"SACLockScreenImmediate".as_ptr());
             if !f.is_null() {
                 let f: extern "C" fn() -> i32 = std::mem::transmute(f);
                 f();
