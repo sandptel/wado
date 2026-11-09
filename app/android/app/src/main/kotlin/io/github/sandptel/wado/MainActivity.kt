@@ -178,7 +178,8 @@ class MainActivity : FlutterFragmentActivity() {
                     result.success(runCatching { cm.setPrimaryClip(clip) }.isSuccess)
                 }
                 "haptic" -> {
-                    buzz(call.argument<String>("kind").orEmpty(), call.argument<Int>("ms") ?: 0)
+                    val prims = call.argument<List<Map<String, Any>>>("prims")
+                    if (prims == null || !compose(prims)) buzz(call.argument<String>("kind").orEmpty(), call.argument<Int>("ms") ?: 0)
                     result.success(null)
                 }
                 "active" -> {
@@ -265,6 +266,36 @@ class MainActivity : FlutterFragmentActivity() {
             else -> VibrationEffect.createOneShot(if (kind == "tick") 6 else if (kind == "claim" || kind == "heavy") 20 else 12, VibrationEffect.DEFAULT_AMPLITUDE)
         }
         v.vibrate(e)
+    }
+
+    /**
+     * A touchpad feel as composition primitives (`p` name, `s` scale 0..1, `d` ms before it).
+     * False when this phone cannot play every one of them: the caller falls back to a
+     * predefined effect.
+     */
+    private fun compose(prims: List<Map<String, Any>>): Boolean {
+        val v = vibrator ?: return false
+        if (Build.VERSION.SDK_INT < 30 || !v.hasVibrator()) return false
+        val ids = prims.map {
+            when (it["p"]) {
+                "click" -> VibrationEffect.Composition.PRIMITIVE_CLICK
+                "tick" -> VibrationEffect.Composition.PRIMITIVE_TICK
+                "low_tick" -> if (Build.VERSION.SDK_INT >= 31) VibrationEffect.Composition.PRIMITIVE_LOW_TICK else VibrationEffect.Composition.PRIMITIVE_TICK
+                "thud" -> if (Build.VERSION.SDK_INT >= 31) VibrationEffect.Composition.PRIMITIVE_THUD else VibrationEffect.Composition.PRIMITIVE_CLICK
+                "quick_rise" -> VibrationEffect.Composition.PRIMITIVE_QUICK_RISE
+                "slow_rise" -> VibrationEffect.Composition.PRIMITIVE_SLOW_RISE
+                else -> return false
+            }
+        }
+        if (!v.areAllPrimitivesSupported(*ids.toIntArray())) return false
+        val c = VibrationEffect.startComposition()
+        ids.forEachIndexed { i, id ->
+            val scale = (prims[i]["s"] as? Number)?.toFloat()?.coerceIn(0f, 1f) ?: 1f
+            val delay = (prims[i]["d"] as? Number)?.toInt() ?: 0
+            c.addPrimitive(id, scale, delay)
+        }
+        v.vibrate(c.compose())
+        return true
     }
 
     /** The page's haptic kinds as the phone's own predefined effects (the old app's Haptics.kt). */

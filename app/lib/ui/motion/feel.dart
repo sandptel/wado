@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 
+import '../../wado/pad_haptics.dart';
+
 const _os = MethodChannel('wado/os');
 
 /// tick · tap · claim · confirm · reject · toggle_on · toggle_off · heavy; or a plain pulse of
@@ -13,6 +15,23 @@ void feel(String kind, {int ms = 0}) {
     _os.invokeMethod('haptic', {'kind': kind, 'ms': ms});
   } else {
     HapticFeedback.selectionClick();
+  }
+}
+
+/// A touchpad feel ([padFeels]): Android's composition primitives where the phone has them, else
+/// the nearest predefined effect.
+void feelPad(String name) {
+  final prims = padFeels[name];
+  if (prims == null) return;
+  if (Platform.isAndroid) {
+    _os.invokeMethod('haptic', {
+      'kind': padFallback[name] ?? 'tick',
+      'ms': 0,
+      'prims': [for (final (p, scale, delay) in prims) {'p': p, 's': scale, 'd': delay}],
+    });
+  } else {
+    final heavy = name == 'grab' || name == 'detent';
+    heavy ? HapticFeedback.mediumImpact() : HapticFeedback.selectionClick();
   }
 }
 

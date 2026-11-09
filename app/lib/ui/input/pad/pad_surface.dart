@@ -10,6 +10,7 @@ import 'package:flutter/scheduler.dart' show Ticker;
 
 import '../../../wado/pad.dart';
 import '../../../wado/pad_gestures.dart';
+import '../../../wado/pad_haptics.dart';
 import '../../../wado/pad_hints.dart';
 import '../../../wado/settings.dart';
 import '../../theme/look.dart';
@@ -52,6 +53,8 @@ class _PadSurfaceState extends State<PadSurface> with SingleTickerProviderStateM
     if (!busy) _tick.stop();
     setState(() {});
   });
+  /// What the hand feels: each thing the computer reads from the fingers, as it happens.
+  final _haptics = PadHaptics(feelPad);
   bool _touched = false;
   int _since = 0;
   /// A two-finger set that read as pinch or scroll stays that, rather than flicker.
@@ -127,7 +130,10 @@ class _PadSurfaceState extends State<PadSurface> with SingleTickerProviderStateM
       return Listener(
         behavior: HitTestBehavior.opaque,
         onPointerDown: (e) {
-          if (PadGestures.I.down(e.pointer, e.localPosition, Size(w, h))) PadTouch.I.down(e.pointer, e.localPosition.dx, e.localPosition.dy, w, h);
+          if (PadGestures.I.down(e.pointer, e.localPosition, Size(w, h))) {
+            PadTouch.I.down(e.pointer, e.localPosition.dx, e.localPosition.dy, w, h);
+            _haptics.down(e.pointer, e.localPosition, _sw.elapsedMilliseconds, Size(w, h));
+          }
           _down[e.pointer] = _Finger(e.localPosition, _sw.elapsedMilliseconds);
           _restart();
           _solo = _down.length == 1;
@@ -136,7 +142,10 @@ class _PadSurfaceState extends State<PadSurface> with SingleTickerProviderStateM
           setState(() {});
         },
         onPointerMove: (e) {
-          if (PadGestures.I.move(e.pointer, e.localPosition, Size(w, h))) PadTouch.I.move(e.pointer, e.localPosition.dx, e.localPosition.dy, w, h);
+          if (PadGestures.I.move(e.pointer, e.localPosition, Size(w, h))) {
+            PadTouch.I.move(e.pointer, e.localPosition.dx, e.localPosition.dy, w, h);
+            _haptics.move(e.pointer, e.localPosition, _sw.elapsedMilliseconds);
+          }
           _down[e.pointer]?.at = e.localPosition;
           if (widget.marks) setState(() {});
         },
@@ -213,11 +222,9 @@ class _PadSurfaceState extends State<PadSurface> with SingleTickerProviderStateM
 
   void _lift(int id) {
     if (PadGestures.I.up(id)) PadTouch.I.up(id);
+    _haptics.up(id, _sw.elapsedMilliseconds);
     final f = _down.remove(id);
     if (f != null) _lifts.add((f.at, _sw.elapsedMilliseconds));
-    // One finger down and up quickly, staying put: the computer reads a click, and the hand feels
-    // one (native_feel.js). The tap itself is libinput's; this only mirrors it.
-    if (f != null && _solo && _down.isEmpty && _sw.elapsedMilliseconds - f.born < 180 && (f.at - f.from).distance < 10) feel('tap');
     _solo = false;
     _restart();
     _wake();
