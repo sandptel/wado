@@ -127,14 +127,12 @@ pub async fn report() {
              that the TURN server is actually reachable and that the answer contains a `relay` \
              candidate, because a misconfigured TURN server looks identical to none."
         ),
-        Verdict::Symmetric(a, b) => warn!(
-            "⛔ SYMMETRIC NAT AND NO TURN — two STUN servers saw this host as {a} and {b} from the \
-             SAME local socket. The srflx candidate in every answer is a port no peer can reach, \
-             and connections will hang in ICE `checking` with nothing else logged. A VPN on the \
-             default route does this (Cloudflare WARP was the cause here on 2026-09-19); so does \
-             a symmetric carrier NAT. Peers behind a cone NAT can still connect because we \
-             initiate; peers behind another VPN or symmetric NAT cannot connect at all. Set \
-             WADO_TURN_URL (with WADO_TURN_USER/WADO_TURN_PASS), or switch the VPN off."
+        Verdict::Symmetric(a, b) => info!(
+            "symmetric NAT, no TURN — two STUN servers saw this host as {a} and {b} from one \
+             socket (a VPN on the default route, or a carrier NAT). Devices on the same network \
+             or with IPv6 still connect directly; one behind its own VPN or symmetric NAT stays on \
+             the relay. Optional: a TURN server (`server {{ turn {{ … }} }}`: your own URL, or a \
+             Cloudflare key) gives such devices a faster path."
         ),
         Verdict::Unknown => debug!("NAT probe: fewer than two STUN servers answered — no verdict"),
     }
