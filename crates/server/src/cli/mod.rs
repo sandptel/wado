@@ -71,6 +71,14 @@ pub fn dispatch(args: &[String]) -> Run {
         Some("claude-event") => crate::claude::hook_cli::run(),
         Some("validate") => validate::run(rest.first().map(String::as_str)),
         #[cfg(target_os = "macos")]
+        Some("grants") => {
+            use crate::platform::macos::tcc;
+            let yes = |b: bool| if b { style::good("allowed") } else { style::bad("not allowed") };
+            println!("  Accessibility         {}", yes(tcc::accessibility()));
+            println!("  Screen Recording      {}", yes(tcc::screen_recording()));
+            0
+        }
+        #[cfg(target_os = "macos")]
         Some("install") => login_item::install(),
         #[cfg(target_os = "macos")]
         Some("uninstall") => login_item::uninstall(),
