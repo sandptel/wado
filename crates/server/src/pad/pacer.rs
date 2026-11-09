@@ -217,7 +217,7 @@ impl Pacer {
         self.last_t = None;
         self.prev = None;
         self.holding = 0;
-        self.delay.reset();
+        self.delay.reset(self.relayed);
     }
 
     fn emit(&mut self, frame: Vec<Contact>, out: &mut Vec<Vec<Contact>>) {

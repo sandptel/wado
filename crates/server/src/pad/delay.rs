@@ -16,6 +16,10 @@ use wado_config::schema::trackpad::TrackpadDelay;
 
 /// The least delay on the relay path, whose stalls deliver frames in bursts.
 pub const RELAY_DELAY_MS: u64 = 24;
+/// The most the adaptive delay grows to on the relay path. Its frames run 55–66 ms late at the
+/// 90th percentile (measured 2026-11-09, phone on mobile data, Mac behind a VPN); capped at the
+/// direct path's 40 ms the pacer ran dry every few frames and the pointer stuttered.
+pub const RELAY_MAX_MS: u64 = 120;
 /// How many moving frames the estimate is taken over (about 2 s of motion at 60 Hz).
 pub const WINDOW: usize = 120;
 /// Fewer moving frames than this and the estimate is not trusted yet.
@@ -39,6 +43,8 @@ pub struct Delay {
     samples: VecDeque<(i64, i64)>,
     target: f64,
     applied: f64,
+    /// The frames come over the relay: [`RELAY_DELAY_MS`]..=[`RELAY_MAX_MS`] bound the estimate.
+    relayed: bool,
 }
 
 impl Delay {
@@ -69,8 +75,9 @@ impl Delay {
             samples: VecDeque::new(),
             target: 0.0,
             applied: 0.0,
+            relayed: false,
         };
-        d.reset();
+        d.reset(false);
         d
     }
 
@@ -88,7 +95,12 @@ impl Delay {
             let mut intervals: Vec<i64> = self.samples.iter().map(|s| s.0).collect();
             let mut late: Vec<i64> = self.samples.iter().map(|s| s.1).collect();
             let estimate = quantile(&mut intervals, 50) + quantile(&mut late, LATE_QUANTILE);
-            self.target = (estimate.max(0) as u64).clamp(self.min, self.max) as f64;
+            let (lo, hi) = if self.relayed {
+                (RELAY_DELAY_MS, RELAY_MAX_MS)
+            } else {
+                (self.min, self.max)
+            };
+            self.target = (estimate.max(0) as u64).clamp(lo, hi) as f64;
         }
     }
 
@@ -111,8 +123,9 @@ impl Delay {
         }
     }
 
-    /// Forget the measurements (the frames now come another way).
-    pub fn reset(&mut self) {
+    /// Forget the measurements (the frames now come another way: `relayed` or direct).
+    pub fn reset(&mut self, relayed: bool) {
+        self.relayed = relayed;
         self.samples.clear();
         self.target = if self.adaptive {
             UNMEASURED_MS.max(self.min).min(self.max)
@@ -193,6 +206,25 @@ mod tests {
             d.record(1, 0);
         }
         assert_eq!(d.target, 8.0);
+    }
+
+    #[test]
+    fn the_relay_may_wait_longer_than_the_direct_path() {
+        let mut d = Delay::adaptive(8, 40);
+        d.reset(true);
+        for _ in 0..WINDOW {
+            d.record(16, 70);
+        }
+        assert_eq!(d.target, 86.0);
+        for _ in 0..WINDOW {
+            d.record(16, 500);
+        }
+        assert_eq!(d.target, RELAY_MAX_MS as f64);
+        d.reset(false);
+        for _ in 0..WINDOW {
+            d.record(16, 70);
+        }
+        assert_eq!(d.target, 40.0, "direct keeps its bounds");
     }
 
     #[test]
