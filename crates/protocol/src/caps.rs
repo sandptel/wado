@@ -129,6 +129,9 @@ pub struct CapSet {
 pub struct CapOff {
     pub cap: String,
     pub why: String,
+    /// Planned for this OS, not built yet ("Coming to macOS"), rather than missing for good.
+    #[serde(default)]
+    pub later: bool,
 }
 
 impl CapSet {
@@ -163,5 +166,16 @@ mod tests {
         assert!(s.has(Capability::Audio));
         assert!(!s.has(Capability::Wifi));
         assert_eq!(s.off[0].why, "no NetworkManager");
+        assert!(
+            !s.off[0].later,
+            "an older daemon's absence is not a promise"
+        );
+    }
+
+    #[test]
+    fn a_config_without_platform_or_caps_reads_as_before() {
+        let c: crate::ConfigState = serde_json::from_str("{}").unwrap();
+        assert_eq!(c.platform, "");
+        assert!(c.host_caps.on.is_empty() && c.host_caps.off.is_empty());
     }
 }

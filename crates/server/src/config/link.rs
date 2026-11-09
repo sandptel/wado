@@ -70,6 +70,8 @@ pub fn state_for(key: &str, gate: &Gate) -> ConfigState {
             .and_then(|d| d.keyboard.as_ref())
             .map(Into::into),
         caps: caps(hypr_available()),
+        platform: crate::platform::OS.to_string(),
+        host_caps: crate::platform::host_caps(),
         input_host: Some(wado_protocol::InputHost {
             enabled: cfg.trackpad.enabled,
             smoothing: cfg.trackpad.smoothing,

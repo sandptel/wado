@@ -72,6 +72,16 @@ pub struct ConfigState {
     /// from before this was sent; the client then offers everything and lets the daemon say no.
     #[serde(default)]
     pub grants: Option<DeviceGrants>,
+    /// The computer's OS: `"linux"` or `"macos"`. Empty from a daemon older than this field,
+    /// which was always Linux — a client never takes a Mac for Linux, nor the reverse.
+    #[serde(default)]
+    pub platform: String,
+    /// Every host feature by name — the platform capabilities (`crate::caps::Capability`) and
+    /// the daemon's own (`session`, `sound`, `notifications`, `menus`) — as on here, missing
+    /// here for a reason, or coming to this OS later (`CapOff::later`). Empty from an older
+    /// daemon, and the client then shows what it always has.
+    #[serde(default)]
+    pub host_caps: crate::caps::CapSet,
 }
 
 /// One device's grants as `wado allow` names them (`crates/server/src/gate/grants.rs`).
