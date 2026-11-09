@@ -21,6 +21,10 @@ class HostCaps {
     final p = '${config?['platform'] ?? ''}';
     platform = p.isEmpty ? 'linux' : p;
     final caps = config?['host_caps'];
+    final ons = caps is Map ? caps['on'] : null;
+    for (final o in ons is List ? ons : const []) {
+      _on.add('$o');
+    }
     final offs = caps is Map ? caps['off'] : null;
     for (final o in offs is List ? offs : const []) {
       if (o is Map && o['cap'] != null) _off['${o['cap']}'] = CapState(o['later'] == true ? Cap.later : Cap.off, '${o['why'] ?? ''}');
@@ -29,6 +33,10 @@ class HostCaps {
 
   late final String platform;
   final _off = <String, CapState>{};
+  final _on = <String>{};
+
+  /// The daemon said it has `name` — for what only some daemons have (the Mac's own apps).
+  bool has(String name) => _on.contains(name);
   bool get mac => platform == 'macos';
 
   /// On, coming later, or off here — and why. A name the daemon did not mark off is on.

@@ -26,6 +26,7 @@ import '../../wado/devices.dart';
 import '../widgets/sheet.dart';
 import '../widgets/soon.dart';
 import 'actions.dart';
+import 'mac_dock.dart';
 import 'sessions.dart';
 import 'claude.dart';
 import '../motion/motion.dart';
@@ -127,7 +128,11 @@ class _ComputerPageState extends State<ComputerPage> {
                     ],
                     const SizedBox(height: 12),
                     sx(ActionTiles(r: r)),
-                    ?gated('session', sx(Sessions(r: r))),
+                    // A Mac with its own apps: a dock for them where sessions would be.
+                    if (HostCaps.now.mac && HostCaps.now.has('desk_apps') && r.online)
+                      sx(const MacDock())
+                    else
+                      ?gated('session', sx(Sessions(r: r))),
                     // Claude's cards come over the selected computer's own link.
                     if (r.selected && !off && ((Host.I.config.value?['grants'] as Map?)?['shells'] ?? true) == true)
                       sx(const Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Sect('Claude'), SizedBox(height: 8), ClaudeSection()]))

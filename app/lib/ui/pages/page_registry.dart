@@ -17,6 +17,7 @@ import '../../wado/nav.dart';
 import '../input/hub.dart';
 import '../shell/shell_page.dart';
 import '../files/files_page.dart';
+import '../computer/mac_dock.dart';
 
 class PageDef {
   const PageDef(this.title, this.build, {this.fullBleed = false});
@@ -38,6 +39,7 @@ final _pages = <String, PageDef>{
   'tiles': PageDef('Quick tiles', (_) => const TilesPage()),
   'background': PageDef('Notifications & background', (_) => const BackgroundPage()),
   'about': PageDef('About', (_) => const AboutPage()),
+  'mac_apps': PageDef('Apps on this Mac', (_) => const MacAppsPage()),
   'devices': PageDef('Devices', (_) => const DevicesPage()),
   'input': PageDef('Virtual input', (_) => const InputHub()),
   'shells': PageDef('Shell', (_) => const ShellPage(), fullBleed: true),
