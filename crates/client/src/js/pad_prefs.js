@@ -46,6 +46,7 @@
     edge_scroll: true,
     edge_side: "right", // right | left | both
     edge_width: 32,
+    edge_dir: "same", // same: pushing the edge pointer up scrolls up | reverse
   };
   const changeFns = [];
   const rejectFns = [];
@@ -69,6 +70,7 @@
     if (typeof src.edge_scroll === "boolean") out.edge_scroll = src.edge_scroll;
     if (["right", "left", "both"].includes(src.edge_side)) out.edge_side = src.edge_side;
     num("edge_width", 20, 72);
+    if (["same", "reverse"].includes(src.edge_dir)) out.edge_dir = src.edge_dir;
     if (Array.isArray(src.quick)) out.quick = src.quick.map((s) => String(s).trim()).filter(Boolean);
     if (src.gestures && typeof src.gestures === "object") {
       for (const g of P.GESTURES) {

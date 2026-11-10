@@ -52,8 +52,19 @@
   // a ghost beside it moving in step — so the computer scrolls its own way (direction, speed,
   // inertia). Held until it moves: along the edge it scrolls; a tap or any other way, it is
   // replayed to the pad as it happened.
-  let es = null; // {id, ghost, side, x, gx, y0, p, lastY, notch}
+  let es = null; // {id, ghost, side, x, gx, y0, p, lastY, notch, stick, off, band, timer, last, felt}
   const GHOST_GAP = 48, SCROLL_LEAN = 6, NOTCH_PX = 36, GHOST_BASE = 1 << 20;
+  // On a computer that takes `scroll` (`pad-scroll`) the edge is a scroll stick: where the finger
+  // landed is the centre, and held away from it, it keeps scrolling — faster the further — until
+  // let go (as the app's pad_gestures.dart). Elsewhere, two fingers.
+  const STICK_DEAD = 8, STICK_NOTCH_PX = 60, STICK_FEEL_MS = 45;
+  G.stickSpeed = (off) => {
+    const a = Math.abs(off) - STICK_DEAD;
+    if (a <= 0) return 0;
+    return Math.sign(off) * Math.pow(Math.min(1.8, a / 90), 1.5) * 1400;
+  };
+  const bandOf = (off) => (Math.abs(off) < STICK_DEAD ? 0 : Math.abs(off) < 45 ? 1 : Math.abs(off) < 90 ? 2 : 3);
+  const canStick = () => !!(W.hostConfig && (W.hostConfig.caps || []).includes("pad-scroll"));
   const hfeel = (k) => { if (W.padHaptics && W.padHaptics.feel) W.padHaptics.feel(k); };
   function scrollSide(p) {
     const pr = W.padPrefs.get();
@@ -122,7 +133,7 @@
       const z = document.createElement("div");
       z.className = "tpez";
       z.dataset.side = s;
-      z.innerHTML = `<i class="tpezgrip"></i><span class="tpezthumb"><svg class="i" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6"/></svg><b></b><svg class="i" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></span>`;
+      z.innerHTML = `<i class="tpezgrip"></i><i class="tpezring"></i><i class="tpeztether"></i><span class="tpezthumb"><svg class="i" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6"/></svg><b></b><svg class="i" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></span>`;
       return z;
     }));
   }
@@ -135,17 +146,49 @@
     mode = "escroll";
     hideGlow();
     const x = f.x0, gx = side === "right" ? x - GHOST_GAP : x + GHOST_GAP;
-    es = { id: p0.id, ghost: GHOST_BASE + p0.id, side, x, gx, y0: f.y0, p: p0, lastY: f.y, notch: 0 };
+    es = { id: p0.id, ghost: GHOST_BASE + p0.id, side, x, gx, y0: f.y0, p: p0, lastY: f.y, notch: 0,
+      stick: canStick(), off: 0, band: 0, timer: 0, last: now(), felt: 0 };
+    const z = zoneOf(side);
+    if (z) { z.classList.add("on"); z.classList.toggle("stick", es.stick); z.style.setProperty("--ea", f.y0 + "px"); }
+    hfeel("drop");
+    if (es.stick) {
+      W.pad.send({ k: "scroll", dx: 0, dy: 0, phase: "began" }, false);
+      es.timer = setInterval(stickTick, 16);
+      stickMove(f.y);
+      return;
+    }
     // Both land where the finger did, then move with it: the computer reads two fingers scrolling.
     feed("down", { ...p0, x });
     feed("down", { ...p0, id: es.ghost, x: gx });
-    const z = zoneOf(side);
-    if (z) z.classList.add("on");
-    hfeel("drop");
     scrollMove(f.y);
+  }
+  function stickMove(y) {
+    es.off = y - es.y0;
+    const band = bandOf(es.off);
+    if (band > es.band) hfeel(band === 1 ? "scroll" : "drop");
+    es.band = band;
+    const z = zoneOf(es.side);
+    if (z) {
+      z.style.setProperty("--ey", y + "px");
+      z.style.setProperty("--es", String(Math.min(1, Math.abs(G.stickSpeed(es.off)) / 2600)));
+      z.dataset.dir = es.off < -STICK_DEAD ? "up" : es.off > STICK_DEAD ? "down" : "";
+    }
+  }
+  function stickTick() {
+    if (!es || !es.stick) return;
+    const t = now(), dt = (t - es.last) / 1000;
+    es.last = t;
+    const dir = W.padPrefs.get().edge_dir === "reverse" ? -1 : 1;
+    const dy = -G.stickSpeed(es.off) * dir * dt;
+    if (!dy) return;
+    W.pad.send({ k: "scroll", dx: 0, dy, phase: "changed" }, false);
+    // A notch per stretch scrolled — a wheel turning under the finger — never a buzz.
+    es.notch += Math.abs(dy);
+    if (es.notch >= STICK_NOTCH_PX && t - es.felt >= STICK_FEEL_MS) { es.notch = 0; es.felt = t; hfeel("scroll"); }
   }
   function scrollMove(y) {
     if (!es) return;
+    if (es.stick) { stickMove(y); return; }
     // Along the edge only: x stays where it landed, so a scroll never drifts sideways.
     feed("move", { ...es.p, x: es.x, y });
     feed("move", { ...es.p, id: es.ghost, x: es.gx, y });
@@ -160,10 +203,22 @@
   }
   function scrollEnd() {
     if (!es) return;
-    feed("up", { ...es.p });
-    feed("up", { ...es.p, id: es.ghost });
     const z = zoneOf(es.side);
-    if (z) { z.classList.remove("on"); delete z.dataset.dir; }
+    if (es.stick) {
+      clearInterval(es.timer);
+      W.pad.send({ k: "scroll", dx: 0, dy: 0, phase: "ended" }, false);
+      if (es.band > 0) hfeel("scroll");
+      // Let go: the thumb springs home past the centre and settles (pad.css `.tpez.home`).
+      if (z) {
+        z.style.setProperty("--ey", es.y0 + "px");
+        z.classList.add("home");
+        setTimeout(() => z.classList.remove("home", "stick"), 520);
+      }
+    } else {
+      feed("up", { ...es.p });
+      feed("up", { ...es.p, id: es.ghost });
+    }
+    if (z) { z.classList.remove("on"); delete z.dataset.dir; z.style.removeProperty("--es"); }
     es = null;
   }
 

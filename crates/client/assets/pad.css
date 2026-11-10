@@ -527,3 +527,21 @@
 .tps-rangehead { display: flex; justify-content: space-between; color: var(--text); font-size: .875rem; }
 .tps-rangehead b { color: var(--bright); font-variant-numeric: tabular-nums; }
 .tps-range input { width: 100%; accent-color: var(--accent); }
+
+/* The scroll stick (a computer with pad-scroll): a ring at the centre where the finger landed, a
+ * tether to the thumb under it, the thumb swelling with speed (--es 0..1). Let go (`.home`), the
+ * thumb rides back past the centre and settles — an overshooting curve, the app's spring. */
+.tpez.stick .tpezthumb { display: none; }
+.tpezring, .tpeztether { position: absolute; left: 50%; opacity: 0; pointer-events: none; }
+.tpezring { top: var(--ea, 50%); width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%;
+  border: 2px solid color-mix(in oklab, var(--accent), transparent 40%); }
+.tpeztether { width: 4px; margin-left: -2px; border-radius: 2px;
+  top: min(var(--ea, 50%), var(--ey, 50%)); height: max(calc(var(--ey, 50%) - var(--ea, 50%)), calc(var(--ea, 50%) - var(--ey, 50%)));
+  background: color-mix(in oklab, var(--accent), transparent calc(70% - 30% * var(--es, 0))); }
+.tpez.stick::after { content: ""; position: absolute; left: 50%; top: var(--ey, 50%);
+  width: calc(18px + 8px * var(--es, 0)); aspect-ratio: 1; translate: -50% -50%; border-radius: 50%; background: var(--accent);
+  transition: top 0s; }
+.tpez.stick.on .tpezring, .tpez.stick.on .tpeztether { opacity: 1; }
+.tpez.stick.home::after { transition: top 480ms cubic-bezier(.34, 1.56, .64, 1), opacity 160ms ease-in 360ms; opacity: 0; }
+:root[data-motion="reduced"] .tpez.stick.home::after { transition: top 200ms var(--ease), opacity 120ms ease-in 160ms; }
+:root[data-motion="off"] .tpez.stick.home::after { transition: none; }

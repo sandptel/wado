@@ -254,10 +254,11 @@
 
   // Edge scrolling: on or off, which edge, how wide (js/pad_gestures.js).
   function edgeSection(p) {
-    const kids = [switchRow("Scroll along the edge", "One finger sliding along the edge scrolls, as on a laptop touchpad",
+    const kids = [switchRow("Scroll from the edge", "Land a finger on the edge and push it up or down: it keeps scrolling, faster the further you push, until you let go",
       p.edge_scroll !== false, (v) => set("edge_scroll", v))];
     if (p.edge_scroll !== false) {
       kids.push(segmented("Which edge", [["left", "Left edge"], ["right", "Right edge"], ["both", "Both"]], p.edge_side, (v) => set("edge_side", v)));
+      kids.push(segmented("Pushing up", [["same", "Scrolls up"], ["reverse", "Scrolls down"]], p.edge_dir, (v) => set("edge_dir", v)));
       const wrap = node("label", "tps-range");
       const top = node("span", "tps-rangehead");
       const name = node("span", "", {}, "How wide the edge is");
