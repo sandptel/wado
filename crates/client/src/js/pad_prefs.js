@@ -42,6 +42,10 @@
     // The phone's own.
     marks: true,
     gesture_distance: "medium", // short | medium | long
+    // One finger along an edge scrolls (js/pad_gestures.js): which edge, how wide in pad px.
+    edge_scroll: true,
+    edge_side: "right", // right | left | both
+    edge_width: 32,
   };
   const changeFns = [];
   const rejectFns = [];
@@ -62,6 +66,9 @@
     for (const k of ["tap", "tap_drag", "click_bar", "palm", "marks"]) if (typeof src[k] === "boolean") out[k] = src[k];
     if (["off", "briefly", "until-tap"].includes(src.drag_lock)) out.drag_lock = src.drag_lock;
     if (["short", "medium", "long"].includes(src.gesture_distance)) out.gesture_distance = src.gesture_distance;
+    if (typeof src.edge_scroll === "boolean") out.edge_scroll = src.edge_scroll;
+    if (["right", "left", "both"].includes(src.edge_side)) out.edge_side = src.edge_side;
+    num("edge_width", 20, 72);
     if (Array.isArray(src.quick)) out.quick = src.quick.map((s) => String(s).trim()).filter(Boolean);
     if (src.gestures && typeof src.gestures === "object") {
       for (const g of P.GESTURES) {

@@ -227,6 +227,7 @@
         switchRow("Flip", "Turn the sideways pad the other way round", p.flip, (v) => set("flip", v), { disabled: !p.landscape })),
       section("Beside the pad", segmented("Beside the pad", RAILS, p.rail, (v) => set("rail", v))),
       quickSection(p),
+      edgeSection(p),
       gestureSection(p),
       section("Keyboard",
         switchRow("Keyboard opens with the pad", "", p.keyboard, (v) => set("keyboard", v))),
@@ -249,6 +250,26 @@
           { duration: 320, easing: "cubic-bezier(.32, .72, 0, 1)" });
       }
     }
+  }
+
+  // Edge scrolling: on or off, which edge, how wide (js/pad_gestures.js).
+  function edgeSection(p) {
+    const kids = [switchRow("Scroll along the edge", "One finger sliding along the edge scrolls, as on a laptop touchpad",
+      p.edge_scroll !== false, (v) => set("edge_scroll", v))];
+    if (p.edge_scroll !== false) {
+      kids.push(segmented("Which edge", [["left", "Left edge"], ["right", "Right edge"], ["both", "Both"]], p.edge_side, (v) => set("edge_side", v)));
+      const wrap = node("label", "tps-range");
+      const top = node("span", "tps-rangehead");
+      const name = node("span", "", {}, "How wide the edge is");
+      const val = node("b", "", {}, `${Math.round(p.edge_width)} px`);
+      top.append(name, val);
+      const r = node("input", "", { type: "range", min: "20", max: "72", step: "2", value: String(p.edge_width), "data-key": "edge-width" });
+      r.addEventListener("input", () => { val.textContent = `${r.value} px`; });
+      r.addEventListener("change", () => set("edge_width", Number(r.value)));
+      wrap.append(top, r);
+      kids.push(wrap);
+    }
+    return section("Edge scrolling", ...kids);
   }
 
   function onKey(e) { if (e.key === "Escape" && shown) { e.preventDefault(); S.close(); } }

@@ -47,7 +47,22 @@
   const fingers = new Map(); // pointerId → {x0, y0, x, y, p}
   let mode = null; // null | "edge-hold" | "edge" | "four" | "two" — the claim on this sequence
   let start = 0; // the first finger of this sequence landed
-  let edge = null; // {side, id, held: [[type, p]…], fired, timer}
+  let edge = null; // {side, id, held: [[type, p]…], fired, action, scroll, timer}
+  // Edge scrolling: one finger along the edge zone, sent as a two-finger scroll — the finger and
+  // a ghost beside it moving in step — so the computer scrolls its own way (direction, speed,
+  // inertia). Held until it moves: along the edge it scrolls; a tap or any other way, it is
+  // replayed to the pad as it happened.
+  let es = null; // {id, ghost, side, x, gx, y0, p, lastY, notch}
+  const GHOST_GAP = 48, SCROLL_LEAN = 6, NOTCH_PX = 36, GHOST_BASE = 1 << 20;
+  const hfeel = (k) => { if (W.padHaptics && W.padHaptics.feel) W.padHaptics.feel(k); };
+  function scrollSide(p) {
+    const pr = W.padPrefs.get();
+    if (pr.edge_scroll === false) return null;
+    const w = pr.edge_width || 32;
+    if (pr.edge_side !== "left" && p.x > p.w - w) return "right";
+    if (pr.edge_side !== "right" && p.x < w) return "left";
+    return null;
+  }
   let four = null; // {fourth, frozen: [ids]}
   let twoTimer = 0;
   const doneFns = [];
@@ -91,6 +106,66 @@
 
   // ── edge ─────────────────────────────────────────────────────────────────────────────
   const inward = (f) => (edge.side === "edge-left" ? f.x - f.x0 : f.x0 - f.x);
+
+  // ── edge scrolling ─────────────────────────────────────────────────────────────────────
+  let zones = null;
+  // The zones: a faint tone with a grip at rest (finger marks on), lit while one scrolls, and a
+  // thumb riding the finger with an arrow for the way it goes (pad.css `.tpez`).
+  function paintZones() {
+    if (!el) return;
+    if (!zones) { zones = document.createElement("div"); zones.className = "tpezones"; el.appendChild(zones); }
+    const pr = W.padPrefs.get();
+    const sides = pr.edge_scroll === false ? [] : pr.edge_side === "both" ? ["left", "right"] : [pr.edge_side || "right"];
+    zones.style.setProperty("--ezw", (pr.edge_width || 32) + "px");
+    zones.dataset.marks = pr.marks === false ? "off" : "on";
+    zones.replaceChildren(...sides.map((s) => {
+      const z = document.createElement("div");
+      z.className = "tpez";
+      z.dataset.side = s;
+      z.innerHTML = `<i class="tpezgrip"></i><span class="tpezthumb"><svg class="i" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6"/></svg><b></b><svg class="i" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></span>`;
+      return z;
+    }));
+  }
+  function zoneOf(side) { return zones && zones.querySelector(`.tpez[data-side="${side}"]`); }
+
+  function scrollClaim(f) {
+    clearTimeout(edge.timer);
+    const side = edge.scroll, p0 = edge.held[0][1];
+    edge = null;
+    mode = "escroll";
+    hideGlow();
+    const x = f.x0, gx = side === "right" ? x - GHOST_GAP : x + GHOST_GAP;
+    es = { id: p0.id, ghost: GHOST_BASE + p0.id, side, x, gx, y0: f.y0, p: p0, lastY: f.y, notch: 0 };
+    // Both land where the finger did, then move with it: the computer reads two fingers scrolling.
+    feed("down", { ...p0, x });
+    feed("down", { ...p0, id: es.ghost, x: gx });
+    const z = zoneOf(side);
+    if (z) z.classList.add("on");
+    hfeel("drop");
+    scrollMove(f.y);
+  }
+  function scrollMove(y) {
+    if (!es) return;
+    // Along the edge only: x stays where it landed, so a scroll never drifts sideways.
+    feed("move", { ...es.p, x: es.x, y });
+    feed("move", { ...es.p, id: es.ghost, x: es.gx, y });
+    const z = zoneOf(es.side);
+    if (z) {
+      z.style.setProperty("--ey", y + "px");
+      if (Math.abs(y - es.lastY) > 0.5) z.dataset.dir = y < es.lastY ? "up" : "down";
+    }
+    es.notch += Math.abs(y - es.lastY);
+    es.lastY = y;
+    if (es.notch >= NOTCH_PX) { es.notch = 0; hfeel("scroll"); }
+  }
+  function scrollEnd() {
+    if (!es) return;
+    feed("up", { ...es.p });
+    feed("up", { ...es.p, id: es.ghost });
+    const z = zoneOf(es.side);
+    if (z) { z.classList.remove("on"); delete z.dataset.dir; }
+    es = null;
+  }
 
   function edgeRelease() {
     // Not an edge swipe: the held touches go to the pad as they happened, the move a beat later
@@ -178,9 +253,13 @@
     if (first) {
       const side = p.x < EDGE_PX ? "edge-left" : p.x > p.w - EDGE_PX ? "edge-right" : null;
       const action = side && actionFor(side);
-      if (action) {
+      const scroll = scrollSide(p);
+      if (action || scroll) {
         mode = "edge-hold";
-        edge = { side, id: p.id, held: [["down", p]], fired: false, action, timer: setTimeout(edgeDecide, HOLD_BACK_MS) };
+        // An edge swipe alone decides in 60 ms; with edge scrolling it waits for the finger to move.
+        edge = { side: action ? side : "none", id: p.id, held: [["down", p]], fired: false, action, scroll,
+          timer: scroll ? 0 : setTimeout(edgeDecide, HOLD_BACK_MS) };
+        if (scroll) { const z = zoneOf(scroll); if (z) z.style.setProperty("--ey", p.y + "px"); }
         return false;
       }
     }
@@ -209,9 +288,19 @@
     if (!f) return true;
     f.x = p.x; f.y = p.y; f.p = p;
     if (mode === "edge-hold") {
-      if (p.id === edge.id) { edge.held.push(["move", p]); edgeCheck(f); }
+      if (p.id === edge.id) {
+        edge.held.push(["move", p]);
+        if (!edge.scroll) edgeCheck(f);
+        else {
+          const dx = Math.abs(f.x - f.x0), dy = Math.abs(f.y - f.y0);
+          if (dy >= SCROLL_LEAN && dy > dx * 1.2) scrollClaim(f);
+          else if (edge.action && inward(f) > 0 && inward(f) >= dy) edgeCheck(f);
+          else if (dist(f) >= SCROLL_LEAN) edgeRelease(); // the pointer, starting at the edge
+        }
+      }
       return false;
     }
+    if (mode === "escroll") { if (es && p.id === es.id) scrollMove(p.y); return false; }
     if (mode === "edge") { if (edge && p.id === edge.id) edgeCheck(f); return false; }
     if (mode === "four") {
       if (dist(f) >= FOUR_STILL_PX) { four.moved = true; fourHandBack(); return true; }
@@ -228,6 +317,9 @@
     let pass = true;
     if (was === "edge-hold") {
       if (p.id === edge.id) edgeRelease(); // a tap at the edge: forwarded as a tap
+    } else if (was === "escroll") {
+      if (es && p.id === es.id) scrollEnd();
+      pass = false;
     } else if (was === "four") {
       pass = false;
     } else if (was) {
@@ -239,6 +331,7 @@
     if (!fingers.size) {
       if (was === "four" && four) fourEnd();
       if (edge) { clearTimeout(edge.timer); edge = null; }
+      scrollEnd();
       hideGlow();
       twoCancel();
       mode = null;
@@ -256,7 +349,9 @@
   G.attach = (node) => {
     G.detach();
     el = node;
+    paintZones();
   };
+  if (W.padPrefs && W.padPrefs.onChange) W.padPrefs.onChange(() => paintZones());
 
   G.detach = () => {
     if (edge) clearTimeout(edge.timer);
@@ -264,7 +359,9 @@
     fingers.clear();
     edge = four = null;
     mode = null;
+    scrollEnd();
     if (glow) { glow.remove(); glow = null; }
+    if (zones) { zones.remove(); zones = null; }
     el = null;
   };
 })();

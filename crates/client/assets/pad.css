@@ -502,3 +502,28 @@
 .tplibgrid { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
   align-content: start; gap: 10px 4px; overscroll-behavior: contain; }
 .tplibapp .tpappico { width: 52px; height: 52px; }
+
+/* ── Edge scrolling (js/pad_gestures.js): the zone at rest — a faint tone and a grip, with finger
+ * marks on — lit while one finger scrolls, a thumb riding the finger with the arrow for its way.
+ * In on the accent at --dur ease-out; out faster on ease-in; the thumb pops in (--pop). ─────── */
+.tpezones { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+.tpez { position: absolute; top: 0; bottom: 0; width: var(--ezw, 32px); left: 0; display: grid; place-items: center;
+  transition: background 160ms ease-in; }
+.tpez[data-side="right"] { left: auto; right: 0; }
+.tpezones[data-marks="on"] .tpez { background: color-mix(in oklab, var(--bright), transparent 96.5%); }
+.tpez.on, .tpezones[data-marks="on"] .tpez.on { background: color-mix(in oklab, var(--accent), transparent 86%);
+  transition: background var(--dur) var(--ease); }
+.tpezgrip { width: 3px; height: 26px; border-radius: 2px; background: var(--dim); opacity: 0; transition: opacity var(--dur) var(--ease); }
+.tpezones[data-marks="on"] .tpez:not(.on) .tpezgrip { opacity: .5; }
+.tpezthumb { position: absolute; left: 50%; top: var(--ey, 50%); width: 20px; height: 68px; margin: -34px 0 0 -10px;
+  display: grid; grid-template-rows: 14px 1fr 14px; justify-items: center; color: color-mix(in oklab, var(--accent), transparent 60%);
+  opacity: 0; scale: .6; transition: opacity 160ms ease-in, scale 160ms ease-in; }
+.tpezthumb svg { width: 14px; height: 14px; }
+.tpezthumb b { width: 6px; border-radius: 3px; background: var(--accent); }
+.tpez.on .tpezthumb { opacity: 1; scale: 1; transition: opacity var(--dur-press, 120ms) var(--ease), scale var(--dur) var(--pop); }
+.tpez[data-dir="up"] .tpezthumb svg:first-child, .tpez[data-dir="down"] .tpezthumb svg:last-child { color: var(--accent); }
+
+.tps-range { display: grid; gap: 8px; padding: 10px 2px; }
+.tps-rangehead { display: flex; justify-content: space-between; color: var(--text); font-size: .875rem; }
+.tps-rangehead b { color: var(--bright); font-variant-numeric: tabular-nums; }
+.tps-range input { width: 100%; accent-color: var(--accent); }

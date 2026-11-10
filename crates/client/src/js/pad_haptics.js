@@ -108,5 +108,5 @@
     return input(type, p);
   };
   // For a headless check: the model alone, fed by hand, its feels recorded.
-  W.padHaptics = { down, move, up, record(fn) { sink = fn; } };
+  W.padHaptics = { down, move, up, feel, record(fn) { sink = fn; } };
 })();
