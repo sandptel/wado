@@ -3,8 +3,8 @@
 // the CSS `color-mix(in oklab, …)` does, so a scheme swap is sixteen values.
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/animation.dart';
-import 'package:flutter/painting.dart';
 
 /// `color-mix(in oklab, a, b pct%)`: `pct` of `b` into `a`.
 Color mix(Color a, Color b, double pct) {
@@ -53,6 +53,21 @@ Color _rgb(double L, double A, double B, double alpha) {
 class Tokens {
   Tokens(this.base, {String accent = '0D', this.radius = 'round', this.motion = 'full'})
       : accent = base[int.parse(accent, radix: 16)];
+  Tokens._(this.base, this.accent, this.radius, this.motion);
+
+  /// Part way from [a] to [b]: every colour eased, corners and motion already [b]'s.
+  factory Tokens.lerp(Tokens a, Tokens b, double t) => Tokens._(
+        [for (var i = 0; i < b.base.length; i++) Color.lerp(a.base[i], b.base[i], t)!],
+        Color.lerp(a.accent, b.accent, t)!,
+        b.radius,
+        b.motion,
+      );
+
+  /// Nothing a widget would draw differently.
+  bool same(Tokens o) => o.accent == accent && o.radius == radius && o.motion == motion && listEquals(o.base, base);
+
+  /// Same colours as [o]: a change of corners or motion is not eased.
+  bool sameColours(Tokens o) => o.accent == accent && listEquals(o.base, base);
 
   /// `--base00` … `--base0F`.
   final List<Color> base;

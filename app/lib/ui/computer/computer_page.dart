@@ -102,12 +102,8 @@ class _ComputerPageState extends State<ComputerPage> {
         Widget sx(Widget w) => Enter(delay: Enter.step(n++, base: flight ? 160 : 120), child: w);
         return Stack(children: [
           Positioned.fill(
-            child: Enter(ms: 300, dy: 0, child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: t.s0,
-                gradient: RadialGradient(center: const Alignment(-.4, -1), radius: .9, colors: [fade(hue, 86), fade(hue, 100)], stops: const [0, .7]),
-              ),
-            )),
+            // The same flat ground as home: the computer's colour is its disc and card, not a wash.
+            child: Enter(ms: 300, dy: 0, child: ColoredBox(color: t.s0)),
           ),
           ListView(
             controller: _scroll,
@@ -304,10 +300,9 @@ class _HeroState extends State<_Hero> {
           uniform: false,
           child: DecoratedBox(
             decoration: BoxDecoration(
-              color: t.s1,
+              color: mix(t.s1, widget.hue, 7),
               borderRadius: BorderRadius.circular(t.r4),
               border: Border.all(color: t.line),
-              gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [mix(t.s1, widget.hue, 24), mix(t.s1, t.base[0xE], 10)], stops: const [0, .7]),
             ),
           ),
         ),

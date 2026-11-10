@@ -28,7 +28,7 @@ class WadoApp extends StatelessWidget {
             data: mq.copyWith(textScaler: TextScaler.noScaling),
             child: Listener(
               onPointerDown: (_) => Passkey.I.touched(),
-              child: TokensScope(tokens: t, child: child!),
+              child: EasedTokens(tokens: t, child: child!),
             ),
           );
         },

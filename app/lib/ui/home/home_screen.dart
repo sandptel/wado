@@ -1,5 +1,5 @@
 // Home (port of ui/landing/mod.rs + landing.css #landing): the wordmark, Computers, Running,
-// On this phone. A soft accent wash at the top, as the web's.
+// On this phone. On the scheme's own ground, flat: the theme is the feel, nothing laid over it.
 import 'package:flutter/material.dart';
 
 import '../../core/core_host.dart';
@@ -67,29 +67,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final mq = MediaQuery.of(context);
     final w = mq.size.width;
     final side = w > 492 ? (w - 460) / 2 : 16.0;
-    return Container(
-      decoration: BoxDecoration(
-        color: t.s0,
-        gradient: RadialGradient(
-          center: const Alignment(0, -1),
-          radius: 1.1,
-          colors: [fade(t.accent, 80), fade(t.accent, 100)],
-          stops: const [0, .7],
-        ),
-      ),
+    return ColoredBox(
+      color: t.s0,
       child: Stack(children: [
-        Positioned.fill(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: RadialGradient(
-                center: const Alignment(1, 1),
-                radius: .9,
-                colors: [fade(t.base[0xE], 88), fade(t.base[0xE], 100)],
-                stops: const [0, .7],
-              ),
-            ),
-          ),
-        ),
         // Only what the page itself decides on. Each section listens to its own sources, so a
         // ping, a link's words or a slider never rebuilds the whole page (the jitter of 0.2/0.3).
         Live(

@@ -40,7 +40,11 @@ class Look {
     return Tokens(base, accent: s.s('accent'), radius: s.s('radius'), motion: s.s('motion'));
   }
 
-  void _apply() => tokens.value = _make();
+  /// Any setting changed: new tokens only when the look did, or every write rebuilt the app.
+  void _apply() {
+    final t = _make();
+    if (!t.same(tokens.value)) tokens.value = t;
+  }
 
   /// Interface size (DESIGN.md "Size"): compact .9 · cozy 1 · comfy 1.1 · large 1.2.
   static double uiScale() => switch (Settings.I.s('ui_size')) {
@@ -86,3 +90,47 @@ class TokensScope extends InheritedWidget {
 }
 
 typedef Tok = TokensScope;
+
+/// A new scheme or accent eases in, every surface and text tone with it, rather than snapping:
+/// the room's light changing, not a cut. Calm and unhurried — 450 ms on (.4, 0, .2, 1); short with
+/// reduced motion, at once with motion off. Corners and motion settings apply at once.
+class EasedTokens extends StatefulWidget {
+  const EasedTokens({super.key, required this.tokens, required this.child});
+  final Tokens tokens;
+  final Widget child;
+  @override
+  State<EasedTokens> createState() => _EasedTokensState();
+}
+
+class _EasedTokensState extends State<EasedTokens> with SingleTickerProviderStateMixin {
+  late final _c = AnimationController(vsync: this)..addListener(() => setState(() {}));
+  late Tokens _from = widget.tokens, _shown = widget.tokens;
+  static const _curve = Cubic(.4, 0, .2, 1);
+
+  @override
+  void didUpdateWidget(EasedTokens old) {
+    super.didUpdateWidget(old);
+    final to = widget.tokens;
+    if (identical(to, old.tokens)) return;
+    if (to.sameColours(_shown) || to.still) {
+      _c.stop();
+      _shown = to;
+      return;
+    }
+    _from = _shown;
+    _c.duration = Duration(milliseconds: to.reduced ? 160 : 450);
+    _c.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    _shown = _c.isAnimating ? Tokens.lerp(_from, widget.tokens, _curve.transform(_c.value)) : widget.tokens;
+    return TokensScope(tokens: _shown, child: widget.child);
+  }
+}
