@@ -12,23 +12,61 @@ use dioxus::prelude::*;
 
 use crate::{bridge, state::Ui, ui::widgets::Icon};
 
+/// What a phone keyboard lacks, most used first: (key for `js/pty.js`, label). A key not in its
+/// table is itself the character typed.
 const KEYS: &[(&str, &str)] = &[
-    ("esc", "esc"),
-    ("tab", "tab"),
-    ("ctrl", "ctrl"),
-    ("alt", "alt"),
+    ("esc", "Esc"),
+    ("tab", "Tab"),
+    ("ctrl", "Ctrl"),
+    ("alt", "Alt"),
     ("left", "←"),
-    ("up", "↑"),
     ("down", "↓"),
+    ("up", "↑"),
     ("right", "→"),
-    ("pipe", "|"),
-    ("tilde", "~"),
-    ("slash", "/"),
-    ("dash", "-"),
-    ("home", "home"),
-    ("end", "end"),
-    ("pgup", "pgup"),
-    ("pgdn", "pgdn"),
+    ("^d", "^D"),
+    ("^z", "^Z"),
+    ("^r", "^R"),
+    ("^a", "^A"),
+    ("^e", "^E"),
+    ("^w", "^W"),
+    ("^u", "^U"),
+    ("home", "Home"),
+    ("end", "End"),
+    ("pgup", "PgUp"),
+    ("pgdn", "PgDn"),
+    ("|", "|"),
+    ("~", "~"),
+    ("/", "/"),
+    ("-", "-"),
+    ("_", "_"),
+    ("*", "*"),
+    (">", ">"),
+    ("&", "&"),
+    ("$", "$"),
+    ("\\", "\\"),
+    ("`", "`"),
+    ("'", "'"),
+    ("\"", "\""),
+    ("{", "{"),
+    ("}", "}"),
+    ("[", "["),
+    ("]", "]"),
+    ("(", "("),
+    (")", ")"),
+    (";", ";"),
+    (":", ":"),
+    ("=", "="),
+];
+
+/// What you do to a shell: (icon, label, the key it sends or "" , the `js/pty.js` call).
+const ACTIONS: &[(&str, &str, &str, &str)] = &[
+    ("kbd", "Keyboard", "", "window.__wado.shellKeyboard();"),
+    ("paste", "Paste", "", "window.__wado.shellPaste();"),
+    ("copy", "Copy", "", "window.__wado.shellCopy();"),
+    ("pause", "Stop", "^C", "window.__wado.shellKey('^c');"),
+    ("trash", "Clear", "^L", "window.__wado.shellKey('^l');"),
+    ("minus", "A", "", "window.__wado.shellZoom(-1);"),
+    ("plus", "A", "", "window.__wado.shellZoom(1);"),
 ];
 
 /// Open the console on its shells — behind the passkey (`crate::stepup`): at once when this
@@ -135,6 +173,20 @@ pub fn render(ui: Ui) -> Element {
             div { id: "wado-term", class: if shell { "termshow" } else { "termhide" } }
 
             if shell && active != 0 {
+                div { class: "actrow",
+                    for (icon, label, key, call) in ACTIONS.iter() {
+                        button {
+                            key: "{call}",
+                            "aria-label": if key.is_empty() { "{label}" } else { "{label} ({key})" },
+                            // Keep the terminal's focus — and the phone keyboard — where it is.
+                            onmousedown: move |e| e.prevent_default(),
+                            onclick: move |_| bridge::call(call.to_string()),
+                            Icon { name: *icon }
+                            span { "{label}" }
+                            if !key.is_empty() { small { "{key}" } }
+                        }
+                    }
+                }
                 div { class: "keyrow",
                     for (k, label) in KEYS.iter() {
                         button {

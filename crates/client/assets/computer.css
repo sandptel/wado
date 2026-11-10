@@ -12,8 +12,6 @@
   transition: translate var(--dur-sheet) var(--spring), opacity var(--dur) var(--ease); }
 @keyframes cwait { from, to { opacity: 0; } }
 #computer .cground { position: fixed; inset: 0; background: var(--s0); z-index: 0; pointer-events: none; }
-#computer .cground::before { content: ""; position: absolute; inset: 0;
-  background: radial-gradient(80% 36% at 30% 0%, color-mix(in oklab, var(--hue), transparent 86%), transparent 70%); }
 #sub { z-index: 42; background: var(--s0); animation: push var(--dur-sheet) var(--spring) both; }
 /* What a pushed page covers drifts left and fades — the control centre's own push, full screen —
  * and is hidden once it has: a page under another is never painted through it. Rust makes it
@@ -49,8 +47,7 @@
 /* ── hero ─────────────────────────────────────────────────────────────────────────────── */
 .hero2 { position: relative; padding: 18px 16px 16px; display: grid; gap: 16px; }
 .hero2 .herobg { position: absolute; inset: 0; border-radius: var(--r4); background: var(--s1); border: 1px solid var(--line); transform-origin: 0 0; overflow: hidden; }
-.hero2 .herobg .wash { position: absolute; inset: 0;
-  background: linear-gradient(135deg, color-mix(in oklab, var(--hue), transparent 76%), color-mix(in oklab, var(--base0E), transparent 90%) 70%); }
+.hero2 .herobg .wash { position: absolute; inset: 0; background: color-mix(in oklab, var(--hue), transparent 93%); }
 .hero2 > *:not(.herobg) { position: relative; }
 .hrow { display: flex; align-items: center; gap: 14px; min-width: 0; }
 .hrow .disc { width: 64px; height: 64px; transform-origin: 0 0; }

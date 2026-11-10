@@ -21,6 +21,9 @@
   const queued = new Map(); // id → [data] that arrived before its terminal could be built
   let active = 0;
   let mods = { ctrl: false, alt: false }; // the key row's sticky modifiers
+  // The type size, pinched or stepped, kept on this device. Half points: steady under fingers.
+  const FONT_MIN = 8, FONT_MAX = 24;
+  let font = (() => { try { return Math.min(FONT_MAX, Math.max(FONT_MIN, +localStorage.getItem("wado.shell_font") || 13)); } catch (_) { return 13; } })();
 
   const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   // From the live base16 variables, so the terminal follows the scheme.
@@ -37,7 +40,8 @@
   W.ptyRetheme = () => { for (const t of terms.values()) { try { t.term.options.theme = theme(); } catch (_) {} } };
   {
     const set = W.setTheme;
-    W.setTheme = (...a) => { set(...a); W.ptyRetheme(); };
+    // Again once the scheme has eased in: mid-way, the variables read half-way colours.
+    W.setTheme = (...a) => { set(...a); W.ptyRetheme(); setTimeout(W.ptyRetheme, 500); };
   }
 
   const send = (obj) => W.relaySendMsg && W.relaySendMsg(obj);
@@ -64,7 +68,7 @@
     const term = new window.Terminal({
       theme: theme(),
       fontFamily: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-      fontSize: 13,
+      fontSize: font,
       scrollback: 4000,
       cursorBlink: true,
       bellStyle: "none",
@@ -124,9 +128,10 @@
   W.shellClose = (id) => send({ type: "pty_close", id });
   W.shellsRequest = () => send({ type: "shells_request" });
 
-  // The key row: what a phone keyboard does not have.
+  // The key row: what a phone keyboard does not have. A name not here is itself the character.
   const KEYS = { esc: "\x1b", tab: "\t", up: "\x1b[A", down: "\x1b[B", right: "\x1b[C", left: "\x1b[D",
-    home: "\x1b[H", end: "\x1b[F", pgup: "\x1b[5~", pgdn: "\x1b[6~", pipe: "|", tilde: "~", slash: "/", dash: "-" };
+    home: "\x1b[H", end: "\x1b[F", pgup: "\x1b[5~", pgdn: "\x1b[6~", pipe: "|", tilde: "~", slash: "/", dash: "-",
+    "^c": "\x03", "^d": "\x04", "^z": "\x1a", "^r": "\x12", "^l": "\x0c", "^a": "\x01", "^e": "\x05", "^w": "\x17", "^u": "\x15" };
   W.shellKey = (name) => {
     if (!active) return;
     if (name === "ctrl" || name === "alt") {
@@ -134,11 +139,96 @@
       emit({ type: "shellMods", ctrl: mods.ctrl, alt: mods.alt });
       return;
     }
-    const seq = KEYS[name];
+    const seq = KEYS[name] || (name.length === 1 ? name : "");
+    try { if (navigator.vibrate) navigator.vibrate(4); } catch (_) {}
     if (seq) send({ type: "pty_input", id: active, data: withMods(seq) });
     const t = terms.get(active);
     try { t && t.term.focus(); } catch (_) {}
   };
+
+  // ── The actions row ───────────────────────────────────────────────────────────────────────
+  const cur = () => terms.get(active);
+  const note = (text) => emit({ type: "captureNote", text });
+  // The phone keyboard: up if it is down, down if it is up.
+  W.shellKeyboard = () => {
+    const t = cur();
+    if (!t) return;
+    const typing = t.el.contains(document.activeElement);
+    try { typing ? t.term.blur() : t.term.focus(); } catch (_) {}
+  };
+  W.shellPaste = async () => {
+    const t = cur();
+    let text = "";
+    try { text = await navigator.clipboard.readText(); } catch (_) {}
+    if (!t) return;
+    if (!text) { note("Nothing to paste — or this browser kept the clipboard to itself."); return; }
+    t.term.paste(text);
+  };
+  W.shellCopy = async () => {
+    const t = cur();
+    const text = t ? t.term.getSelection().replace(/\s+$/, "") : "";
+    if (!text) { note("Select text in the terminal first, then Copy."); return; }
+    try { await navigator.clipboard.writeText(text); note(`Copied ${text.length} characters.`); } catch (_) { note("This browser would not let the page copy."); }
+    t.term.clearSelection();
+  };
+
+  // ── Zoom: pinch the terminal, or step it ──────────────────────────────────────────────────
+  const badge = () => {
+    let b = document.getElementById("termzoom");
+    if (!b && host()) { b = document.createElement("div"); b.id = "termzoom"; host().appendChild(b); }
+    return b;
+  };
+  let badgeTimer = 0;
+  function setFont(f, keep) {
+    f = Math.min(FONT_MAX, Math.max(FONT_MIN, Math.round(f * 2) / 2));
+    const b = badge();
+    if (b) { b.textContent = f + " pt"; b.classList.add("on"); clearTimeout(badgeTimer); badgeTimer = setTimeout(() => b.classList.remove("on"), 700); }
+    if (f !== font) {
+      if (Math.abs(f - font) >= 1) { try { if (navigator.vibrate) navigator.vibrate(3); } catch (_) {} }
+      font = f;
+      for (const [id, t] of terms) { try { t.term.options.fontSize = f; } catch (_) {} if (id === active) sized(id); }
+    }
+    if (keep) { try { localStorage.setItem("wado.shell_font", String(font)); } catch (_) {} }
+  }
+  W.shellZoom = (d) => setFont(font + d, true);
+  {
+    const fingers = new Map();
+    let from = 0, spread0 = 0;
+    const spread = () => { const [a, b] = [...fingers.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
+    const on = (type, f) => document.addEventListener(type, (e) => { if (host() && host().contains(e.target)) f(e); }, { capture: true, passive: false });
+    on("touchstart", (e) => {
+      for (const t of e.changedTouches) fingers.set(t.identifier, { x: t.clientX, y: t.clientY });
+      if (fingers.size === 2) { from = font; spread0 = spread(); }
+    });
+    on("touchmove", (e) => {
+      for (const t of e.changedTouches) if (fingers.has(t.identifier)) fingers.set(t.identifier, { x: t.clientX, y: t.clientY });
+      if (fingers.size === 2 && spread0 > 0) { e.preventDefault(); setFont(from * spread() / spread0, false); }
+    });
+    const end = (e) => {
+      for (const t of e.changedTouches) fingers.delete(t.identifier);
+      if (fingers.size < 2 && spread0) { spread0 = 0; setFont(font, true); }
+    };
+    on("touchend", end);
+    on("touchcancel", end);
+  }
+
+  // ── The phone keyboard: the sheet rides above it ──────────────────────────────────────────
+  // The layout viewport does not shrink for the keyboard (iOS, Chrome since 108), so the sheet
+  // would sit under it. The visual viewport says how much is left; the sheet takes that.
+  if (window.visualViewport) {
+    const vv = window.visualViewport;
+    const fit = () => {
+      const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      const root = document.documentElement;
+      root.style.setProperty("--kb", kb + "px");
+      root.style.setProperty("--vvh", vv.height + "px");
+      const c = document.getElementById("console");
+      if (c) c.classList.toggle("kb", kb > 80);
+      if (active) requestAnimationFrame(() => sized(active));
+    };
+    vv.addEventListener("resize", fit);
+    vv.addEventListener("scroll", fit);
+  }
 
   W.relayOn("shells", (msg) => {
     const shells = msg.shells || [];

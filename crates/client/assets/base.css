@@ -1,3 +1,25 @@
+/* The sixteen scheme slots as typed colours, so a scheme change eases in (below) — every surface
+ * and tone mixed from them follows on its own: the room's light changing, not a cut. */
+@property --base00 { syntax: '<color>'; inherits: true; initial-value: #000; }
+@property --base01 { syntax: '<color>'; inherits: true; initial-value: #000; }
+@property --base02 { syntax: '<color>'; inherits: true; initial-value: #000; }
+@property --base03 { syntax: '<color>'; inherits: true; initial-value: #000; }
+@property --base04 { syntax: '<color>'; inherits: true; initial-value: #000; }
+@property --base05 { syntax: '<color>'; inherits: true; initial-value: #000; }
+@property --base06 { syntax: '<color>'; inherits: true; initial-value: #000; }
+@property --base07 { syntax: '<color>'; inherits: true; initial-value: #000; }
+@property --base08 { syntax: '<color>'; inherits: true; initial-value: #000; }
+@property --base09 { syntax: '<color>'; inherits: true; initial-value: #000; }
+@property --base0A { syntax: '<color>'; inherits: true; initial-value: #000; }
+@property --base0B { syntax: '<color>'; inherits: true; initial-value: #000; }
+@property --base0C { syntax: '<color>'; inherits: true; initial-value: #000; }
+@property --base0D { syntax: '<color>'; inherits: true; initial-value: #000; }
+@property --base0E { syntax: '<color>'; inherits: true; initial-value: #000; }
+@property --base0F { syntax: '<color>'; inherits: true; initial-value: #000; }
+:root { --theme-ease: 450ms cubic-bezier(.4, 0, .2, 1); transition: --base00 var(--theme-ease), --base01 var(--theme-ease), --base02 var(--theme-ease), --base03 var(--theme-ease), --base04 var(--theme-ease), --base05 var(--theme-ease), --base06 var(--theme-ease), --base07 var(--theme-ease), --base08 var(--theme-ease), --base09 var(--theme-ease), --base0A var(--theme-ease), --base0B var(--theme-ease), --base0C var(--theme-ease), --base0D var(--theme-ease), --base0E var(--theme-ease), --base0F var(--theme-ease); }
+:root[data-motion="reduced"] { --theme-ease: 160ms cubic-bezier(.4, 0, .2, 1); }
+:root[data-motion="off"] { transition: none; }
+
 /* Ground rules: the base16 palette, the derived tokens, the reset, and every form control.
  *
  * Colour comes only from the sixteen base16 variables. Nothing may hard-code a hex value —
