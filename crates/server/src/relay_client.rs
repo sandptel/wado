@@ -678,9 +678,14 @@ fn shell_refusal(
 async fn connect_and_serve(ctx: &RelayCtx) -> crate::Result<()> {
     // ── 1. Connect ───────────────────────────────────────────────────────────
     let register_url = format!("{}/register", ctx.relay_url);
-    let (ws_stream, _) = connect_async(&register_url)
-        .await
-        .map_err(|e| crate::WadoError::Other(format!("connect: {e}")))?;
+    // Bounded: a network that accepts the TCP connection and then stalls the TLS or upgrade
+    // (a tunnelling proxy did, 2026-11-10) hung here for good — no error, so no retry, and the
+    // computer stayed offline until restarted.
+    let (ws_stream, _) =
+        tokio::time::timeout(Duration::from_secs(15), connect_async(&register_url))
+            .await
+            .map_err(|_| crate::WadoError::Other("connect: no answer in 15 s".into()))?
+            .map_err(|e| crate::WadoError::Other(format!("connect: {e}")))?;
     let (ws_sink, mut ws_stream) = ws_stream.split();
 
     // All outbound relay WS messages go through this channel so multiple tasks
