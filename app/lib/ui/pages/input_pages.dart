@@ -10,6 +10,7 @@ import '../../wado/host.dart';
 import '../../wado/pad_actions.dart';
 import '../../wado/settings.dart';
 import '../../wado/session.dart';
+import '../computer/mac_dock.dart' show macApps;
 import '../theme/look.dart';
 import '../widgets/basics.dart';
 import '../widgets/fields.dart';
@@ -59,7 +60,7 @@ class TouchpadSettings extends StatelessWidget {
           const Sect('Beside the pad'),
           const SizedBox(height: 8),
           WCard(children: [
-            Seg(options: const [('keys', 'Keys'), ('actions', 'Quick actions'), ('none', 'Nothing')], value: '${p['rail']}', onPick: (v) => set('rail', v)),
+            Seg(options: [('keys', 'Keys'), ('actions', 'Quick actions'), if (macApps || p['rail'] == 'apps') ('apps', 'Open apps'), ('none', 'Nothing')], value: '${p['rail']}', onPick: (v) => set('rail', v)),
             SwitchRow(title: 'Open with the keyboard up', sub: 'The pad shrinks to a strip above it', on: b('keyboard'), onToggle: (v) => set('keyboard', v)),
           ]),
           const Sect('Quick actions'),

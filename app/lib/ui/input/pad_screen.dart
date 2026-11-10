@@ -6,7 +6,7 @@
 // computer asks for one.
 import 'package:flutter/material.dart';
 
-import '../computer/mac_dock.dart' show macApps, showAppsSheet;
+import '../computer/mac_dock.dart' show MiniDock, macApps, showAppsSheet;
 import 'package:flutter/services.dart';
 
 import '../../wado/nav.dart';
@@ -159,7 +159,7 @@ class _PadScreenState extends State<PadScreen> {
                         child: ShaderMask(
                           shaderCallback: (r) => const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.black, Colors.black, Colors.transparent], stops: [0, .93, 1]).createShader(r),
                           blendMode: BlendMode.dstIn,
-                          child: SingleChildScrollView(padding: const EdgeInsets.only(bottom: 14), child: rail == 'actions' ? const PadActionList(bar: false) : const PadKeysGrid()),
+                          child: SingleChildScrollView(padding: const EdgeInsets.only(bottom: 14), child: switch (rail) { 'actions' => const PadActionList(bar: false), 'apps' => const MiniDock(bar: false), _ => const PadKeysGrid() }),
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -195,6 +195,7 @@ class _PadScreenState extends State<PadScreen> {
                 ),
                 if (whyText != null) Padding(padding: const EdgeInsets.fromLTRB(4, 10, 4, 0), child: whyText),
                 if (rail == 'actions') ...[const SizedBox(height: 10), const PadActionList(bar: true)],
+                if (rail == 'apps') ...[const SizedBox(height: 10), const MiniDock(bar: true)],
                 const SizedBox(height: 10),
                 Expanded(child: surface),
                 if (_typing) ...[

@@ -405,3 +405,34 @@ void showAppsSheet(BuildContext context) {
     ),
   );
 }
+
+/// The mini dock beside the touchpad and keyboard: only what runs on the Mac, the one in front
+/// first and lit — a tap switches to it, a long press is its menu. Upright (`bar`) a strip over
+/// the pad; sideways a column in the rail. The app library stays a button of its own.
+class MiniDock extends StatefulWidget {
+  const MiniDock({super.key, required this.bar});
+  final bool bar;
+  @override
+  State<MiniDock> createState() => _MiniDockState();
+}
+
+class _MiniDockState extends State<MiniDock> with _Watching {
+  @override
+  Widget build(BuildContext context) {
+    final t = Tok.of(context);
+    return ListenableBuilder(
+      listenable: _apps,
+      builder: (context, _) {
+        Widget note(String s) => Padding(padding: const EdgeInsets.all(4), child: Text(s, style: body(context, size: .75, color: t.dim).copyWith(height: 1.45)));
+        if (!macApps) return note('Open apps show here for a Mac with wado.');
+        if (!_linked) return note('Not connected — open apps show once the Mac is back.');
+        final now = openNow(_shown());
+        if (now.isEmpty) return note(Session.I.apps.value.isEmpty ? 'Asking the Mac what runs…' : 'Nothing open on the Mac.');
+        final icons = [for (final a in now) AppIcon(a: a, size: widget.bar ? 40 : 44, width: widget.bar ? 64 : 104, key: ValueKey('m${a['exec']}'))];
+        return widget.bar
+            ? SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: icons))
+            : Column(children: [for (final w in icons) Padding(padding: const EdgeInsets.only(bottom: 6), child: w)]);
+      },
+    );
+  }
+}
