@@ -16,7 +16,7 @@
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
-use wado_protocol::pad::Contact;
+use wado_protocol::pad::{Contact, ScrollPhase};
 
 use super::post::{Button, Dock, Phase, Poster, Stage, flag};
 use super::prefs::{Horiz, Settings};
@@ -225,6 +225,26 @@ impl Interpreter {
     }
 
     /// Lift everything at once: a dropped link or a closed pad.
+    /// A scroll by itself (the phone's edge scrolling): posted as two fingers scrolling would
+    /// be — same gain, same direction — and no glide after; the phone holds the pace.
+    pub fn scroll_by(&mut self, d: (f64, f64), phase: ScrollPhase, out: &mut dyn Poster) {
+        match phase {
+            ScrollPhase::Began => {
+                self.rest = (0.0, 0.0);
+                let s = scaled(d, SCROLL_GAIN);
+                out.scroll(self.carry(s), Phase::Began);
+            }
+            ScrollPhase::Changed => {
+                let s = scaled(d, SCROLL_GAIN);
+                out.scroll(self.carry(s), Phase::Changed);
+            }
+            ScrollPhase::Ended => {
+                self.rest = (0.0, 0.0);
+                out.scroll((0.0, 0.0), Phase::Ended);
+            }
+        }
+    }
+
     pub fn lift_all(&mut self, now: Instant, out: &mut dyn Poster) {
         self.frame(now, &[], out);
         self.stop_glide(out);
@@ -750,6 +770,30 @@ mod tests {
             t.f(16 * k, &[c(1, 100.0, y), c(2, 140.0, y)]);
         }
         t.f(16 * 7, &[]);
+    }
+
+    #[test]
+    fn a_scroll_by_itself_is_a_two_finger_scroll_with_no_glide() {
+        let mut t = T::new();
+        t.i.scroll_by((0.0, 10.0), ScrollPhase::Began, &mut t.r);
+        t.i.scroll_by((0.0, 10.0), ScrollPhase::Changed, &mut t.r);
+        t.i.scroll_by((0.0, 0.0), ScrollPhase::Ended, &mut t.r);
+        let phases: Vec<Phase> =
+            t.r.evs
+                .iter()
+                .filter_map(|e| match e {
+                    Ev::Scroll(_, p) => Some(*p),
+                    _ => None,
+                })
+                .collect();
+        assert_eq!(phases, [Phase::Began, Phase::Changed, Phase::Ended]);
+        // The same way round as two fingers moving down: the content follows.
+        let first = t.r.evs.iter().find_map(|e| match e {
+            Ev::Scroll(d, Phase::Began) => Some(*d),
+            _ => None,
+        });
+        assert!(first.is_some_and(|d| d.1 > 0.0));
+        assert!(!t.i.gliding());
     }
 
     #[test]

@@ -17,10 +17,15 @@ fn hypr_available() -> bool {
 /// `pad-gamepad` — the pad link carries a gamepad (`crate::pad::game`); `pad-hypr` — running
 /// under Hyprland, so a phone's touchpad speed, scroll, tapping and drag settings are applied
 /// (`crate::platform::linux::hypr_device`). Without it the phone says they are not available.
-pub fn caps(hypr: bool) -> Vec<String> {
+/// `pad-scroll` — the pad link takes `PadMsg::Scroll`, a scroll by itself (the Mac's touchpad
+/// posts it); without it the phone's edge scrolling is sent as two fingers instead.
+pub fn caps(hypr: bool, scroll: bool) -> Vec<String> {
     let mut caps = vec!["pad-gamepad"];
     if hypr {
         caps.push("pad-hypr");
+    }
+    if scroll {
+        caps.push("pad-scroll");
     }
     caps.into_iter().map(String::from).collect()
 }
@@ -69,7 +74,7 @@ pub fn state_for(key: &str, gate: &Gate) -> ConfigState {
             .get(key)
             .and_then(|d| d.keyboard.as_ref())
             .map(Into::into),
-        caps: caps(hypr_available()),
+        caps: caps(hypr_available(), cfg!(target_os = "macos")),
         platform: crate::platform::OS.to_string(),
         host_caps: crate::platform::host_caps(),
         input_host: Some(wado_protocol::InputHost {
@@ -233,10 +238,11 @@ mod tests {
 
     #[test]
     fn the_caps_say_gamepad_always_and_hypr_only_under_hyprland() {
-        assert_eq!(caps(false), ["pad-gamepad"]);
-        assert_eq!(caps(true), ["pad-gamepad", "pad-hypr"]);
+        assert_eq!(caps(false, false), ["pad-gamepad"]);
+        assert_eq!(caps(true, false), ["pad-gamepad", "pad-hypr"]);
+        assert_eq!(caps(false, true), ["pad-gamepad", "pad-scroll"]);
         let s = wado_protocol::ConfigState {
-            caps: caps(false),
+            caps: caps(false, false),
             ..Default::default()
         };
         assert_eq!(

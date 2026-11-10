@@ -76,6 +76,9 @@ pub struct DeviceTrackpad {
     /// The edge zone's width in pad px, [`EDGE_MIN`]–[`EDGE_MAX`].
     #[serde(deserialize_with = "edge_width")]
     pub edge_width: f64,
+    /// One of [`EDGE_DIRS`]: pushing the edge pointer up scrolls up (`same`) or down.
+    #[serde(deserialize_with = "edge_dir")]
+    pub edge_dir: String,
 }
 
 /// Which edge scrolls with one finger.
@@ -83,6 +86,8 @@ pub const EDGE_SIDES: &[&str] = &["right", "left", "both"];
 /// The edge zone's width, pad px.
 pub const EDGE_MIN: f64 = 20.0;
 pub const EDGE_MAX: f64 = 72.0;
+/// Which way pushing the edge pointer up scrolls.
+pub const EDGE_DIRS: &[&str] = &["same", "reverse"];
 /// Pointer speed's range.
 pub const SPEED_MIN: f64 = 0.5;
 pub const SPEED_MAX: f64 = 2.0;
@@ -124,6 +129,7 @@ impl Default for DeviceTrackpad {
             edge_scroll: true,
             edge_side: "right".into(),
             edge_width: 32.0,
+            edge_dir: "same".into(),
         }
     }
 }
@@ -152,6 +158,7 @@ impl From<&DeviceTrackpad> for wado_protocol::TrackpadPrefs {
             edge_scroll: t.edge_scroll,
             edge_side: t.edge_side.clone(),
             edge_width: t.edge_width,
+            edge_dir: t.edge_dir.clone(),
         }
     }
 }
@@ -189,6 +196,10 @@ fn one_of<'de, D: Deserializer<'de>>(d: D, what: &str, list: &[&str]) -> Result<
 
 fn edge_side<'de, D: Deserializer<'de>>(d: D) -> Result<String, D::Error> {
     one_of(d, "edge-side", EDGE_SIDES)
+}
+
+fn edge_dir<'de, D: Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    one_of(d, "edge-dir", EDGE_DIRS)
 }
 
 fn edge_width<'de, D: Deserializer<'de>>(d: D) -> Result<f64, D::Error> {
@@ -299,7 +310,7 @@ mod tests {
                 "scroll_speed": 1.0, "natural": null, "tap": true, "tap_drag": true,
                 "drag_lock": "off", "click_bar": false, "palm": true, "marks": true,
                 "gesture_distance": "medium", "edge_scroll": true, "edge_side": "right",
-                "edge_width": 32.0
+                "edge_width": 32.0, "edge_dir": "same"
             })
         );
     }

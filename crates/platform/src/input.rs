@@ -5,7 +5,7 @@
 //! machine (a uinput device on Linux), so it exists only while a phone is driving it. Codes are
 //! Linux evdev `KEY_*` / `BTN_*` / `ABS_*` everywhere; another platform maps them to its own.
 
-use wado_protocol::pad::{Contact, Mod};
+use wado_protocol::pad::{Contact, Mod, ScrollPhase};
 
 use crate::{Fut, Res};
 
@@ -60,6 +60,13 @@ pub trait TouchInjector: Send {
     /// Lift every finger.
     fn lift_all(&mut self) -> InputRes {
         self.frame(&[])
+    }
+    /// A scroll by itself (`PadMsg::Scroll`), in pad px as two fingers would move. Only a device
+    /// that says so takes it; the daemon offers `pad-scroll` where one does.
+    fn scroll(&mut self, _dx: f64, _dy: f64, _phase: ScrollPhase) -> InputRes {
+        Err(InputError::Unavailable(
+            "this computer's touchpad scrolls only with two fingers".into(),
+        ))
     }
 }
 

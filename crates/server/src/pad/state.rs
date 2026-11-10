@@ -115,6 +115,11 @@ impl Pad {
                 ))),
             },
             PadMsg::Hold { mods } => self.sink.hold(&mods),
+            // Edge scrolling: a scroll by itself, written at once (it is the finger's own pace).
+            PadMsg::Scroll { dx, dy, phase } => match self.size {
+                Some(size) => self.sink.scroll(size, dx.into(), dy.into(), phase),
+                None => Ok(()),
+            },
             PadMsg::Text { text } => {
                 self.text.push(text);
                 Ok(())

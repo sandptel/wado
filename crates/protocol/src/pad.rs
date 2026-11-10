@@ -61,6 +61,15 @@ pub enum PadMsg {
     /// (standard alphabet, padded — what the browser's `btoa` writes). Sent only to a daemon
     /// whose pong said `bin`.
     Bin { b: String },
+    /// A scroll by itself, in pad px (as two fingers would move them; `dy` > 0 moves the content
+    /// the way a finger moving down would), for the phone's edge scrolling. `phase`: `began`,
+    /// `changed` or `ended`. Sent only to a daemon whose config caps say `pad-scroll`.
+    Scroll {
+        dx: f32,
+        dy: f32,
+        #[serde(default)]
+        phase: ScrollPhase,
+    },
     /// Daemon → phone only: a message was refused, or a device could not be made. `fatal`: the
     /// daemon closed the pad, so the phone should stop sending.
     Err {
@@ -294,4 +303,14 @@ mod tests {
         let s = serde_json::to_string(&r).unwrap();
         assert!(s.starts_with(r#"{"type":"pad_in""#));
     }
+}
+
+/// Where a [`PadMsg::Scroll`] is in its run: it began, goes on, or ended (the fingers' lift).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ScrollPhase {
+    Began,
+    #[default]
+    Changed,
+    Ended,
 }

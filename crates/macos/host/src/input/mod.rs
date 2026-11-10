@@ -19,7 +19,7 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 use std::time::{Duration, Instant};
 
 use wado_platform::input::{InputError, InputRes, TouchInjector};
-use wado_protocol::pad::Contact;
+use wado_protocol::pad::{Contact, ScrollPhase};
 
 /// Modifier flags a phone is holding down now, read by pointer events (⌘-click).
 pub static HELD: AtomicU64 = AtomicU64::new(0);
@@ -42,6 +42,7 @@ pub fn text_chunks(units: &[u16], max: usize) -> Vec<&[u16]> {
 enum Msg {
     Resize(u16, u16),
     Frame(Vec<Contact>),
+    Scroll(f64, f64, ScrollPhase),
 }
 
 /// The touchpad: an [`pad::Interpreter`] on its own thread, so a glide keeps going between
@@ -81,6 +82,7 @@ fn run(rx: Receiver<Msg>) {
         match msg {
             Some(Msg::Resize(w, h)) => i.resize(w, h),
             Some(Msg::Frame(c)) => i.frame(Instant::now(), &c, &mut out),
+            Some(Msg::Scroll(dx, dy, p)) => i.scroll_by((dx, dy), p, &mut out),
             None => i.tick(Instant::now(), &mut out),
         }
     }
@@ -97,6 +99,12 @@ impl TouchInjector for MacTouch {
     fn frame(&mut self, contacts: &[Contact]) -> InputRes {
         self.tx
             .send(Msg::Frame(contacts.to_vec()))
+            .map_err(|_| InputError::Failed("touchpad stopped".into()))
+    }
+
+    fn scroll(&mut self, dx: f64, dy: f64, phase: ScrollPhase) -> InputRes {
+        self.tx
+            .send(Msg::Scroll(dx, dy, phase))
             .map_err(|_| InputError::Failed("touchpad stopped".into()))
     }
 }

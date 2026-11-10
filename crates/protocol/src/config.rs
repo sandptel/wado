@@ -167,6 +167,13 @@ pub struct TrackpadPrefs {
     /// How wide the edge zone is, in pad px.
     #[serde(default = "edge_px")]
     pub edge_width: f64,
+    /// `same`: pushing the edge pointer up scrolls up; `reverse`: it scrolls down.
+    #[serde(default = "same")]
+    pub edge_dir: String,
+}
+
+fn same() -> String {
+    "same".into()
 }
 
 fn right() -> String {
@@ -212,6 +219,7 @@ impl Default for TrackpadPrefs {
             edge_scroll: true,
             edge_side: right(),
             edge_width: edge_px(),
+            edge_dir: same(),
         }
     }
 }

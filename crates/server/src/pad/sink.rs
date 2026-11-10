@@ -75,6 +75,20 @@ impl Devices {
         self.touch.as_mut().expect("just made").resize(w, h)
     }
 
+    pub fn scroll(
+        &mut self,
+        size: (u16, u16),
+        dx: f64,
+        dy: f64,
+        phase: wado_protocol::pad::ScrollPhase,
+    ) -> InputRes {
+        self.ready(Some(size))?;
+        self.touch
+            .as_mut()
+            .expect("made by ready")
+            .scroll(dx, dy, phase)
+    }
+
     pub fn touch(&mut self, size: (u16, u16), c: &[Contact]) -> InputRes {
         self.ready(Some(size))?;
         self.touch.as_mut().expect("made by ready").frame(c)
