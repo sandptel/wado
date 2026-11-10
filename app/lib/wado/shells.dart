@@ -8,6 +8,7 @@ import 'relay_link.dart';
 const shellKeys = {
   'esc': '\x1b', 'tab': '\t', 'up': '\x1b[A', 'down': '\x1b[B', 'right': '\x1b[C', 'left': '\x1b[D', //
   'home': '\x1b[H', 'end': '\x1b[F', 'pgup': '\x1b[5~', 'pgdn': '\x1b[6~', 'pipe': '|', 'tilde': '~', 'slash': '/', 'dash': '-',
+  '^c': '\x03', '^d': '\x04', '^z': '\x1a', '^r': '\x12', '^l': '\x0c', '^a': '\x01', '^e': '\x05', '^w': '\x17', '^u': '\x15',
 };
 
 class Shells {
@@ -92,7 +93,8 @@ class Shells {
       mods.value = name == 'ctrl' ? (!c, a) : (c, !a);
       return;
     }
-    final seq = shellKeys[name];
+    // A name not in the table is itself the character to type (the symbol keys).
+    final seq = shellKeys[name] ?? (name.length == 1 ? name : null);
     if (seq != null) RelayLink.I.send({'type': 'pty_input', 'id': id, 'data': withMods(seq)});
   }
 }

@@ -8,6 +8,7 @@ import 'package:flutter/widgets.dart' show AppLifecycleListener;
 import 'package:shared_preferences/shared_preferences.dart';
 
 const defaults = <String, Object>{
+  'shell_font': 13.0,
   'res': '',
   'custom_w': 1280,
   'custom_h': 720,
