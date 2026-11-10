@@ -104,7 +104,8 @@ class ActionTiles extends StatelessWidget {
         sub: deskSub,
         primary: true,
         badge: running && !r.busy ? 'running' : (r.busy && !idleElsewhere ? 'take over' : null),
-        onTap: off && !r.busy ? null : () => desktop(r),
+        off: off && !r.busy,
+        onTap: () => desktop(r),
       ));
     // A Mac's desktop is still to come: what works here comes first, it comes last.
     final mac = HostCaps.now.mac;
@@ -115,14 +116,16 @@ class ActionTiles extends StatelessWidget {
         icon: 'folder',
         title: 'Files',
         sub: filesOk ? 'Browse, send, download' : 'Not allowed for this phone · why?',
-        onTap: off ? null : (filesOk ? () => Nav.I.openPage('files') : () => notAllowed('Files', 'files-ro').show(context)),
+        off: off,
+        onTap: filesOk ? () => Nav.I.openPage('files') : () => notAllowed('Files', 'files-ro').show(context),
       ),
       ?gated('pty', _Act(
         icon: 'term',
         title: 'Shell',
         sub: shellOk ? 'A terminal, no video' : 'Not allowed for this phone · why?',
         badge: shellsOpen > 0 ? '$shellsOpen open' : null,
-        onTap: off ? null : (shellOk ? () => Nav.I.openPage('shells') : () => notAllowed('Shells', 'shells').show(context)),
+        off: off,
+        onTap: shellOk ? () => Nav.I.openPage('shells') : () => notAllowed('Shells', 'shells').show(context),
       )),
       if (mac) ?desk,
     ];
@@ -146,8 +149,10 @@ class ActionTiles extends StatelessWidget {
 
 /// `.act`: icon square, name, what it will do; the badge pops in a beat after the page.
 class _Act extends StatefulWidget {
-  const _Act({required this.icon, required this.title, required this.sub, required this.onTap, this.primary = false, this.badge, this.fill = false});
+  const _Act({required this.icon, required this.title, required this.sub, required this.onTap, this.primary = false, this.badge, this.fill = false, this.off = false});
   final String icon, title, sub;
+  /// The computer is not reachable: dimmed, says so, and a tap says why instead of nothing.
+  final bool off;
   final VoidCallback? onTap;
   final bool primary, fill;
   final String? badge;
@@ -162,18 +167,19 @@ class _ActState extends State<_Act> {
     final t = Tok.of(context);
     final p = widget.primary;
     final fg = p ? t.onAccent : t.bright;
+    final sub = widget.off ? 'Offline · opens when it is back' : widget.sub;
     return Press(
-      onTap: widget.onTap,
-      label: widget.title,
+      onTap: widget.off ? () => Multi.I.note('Offline — ${widget.title} opens once the computer is back.') : widget.onTap,
+      label: widget.off ? '${widget.title}, not available — offline' : widget.title,
       onPressed: (d) => setState(() => _down = d),
-      child: Container(
+      child: Opacity(opacity: widget.off ? .45 : 1, child: Container(
         constraints: const BoxConstraints(minHeight: 104),
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: p ? t.accent : t.s2,
           borderRadius: BorderRadius.circular(t.r3),
-          boxShadow: p && widget.onTap != null ? [BoxShadow(color: fade(t.accent, 72), blurRadius: 30, offset: const Offset(0, 10))] : null,
+          boxShadow: p && widget.onTap != null && !widget.off ? [BoxShadow(color: fade(t.accent, 72), blurRadius: 30, offset: const Offset(0, 10))] : null,
         ),
         child: Stack(children: [
           Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
@@ -188,12 +194,12 @@ class _ActState extends State<_Act> {
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(widget.title, style: display(context, rem(context, 1.0625), color: fg, ls: -.17).copyWith(height: 1.1)),
               const SizedBox(height: 2),
-              Text(widget.sub, style: body(context, size: .75, color: p ? fade(t.onAccent, 20) : t.dim)),
+              Text(sub, style: body(context, size: .75, color: p ? fade(t.onAccent, 20) : t.dim)),
             ]),
           ]),
-          if (widget.badge != null) Positioned(top: 0, right: 0, child: Badge(widget.badge!, primary: p)),
+          if (widget.badge != null && !widget.off) Positioned(top: 0, right: 0, child: Badge(widget.badge!, primary: p)),
         ]),
-      ),
+      )),
     );
   }
 }
@@ -327,15 +333,14 @@ class _ViDoor extends StatelessWidget {
     return Tooltip(
       message: label,
       child: Press(
-        onTap: why == null ? () => openDoor(context, door) : (tell ? () => Multi.I.note(why!) : null),
-        enabled: why == null || tell,
+        onTap: why == null ? () => openDoor(context, door) : () => Multi.I.note(tell ? why! : '$name — $why'),
         label: label,
-        child: Container(
+        child: Opacity(opacity: why == null || tell ? 1 : .45, child: Container(
           height: 44,
           decoration: BoxDecoration(color: t.s3, borderRadius: BorderRadius.circular(t.r2)),
           alignment: Alignment.center,
           child: WIcon(icon, color: tell ? t.dim : t.bright),
-        ),
+        )),
       ),
     );
   }

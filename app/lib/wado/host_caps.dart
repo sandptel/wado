@@ -4,6 +4,8 @@
 // once in "On this Mac"). Anything not on a Mac — Linux, an older daemon — is every feature on, so
 // its UI is exactly what it always was.
 import 'host.dart';
+import 'nav.dart';
+import 'settings.dart';
 
 enum Cap { on, later, off }
 
@@ -45,9 +47,10 @@ class HostCaps {
   /// The features coming to this OS, and those not on it, by name.
   Iterable<String> named(Cap c) => mac ? _off.keys.where((k) => _off[k]!.cap == c) : const [];
 
-  /// The selected computer's, re-read only when its config changes.
+  /// The selected computer's, re-read only when its config changes. Offline: what it said last.
   static HostCaps get now {
-    final c = Host.I.config.value;
+    final kept = Settings.I.get<Object?>('caps.${Nav.I.selected}');
+    final c = Host.I.config.value ?? (kept is Map<String, dynamic> ? kept : null);
     if (!identical(c, _for) || _now == null) {
       _for = c;
       _now = HostCaps.parse(c);

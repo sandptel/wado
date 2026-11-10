@@ -14,7 +14,9 @@ import 'package:flutter/material.dart';
 
 import '../../wado/desk_apps.dart';
 import '../../wado/host_caps.dart';
+import '../../wado/multi.dart';
 import '../../wado/nav.dart';
+import '../../wado/relay_link.dart';
 import '../../wado/session.dart';
 import '../motion/feel.dart';
 import '../theme/look.dart';
@@ -24,6 +26,31 @@ import '../widgets/data_image.dart';
 
 /// The selected computer is a Mac with its own apps.
 bool get macApps => HostCaps.now.mac && HostCaps.now.has('desk_apps');
+
+/// Linked to the Mac now. Not: its kept apps still show, dimmed, and a tap says why nothing opens.
+bool get _linked => RelayLink.I.up.value;
+
+/// What to show: offline, the kept list without its last states — nothing is known to run.
+List<App> _shown() => _linked ? Session.I.apps.value : [for (final a in Session.I.apps.value) {...a, 'running': false, 'front': false, 'away': false}];
+
+final _apps = Listenable.merge([Session.I.apps, RelayLink.I.up]);
+
+/// Said once over the apps while the Mac is not connected.
+class _NotLinked extends StatelessWidget {
+  const _NotLinked();
+  @override
+  Widget build(BuildContext context) {
+    final t = Tok.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(children: [
+        WIcon('alert', color: t.dim),
+        const SizedBox(width: 8),
+        Expanded(child: Text('Not connected — these open once the Mac is back.', style: body(context, size: .8125, color: t.dim))),
+      ]),
+    );
+  }
+}
 
 /// Keeps the list fresh while it is on screen.
 mixin _Watching<T extends StatefulWidget> on State<T> {
@@ -54,12 +81,13 @@ class _MacDockState extends State<MacDock> with _Watching {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Sect('Apps', action: 'All apps', onAction: () => Nav.I.openPage('mac_apps')),
       const SizedBox(height: 8),
-      ValueListenableBuilder(
-        valueListenable: Session.I.apps,
-        builder: (context, all, _) {
+      ListenableBuilder(
+        listenable: _apps,
+        builder: (context, _) {
+          final all = _shown();
           final (kept, extra) = dockGroups(all);
           if (all.isEmpty) return _Waiting(t: t);
-          return Container(
+          final shelf = Container(
             decoration: BoxDecoration(color: t.s1, borderRadius: BorderRadius.circular(t.r4)),
             padding: const EdgeInsets.symmetric(vertical: 12),
             child: LayoutBuilder(builder: (context, box) {
@@ -80,6 +108,7 @@ class _MacDockState extends State<MacDock> with _Watching {
               );
             }),
           );
+          return _linked ? shelf : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [const _NotLinked(), shelf]);
         },
       ),
     ]);
@@ -94,7 +123,7 @@ class _Waiting extends StatelessWidget {
         height: 132,
         alignment: Alignment.center,
         decoration: BoxDecoration(color: t.s1, borderRadius: BorderRadius.circular(t.r4)),
-        child: Text('Asking the Mac what it has…', style: body(context, size: .8125, color: t.dim)),
+        child: Text(_linked ? 'Asking the Mac what it has…' : 'Its apps show here once it has been connected.', style: body(context, size: .8125, color: t.dim)),
       );
 }
 
@@ -154,20 +183,24 @@ class _AppIconState extends State<AppIcon> with SingleTickerProviderStateMixin {
       decoration: BoxDecoration(color: t.s3, borderRadius: r),
       child: Center(child: Text(name.isEmpty ? '?' : name.characters.first.toUpperCase(), style: display(context, s * .42).copyWith(color: t.bright))),
     );
+    final on = _linked;
+    void why() => Multi.I.note('Not connected — $name opens once the Mac is back.');
     return Semantics(
       button: true,
-      label: '$name, ${stateOf(a)}',
+      label: on ? '$name, ${stateOf(a)}' : '$name, not available — not connected',
       child: Press(
         onTap: () {
+          if (!on) return why();
           feel('tap');
           DeskApps.I.act(a, tapAction(a));
         },
         onLongPress: () {
+          if (!on) return why();
           feel('claim');
           showAppMenu(context, a);
         },
         label: name,
-        child: SizedBox(
+        child: Opacity(opacity: on ? 1 : .45, child: SizedBox(
           width: widget.width,
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             SizedBox(
@@ -218,7 +251,7 @@ class _AppIconState extends State<AppIcon> with SingleTickerProviderStateMixin {
             const SizedBox(height: 4),
             Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: body(context, size: .75, color: away ? t.dim : t.text)),
           ]),
-        ),
+        )),
       ),
     );
   }
@@ -299,9 +332,10 @@ class _MacAppsPageState extends State<MacAppsPage> with _Watching {
   @override
   Widget build(BuildContext context) {
     final t = Tok.of(context);
-    return ValueListenableBuilder(
-      valueListenable: Session.I.apps,
-      builder: (context, all, _) {
+    return ListenableBuilder(
+      listenable: _apps,
+      builder: (context, _) {
+        final all = _shown();
         final q = _q.text.trim().toLowerCase();
         bool hit(App a) => q.isEmpty || '${a['name']}'.toLowerCase().contains(q);
         final now = openNow(all).where(hit).toList();
@@ -329,6 +363,7 @@ class _MacAppsPageState extends State<MacAppsPage> with _Watching {
               ),
             ),
           ),
+          if (!_linked) const SliverPadding(padding: EdgeInsets.fromLTRB(16, 12, 16, 0), sliver: SliverToBoxAdapter(child: _NotLinked())),
           SliverPadding(
             padding: EdgeInsets.fromLTRB(12, 0, 12, 32 + MediaQuery.of(context).padding.bottom),
             sliver: SliverMainAxisGroup(slivers: [
@@ -338,7 +373,7 @@ class _MacAppsPageState extends State<MacAppsPage> with _Watching {
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.all(24),
-                    child: Center(child: Text(all.isEmpty ? 'Asking the Mac what it has…' : 'No app is called “${_q.text.trim()}”.', style: body(context, color: t.dim))),
+                    child: Center(child: Text(all.isEmpty ? (_linked ? 'Asking the Mac what it has…' : 'Its apps show here once it has been connected.') : 'No app is called “${_q.text.trim()}”.', style: body(context, color: t.dim))),
                   ),
                 )
               else

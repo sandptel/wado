@@ -130,8 +130,9 @@ class _ComputerPageState extends State<ComputerPage> {
                     ],
                     const SizedBox(height: 12),
                     sx(ActionTiles(r: r)),
-                    // A Mac with its own apps: a dock for them where sessions would be.
-                    if (HostCaps.now.mac && HostCaps.now.has('desk_apps') && r.online)
+                    // A Mac with its own apps: a dock for them where sessions would be — offline too,
+                    // the apps it had, saying they open once it is back.
+                    if (HostCaps.now.mac && HostCaps.now.has('desk_apps'))
                       sx(const MacDock())
                     else
                       ?gated('session', sx(Sessions(r: r))),

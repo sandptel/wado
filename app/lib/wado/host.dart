@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import '../core/core_host.dart';
 import 'relay_link.dart';
 import 'session.dart';
+import 'settings.dart';
 
 class Host {
   Host._() {
@@ -19,7 +20,14 @@ class Host {
       sessions.value = (m['sessions'] as List? ?? []).cast<Map<String, dynamic>>();
       here.value = l.pool.value.instance;
     });
-    l.on('config_state', (m) => config.value = m['state'] as Map<String, dynamic>?);
+    l.on('config_state', (m) {
+      final c = m['state'] as Map<String, dynamic>?;
+      config.value = c;
+      // What it is and can do, kept per computer: an offline Mac still shows its apps and doors.
+      final k = RelayLink.I.key;
+      final caps = {'platform': c?['platform'], 'host_caps': c?['host_caps']};
+      if (c != null && k != null && jsonEncode(caps) != jsonEncode(Settings.I.get<Object?>('caps.$k'))) Settings.I.set('caps.$k', caps);
+    });
     l.on('config_rejected', (m) => note.value = (m['message'] ?? '') as String);
     l.on('__up', (_) {
       _gets = _dos = _drop = 0;
