@@ -22,6 +22,7 @@ const _padDefaults = <String, Object?>{
   'landscape': true, 'fullscreen': false, 'rail': 'keys', 'keyboard': false, //
   'speed': 1.0, 'scroll_speed': 1.0, 'natural': null, 'tap': true, 'tap_drag': true, 'drag_lock': 'off',
   'click_bar': false, 'palm': true, 'marks': true, 'gesture_distance': 'medium',
+  'edge_scroll': true, 'edge_side': 'right', 'edge_width': 32.0,
 };
 
 class TouchpadSettings extends StatelessWidget {
@@ -62,6 +63,23 @@ class TouchpadSettings extends StatelessWidget {
           WCard(children: [
             Seg(options: [('keys', 'Keys'), ('actions', 'Quick actions'), if (macApps || p['rail'] == 'apps') ('apps', 'Open apps'), ('none', 'Nothing')], value: '${p['rail']}', onPick: (v) => set('rail', v)),
             SwitchRow(title: 'Open with the keyboard up', sub: 'The pad shrinks to a strip above it', on: b('keyboard'), onToggle: (v) => set('keyboard', v)),
+          ]),
+          const Sect('Edge scrolling'),
+          const SizedBox(height: 8),
+          WCard(children: [
+            SwitchRow(title: 'Scroll along the edge', sub: 'One finger sliding along the edge scrolls, as on a laptop touchpad', on: p['edge_scroll'] != false, onToggle: (v) => set('edge_scroll', v)),
+            if (p['edge_scroll'] != false) ...[
+              Seg(options: const [('left', 'Left edge'), ('right', 'Right edge'), ('both', 'Both')], value: '${p['edge_side']}', onPick: (v) => set('edge_side', v)),
+              ThickSlider(
+                label: 'How wide the edge is',
+                value: ((p['edge_width'] as num?) ?? 32).toDouble(),
+                min: 20,
+                max: 72,
+                step: 2,
+                shown: '${((p['edge_width'] as num?) ?? 32).round()} px',
+                onChange: (v) => set('edge_width', v),
+              ),
+            ],
           ]),
           const Sect('Quick actions'),
           const SizedBox(height: 8),

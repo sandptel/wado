@@ -33,4 +33,32 @@ void main() {
     expect(g.up(3), isTrue);
     expect(fired.length, 1);
   });
+
+  test('one finger along the edge zone scrolls; a tap or a sideways move there stays the pad\'s', () async {
+    final g = PadGestures.I..reset();
+    final felt = <bool>[];
+    g.scrollFelt.stream.listen(felt.add);
+    Host.I.config.value = {'trackpad': {'edge_side': 'right', 'edge_width': 32}};
+    // In the right zone, along it: held, then claimed as a scroll, never the pointer.
+    expect(g.down(1, const Offset(790, 100), s), isFalse);
+    expect(g.move(1, const Offset(791, 112), s), isFalse);
+    expect(g.edgeScroll.value?.side, 'right');
+    expect(g.move(1, const Offset(795, 160), s), isFalse);
+    await Future<void>.delayed(Duration.zero);
+    expect(felt, [true, false], reason: 'a tick as it takes hold, a notch after 36 px');
+    expect(g.up(1), isFalse);
+    expect(g.edgeScroll.value, isNull);
+    // A tap in the zone is replayed as a tap.
+    expect(g.down(2, const Offset(790, 100), s), isFalse);
+    expect(g.up(2), isTrue);
+    // Moving inward from the zone is the pointer: released, then it reaches the computer.
+    expect(g.down(3, const Offset(790, 100), s), isFalse);
+    expect(g.move(3, const Offset(770, 101), s), isFalse);
+    expect(g.move(3, const Offset(760, 101), s), isTrue);
+    expect(g.up(3), isTrue);
+    // Off: nothing held at the edge.
+    Host.I.config.value = {'trackpad': {'edge_scroll': false}};
+    expect(g.down(4, const Offset(790, 100), s), isTrue);
+    expect(g.up(4), isTrue);
+  });
 }

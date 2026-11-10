@@ -8,6 +8,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show Ticker;
 
+import '../../../wado/host.dart';
 import '../../../wado/pad.dart';
 import '../../../wado/pad_gestures.dart';
 import '../../../wado/pad_haptics.dart';
@@ -92,11 +93,13 @@ class _PadSurfaceState extends State<PadSurface> with SingleTickerProviderStateM
 
   /// Claimed gestures' pulses: the action's icon where it happened.
   final _pulses = <(String, Offset, Key)>[];
-  StreamSubscription? _fired;
+  StreamSubscription? _fired, _scrollFelt;
 
   @override
   void initState() {
     super.initState();
+    // Edge scrolling: a tick as it takes hold, then a soft notch per stretch of travel — a wheel.
+    _scrollFelt = PadGestures.I.scrollFelt.stream.listen((began) => feelPad(began ? 'drop' : 'scroll'));
     _fired = PadGestures.I.fired.stream.listen((f) {
       feel('claim');
       final p = (f.icon, f.at, UniqueKey());
@@ -110,6 +113,7 @@ class _PadSurfaceState extends State<PadSurface> with SingleTickerProviderStateM
   @override
   void dispose() {
     _fired?.cancel();
+    _scrollFelt?.cancel();
     PadGestures.I.reset();
     _tick.dispose();
     super.dispose();
@@ -168,6 +172,7 @@ class _PadSurfaceState extends State<PadSurface> with SingleTickerProviderStateM
             ),
             if (widget.marks)
               CustomPaint(painter: _Feel(t, {for (final e in _down.entries) e.key: e.value}, List.of(_lifts), _sw.elapsedMilliseconds, rem(context, .75), _hint(), _hintAt)),
+            _EdgeZones(marks: widget.marks),
             // `.tpedge`: an accent glow along the edge being swiped from, brighter once it fires.
             ValueListenableBuilder(
               valueListenable: PadGestures.I.edgeGlow,
@@ -363,4 +368,96 @@ class _Feel extends CustomPainter {
 
   @override
   bool shouldRepaint(_Feel o) => true;
+}
+
+/// Edge scrolling's zones: a faint tone where one finger scrolls (with finger marks on), lit while
+/// it does, and a thumb that rides the finger with an arrow for the way it is going. In on the
+/// accent at --dur, ease-out; out faster, ease-in; the thumb pops in (--pop) and shrinks away.
+class _EdgeZones extends StatefulWidget {
+  const _EdgeZones({required this.marks});
+  final bool marks;
+  @override
+  State<_EdgeZones> createState() => _EdgeZonesState();
+}
+
+class _EdgeZonesState extends State<_EdgeZones> {
+  double _y = 0;
+  String _side = 'right';
+  /// -1 up, 1 down, 0 not yet moving.
+  int _dir = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Tok.of(context);
+    return ValueListenableBuilder(
+      valueListenable: Host.I.config,
+      builder: (context, cfg, _) {
+        final p = (cfg?['trackpad'] as Map?) ?? const {};
+        if (p['edge_scroll'] == false) return const SizedBox.shrink();
+        final side = '${p['edge_side'] ?? 'right'}';
+        final w = ((p['edge_width'] as num?) ?? 32).toDouble();
+        final sides = side == 'both' ? const ['left', 'right'] : [side];
+        return IgnorePointer(
+          child: ValueListenableBuilder(
+            valueListenable: PadGestures.I.edgeScroll,
+            builder: (context, g, _) {
+              if (g != null) {
+                if ((g.y - _y).abs() > .5) _dir = g.y < _y ? -1 : 1;
+                _y = g.y;
+                _side = g.side;
+              } else {
+                _dir = 0;
+              }
+              final on = g != null;
+              final inDur = t.dur, outDur = t.still ? Duration.zero : const Duration(milliseconds: 160);
+              return Stack(children: [
+                for (final s in sides)
+                  Positioned(
+                    top: 0,
+                    bottom: 0,
+                    left: s == 'left' ? 0 : null,
+                    right: s == 'right' ? 0 : null,
+                    width: w,
+                    child: AnimatedContainer(
+                      duration: on ? inDur : outDur,
+                      curve: on ? Curves.easeOut : Curves.easeIn,
+                      color: on && s == _side ? fade(t.accent, 86) : (widget.marks ? fade(t.bright, 96.5) : Colors.transparent),
+                      alignment: Alignment.center,
+                      // At rest, a short grip in the middle says the edge does something.
+                      child: AnimatedOpacity(
+                        opacity: widget.marks && !(on && s == _side) ? .5 : 0,
+                        duration: on ? outDur : inDur,
+                        child: Container(width: 3, height: 26, decoration: BoxDecoration(color: t.dim, borderRadius: BorderRadius.circular(2))),
+                      ),
+                    ),
+                  ),
+                Positioned(
+                  top: _y - 34,
+                  left: _side == 'left' ? (w - 20) / 2 : null,
+                  right: _side == 'right' ? (w - 20) / 2 : null,
+                  width: 20,
+                  height: 68,
+                  child: AnimatedOpacity(
+                    opacity: on ? 1 : 0,
+                    duration: on ? t.durPress : outDur,
+                    curve: on ? Curves.easeOut : Curves.easeIn,
+                    child: AnimatedScale(
+                      scale: on ? 1 : .6,
+                      duration: on ? t.dur : outDur,
+                      curve: on ? t.pop : Curves.easeIn,
+                      child: Column(children: [
+                        WIcon('up', size: 14, color: _dir < 0 ? t.accent : fade(t.accent, 60)),
+                        Expanded(child: Container(width: 6, decoration: BoxDecoration(color: t.accent, borderRadius: BorderRadius.circular(3)))),
+                        WIcon('down', size: 14, color: _dir > 0 ? t.accent : fade(t.accent, 60)),
+                      ]),
+                    ),
+                  ),
+                ),
+              ]);
+            },
+          ),
+        );
+      },
+    );
+  }
 }

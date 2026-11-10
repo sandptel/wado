@@ -5,6 +5,12 @@
 //   edge-left / edge-right  one finger landing within 10 px of that edge and moving inward far
 //                           enough within 300 ms. Only that finger is held, for at most 60 ms:
 //                           then it is claimed, or replayed to the pad as the touch it was.
+//   edge scrolling          one finger landing in the edge zone (`edge-side`, `edge-width`) and
+//                           moving along it scrolls, as a laptop touchpad's edge scrolling. It
+//                           is sent as a two-finger scroll — the finger and a ghost moving with
+//                           it — so the computer scrolls its own way (direction, speed, inertia).
+//                           Held until it moves: along the edge, it scrolls; any other way, or a
+//                           tap, it is replayed to the pad as it happened.
 //   four-tap                four fingers down and up within 250 ms, moving < 12 px. The fourth is
 //                           not forwarded and the three on the computer are held still; a
 //                           four-finger swipe after all hands them back. The lift waits past
@@ -45,13 +51,21 @@ class PadGestures {
   final edgeGlow = ValueNotifier<({String side, double y, double p})?>(null);
   /// A claim happened: the action's icon, where.
   final fired = StreamController<({String icon, Offset at})>.broadcast();
+  /// Edge scrolling under way: which side, where the finger is, where it began.
+  final edgeScroll = ValueNotifier<({String side, double y, double from})?>(null);
+  /// Edge scrolling began (`true`) or passed another notch of travel (`false`).
+  final scrollFelt = StreamController<bool>.broadcast();
 
   final _fingers = <int, _F>{};
   final _sw = Stopwatch()..start();
   /// null · edge-hold · edge · four · two — the claim on this sequence.
   String? _mode;
   int _start = 0;
-  ({String side, int id, List<(String, Offset, Size)> held, Map<String, dynamic> action, Timer timer})? _edge;
+  ({String side, int id, List<(String, Offset, Size)> held, Map<String, dynamic>? action, String? scroll, Timer? timer})? _edge;
+  /// The edge scroll: its finger, the ghost beside it, the x both keep, the notch counter.
+  ({int id, int ghost, String side, double x, double gx, double from, Size size})? _es;
+  double _notch = 0, _lastY = 0;
+  static const _ghostGap = 48.0, _scrollLean = 6.0, _notchPx = 36.0, _ghostBase = 1 << 20;
   bool _edgeFired = false;
   ({int fourth, List<int> frozen, Map<String, dynamic> action, Offset at})? _four;
   Timer? _two;
@@ -59,6 +73,62 @@ class PadGestures {
   int get _now => _sw.elapsedMilliseconds;
 
   Map get _prefs => (Host.I.config.value?['trackpad'] as Map?) ?? const {};
+
+  /// The edge zone `p` lands in, if edge scrolling is on and it does: `left` or `right`.
+  String? _scrollSide(Offset p, Size s) {
+    if (_prefs['edge_scroll'] == false) return null;
+    final side = '${_prefs['edge_side'] ?? 'right'}';
+    final w = ((_prefs['edge_width'] as num?) ?? 32).toDouble();
+    if (side != 'left' && p.dx > s.width - w) return 'right';
+    if (side != 'right' && p.dx < w) return 'left';
+    return null;
+  }
+
+  // ── edge scrolling ──
+  void _scrollClaim(_F f) {
+    final e = _edge!;
+    e.timer?.cancel();
+    _mode = 'escroll';
+    edgeGlow.value = null;
+    final side = e.scroll!;
+    final x = f.from.dx, gx = side == 'right' ? x - _ghostGap : x + _ghostGap;
+    final es = (id: e.id, ghost: _ghostBase + e.id, side: side, x: x, gx: gx, from: f.from.dy, size: f.size);
+    _es = es;
+    _edge = null;
+    _notch = 0;
+    _lastY = f.at.dy;
+    final (w, h) = (f.size.width, f.size.height);
+    // Both land where the finger did, then move with it: the computer reads two fingers scrolling.
+    PadTouch.I.down(es.id, x, f.from.dy, w, h);
+    PadTouch.I.down(es.ghost, gx, f.from.dy, w, h);
+    scheduleMicrotask(() => _scrollMove(f.at.dy));
+    edgeScroll.value = (side: side, y: f.at.dy, from: f.from.dy);
+    scrollFelt.add(true);
+  }
+
+  void _scrollMove(double y) {
+    final es = _es;
+    if (es == null) return;
+    // Along the edge only: x stays where it landed, so a scroll never drifts sideways.
+    PadTouch.I.move(es.id, es.x, y, es.size.width, es.size.height);
+    PadTouch.I.move(es.ghost, es.gx, y, es.size.width, es.size.height);
+    edgeScroll.value = (side: es.side, y: y, from: es.from);
+    _notch += (y - _lastY).abs();
+    _lastY = y;
+    if (_notch >= _notchPx) {
+      _notch = 0;
+      scrollFelt.add(false);
+    }
+  }
+
+  void _scrollEnd() {
+    final es = _es;
+    if (es == null) return;
+    _es = null;
+    PadTouch.I.up(es.id);
+    PadTouch.I.up(es.ghost);
+    edgeScroll.value = null;
+  }
   (double, int) get _dist => _distance['${_prefs['gesture_distance'] ?? 'medium'}'] ?? _distance['medium']!;
 
   Map<String, dynamic>? _action(String name) {
@@ -77,7 +147,7 @@ class PadGestures {
   void _edgeRelease() {
     // Not an edge swipe: the held touches go to the pad as they happened.
     final e = _edge!;
-    e.timer.cancel();
+    e.timer?.cancel();
     _edge = null;
     _mode = null;
     edgeGlow.value = null;
@@ -94,10 +164,10 @@ class PadGestures {
     if (!_edgeFired && _inward(f) >= need && _now - _start <= _edgeMs) {
       _edgeFired = true;
       if (_mode == 'edge-hold') {
-        e.timer.cancel();
+        e.timer?.cancel();
         _mode = 'edge';
       }
-      _fire(e.action, f.at);
+      _fire(e.action!, f.at);
     }
   }
 
@@ -173,10 +243,19 @@ class PadGestures {
     if (first) {
       final side = p.dx < _edgePx ? 'edge-left' : (p.dx > s.width - _edgePx ? 'edge-right' : null);
       final action = side == null ? null : _action(side);
-      if (side != null && action != null) {
+      final scroll = _scrollSide(p, s);
+      if ((side != null && action != null) || scroll != null) {
         _mode = 'edge-hold';
         _edgeFired = false;
-        _edge = (side: side, id: id, held: [('down', p, s)], action: action, timer: Timer(const Duration(milliseconds: _holdBackMs), _edgeDecide));
+        // An edge swipe alone decides in 60 ms; with edge scrolling it waits for the finger to move.
+        _edge = (
+          side: action != null ? side! : 'none',
+          id: id,
+          held: [('down', p, s)],
+          action: action,
+          scroll: scroll,
+          timer: scroll == null ? Timer(const Duration(milliseconds: _holdBackMs), _edgeDecide) : null,
+        );
         return false;
       }
     }
@@ -203,10 +282,25 @@ class PadGestures {
       ..size = s;
     switch (_mode) {
       case 'edge-hold':
-        if (id == _edge!.id) {
-          _edge!.held.add(('move', p, s));
-          _edgeCheck(f);
+        final e = _edge!;
+        if (id == e.id) {
+          e.held.add(('move', p, s));
+          if (e.scroll == null) {
+            _edgeCheck(f);
+          } else {
+            final dx = (f.at.dx - f.from.dx).abs(), dy = (f.at.dy - f.from.dy).abs();
+            if (dy >= _scrollLean && dy > dx * 1.2) {
+              _scrollClaim(f);
+            } else if (e.action != null && _inward(f) > 0 && _inward(f) >= dy) {
+              _edgeCheck(f);
+            } else if (f.moved >= _scrollLean) {
+              _edgeRelease(); // the pointer, starting at the edge
+            }
+          }
         }
+        return false;
+      case 'escroll':
+        if (_es != null && id == _es!.id) _scrollMove(p.dy);
         return false;
       case 'edge':
         if (_edge != null && id == _edge!.id) _edgeCheck(f);
@@ -231,6 +325,9 @@ class PadGestures {
     var pass = true;
     if (was == 'edge-hold') {
       if (id == _edge!.id) _edgeRelease(); // a tap at the edge: replayed, and this up follows it
+    } else if (was == 'escroll') {
+      if (_es != null && id == _es!.id) _scrollEnd();
+      pass = false;
     } else if (was != null) {
       pass = false;
     } else {
@@ -239,9 +336,10 @@ class PadGestures {
     _fingers.remove(id);
     if (_fingers.isEmpty) {
       if (was == 'four' && _four != null) _fourEnd();
-      _edge?.timer.cancel();
+      _edge?.timer?.cancel();
       _edge = null;
       edgeGlow.value = null;
+      _scrollEnd();
       _twoCancel();
       _mode = null;
     }
@@ -249,7 +347,8 @@ class PadGestures {
   }
 
   void reset() {
-    _edge?.timer.cancel();
+    _edge?.timer?.cancel();
+    _scrollEnd();
     _twoCancel();
     _fingers.clear();
     _edge = null;

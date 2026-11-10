@@ -158,6 +158,23 @@ pub struct TrackpadPrefs {
     /// `short`, `medium` or `long`: wado's own phone gestures.
     #[serde(default = "medium")]
     pub gesture_distance: String,
+    /// One finger moving along an edge zone scrolls, as a laptop touchpad's edge scrolling.
+    #[serde(default = "yes")]
+    pub edge_scroll: bool,
+    /// `right`, `left` or `both`: which edge scrolls.
+    #[serde(default = "right")]
+    pub edge_side: String,
+    /// How wide the edge zone is, in pad px.
+    #[serde(default = "edge_px")]
+    pub edge_width: f64,
+}
+
+fn right() -> String {
+    "right".into()
+}
+
+fn edge_px() -> f64 {
+    32.0
 }
 
 fn off() -> String {
@@ -192,6 +209,9 @@ impl Default for TrackpadPrefs {
             palm: true,
             marks: true,
             gesture_distance: medium(),
+            edge_scroll: true,
+            edge_side: right(),
+            edge_width: edge_px(),
         }
     }
 }

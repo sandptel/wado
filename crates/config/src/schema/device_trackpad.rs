@@ -68,8 +68,21 @@ pub struct DeviceTrackpad {
     /// One of [`GESTURE_DISTANCES`]: how far or long wado's own phone gestures must go.
     #[serde(deserialize_with = "gesture_distance")]
     pub gesture_distance: String,
+    /// One finger moving along an edge zone scrolls, as a laptop touchpad's edge scrolling.
+    pub edge_scroll: bool,
+    /// One of [`EDGE_SIDES`]: which edge scrolls.
+    #[serde(deserialize_with = "edge_side")]
+    pub edge_side: String,
+    /// The edge zone's width in pad px, [`EDGE_MIN`]–[`EDGE_MAX`].
+    #[serde(deserialize_with = "edge_width")]
+    pub edge_width: f64,
 }
 
+/// Which edge scrolls with one finger.
+pub const EDGE_SIDES: &[&str] = &["right", "left", "both"];
+/// The edge zone's width, pad px.
+pub const EDGE_MIN: f64 = 20.0;
+pub const EDGE_MAX: f64 = 72.0;
 /// Pointer speed's range.
 pub const SPEED_MIN: f64 = 0.5;
 pub const SPEED_MAX: f64 = 2.0;
@@ -108,6 +121,9 @@ impl Default for DeviceTrackpad {
             palm: true,
             marks: true,
             gesture_distance: "medium".into(),
+            edge_scroll: true,
+            edge_side: "right".into(),
+            edge_width: 32.0,
         }
     }
 }
@@ -133,6 +149,9 @@ impl From<&DeviceTrackpad> for wado_protocol::TrackpadPrefs {
             palm: t.palm,
             marks: t.marks,
             gesture_distance: t.gesture_distance.clone(),
+            edge_scroll: t.edge_scroll,
+            edge_side: t.edge_side.clone(),
+            edge_width: t.edge_width,
         }
     }
 }
@@ -166,6 +185,14 @@ fn one_of<'de, D: Deserializer<'de>>(d: D, what: &str, list: &[&str]) -> Result<
             list.join(", ")
         )))
     }
+}
+
+fn edge_side<'de, D: Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    one_of(d, "edge-side", EDGE_SIDES)
+}
+
+fn edge_width<'de, D: Deserializer<'de>>(d: D) -> Result<f64, D::Error> {
+    ranged(d, "edge-width", EDGE_MIN, EDGE_MAX)
 }
 
 fn drag_lock<'de, D: Deserializer<'de>>(d: D) -> Result<String, D::Error> {
@@ -271,7 +298,8 @@ mod tests {
                 "gestures": {"four-tap": "lock"}, "keyboard": false, "speed": 1.0,
                 "scroll_speed": 1.0, "natural": null, "tap": true, "tap_drag": true,
                 "drag_lock": "off", "click_bar": false, "palm": true, "marks": true,
-                "gesture_distance": "medium"
+                "gesture_distance": "medium", "edge_scroll": true, "edge_side": "right",
+                "edge_width": 32.0
             })
         );
     }
@@ -287,6 +315,19 @@ mod tests {
         assert_eq!(k.quick, ["a", "b"]);
         assert_eq!(k.gestures["edge-left"], "lock");
         assert!(c.device["j"].trackpad.clone().unwrap().quick.is_empty());
+    }
+
+    #[test]
+    fn edge_scrolling_is_read_and_checked() {
+        let c = crate::kdl::parse(
+            "device \"k\" { trackpad { edge-scroll #false; edge-side \"both\"; edge-width 48 } }",
+        )
+        .unwrap();
+        let k = c.device["k"].trackpad.clone().unwrap();
+        assert!(!k.edge_scroll);
+        assert_eq!((k.edge_side.as_str(), k.edge_width), ("both", 48.0));
+        assert!(crate::kdl::parse("device \"k\" { trackpad { edge-side \"top\" } }").is_err());
+        assert!(crate::kdl::parse("device \"k\" { trackpad { edge-width 200 } }").is_err());
     }
 
     #[test]
