@@ -6,11 +6,13 @@
 //                           enough within 300 ms. Only that finger is held, for at most 60 ms:
 //                           then it is claimed, or replayed to the pad as the touch it was.
 //   edge scrolling          one finger landing in the edge zone (`edge-side`, `edge-width`) and
-//                           moving along it scrolls, as a laptop touchpad's edge scrolling. It
-//                           is sent as a two-finger scroll — the finger and a ghost moving with
-//                           it — so the computer scrolls its own way (direction, speed, inertia).
-//                           Held until it moves: along the edge, it scrolls; any other way, or a
-//                           tap, it is replayed to the pad as it happened.
+//                           moving along it scrolls. On a computer that takes `PadMsg::Scroll`
+//                           (`pad-scroll`) it is a scroll stick: where it landed is the centre,
+//                           and held away from it, it keeps scrolling — faster the further,
+//                           `edge-dir` choosing which way up goes — until let go. Elsewhere it is
+//                           sent as two fingers (it and a ghost) moving with the finger. Held
+//                           until it moves: along the edge it scrolls; any other way, or a tap,
+//                           it is replayed to the pad as it happened.
 //   four-tap                four fingers down and up within 250 ms, moving < 12 px. The fourth is
 //                           not forwarded and the three on the computer are held still; a
 //                           four-finger swipe after all hands them back. The lift waits past
@@ -22,6 +24,7 @@
 // A gesture with no action — or one this computer does not offer — is never claimed and nothing
 // is held. Two- and three-finger swipes and pinches are never claimed.
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui' show Offset, Size;
 
 import 'package:flutter/foundation.dart';
@@ -51,10 +54,12 @@ class PadGestures {
   final edgeGlow = ValueNotifier<({String side, double y, double p})?>(null);
   /// A claim happened: the action's icon, where.
   final fired = StreamController<({String icon, Offset at})>.broadcast();
-  /// Edge scrolling under way: which side, where the finger is, where it began.
-  final edgeScroll = ValueNotifier<({String side, double y, double from})?>(null);
-  /// Edge scrolling began (`true`) or passed another notch of travel (`false`).
-  final scrollFelt = StreamController<bool>.broadcast();
+  /// Edge scrolling under way: which side, where the finger landed (the stick's centre), where it
+  /// is now, and how fast it scrolls (0..1).
+  final edgeScroll = ValueNotifier<({String side, double anchor, double y, double speed})?>(null);
+  /// What edge scrolling asks the hand to feel (`padFeels` names): a tick as it takes hold or
+  /// speeds up a step, a soft notch per stretch scrolled, faster as it goes.
+  final scrollFelt = StreamController<String>.broadcast();
 
   final _fingers = <int, _F>{};
   final _sw = Stopwatch()..start();
@@ -62,10 +67,15 @@ class PadGestures {
   String? _mode;
   int _start = 0;
   ({String side, int id, List<(String, Offset, Size)> held, Map<String, dynamic>? action, String? scroll, Timer? timer})? _edge;
-  /// The edge scroll: its finger, the ghost beside it, the x both keep, the notch counter.
-  ({int id, int ghost, String side, double x, double gx, double from, Size size})? _es;
-  double _notch = 0, _lastY = 0;
+  /// The edge scroll: its finger, which side, where it landed (the centre), and — sent as two
+  /// fingers to a computer without `pad-scroll` — the ghost beside it and the x both keep.
+  ({int id, int ghost, String side, double x, double gx, double anchor, Size size, bool stick})? _es;
+  double _notch = 0, _lastY = 0, _off = 0;
+  int _band = 0, _lastFelt = 0, _lastTick = 0;
+  Timer? _stick;
   static const _ghostGap = 48.0, _scrollLean = 6.0, _notchPx = 36.0, _ghostBase = 1 << 20;
+  /// The stick: no scroll this close to the centre; a notch felt per this much scrolled.
+  static const stickDead = 8.0, _stickNotchPx = 60.0, _stickFeelMs = 45;
   bool _edgeFired = false;
   ({int fourth, List<int> frozen, Map<String, dynamic> action, Offset at})? _four;
   Timer? _two;
@@ -85,6 +95,23 @@ class PadGestures {
   }
 
   // ── edge scrolling ──
+  /// How fast the stick scrolls, in pad px per second as a finger would move, `off` px from its
+  /// centre: nothing in the dead zone, then gently, then quickly — a curve, so a small push is
+  /// fine control and a long one crosses a page.
+  static double stickSpeed(double off) {
+    final a = off.abs() - stickDead;
+    if (a <= 0) return 0;
+    final t = (a / 90).clamp(0.0, 1.8);
+    return off.sign * math.pow(t, 1.5) * 1400;
+  }
+
+  /// 0 still · 1 slow · 2 brisk · 3 fast: each step up is felt.
+  static int _bandOf(double off) => off.abs() < stickDead ? 0 : (off.abs() < 45 ? 1 : (off.abs() < 90 ? 2 : 3));
+
+  bool get _canStick => ((Host.I.config.value?['caps'] as List?) ?? const []).contains('pad-scroll');
+  /// `same`: pushing up scrolls up — the page moves as a finger moving down would move it.
+  double get _dirSign => '${_prefs['edge_dir'] ?? 'same'}' == 'reverse' ? -1 : 1;
+
   void _scrollClaim(_F f) {
     final e = _edge!;
     e.timer?.cancel();
@@ -92,32 +119,70 @@ class PadGestures {
     edgeGlow.value = null;
     final side = e.scroll!;
     final x = f.from.dx, gx = side == 'right' ? x - _ghostGap : x + _ghostGap;
-    final es = (id: e.id, ghost: _ghostBase + e.id, side: side, x: x, gx: gx, from: f.from.dy, size: f.size);
+    final stick = _canStick;
+    final es = (id: e.id, ghost: _ghostBase + e.id, side: side, x: x, gx: gx, anchor: f.from.dy, size: f.size, stick: stick);
     _es = es;
     _edge = null;
     _notch = 0;
     _lastY = f.at.dy;
+    _band = 0;
+    scrollFelt.add('drop');
+    if (stick) {
+      // A scroll stick: held away from where it landed, it keeps scrolling, faster the further.
+      Pad.I.send({'k': 'scroll', 'dx': 0.0, 'dy': 0.0, 'phase': 'began'});
+      _lastTick = _now;
+      _stick = Timer.periodic(const Duration(milliseconds: 16), (_) => _stickTick());
+      _stickMove(f.at.dy);
+      return;
+    }
     final (w, h) = (f.size.width, f.size.height);
     // Both land where the finger did, then move with it: the computer reads two fingers scrolling.
     PadTouch.I.down(es.id, x, f.from.dy, w, h);
     PadTouch.I.down(es.ghost, gx, f.from.dy, w, h);
     scheduleMicrotask(() => _scrollMove(f.at.dy));
-    edgeScroll.value = (side: side, y: f.at.dy, from: f.from.dy);
-    scrollFelt.add(true);
+    edgeScroll.value = (side: side, anchor: f.at.dy, y: f.at.dy, speed: 0);
+  }
+
+  void _stickMove(double y) {
+    final es = _es;
+    if (es == null) return;
+    _off = y - es.anchor;
+    final band = _bandOf(_off);
+    if (band > _band) scrollFelt.add(band == 1 ? 'scroll' : 'drop');
+    _band = band;
+    edgeScroll.value = (side: es.side, anchor: es.anchor, y: y, speed: (stickSpeed(_off).abs() / 2600).clamp(0, 1));
+  }
+
+  void _stickTick() {
+    final now = _now;
+    final dt = (now - _lastTick) / 1000;
+    _lastTick = now;
+    final v = -stickSpeed(_off) * _dirSign;
+    if (v == 0) return;
+    final dy = v * dt;
+    Pad.I.send({'k': 'scroll', 'dx': 0.0, 'dy': dy, 'phase': 'changed'});
+    // A notch per stretch scrolled — a wheel turning under the finger — never a buzz.
+    _notch += dy.abs();
+    if (_notch >= _stickNotchPx && now - _lastFelt >= _stickFeelMs) {
+      _notch = 0;
+      _lastFelt = now;
+      scrollFelt.add('scroll');
+    }
   }
 
   void _scrollMove(double y) {
     final es = _es;
     if (es == null) return;
+    if (es.stick) return _stickMove(y);
     // Along the edge only: x stays where it landed, so a scroll never drifts sideways.
     PadTouch.I.move(es.id, es.x, y, es.size.width, es.size.height);
     PadTouch.I.move(es.ghost, es.gx, y, es.size.width, es.size.height);
-    edgeScroll.value = (side: es.side, y: y, from: es.from);
+    edgeScroll.value = (side: es.side, anchor: y, y: y, speed: 0);
     _notch += (y - _lastY).abs();
     _lastY = y;
     if (_notch >= _notchPx) {
       _notch = 0;
-      scrollFelt.add(false);
+      scrollFelt.add('scroll');
     }
   }
 
@@ -125,10 +190,19 @@ class PadGestures {
     final es = _es;
     if (es == null) return;
     _es = null;
-    PadTouch.I.up(es.id);
-    PadTouch.I.up(es.ghost);
+    if (es.stick) {
+      _stick?.cancel();
+      _stick = null;
+      _off = 0;
+      Pad.I.send({'k': 'scroll', 'dx': 0.0, 'dy': 0.0, 'phase': 'ended'});
+      if (_band > 0) scrollFelt.add('scroll'); // let go: the stick springs home
+    } else {
+      PadTouch.I.up(es.id);
+      PadTouch.I.up(es.ghost);
+    }
     edgeScroll.value = null;
   }
+
   (double, int) get _dist => _distance['${_prefs['gesture_distance'] ?? 'medium'}'] ?? _distance['medium']!;
 
   Map<String, dynamic>? _action(String name) {

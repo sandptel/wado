@@ -189,10 +189,16 @@ class MainActivity : FlutterFragmentActivity() {
                     }
                     result.success(runCatching { cm.setPrimaryClip(clip) }.isSuccess)
                 }
+                // Answers how it played (or why not), so a phone where nothing is felt says so.
                 "haptic" -> {
                     val prims = call.argument<List<Map<String, Any>>>("prims")
-                    if (prims == null || !compose(prims)) buzz(call.argument<String>("kind").orEmpty(), call.argument<Int>("ms") ?: 0)
-                    result.success(null)
+                    val how = try {
+                        if (prims != null && compose(prims)) "composed"
+                        else buzz(call.argument<String>("kind").orEmpty(), call.argument<Int>("ms") ?: 0)
+                    } catch (e: Exception) {
+                        "failed: ${e.javaClass.simpleName}: ${e.message}"
+                    }
+                    result.success(how)
                 }
                 "active" -> {
                     active(call.argument<Boolean>("on") == true)
@@ -264,11 +270,11 @@ class MainActivity : FlutterFragmentActivity() {
      * phones — the app's haptics went unnoticed. A length (`ms`, the gamepad's strength) is a
      * plain pulse; a kind is the phone's own predefined effect.
      */
-    private fun buzz(kind: String, ms: Int) {
+    private fun buzz(kind: String, ms: Int): String {
         val v = vibrator
         if (v == null || !v.hasVibrator()) {
-            window.decorView.performHapticFeedback(haptic(kind))
-            return
+            val done = window.decorView.performHapticFeedback(haptic(kind))
+            return "no vibrator; view feedback ${if (done) "played" else "refused"}"
         }
         val e = when {
             ms > 0 -> VibrationEffect.createOneShot(ms.toLong(), VibrationEffect.DEFAULT_AMPLITUDE)
@@ -283,6 +289,7 @@ class MainActivity : FlutterFragmentActivity() {
             else -> VibrationEffect.createOneShot(if (kind == "tick") 6 else if (kind == "claim" || kind == "heavy") 20 else 12, VibrationEffect.DEFAULT_AMPLITUDE)
         }
         v.vibrate(e)
+        return "effect"
     }
 
     /**

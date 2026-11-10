@@ -6,6 +6,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 import 'package:flutter/scheduler.dart' show Ticker;
 
 import '../../../wado/host.dart';
@@ -99,7 +100,7 @@ class _PadSurfaceState extends State<PadSurface> with SingleTickerProviderStateM
   void initState() {
     super.initState();
     // Edge scrolling: a tick as it takes hold, then a soft notch per stretch of travel — a wheel.
-    _scrollFelt = PadGestures.I.scrollFelt.stream.listen((began) => feelPad(began ? 'drop' : 'scroll'));
+    _scrollFelt = PadGestures.I.scrollFelt.stream.listen(feelPad);
     _fired = PadGestures.I.fired.stream.listen((f) {
       feel('claim');
       final p = (f.icon, f.at, UniqueKey());
@@ -370,9 +371,11 @@ class _Feel extends CustomPainter {
   bool shouldRepaint(_Feel o) => true;
 }
 
-/// Edge scrolling's zones: a faint tone where one finger scrolls (with finger marks on), lit while
-/// it does, and a thumb that rides the finger with an arrow for the way it is going. In on the
-/// accent at --dur, ease-out; out faster, ease-in; the thumb pops in (--pop) and shrinks away.
+/// Edge scrolling's zones: a faint tone with a grip where one finger scrolls (finger marks on), lit
+/// while it does. On a scroll stick, a ring marks the centre where the finger landed, a tether
+/// stretches to the thumb under the finger, and the thumb swells with speed, an arrow lit for the
+/// way it scrolls; let go, the thumb springs home past the centre and settles (an underdamped
+/// spring, ζ ≈ .45), then fades. Reduced motion: no bounce, straight home.
 class _EdgeZones extends StatefulWidget {
   const _EdgeZones({required this.marks});
   final bool marks;
@@ -380,11 +383,55 @@ class _EdgeZones extends StatefulWidget {
   State<_EdgeZones> createState() => _EdgeZonesState();
 }
 
-class _EdgeZonesState extends State<_EdgeZones> {
-  double _y = 0;
+class _EdgeZonesState extends State<_EdgeZones> with SingleTickerProviderStateMixin {
+  /// The thumb's offset from the centre while it springs home.
+  late final _home = AnimationController.unbounded(vsync: this)..addListener(() => setState(() {}));
+  double _anchor = 0, _y = 0, _speed = 0;
   String _side = 'right';
-  /// -1 up, 1 down, 0 not yet moving.
-  int _dir = 0;
+  bool _on = false, _shown = false;
+
+  @override
+  void initState() {
+    super.initState();
+    PadGestures.I.edgeScroll.addListener(_moved);
+  }
+
+  @override
+  void dispose() {
+    PadGestures.I.edgeScroll.removeListener(_moved);
+    _home.dispose();
+    super.dispose();
+  }
+
+  void _moved() {
+    final g = PadGestures.I.edgeScroll.value;
+    // Read, not depended on: this runs from a listener, not a build.
+    final t = context.getInheritedWidgetOfExactType<TokensScope>()!.tokens;
+    if (g != null) {
+      _home.stop();
+      _anchor = g.anchor;
+      _y = g.y;
+      _speed = g.speed;
+      _side = g.side;
+      _on = _shown = true;
+    } else if (_on) {
+      _on = false;
+      final from = _y - _anchor;
+      if (t.still || from.abs() < 1) {
+        _home.value = 0;
+        _shown = false;
+      } else {
+        _home.value = from;
+        final spring = t.reduced
+            ? SpringDescription.withDampingRatio(mass: 1, stiffness: 600, ratio: 1)
+            : SpringDescription.withDampingRatio(mass: 1, stiffness: 420, ratio: .45);
+        _home.animateWith(SpringSimulation(spring, from, 0, 0)).whenComplete(() {
+          if (mounted && !_on) setState(() => _shown = false);
+        });
+      }
+    }
+    setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -397,65 +444,59 @@ class _EdgeZonesState extends State<_EdgeZones> {
         final side = '${p['edge_side'] ?? 'right'}';
         final w = ((p['edge_width'] as num?) ?? 32).toDouble();
         final sides = side == 'both' ? const ['left', 'right'] : [side];
+        final off = _on ? _y - _anchor : _home.value;
+        final up = off < -PadGestures.stickDead, down = off > PadGestures.stickDead;
+        final outDur = t.still ? Duration.zero : const Duration(milliseconds: 160);
+        final cx = _side == 'left' ? w / 2 : null, rx = _side == 'right' ? w / 2 : null;
+        // A thumb 18 px across, up to 26 at full speed; the tether as wide as a finger's pull is long.
+        final thumb = 18 + 8 * _speed;
+        final top = math.min(_anchor, _anchor + off), len = off.abs();
+        Positioned at(double y, double size, Widget child) => Positioned(
+              top: y - size / 2,
+              left: cx == null ? null : cx - size / 2,
+              right: rx == null ? null : rx - size / 2,
+              width: size,
+              height: size,
+              child: child,
+            );
         return IgnorePointer(
-          child: ValueListenableBuilder(
-            valueListenable: PadGestures.I.edgeScroll,
-            builder: (context, g, _) {
-              if (g != null) {
-                if ((g.y - _y).abs() > .5) _dir = g.y < _y ? -1 : 1;
-                _y = g.y;
-                _side = g.side;
-              } else {
-                _dir = 0;
-              }
-              final on = g != null;
-              final inDur = t.dur, outDur = t.still ? Duration.zero : const Duration(milliseconds: 160);
-              return Stack(children: [
-                for (final s in sides)
-                  Positioned(
-                    top: 0,
-                    bottom: 0,
-                    left: s == 'left' ? 0 : null,
-                    right: s == 'right' ? 0 : null,
-                    width: w,
-                    child: AnimatedContainer(
-                      duration: on ? inDur : outDur,
-                      curve: on ? Curves.easeOut : Curves.easeIn,
-                      color: on && s == _side ? fade(t.accent, 86) : (widget.marks ? fade(t.bright, 96.5) : Colors.transparent),
-                      alignment: Alignment.center,
-                      // At rest, a short grip in the middle says the edge does something.
-                      child: AnimatedOpacity(
-                        opacity: widget.marks && !(on && s == _side) ? .5 : 0,
-                        duration: on ? outDur : inDur,
-                        child: Container(width: 3, height: 26, decoration: BoxDecoration(color: t.dim, borderRadius: BorderRadius.circular(2))),
-                      ),
-                    ),
-                  ),
-                Positioned(
-                  top: _y - 34,
-                  left: _side == 'left' ? (w - 20) / 2 : null,
-                  right: _side == 'right' ? (w - 20) / 2 : null,
-                  width: 20,
-                  height: 68,
+          child: Stack(clipBehavior: Clip.none, children: [
+            for (final s in sides)
+              Positioned(
+                top: 0,
+                bottom: 0,
+                left: s == 'left' ? 0 : null,
+                right: s == 'right' ? 0 : null,
+                width: w,
+                child: AnimatedContainer(
+                  duration: _on ? t.dur : outDur,
+                  curve: _on ? Curves.easeOut : Curves.easeIn,
+                  color: _on && s == _side ? fade(t.accent, 86) : (widget.marks ? fade(t.bright, 96.5) : Colors.transparent),
+                  alignment: Alignment.center,
+                  // At rest, a short grip in the middle says the edge does something.
                   child: AnimatedOpacity(
-                    opacity: on ? 1 : 0,
-                    duration: on ? t.durPress : outDur,
-                    curve: on ? Curves.easeOut : Curves.easeIn,
-                    child: AnimatedScale(
-                      scale: on ? 1 : .6,
-                      duration: on ? t.dur : outDur,
-                      curve: on ? t.pop : Curves.easeIn,
-                      child: Column(children: [
-                        WIcon('up', size: 14, color: _dir < 0 ? t.accent : fade(t.accent, 60)),
-                        Expanded(child: Container(width: 6, decoration: BoxDecoration(color: t.accent, borderRadius: BorderRadius.circular(3)))),
-                        WIcon('down', size: 14, color: _dir > 0 ? t.accent : fade(t.accent, 60)),
-                      ]),
-                    ),
+                    opacity: widget.marks && !(_shown && s == _side) ? .5 : 0,
+                    duration: _on ? outDur : t.dur,
+                    child: Container(width: 3, height: 26, decoration: BoxDecoration(color: t.dim, borderRadius: BorderRadius.circular(2))),
                   ),
                 ),
-              ]);
-            },
-          ),
+              ),
+            if (_shown) ...[
+              // The tether: from the centre to the thumb, brighter the faster it scrolls.
+              Positioned(
+                top: top,
+                height: len,
+                left: cx == null ? null : cx - 2,
+                right: rx == null ? null : rx - 2,
+                width: 4,
+                child: DecoratedBox(decoration: BoxDecoration(color: fade(t.accent, 70 - 30 * _speed), borderRadius: BorderRadius.circular(2))),
+              ),
+              at(_anchor, 14, DecoratedBox(decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: fade(t.accent, 40), width: 2)))),
+              at(_anchor + off, thumb, DecoratedBox(decoration: BoxDecoration(shape: BoxShape.circle, color: t.accent))),
+              at(_anchor + off - thumb / 2 - 12, 16, AnimatedOpacity(opacity: up ? 1 : .25, duration: t.durPress, child: WIcon('up', size: 16, color: t.accent))),
+              at(_anchor + off + thumb / 2 + 12, 16, AnimatedOpacity(opacity: down ? 1 : .25, duration: t.durPress, child: WIcon('down', size: 16, color: t.accent))),
+            ],
+          ]),
         );
       },
     );

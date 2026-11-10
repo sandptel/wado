@@ -36,7 +36,7 @@ void main() {
 
   test('one finger along the edge zone scrolls; a tap or a sideways move there stays the pad\'s', () async {
     final g = PadGestures.I..reset();
-    final felt = <bool>[];
+    final felt = <String>[];
     g.scrollFelt.stream.listen(felt.add);
     Host.I.config.value = {'trackpad': {'edge_side': 'right', 'edge_width': 32}};
     // In the right zone, along it: held, then claimed as a scroll, never the pointer.
@@ -45,7 +45,7 @@ void main() {
     expect(g.edgeScroll.value?.side, 'right');
     expect(g.move(1, const Offset(795, 160), s), isFalse);
     await Future<void>.delayed(Duration.zero);
-    expect(felt, [true, false], reason: 'a tick as it takes hold, a notch after 36 px');
+    expect(felt, ['drop', 'scroll'], reason: 'a tick as it takes hold, a notch after 36 px');
     expect(g.up(1), isFalse);
     expect(g.edgeScroll.value, isNull);
     // A tap in the zone is replayed as a tap.
@@ -60,5 +60,32 @@ void main() {
     Host.I.config.value = {'trackpad': {'edge_scroll': false}};
     expect(g.down(4, const Offset(790, 100), s), isTrue);
     expect(g.up(4), isTrue);
+  });
+
+  test('the scroll stick: still near its centre, then faster the further it is pushed', () {
+    expect(PadGestures.stickSpeed(0), 0);
+    expect(PadGestures.stickSpeed(PadGestures.stickDead), 0);
+    final slow = PadGestures.stickSpeed(30), fast = PadGestures.stickSpeed(120);
+    expect(slow, greaterThan(0));
+    expect(fast, greaterThan(slow * 3), reason: 'a curve: fine control near, a page at a push');
+    expect(PadGestures.stickSpeed(-120), -fast);
+    expect(PadGestures.stickSpeed(1000), PadGestures.stickSpeed(400), reason: 'it tops out');
+  });
+
+  test('on a computer with pad-scroll, the edge is a stick held about where it landed', () async {
+    final g = PadGestures.I..reset();
+    final felt = <String>[];
+    g.scrollFelt.stream.listen(felt.add);
+    Host.I.config.value = {'caps': ['pad-scroll'], 'trackpad': {'edge_side': 'right'}};
+    expect(g.down(1, const Offset(790, 200), s), isFalse);
+    expect(g.move(1, const Offset(790, 190), s), isFalse);
+    expect(g.edgeScroll.value?.anchor, 200, reason: 'where it landed is the centre');
+    expect(g.move(1, const Offset(790, 80), s), isFalse);
+    expect(g.edgeScroll.value!.speed, greaterThan(0));
+    await Future<void>.delayed(Duration.zero);
+    expect(felt.first, 'drop');
+    expect(felt.length, greaterThan(1), reason: 'each step up in speed is felt');
+    expect(g.up(1), isFalse);
+    expect(g.edgeScroll.value, isNull);
   });
 }

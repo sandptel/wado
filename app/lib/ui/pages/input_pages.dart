@@ -22,7 +22,7 @@ const _padDefaults = <String, Object?>{
   'landscape': true, 'fullscreen': false, 'rail': 'keys', 'keyboard': false, //
   'speed': 1.0, 'scroll_speed': 1.0, 'natural': null, 'tap': true, 'tap_drag': true, 'drag_lock': 'off',
   'click_bar': false, 'palm': true, 'marks': true, 'gesture_distance': 'medium',
-  'edge_scroll': true, 'edge_side': 'right', 'edge_width': 32.0,
+  'edge_scroll': true, 'edge_side': 'right', 'edge_width': 32.0, 'edge_dir': 'same',
 };
 
 class TouchpadSettings extends StatelessWidget {
@@ -67,9 +67,16 @@ class TouchpadSettings extends StatelessWidget {
           const Sect('Edge scrolling'),
           const SizedBox(height: 8),
           WCard(children: [
-            SwitchRow(title: 'Scroll along the edge', sub: 'One finger sliding along the edge scrolls, as on a laptop touchpad', on: p['edge_scroll'] != false, onToggle: (v) => set('edge_scroll', v)),
+            SwitchRow(
+              title: 'Scroll from the edge',
+              sub: 'Land a finger on the edge and push it up or down: it keeps scrolling, faster the further you push, until you let go',
+              on: p['edge_scroll'] != false,
+              onToggle: (v) => set('edge_scroll', v),
+            ),
             if (p['edge_scroll'] != false) ...[
               Seg(options: const [('left', 'Left edge'), ('right', 'Right edge'), ('both', 'Both')], value: '${p['edge_side']}', onPick: (v) => set('edge_side', v)),
+              const Why('Pushing up'),
+              Seg(options: const [('same', 'Scrolls up'), ('reverse', 'Scrolls down')], value: '${p['edge_dir']}', onPick: (v) => set('edge_dir', v)),
               ThickSlider(
                 label: 'How wide the edge is',
                 value: ((p['edge_width'] as num?) ?? 32).toDouble(),

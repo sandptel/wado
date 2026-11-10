@@ -4,7 +4,9 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 
+import '../../wado/log.dart';
 import '../../wado/pad_haptics.dart';
+import '../../wado/relay_link.dart';
 
 const _os = MethodChannel('wado/os');
 
@@ -12,7 +14,7 @@ const _os = MethodChannel('wado/os');
 /// `ms` (the gamepad's strength).
 void feel(String kind, {int ms = 0}) {
   if (Platform.isAndroid) {
-    _os.invokeMethod('haptic', {'kind': kind, 'ms': ms});
+    _haptic({'kind': kind, 'ms': ms});
   } else {
     HapticFeedback.selectionClick();
   }
@@ -24,7 +26,7 @@ void feelPad(String name) {
   final prims = padFeels[name];
   if (prims == null) return;
   if (Platform.isAndroid) {
-    _os.invokeMethod('haptic', {
+    _haptic({
       'kind': padFallback[name] ?? 'tick',
       'ms': 0,
       'prims': [for (final (p, scale, delay) in prims) {'p': p, 's': scale, 'd': delay}],
@@ -33,6 +35,27 @@ void feelPad(String name) {
     final heavy = name == 'grab' || name == 'detent';
     heavy ? HapticFeedback.mediumImpact() : HapticFeedback.selectionClick();
   }
+}
+
+/// The phone plays it and says how — composed, an effect, the view's feedback, or why not. The
+/// first few different answers go to the computer's log (`browser: haptic …`), so a phone where
+/// nothing is felt can be told apart from one whose motor plays too faintly.
+int _told = 0;
+String _lastHow = '';
+void _haptic(Map<String, Object?> args) {
+  void tell(String s) {
+    if (_told >= 8) return;
+    _told++;
+    rlog(s);
+    RelayLink.I.send({'type': 'client_log', 'line': s});
+  }
+
+  _os.invokeMethod<String>('haptic', args).then((how) {
+    if (how != null && how != _lastHow) {
+      _lastHow = how;
+      tell('haptic ${args['kind']}: $how');
+    }
+  }, onError: (Object e) => tell('haptic ${args['kind']} failed: $e'));
 }
 
 /// `navigator.vibrate(ms)` in the web: the nearest effect.
