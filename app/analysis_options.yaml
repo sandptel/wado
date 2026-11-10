@@ -9,3 +9,4 @@ analyzer:
     - windows/**
     - macos/**
     - linux/**
+    - third_party/**

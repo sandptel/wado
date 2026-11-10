@@ -41,3 +41,8 @@ flutter:
     - family: JetBrains Mono
       fonts:
         - asset: assets/fonts/JetBrainsMono.ttf
+
+# flutter_webrtc with one patch: ICE gathers on the phone's own hotspot (third_party/flutter_webrtc/NOTICE).
+dependency_overrides:
+  flutter_webrtc:
+    path: third_party/flutter_webrtc
