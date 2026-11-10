@@ -29,7 +29,7 @@
     ["four-tap", "Tap with four fingers"],
     ["two-hold", "Hold two fingers still"],
   ];
-  const RAILS = [["keys", "Keys"], ["actions", "Quick actions"], ["none", "None"]];
+  const RAILS = [["keys", "Keys"], ["actions", "Quick actions"], ["apps", "Open apps"], ["none", "None"]];
   let root = null;
   let scrim = null;
   let sheet = null;

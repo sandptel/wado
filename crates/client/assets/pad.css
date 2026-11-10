@@ -461,3 +461,44 @@
 
 /* Finger marks off (Touchpad settings, `marks`): no rings or halos under the fingers. */
 .nomarks .tpfinger, .nomarks .tphalo { display: none; }
+
+/* ── A Mac's apps (js/pad_rail.js): the library in the header, open apps as a mini dock ──── */
+.tpappshead { margin-left: auto; color: var(--bright); }
+.tpappshead:not([hidden]) + .tpgearhead { margin-left: 0; }
+#wado-trackpad[data-layout="landscape"] .tpappshead { grid-area: pad; justify-self: end; align-self: start; z-index: 2;
+  margin: 6px 104px 0 0; background: color-mix(in oklab, var(--s2), transparent 30%); }
+#wado-trackpad[data-layout="landscape"]:not(:has(.tprail[hidden])) .tpappshead { margin-right: 56px; }
+
+.tprapps { display: grid; gap: 6px; }
+.tpbarapps { display: flex; gap: 4px; }
+.tpapp { position: relative; flex: none; display: grid; justify-items: center; gap: 4px; padding: 6px 4px 4px; border-radius: var(--r2);
+  color: var(--text); transition: scale 140ms var(--spring), background var(--dur) var(--ease); }
+.tpapp:active { scale: .94; background: var(--s2); }
+.tpapp-bar { width: 64px; }
+.tpappico { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 22%; overflow: hidden;
+  background: var(--s3); color: var(--bright); font: 700 1.1rem var(--display);
+  transition: translate var(--dur) var(--spring); }
+.tpapp-bar .tpappico { width: 40px; height: 40px; }
+.tpappico img { width: 100%; height: 100%; object-fit: contain; }
+.tpappdot { width: 5px; height: 5px; border-radius: 50%; background: var(--text); opacity: .7; }
+.tpapp.front .tpappdot { width: 6px; height: 6px; background: var(--accent); opacity: 1; }
+.tpapp.front .tpappico { translate: 0 -2px; }
+.tpapp.away .tpappico { opacity: .5; scale: .92; }
+.tpappname { max-width: 100%; font-size: .6875rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tplibbtn { flex: none; display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; padding: 0 12px;
+  border-radius: var(--r1); background: var(--s2); color: var(--bright); font: 600 .8125rem var(--body); }
+.tplibbtn svg { width: 17px; height: 17px; }
+.tprscroll .tplibbtn { margin-bottom: 8px; width: 100%; }
+
+/* The library over the pad: in on --spring, out faster. */
+.tplib { position: absolute; inset: 0; z-index: 9; display: flex; flex-direction: column; gap: 10px;
+  padding: calc(12px + env(safe-area-inset-top)) 14px calc(12px + env(safe-area-inset-bottom)); background: var(--s0);
+  animation: tplib-in var(--dur-sheet) var(--spring) both; }
+.tplib.out { animation: tplib-in 180ms ease-in reverse forwards; }
+@keyframes tplib-in { from { opacity: 0; translate: 0 24px; } }
+.tplibhead { display: flex; align-items: center; justify-content: space-between; }
+.tplibhead b { font: 600 1.125rem var(--display); color: var(--bright); }
+.tplibq { min-height: 44px; padding: 0 14px; border-radius: var(--r3); background: var(--s2); color: var(--bright); border: 0; font-size: 1rem; }
+.tplibgrid { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  align-content: start; gap: 10px 4px; overscroll-behavior: contain; }
+.tplibapp .tpappico { width: 52px; height: 52px; }

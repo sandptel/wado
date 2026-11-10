@@ -3,6 +3,8 @@
 // Landscape: a rail down the left of the pad, as this device's `rail` setting says —
 //   keys     modifiers (Super, Ctrl, Alt, Shift), Esc and Tab, the arrows, and Type
 //   actions  the `quick` actions from the computer's list, in the user's order, then Type
+//   apps     a Mac's open apps, the one in front first: a tap switches to it (a mini dock), and
+//            the app library above them — every app, searchable
 //   none     nothing: the pad is the whole screen
 // Portrait: the keys already live with the keyboard (layout A), so only `actions` shows, as a
 // bar above the pad.
@@ -131,6 +133,96 @@
     return items.map((a) => actionButton(a, cls));
   }
 
+  // ── A Mac's apps (desk_apps.js keeps the list fresh while they show) ─────────────────────
+  R.appsOk = () => {
+    const c = W.hostConfig;
+    return !!(c && c.platform === "macos" && c.host_caps && (c.host_caps.on || []).includes("desk_apps"));
+  };
+  const openNow = () => (W.appsList || []).filter((a) => a.running && !a.hidden).sort((a, b) =>
+    (b.front ? 1 : 0) - (a.front ? 1 : 0) || (a.dock ?? 1e6) - (b.dock ?? 1e6) || a.name.localeCompare(b.name));
+  function appTile(a, cls) {
+    const b = node("button", cls + (a.front ? " front" : "") + (a.away ? " away" : ""), { "aria-label": `${a.name}${a.front ? ", in front" : ""}` });
+    const ico = node("span", "tpappico");
+    if (a.icon) { const img = node("img", "", { alt: "", draggable: "false" }); img.src = a.icon; ico.appendChild(img); }
+    else ico.textContent = (a.name || "?").charAt(0).toUpperCase();
+    const name = node("span", "tpappname");
+    name.textContent = a.name;
+    b.append(ico, node("i", "tpappdot", { "aria-hidden": "true" }), name);
+    b.addEventListener("click", () => W.deskAppDo(a.exec, a.running && a.away ? "unhide" : "open", a.running));
+    return b;
+  }
+  function appItems(cls) {
+    if (!R.appsOk()) return [note("Open apps show here for a Mac with wado.")];
+    if (!W.relayUp) return [note("Not connected — open apps show once the Mac is back.")];
+    const list = openNow();
+    if (!list.length) return [note((W.appsList || []).length ? "Nothing open on the Mac." : "Asking the Mac what runs…")];
+    return list.map((a) => appTile(a, cls));
+  }
+  let appsBox = null, appsSig = "";
+  const sig = () => JSON.stringify(openNow().map((a) => [a.exec, a.front, a.away, !!a.icon]));
+  // A fresh list (every 3 s): only the tiles change, and only when what runs did.
+  R.paintApps = () => {
+    if (!appsBox || !appsBox.isConnected) return;
+    const s = sig() + W.relayUp;
+    if (s === appsSig) return;
+    appsSig = s;
+    appsBox.replaceChildren(...appItems(appsBox.dataset.cls));
+  };
+  {
+    const prev = W._relayHandlers && W._relayHandlers.apps_list;
+    W.relayOn("apps_list", (m) => { if (prev) prev(m); R.paintApps(); });
+    const prevIcons = W._relayHandlers && W._relayHandlers.apps_icons_list;
+    W.relayOn("apps_icons_list", (m) => { if (prevIcons) prevIcons(m); appsSig = ""; R.paintApps(); });
+  }
+  function appsList(cls) {
+    const b = node("div", cls === "tpapp" ? "tprapps" : "tpbarapps");
+    b.dataset.cls = cls;
+    appsBox = b;
+    appsSig = sig() + W.relayUp;
+    b.append(...appItems(cls));
+    W.deskAppsWatch(true);
+    return b;
+  }
+  function libraryButton() {
+    const b = node("button", "tplibbtn", { "aria-label": "All apps on the Mac" });
+    b.innerHTML = W.padIcon("apps") + "<span>All apps</span>";
+    b.addEventListener("click", () => R.showLibrary());
+    return b;
+  }
+
+  // The app library over the pad: every app, searchable; a tap opens it and goes back to the pad.
+  R.showLibrary = () => {
+    const root = document.getElementById("wado-trackpad");
+    if (!root) return;
+    let lib = root.querySelector(".tplib");
+    if (lib) lib.remove();
+    lib = node("div", "tplib", { role: "dialog", "aria-label": "Apps on the Mac" });
+    const head = node("div", "tplibhead");
+    const title = node("b");
+    title.textContent = "Apps on the Mac";
+    const x = node("button", "iconbtn", { "aria-label": "Back to the trackpad" });
+    x.innerHTML = W.padIcon("x") || "×";
+    const q = node("input", "tplibq", { type: "search", placeholder: "Search apps", "aria-label": "Search apps", autocomplete: "off" });
+    const grid = node("div", "tplibgrid");
+    const paint = () => {
+      const s = q.value.trim().toLowerCase();
+      const all = (W.appsList || []).filter((a) => !a.hidden && a.name.toLowerCase().includes(s)).sort((a, b) => a.name.localeCompare(b.name));
+      grid.replaceChildren(...(all.length ? all.map((a) => {
+        const t = appTile(a, "tpapp tplibapp");
+        t.addEventListener("click", () => close());
+        return t;
+      }) : [note((W.appsList || []).length ? `No app is called “${q.value.trim()}”.` : "Asking the Mac for its apps…")]));
+    };
+    const close = () => { lib.classList.add("out"); setTimeout(() => lib.remove(), 180); };
+    x.addEventListener("click", close);
+    q.addEventListener("input", paint);
+    head.append(title, x);
+    lib.append(head, q, grid);
+    root.appendChild(lib);
+    paint();
+    W.deskAppsWatch(true);
+  };
+
   R.mount = (refs) => { box = refs; };
 
   R.paint = () => {
@@ -146,6 +238,10 @@
     } else if (landscape && rail === "actions") {
       const items = actionItems("tpact");
       side = [scroller(items), typeButton()];
+    } else if (landscape && rail === "apps") {
+      const s = node("div", "tprscroll");
+      s.append(libraryButton(), appsList("tpapp"));
+      side = [s, typeButton()];
     }
     if (side.length && hooks.settings.length) side.push(settingsButton());
     // Below the scroller, Type and settings enter last.
@@ -154,7 +250,8 @@
     box.rail.replaceChildren(...side);
     box.rail.hidden = !side.length;
 
-    const bar = !landscape && rail === "actions" ? actionItems("tpact tpact-bar") : [];
+    const bar = !landscape && rail === "actions" ? actionItems("tpact tpact-bar")
+      : !landscape && rail === "apps" ? [libraryButton(), appsList("tpapp tpapp-bar")] : [];
     stagger(bar);
     box.bar.replaceChildren(...bar);
     box.bar.hidden = !bar.length;

@@ -107,6 +107,9 @@ button.hcell:active:not(:disabled) { scale: .97; }
 .act.primary b, .act.primary small { color: var(--on-accent); }
 .act.primary small { opacity: .8; }
 .act.primary .aic { background: color-mix(in oklab, var(--on-accent), transparent 84%); color: var(--on-accent); border-radius: 50%; }
+/* Offline or shut: dimmed, still answering a tap with why (actions.rs, input/tile.rs). */
+.act.off, .vidoor.shut { opacity: .45; }
+.act.primary.off { box-shadow: none; }
 .act.primary:disabled { box-shadow: none; }
 .act .badge { position: absolute; top: 12px; right: 12px; font: 600 .6875rem var(--mono); padding: 3px 8px; border-radius: 999px; background: var(--s3); color: var(--bright);
   animation: popin 360ms var(--pop) both 260ms; }

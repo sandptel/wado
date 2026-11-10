@@ -46,6 +46,7 @@
     root.innerHTML = `
       <header class="tphead">
         <button class="linkpill tppill dim" aria-expanded="false"><span class="linkdot"></span><span class="tppilltext">Connecting…</span><span class="tprtt"></span></button>
+        <button class="iconbtn tpappshead" aria-label="Open an app on the Mac" hidden>${W.padIcon("apps")}</button>
         <button class="iconbtn tpgearhead" aria-label="Trackpad settings">${W.padIcon("sliders")}</button>
         <button class="iconbtn tpclose" aria-label="Close trackpad">${CLOSE}</button>
       </header>
@@ -68,7 +69,7 @@
       </div>
       <button class="btn tpkb" aria-expanded="false">${KEYBOARD}<span>Keyboard</span></button>`;
     document.body.appendChild(root);
-    for (const k of ["pill", "pilltext", "rtt", "gearhead", "close", "why", "note", "rail", "bar", "area", "hint", "err", "keys", "row", "text", "kb"]) {
+    for (const k of ["pill", "pilltext", "rtt", "appshead", "gearhead", "close", "why", "note", "rail", "bar", "area", "hint", "err", "keys", "row", "text", "kb"]) {
       el[k] = root.querySelector(".tp" + k);
     }
 
@@ -102,6 +103,8 @@
     W.padSettings.mount(root);
     W.padRail.onSettings((b) => W.padSettings.open(b));
     el.gearhead.onclick = () => W.padSettings.open(el.gearhead);
+    // The Mac's app library, a tap away while driving it — whatever is beside the pad.
+    el.appshead.onclick = () => W.padRail.showLibrary();
     const ran = (a, res) => {
       W.padConfirm.show(el.area, a, res);
       if (!res.ok) alert(res.message || `${a.name} didn't work.`);
@@ -248,6 +251,7 @@
     W.padCoach.attach(el.area);
     W.padKeys.attach(el.text, el.row);
     paintPill();
+    el.appshead.hidden = !W.padRail.appsOk();
     if (kb) keyboard(true);
     opening = false;
     if (W.wake) W.wake.acquire();

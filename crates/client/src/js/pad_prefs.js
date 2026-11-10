@@ -18,7 +18,7 @@
 (() => {
   const P = (W.padPrefs = {});
   const MIRROR = "wado.trackpad";
-  P.RAILS = ["keys", "actions", "none"];
+  P.RAILS = ["keys", "actions", "apps", "none"];
   P.GESTURES = ["edge-left", "edge-right", "four-tap", "two-hold"];
   const DEFAULTS = {
     landscape: true,

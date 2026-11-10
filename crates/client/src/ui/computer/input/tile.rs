@@ -35,11 +35,18 @@ pub fn Tile(ui: Ui, r: Reach) -> Element {
                         rsx! {
                             button {
                                 key: "{name}",
-                                class: "vidoor",
+                                // Shut: dimmed, and a tap says why rather than nothing.
+                                class: if why.is_some() { "vidoor shut" } else { "vidoor" },
                                 "aria-label": "{label}",
+                                "aria-disabled": why.is_some(),
                                 title: "{label}",
-                                disabled: why.is_some(),
-                                onclick: move |_| open::open(ui, door),
+                                onclick: {
+                                    let why = why.clone();
+                                    move |_| match &why {
+                                        Some(w) => crate::host_caps::tell(ui, &format!("{name} — {w}")),
+                                        None => open::open(ui, door),
+                                    }
+                                },
                                 Icon { name: icon }
                                 span { class: "vidoorname", "{name}" }
                             }

@@ -47,6 +47,9 @@ pub fn desktop(ui: Ui, r: &Reach) {
     }
 }
 
+/// What an offline door says under its name.
+const OFFLINE: &str = "Offline · opens when it is back";
+
 #[component]
 pub fn Actions(ui: Ui, r: Reach, name: String) -> Element {
     let live = ui.live;
@@ -91,25 +94,35 @@ pub fn Actions(ui: Ui, r: Reach, name: String) -> Element {
     // No session on this computer yet (`crate::host_caps`): the door stays, dimmed, and says why.
     let session = r.cap("session");
     let later = matches!(session, Cap::Later(_));
+    // Offline: each door stays, dimmed, says so, and a tap says when — never a dead button.
+    let desk_off = off && !r.busy;
     let desk_sub = if later {
         session.why().to_string()
+    } else if desk_off {
+        OFFLINE.to_string()
     } else {
         desk_sub
+    };
+    let tell_off = move |what: &str| {
+        crate::host_caps::tell(
+            ui,
+            &format!("Offline — {what} opens once the computer is back."),
+        )
     };
 
     rsx! {
         section { class: "acts sx o2", style: "--n:1", "aria-label": "Open",
             if !matches!(session, Cap::Off(_)) {
                 button {
-                    class: if later { "act primary soon" } else { "act primary" },
-                    disabled: off && !r.busy,
+                    class: if later { "act primary soon" } else if desk_off { "act primary off" } else { "act primary" },
+                    "aria-disabled": desk_off,
                     onclick: {
                         let r = r.clone();
                         let why = session.why().to_string();
-                        move |_| if later { crate::host_caps::tell(ui, &why) } else { desktop(ui, &r) }
+                        move |_| if later { crate::host_caps::tell(ui, &why) } else if desk_off { tell_off("Desktop") } else { desktop(ui, &r) }
                     },
                     if later { span { class: "badge", "{crate::host_caps::SOON}" } }
-                    if running && !r.busy && !later { span { class: "badge", "running" } }
+                    if running && !r.busy && !later && !desk_off { span { class: "badge", "running" } }
                     if r.busy && !idle_elsewhere && !later { span { class: "badge", "take over" } }
                     span { class: "aic", Icon { name: "play", fill: true } }
                     span { b { "Desktop" } small { "{desk_sub}" } }
@@ -117,19 +130,21 @@ pub fn Actions(ui: Ui, r: Reach, name: String) -> Element {
             }
             crate::ui::computer::input::tile::Tile { ui, r: r.clone() }
             button {
-                class: "act",
-                disabled: off || !relay,
-                onclick: move |_| if files_ok { bridge::call("window.__wado.filesOpen();".to_string()) } else { why.set(Some(("files-ro", "its files"))) },
+                class: if off { "act off" } else { "act" },
+                "aria-disabled": off,
+                disabled: !relay,
+                onclick: move |_| if off { tell_off("Files") } else if files_ok { bridge::call("window.__wado.filesOpen();".to_string()) } else { why.set(Some(("files-ro", "its files"))) },
                 span { class: "aic", Icon { name: "folder" } }
-                span { b { "Files" } small { if files_ok { "Browse, send, download" } else { "Not allowed for this phone · why?" } } }
+                span { b { "Files" } small { if off { "{OFFLINE}" } else if files_ok { "Browse, send, download" } else { "Not allowed for this phone · why?" } } }
             }
             button {
-                class: "act",
-                disabled: off || !relay,
-                onclick: move |_| if shell_ok { crate::ui::console::open_shells(ui) } else { why.set(Some(("shells", "its shells"))) },
-                if shells_open > 0 { span { class: "badge", "{shells_open} open" } }
+                class: if off { "act off" } else { "act" },
+                "aria-disabled": off,
+                disabled: !relay,
+                onclick: move |_| if off { tell_off("Shell") } else if shell_ok { crate::ui::console::open_shells(ui) } else { why.set(Some(("shells", "its shells"))) },
+                if shells_open > 0 && !off { span { class: "badge", "{shells_open} open" } }
                 span { class: "aic", Icon { name: "term" } }
-                span { b { "Shell" } small { if shell_ok { "A terminal, no video" } else { "Not allowed for this phone · why?" } } }
+                span { b { "Shell" } small { if off { "{OFFLINE}" } else if shell_ok { "A terminal, no video" } else { "Not allowed for this phone · why?" } } }
             }
         }
         if let Some((token, what)) = why() {
