@@ -25,7 +25,7 @@ const deskTell = () => emit({ type: "deskLaunching", execs: [...deskLaunching.ke
 const deskLanded = (exec) => { clearTimeout(deskLaunching.get(exec)); deskLaunching.delete(exec); };
 
 W.deskAppDo = (exec, action, running) => {
-  if (!W.relayUp) { emit({ type: "captureNote", text: "Not connected to it right now." }); return; }
+  if (!W.relayUp) { emit({ type: "captureNote", text: "Not connected — it opens once the computer is back." }); return; }
   W.relaySendMsg({ type: "app_do", exec, action });
   try { if (navigator.vibrate) navigator.vibrate(6); } catch (_) {}
   if (action === "open" && !running) {

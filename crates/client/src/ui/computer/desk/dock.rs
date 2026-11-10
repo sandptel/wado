@@ -24,7 +24,12 @@ pub fn Dock(ui: Ui, r: Reach) -> Element {
     });
     use_drop(|| bridge::call("window.__wado.deskAppsWatch(false);".to_string()));
     let here = matches!((live.view)(), View::Computer(_));
-    let apps = live.apps.read();
+    // Offline: the apps it had, dimmed and with no state, saying when they open.
+    let apps = if r.online {
+        live.apps.read().clone()
+    } else {
+        super::unknown(&live.apps.read())
+    };
     let (kept, extra) = super::dock(&apps);
 
     rsx! {
@@ -33,12 +38,15 @@ pub fn Dock(ui: Ui, r: Reach) -> Element {
                 span { "Apps" }
                 button { onclick: move |_| route::open_page(ui, Page::Apps), "All apps" }
             }
-            if !r.online {
-                div { class: "npempty", Icon { name: "apps" } "Its apps show once it answers." }
+            if !r.online && kept.is_empty() && extra.is_empty() {
+                div { class: "npempty", Icon { name: "apps" } "Its apps show here once it has been connected." }
             } else if kept.is_empty() && extra.is_empty() {
                 div { class: "dshelf dwait", "Asking for its apps…" }
             } else {
-                div { class: "dshelf", role: "group", "aria-label": "Dock",
+                if !r.online {
+                    p { class: "dnotlinked", Icon { name: "alert" } "Not connected — these open once it is back." }
+                }
+                div { class: if r.online { "dshelf" } else { "dshelf off" }, role: "group", "aria-label": "Dock",
                     for a in kept.iter() {
                         Tile { key: "{a.exec}", app: (*a).clone(), named: false }
                     }

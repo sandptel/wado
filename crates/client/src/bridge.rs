@@ -1007,6 +1007,12 @@ pub fn run(ui: Ui) {
                 }
                 "rotate" => crate::actions::rotate(ui, &string("to")),
                 "deskAppMenu" | "deskLaunching" => crate::ui::computer::desk::on_event(kind, &msg),
+                "keptCaps" => {
+                    live.kept_caps.set(
+                        msg.get("caps")
+                            .and_then(|v| serde_json::from_value(v.clone()).ok()),
+                    );
+                }
                 "apps" => {
                     live.apps.set(
                         msg.get("apps")

@@ -12,6 +12,10 @@ let prefsTimer = 0;
 
 W.relayOn("config_state", (msg) => {
   W.hostConfig = msg.state || null;
+  // What it is and can do, kept per computer: offline, a Mac still shows its apps (relay_link.js).
+  if (W.hostConfig && W._relayTarget) {
+    try { localStorage.setItem("wado.kept." + W._relayTarget.id, JSON.stringify({ platform: W.hostConfig.platform, host_caps: W.hostConfig.host_caps })); } catch (_) {}
+  }
   // The newer copy of this device's settings wins. The daemon's used to win always, so a change
   // made just before a reload — inside the 1.5 s debounce, or while the link was down — was
   // reverted by the stale copy on the next connect (measured: "Stream sound" off came back on,

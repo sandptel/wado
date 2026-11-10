@@ -29,7 +29,13 @@ pub fn Sessions(ui: Ui, r: Reach) -> Element {
         bridge::call(format!("window.__wado.sessionsWatch({watch});"));
     });
     // A Mac with its apps: the Apps dock stands here instead (`desk`).
-    if r.config.as_ref().is_some_and(crate::host_caps::desk_apps) {
+    // Offline too: what it said last (`kept_caps`), so its apps stay, saying they wait.
+    let kept = (live.kept_caps)();
+    if r.config
+        .as_ref()
+        .or(kept.as_ref())
+        .is_some_and(crate::host_caps::desk_apps)
+    {
         return rsx! { crate::ui::computer::desk::dock::Dock { ui, r } };
     }
     let (here, list) = (live.sessions)();

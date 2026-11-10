@@ -59,6 +59,24 @@ pub fn act(exec: &str, action: &str, running: bool) {
     ));
 }
 
+/// Offline: the kept list with no state — nothing is known to run.
+pub fn unknown(apps: &[AppEntry]) -> Vec<AppEntry> {
+    apps.iter()
+        .cloned()
+        .map(|mut a| {
+            a.running = false;
+            a.front = false;
+            a.away = false;
+            a
+        })
+        .collect()
+}
+
+/// Linked to the selected computer now: its apps answer a tap.
+pub fn linked(ui: crate::state::Ui) -> bool {
+    (ui.live.hoststate)().is_some() || (ui.live.conn_stage)() >= 2
+}
+
 /// The dock: the Mac's own Dock in its order, then the running apps it does not keep, by name —
 /// what macOS shows after its separator.
 pub fn dock(apps: &[AppEntry]) -> (Vec<&AppEntry>, Vec<&AppEntry>) {

@@ -241,6 +241,10 @@ button.hcell:active:not(:disabled) { scale: .97; }
   background: color-mix(in oklab, var(--s2), transparent 35%); -webkit-backdrop-filter: blur(24px) saturate(1.4); backdrop-filter: blur(24px) saturate(1.4);
   box-shadow: inset 0 1px 0 color-mix(in oklab, var(--bright), transparent 90%), 0 14px 34px -22px #000; }
 .dshelf::-webkit-scrollbar { display: none; }
+/* Not connected: the apps it had, dimmed, a tap says why (desk_apps.js). */
+.dshelf.off .dtile, .dgrid.off .dtile { opacity: .45; }
+.dnotlinked { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; color: var(--dim); font-size: .8125rem; }
+.dnotlinked svg { width: 16px; height: 16px; flex: none; }
 .dshelf.dwait { justify-content: center; align-items: center; min-height: 82px; padding: 10px; color: var(--dim); font-size: .8125rem; }
 .dsep { flex: none; align-self: stretch; width: 1px; margin: 2px 5px 12px; background: color-mix(in oklab, var(--bright), transparent 78%); }
 

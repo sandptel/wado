@@ -191,6 +191,7 @@ W.relayDial = (url, id) => {
     return true;
   }
   W.relayDrop(true);
+  if (!W._relayTarget || W._relayTarget.id !== id) { try { W.relayKept && W.relayKept(id); } catch (_) {} }
   // A dial someone asked for clears a refusal: they have seen it and are trying again.
   W._e2eBlocked = false;
   W._relayUnpaired = false;

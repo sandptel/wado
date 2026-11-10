@@ -514,10 +514,23 @@ W.relayOn("apps_list", (msg) => {
   if (inline) keepIcons();
   W.appsList = withIcons(list);
   emit({ type: "apps", apps: W.appsList });
+  // Kept per computer, icons aside (those are kept by exec): offline, its apps still show.
+  if (W._relayTarget) {
+    try { localStorage.setItem("wado.keptApps." + W._relayTarget.id, JSON.stringify(list.map(({ icon, ...a }) => a))); } catch (_) {}
+  }
   iconsWanted = list.filter((a) => !a.hidden && !W.appIcons[a.exec] && !iconsAsked.has(a.exec))
     .sort((a, b) => iconFirst(a) - iconFirst(b)).map((a) => a.exec);
   askIcons();
 });
+// Another computer dialled: what it said last, until it answers.
+W.relayKept = (id) => {
+  const read = (k) => { try { return JSON.parse(localStorage.getItem(k + id) || "null"); } catch (_) { return null; } };
+  emit({ type: "keptCaps", caps: read("wado.kept.") });
+  W.appsList = withIcons(read("wado.keptApps.") || []);
+  emit({ type: "apps", apps: W.appsList });
+};
+// The dial at load (relay_link.js) ran before this file: its computer's kept list now.
+if (W._relayTarget) W.relayKept(W._relayTarget.id);
 W.relayOn("apps_icons_list", (msg) => {
   Object.assign(W.appIcons, msg.icons || {});
   keepIcons();

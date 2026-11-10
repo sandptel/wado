@@ -494,6 +494,9 @@ pub struct Live {
     /// Launchable applications, from the server. Empty until requested — and it stays empty
     /// on a server that could not be reached, which the free-text command box covers.
     pub apps: Signal<Vec<AppEntry>>,
+    /// What the selected computer said it is and can do, last time it answered (`platform`,
+    /// `host_caps`; `js/relay_link.js` keeps it per computer): offline, a Mac still shows its apps.
+    pub kept_caps: Signal<Option<wado_protocol::ConfigState>>,
     /// The Game mode the session was started for, if any (`crate::game_mode`).
     pub game: Signal<Option<crate::game_mode::Profile>>,
     /// That game's command, to launch once the session is up.
@@ -624,6 +627,7 @@ impl Live {
             pair_sas: use_signal(Vec::new),
             session_alive: use_signal(|| None),
             apps: use_signal(Vec::new),
+            kept_caps: use_signal(|| None),
             game: use_signal(|| None),
             game_launch: use_signal(|| None),
             launching: use_signal(|| None),
