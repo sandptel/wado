@@ -245,6 +245,8 @@ public class MethodCallHandlerImpl implements MethodCallHandler, StateProvider {
     }
 
     warpEnabled = enableWARP;
+    // wado patch: this phone's own hotspot is a network ICE may use (TetherAwareDetector).
+    TetherAwareDetector.install();
 
     InitializationOptions.Builder initializationOptionsBuilder =
             InitializationOptions.builder(context)

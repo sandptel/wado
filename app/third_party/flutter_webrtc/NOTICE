@@ -52,4 +52,6 @@ SOFTWARE.
 wado: vendored from flutter_webrtc 1.6.3 (pub.dev), unchanged except
 android/src/main/java/com/cloudwebrtc/webrtc/MethodCallHandlerImpl.java, which always sets the
 field trial WebRTC-AndroidNetworkMonitor-IsAdapterAvailable/Disabled/ so a phone's own hotspot
-interface is gathered. The example app is left out.
+interface is gathered, and calls TetherAwareDetector.install() (a file of its own) so the
+hotspot interface is reported to libwebrtc's network monitor and its sockets can bind. The example
+app is left out.

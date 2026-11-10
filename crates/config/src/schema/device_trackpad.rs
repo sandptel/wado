@@ -17,8 +17,8 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Deserializer, Serialize};
 
-/// What the rail beside the pad holds.
-pub const RAILS: &[&str] = &["keys", "actions", "none"];
+/// What the rail beside the pad holds: keys, the quick actions, a Mac's open apps (a mini dock), or nothing.
+pub const RAILS: &[&str] = &["keys", "actions", "apps", "none"];
 
 /// The phone-only gestures an action can be given.
 pub const GESTURES: &[&str] = &["edge-left", "edge-right", "four-tap", "two-hold"];
