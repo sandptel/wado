@@ -19,7 +19,7 @@ Spec: `plan/superpowers/specs/2026-11-12-desktop-app-design.md` (boards beside i
 - [x] Stage 3 — Settings and Health (daemon socket `health`)
 - [x] Stage 5 — computers: pairing, computer page (Home widgets / Shell / Input), All apps, Files; kept clipboard+notifications store in client-core (phone not wired yet)
 - [x] Extra — Overview guide when nothing is connected; "Let devices in" pause (`~/.config/wado/paused`, `wado pause on|off`); app menus + ⌘1–4
-- [ ] Stage 6 — session windows: frame, peer offer, H.264 decode done; signalling + input over the client link in progress; needs a Linux host to run end to end
+- [x] Stage 6 — session windows: start/join over the client link, offer/answer, input on wado-input/wado-motion, stage follows the link. **Untested end to end: needs a Linux host** (L-test on the Linux machine first thing)
 - [~] Stage 7 — `scripts/mac-app.sh --desktop` (dev-signed, not notarised); `packaging/linux/wado-desktop.desktop` untested
 - [ ] (user) restart the daemon to get `shared`/`media`/`health`/`pause`; decide clipboard shown vs blurred; desktop app has no passkey (shells/input refused)
 - [ ] (user) answer the spec's "Open" defaults; which key stays local under "Send every key"

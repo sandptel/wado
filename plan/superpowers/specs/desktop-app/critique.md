@@ -43,3 +43,17 @@ Open System Settings), "What a phone can do here". "Show the dashboard" / "Back 
   → JetBrains Mono + weight 600 everywhere (Remote ID too).
 - v3: the safety warning overflowed the card; its text could not wrap in a flex row. → shrinkable
   text box; Devices' pairing panel had the same bug.
+
+## Stage 5 — computers (merged from the subagent, my pass)
+- Home widgets stretched to their row's tallest: an Applications card with one line ("In use by
+  Android · app") stood as a tall empty box. → grid `items_start`.
+- While the link was still connecting, every widget said "<name> is offline". → "Reaching <name>…".
+- Open (user): the Home clipboard shows full contents, links with tokens included — blur until
+  hovered, or show as now?
+
+## Stage 6 — session window (merged, my pass)
+- Ended by a pause, it said "Apps that were open have closed" (false: the session keeps running)
+  and offered "Start a new one" (cannot work while paused). → warn tone, "still running there",
+  "Try again".
+- Quick panel and dock looked live with nothing connected. → dimmed until the picture is live.
+- Merge loss: the app menu and shortcuts were not installed after the stage 5 merge. → restored.
