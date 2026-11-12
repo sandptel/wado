@@ -11,11 +11,12 @@ Last updated: `2026-11-12`
 
 Spec: `plan/superpowers/specs/2026-11-12-desktop-app-design.md` (boards beside it). Run:
 `cd crates/desktop && cargo run`. Linux pick-up list: the spec's "Linux targets" (L1–L12).
-- [x] Stage 0 — window, sidebar, tokens, Overview on a real daemon, join-or-start (built, runs, `--check` reads the live daemon; **look not yet seen by anyone** — screen capture is blocked for the agent; uncommitted on `macos`)
-- [ ] Stage 1 — Devices and pairing
-- [ ] Stage 2 — menu bar, close keeps serving
+- [x] Stage 0 — window, sidebar, tokens, Overview on a real daemon, join-or-start
+- [x] Stage 1 — Devices: grant tiles, owner, forget, passkey, pairing code + QR, check words, switches for everyone
+- [x] Stage 2 — menu bar item + panel (objc2 NSStatusItem → gpui popup), close keeps serving, Dock reopens
+- [x] Stage 4 — now playing, clipboard, files moving, activity (daemon socket `shared` / `media`)
+  Self-critique per stage: `plan/superpowers/specs/desktop-app/critique.md`. Look: `crates/desktop/shot.sh`.
 - [ ] Stage 3 — Settings and Health
-- [ ] Stage 4 — shared widgets
 - [ ] Stage 5 — client computer page
 - [ ] Stage 6 — session windows
 - [ ] Stage 7 — ship
