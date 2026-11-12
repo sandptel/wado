@@ -31,3 +31,15 @@ compared with the boards, criticised, fixed, and drawn again. Newest stage last.
 - File rows read "download · 18 KB by Android": backwards for the person at this computer.
   → "sent to Android · app · 18 KB", "received from …", "deleted by …".
 - Activity was empty on a Mac: Wado.app logs to /tmp/wado-rig/mac.log. → Read there too.
+
+## Overview guide while nothing is connected (user request, `2026-11-12`)
+Hero (title, what wado is, a breathing phone↔computer link), a giant pairing QR covered until
+"Show pairing code" (shared with Devices; a code on screen lets whoever scans it in, and the guide
+must not mint one per visit), three steps, "Before you start" (permissions from Health with
+Open System Settings), "What a phone can do here". "Show the dashboard" / "Back to the guide".
+- v1: whole page wider than the window. Cause: the page scroller was a flex item with the
+  default min-width (its content). → `min_w_0` on it; every page benefits.
+- v2: the revealed code drew in Figtree: "JetBrains Mono SemiBold" is not a registered family.
+  → JetBrains Mono + weight 600 everywhere (Remote ID too).
+- v3: the safety warning overflowed the card; its text could not wrap in a flex row. → shrinkable
+  text box; Devices' pairing panel had the same bug.
