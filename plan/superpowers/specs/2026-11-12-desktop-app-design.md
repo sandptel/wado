@@ -75,7 +75,19 @@ wado (server lib) · wado-config · wado-client-core · wado-platform · wado-ux
   (106 by default; `AllAssets` for the rest).
 - Its `test-support` feature does not resolve here (drags in `gpui-fast`, clashing `taffy` pins),
   so there is no offscreen screenshot. Look at the window.
-- The daemon is started as a child process (`wado daemon`, own process group), not in-process.
+- The daemon is a child process, not in-process: on launch the app joins a daemon that answers,
+  else starts one (`caps::daemon::start`, own process group, so quitting the app keeps serving).
+- Wado.app with `scripts/mac-app.sh --desktop`: `MacOS/wado` is this app, `MacOS/wado-daemon` the
+  daemon; `wado <subcommand>` given to the app is handed to the daemon (login agent, CLI).
+- The daemon's local command socket answers the app: `shared` (players, clipboard history),
+  `media <op>`, `health` (probed capabilities, NAT, pid, log, `paused`), `pause on|off`.
+  "Let devices in" off = `~/.config/wado/paused` (every daemon of the pool reads it).
+- Client side: `~/Library/Application Support/wado-desktop/client/` (identity, pins, profiles,
+  `kept-<id>.bin`), sealed with a key in the login keychain (service `wado-desktop`). Ceiling: the
+  item is readable by this user's own processes through `security`; the Keychain API with an
+  app-only access list is the upgrade (Linux: `secret-tool`, untested).
+- Looking at pages: `crates/desktop/shot.sh out.png <Page>` draws offscreen (no screen-recording
+  permission needed); env `WADO_SHOT_DASH`, `WADO_SHOT_CODE` (fake code), `WADO_SHOT_WAIT`.
 - `caps::daemon::read` reuses `wado::tui::data::Snapshot` (made `pub` for this).
 
 ## Stages
