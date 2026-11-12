@@ -980,3 +980,11 @@ Wants a second bufferbloat sample to confirm the throughput/loss signature befor
 **On the pattern:** this is the second time today a guard written to stop a wrong accusation went
 one step too far (the first being the strain-gate interaction in P4). Removing bad advice is not
 the same as knowing when the advice was good.
+
+## macOS daemon ignores SIGTERM (seen 2026-11-13)
+`kill <pid>` (and so `scripts/mac-app.sh --run`'s `pkill -x wado-daemon` and the desktop app's
+Health → Restart) leaves `wado-daemon` running on the Mac; only SIGKILL stops it. Not an ignored
+disposition (resetting SIGTERM to SIG_DFL in `main` changed nothing) and no thread blocks it
+(`ps -M -o blocked`), so some handler catches it — not found in our crates; likely a dependency's
+`tokio::signal`/signal-hook registration. Fix: find the registrar, or install our own SIGTERM
+handler that exits.
