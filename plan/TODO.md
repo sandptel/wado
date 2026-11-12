@@ -16,10 +16,12 @@ Spec: `plan/superpowers/specs/2026-11-12-desktop-app-design.md` (boards beside i
 - [x] Stage 2 — menu bar item + panel (objc2 NSStatusItem → gpui popup), close keeps serving, Dock reopens
 - [x] Stage 4 — now playing, clipboard, files moving, activity (daemon socket `shared` / `media`)
   Self-critique per stage: `plan/superpowers/specs/desktop-app/critique.md`. Look: `crates/desktop/shot.sh`.
-- [ ] Stage 3 — Settings and Health
-- [ ] Stage 5 — client computer page
-- [ ] Stage 6 — session windows
-- [ ] Stage 7 — ship
+- [x] Stage 3 — Settings and Health (daemon socket `health`)
+- [x] Stage 5 — computers: pairing, computer page (Home widgets / Shell / Input), All apps, Files; kept clipboard+notifications store in client-core (phone not wired yet)
+- [x] Extra — Overview guide when nothing is connected; "Let devices in" pause (`~/.config/wado/paused`, `wado pause on|off`); app menus + ⌘1–4
+- [ ] Stage 6 — session windows: frame, peer offer, H.264 decode done; signalling + input over the client link in progress; needs a Linux host to run end to end
+- [~] Stage 7 — `scripts/mac-app.sh --desktop` (dev-signed, not notarised); `packaging/linux/wado-desktop.desktop` untested
+- [ ] (user) restart the daemon to get `shared`/`media`/`health`/`pause`; decide clipboard shown vs blurred; desktop app has no passkey (shells/input refused)
 - [ ] (user) answer the spec's "Open" defaults; which key stays local under "Send every key"
 
 ## ▣ RUN — 2026-11-09, macOS host without the compositor (branch `macos`)
