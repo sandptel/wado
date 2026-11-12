@@ -54,12 +54,6 @@ Sandboxed access to a DRM render node is killed outright and the exit code looks
 fine — the *builder's* network namespace is restricted. Use `--option sandbox false`. This is
 local, not a property of the flake.
 
-## Agent files live only on the `plan` branch
-
-`plan/` is ignored on `main`; `git status` never shows edits there. Commit them with
-`plan/commit.sh "msg"` (commits + pushes the orphan branch). The old root `CLAUDE.md`,
-`WADO_PLAN.md`, `TODO.md`, `CHALLENGES.md` were ignored and never committed — lost `2026-11-09`.
-
 ## Bringing the rig up: `scripts/rig.sh`
 
 **Since 2026-10-06 the user launches only via the binary** (`wado tui` / `wado daemon`): a bare

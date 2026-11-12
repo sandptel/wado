@@ -75,21 +75,7 @@ True in every lane. **`environment.md` is read first, every run, whatever the la
 
 ---
 
-## Where things live
-
-| | |
-|---|---|
-| Repo direction, invariants, hazards, pins | [`CLAUDE.md`](CLAUDE.md) |
-| State at v0.0.4 + Flutter port | [`HANDOVER.md`](HANDOVER.md) |
-| Observed, unfixed | [`issues.md`](issues.md) |
-| Visual system, product | [`design/`](design/) — `DESIGN.md`, `PRODUCT.md`, `.impeccable/` |
-| Specs, plans, research | [`superpowers/`](superpowers/) |
-| Shipped | `CHANGELOG.md` (on `main`) |
-
-`WADO_PLAN.md`, the old root `TODO.md` and `CHALLENGES.md` were gitignored, never committed, and
-are lost (`2026-11-09`). Everything agent-facing now lives here.
-
----
+Repo direction, invariants, hazards, pins, the file map and the `plan`-branch commit rule: [`CLAUDE.md`](CLAUDE.md).
 
 ## Maintaining memory
 
@@ -100,21 +86,3 @@ are lost (`2026-11-09`). Everything agent-facing now lives here.
 - **Verify before acting.** An entry naming a file, flag or function is a lead, not a fact.
 - Update memory *and* `TODO.md` before a run ends.
 
----
-
-## The `plan` branch
-
-`plan/` is gitignored on `main` — it lives only on the orphan branch **`plan`**, which
-contains nothing else. No code, no merges, no relation to `main`'s history.
-
-**Commit updated plans to `plan` separately, after any change to this folder.** Never fold
-plan edits into a code commit on `main`; never merge `plan` into `main` or the reverse.
-
-From the repo root, with `main` still checked out:
-
-```sh
-plan/commit.sh "what changed"
-```
-
-It writes the commit straight to `refs/heads/plan` through a side index, so the working tree
-and `main`'s index are untouched, then pushes. New machine: `plan/setup.sh` (see `CLAUDE.md`).

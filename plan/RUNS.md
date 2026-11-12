@@ -4,8 +4,6 @@ A **run** is one iteration of the loop we work in. Say *"start a run"* and this 
 procedure. It is a handoff document: a session that has lost its context should be able to
 read this plus `plan/memory/` and pick the loop back up without asking what happened before.
 
-Ignored on `main`, tracked on the orphan branch `plan` — commit with `plan/commit.sh` (see `CLAUDE.md`).
-
 ---
 
 ## The loop
@@ -92,9 +90,8 @@ Layers, each of which has given a false pass here at least once:
 Standing authorisation: commit and push after each significant step. Then rebuild and restart
 whatever runs the changed code, and say so.
 
-Commit messages are **short, one line** (`scope: what changed`) and **never mention Claude/AI**
-(no `Co-Authored-By`, no session links). The why — what was rejected, the known ceiling, withdrawn
-claims — goes in `plan/memory/` or `CHANGELOG.md`, not the commit.
+Commit style: `CLAUDE.md`. The why — what was rejected, the known ceiling, withdrawn claims — goes
+in `plan/memory/` or `CHANGELOG.md`, not the commit.
 
 ### 8. Observe, then branch
 

@@ -1,12 +1,7 @@
 # CLAUDE.md — wado
 
-Rebuilt `2026-11-09` from the ~40 places that cited the old, never-committed copy. The numbered
-invariants below are those citations restated; where the old wording was not recoverable, the
-meaning is taken from how the code and specs apply it. Correct it when you know better.
-
-wado is a headless Wayland compositor (Rust / Smithay) that streams its display over WebRTC and
-takes input back — from a browser (`crates/client`, Dioxus/WASM) and from the Flutter app (`app/`,
-over `crates/client-core` + `crates/app-bridge`). Overview: `README.md`. App build: `docs/app.md`.
+Rebuilt `2026-11-09` from citations of the old, never-committed copy; correct it when you know better.
+Overview: `README.md`. App build: `docs/app.md`.
 
 ## The `plan` branch — where every agent file lives
 
@@ -22,19 +17,10 @@ plan/commit.sh "what changed"     # commits plan/ to refs/heads/plan via a side 
 `git status` never shows `plan/` edits. Skipping this is how the old `CLAUDE.md`, `WADO_PLAN.md`,
 `TODO.md` and `CHALLENGES.md` were lost. Never put plan edits in a commit on `main`.
 
-New machine / fresh clone:
-
-```sh
-git fetch origin plan:plan && git show plan:plan/setup.sh | sh
-```
-
 Pull another machine's plan changes (commit yours first — this overwrites `plan/`):
 `git fetch origin plan:plan && git restore -s plan -W plan`.
 
-Root links made by `setup.sh` (all gitignored on `main`): `CLAUDE.md`, `AGENTS.md` → this file;
-`DESIGN.md`, `PRODUCT.md`, `.impeccable` → `plan/design/`; `docs/superpowers` → `plan/superpowers`.
-So skills and code comments that name those paths still resolve. Write new specs and plans to
-`plan/superpowers/{specs,plans,research}/`.
+Write new specs and plans to `plan/superpowers/{specs,plans,research}/`.
 
 | | |
 |---|---|
@@ -81,7 +67,6 @@ So skills and code comments that name those paths still resolve. Write new specs
 
 - Smithay: a git revision, pinned in `Cargo.lock` only (deliberately); its hash is in `flake.nix`.
 - `webrtc-rs` 0.17 — known wart: `write_rtp` blocks on its 256-deep bounded channel.
-- Dioxus 0.7 for the browser client.
 - `flutter_rust_bridge` 2.13.0 exactly — crate, Dart package and codegen must match. Never `pin!`
   in `crates/app-bridge`.
 
