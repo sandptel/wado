@@ -798,3 +798,13 @@ misled this one.
 ⚠️ Do not "fix" this by debouncing the *hide* instead. Pausing late means continuing to encode
 and transmit for a page already off screen, which is the waste I20 exists to remove — and the
 hide is the valuable half.
+
+## Ecosystem (2026-11-13) — built, awaiting a phone test
+Spec: `superpowers/specs/2026-11-13-ecosystem-design.md`. Built: presence, device facts, Overview
+device cards, ring both ways, send text both ways, opt-in phone notifications + music.
+APK `~/Downloads/wado-ecosystem-arm64.apk`. Open:
+- [ ] Try on a real phone: presence, battery, ring on silent/DND, notes, media control, texts.
+- [ ] The desktop as a client of another computer reports itself too (client-core pump `device_info`).
+- [ ] Phone presence for paired computers without a home widget (side links exist only for those).
+- [ ] Later: phone files from the computer, SMS/calls, battery-low alert, `wado tui` shows peers.
+- [ ] macOS daemon ignores SIGTERM (`issues.md`).
