@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Design language</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="min-height: 1240px; box-sizing: border-box; padding: 36px 40px; background: #181818; color: #c8c8c8; font-family: Figtree, system-ui, sans-serif; font-size: 13px; line-height: 1.5">
+<div style="max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px">
+<div>
+<div style="font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">wado desktop · design language</div>
+<h1 style="margin: 4px 0 6px; font-family: 'Bricolage Grotesque', Figtree, sans-serif; font-weight: 700; font-size: 40px; letter-spacing: -0.035em; line-height: 1.05; color: #ececec">Calm, tactile, honest — at desk density</h1>
+<p style="margin: 0; max-width: 760px; font-size: 14px">The phone app's system, kept where it is wado and changed where a desk differs. Same colours, type and wording; a sidebar, hairlines, hover and the keyboard replace sheets and thumb-sized targets.</p>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px">
+<section style="background: #222222; border: 1px solid #2e2e2e; border-radius: 14px; padding: 16px"><h2 style="margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #a1b56c">Kept from the phone</h2>
+<sc-for list="{{kept}}" as="k" hint-placeholder-count="6"><div style="padding: 6px 0; border-top: 1px solid #2e2e2e"><span style="color: #ececec; font-weight: 600">{{k.a}}</span> — {{k.b}}</div></sc-for></section>
+<section style="background: #222222; border: 1px solid #2e2e2e; border-radius: 14px; padding: 16px"><h2 style="margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #7cafc2">Changed for the desk</h2>
+<sc-for list="{{changed}}" as="k" hint-placeholder-count="6"><div style="padding: 6px 0; border-top: 1px solid #2e2e2e"><span style="color: #ececec; font-weight: 600">{{k.a}}</span> — {{k.b}}</div></sc-for></section>
+</div>
+<section>
+<h2 style="margin: 0 0 10px; font-family: 'Bricolage Grotesque', Figtree, sans-serif; font-size: 20px; font-weight: 700; color: #ececec">Colour <span style="font-family: Figtree, sans-serif; font-size: 13px; font-weight: 400; color: #9a9a9a">— sixteen base16 slots; everything else is mixed from them, so any scheme themes the app</span></h2>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 10px">
+<sc-for list="{{sw}}" as="s" hint-placeholder-count="12"><div style="border: 1px solid #2e2e2e; border-radius: 12px; overflow: hidden; background: #222222"><div style="{{s.chip}}"></div><div style="padding: 8px 10px"><div style="color: #ececec; font-weight: 600">{{s.name}}</div><div style="font-size: 12px; color: #9a9a9a">{{s.use}}</div></div></div></sc-for>
+</div>
+</section>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px">
+<section style="background: #222222; border: 1px solid #2e2e2e; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 10px">
+<h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">Type</h2>
+<div><div style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 28px; letter-spacing: -0.025em; color: #ececec; line-height: 1.15">sandeep-mbp</div><div style="font-size: 12px; color: #9a9a9a">Bricolage Grotesque 700 · 28 — a computer's name, the wordmark</div></div>
+<div><div style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 17px; color: #ececec">Shared right now</div><div style="font-size: 12px; color: #9a9a9a">Bricolage 700 · 17 — page and section heads, live numbers</div></div>
+<div><div style="font-weight: 600; color: #ececec">Ask for check words</div><div>Both sides compare four words before a device is trusted.</div><div style="font-size: 12px; color: #9a9a9a">Figtree 600 / 400 · 13 — everything a person reads</div></div>
+<div><div style="font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">Connected now</div><div style="font-size: 12px; color: #9a9a9a">Figtree 600 · 11 caps — card labels</div></div>
+<div><div style="font-family: 'JetBrains Mono', monospace; color: #ececec">482 913 067 · 1728×1080 · vaapi-dmabuf</div><div style="font-size: 12px; color: #9a9a9a">JetBrains Mono · 12 — anything the machine produced</div></div>
+</section>
+<section style="background: #222222; border: 1px solid #2e2e2e; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 14px">
+<h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">Controls — try them</h2>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
+<button type="button" style="height: 32px; padding: 0 14px; border: 0; border-radius: 9px; background: #7cafc2; color: #181818; font: 600 13px Figtree, sans-serif; cursor: pointer">Pair a device</button>
+<button type="button" style="height: 32px; padding: 0 14px; border: 0; border-radius: 9px; background: #2e2e2e; color: #e0e0e0; font: 600 13px Figtree, sans-serif; cursor: pointer">Copy link</button>
+<button type="button" style="height: 32px; padding: 0 14px; border: 0; border-radius: 9px; background: #2e2e2e; color: #e08783; font: 600 13px Figtree, sans-serif; cursor: pointer">Remove</button>
+<button type="button" aria-label="More" style="width: 32px; height: 32px; border: 0; border-radius: 9px; background: #2e2e2e; color: #e0e0e0; cursor: pointer; display: flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M5 10.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM12 10.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM19 10.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z"></path></svg></button>
+</div>
+<div style="font-size: 12px; color: #9a9a9a">One accent button per page, top right or at the end of the form. Destructive actions are words in red on a quiet button, never a red fill.</div>
+<div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: center">
+<button type="button" role="switch" aria-checked="{{swOn}}" aria-label="Sample switch" onClick="{{toggle}}" style="{{swTrack}}"><span style="{{swKnob}}"></span></button>
+<div role="radiogroup" aria-label="Sample choice" style="position: relative; display: flex; padding: 3px; border-radius: 10px; background: #181818; border: 1px solid #333333">
+<span aria-hidden="true" style="{{segKnob}}"></span>
+<sc-for list="{{segs}}" as="g" hint-placeholder-count="3"><button type="button" role="radio" aria-checked="{{g.on}}" onClick="{{g.pick}}" style="{{g.style}}">{{g.name}}</button></sc-for>
+</div>
+<span style="display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 11px; border-radius: 999px; background: #181818; border: 1px solid #2e2e2e; color: #d6d6d6; font-size: 12px"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 999px; background: #a1b56c"></span>Direct</span>
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; border: 1px solid #4a4a4a; border-radius: 5px; padding: 0 5px; color: #a8a8a8">LINUX</span>
+</div>
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #b4b4b4">Field<input type="text" placeholder="Typed text is 13 px; values are mono" style="height: 32px; padding: 0 10px; border: 1px solid #333333; border-radius: 9px; background: #181818; color: #ececec; font: 400 13px Figtree, sans-serif"></label>
+<div style="font-size: 12px; color: #9a9a9a">Sizes: 32 for a page button, 28 inside a card · switch 36×22 · rows 34–44 · radius 9 page button, 8 in a card, 14 card, pill for status · 1 px hairline <span style="font-family: 'JetBrains Mono', monospace">#2e2e2e</span> · no shadows except floating panels.</div>
+</section>
+</div>
+<section style="background: #222222; border: 1px solid #2e2e2e; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px"><h2 style="margin: 0; flex-grow: 1; font-family: 'Bricolage Grotesque', Figtree, sans-serif; font-size: 20px; font-weight: 700; color: #ececec">Motion <span style="font-family: Figtree, sans-serif; font-size: 13px; font-weight: 400; color: #9a9a9a">— two curves, three durations, nothing else</span></h2><button type="button" onClick="{{play}}" style="height: 32px; padding: 0 14px; border: 0; border-radius: 9px; background: #7cafc2; color: #181818; font: 600 13px Figtree, sans-serif; cursor: pointer">Play both</button></div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px">
+<div style="background: #181818; border: 1px solid #2e2e2e; border-radius: 12px; padding: 14px"><div style="color: #ececec; font-weight: 600">Settle — the massy spring</div><div style="font-size: 12px; color: #9a9a9a; margin-bottom: 12px">Pages, panels, rows arriving. Fast start, soft landing, no bounce. <span style="font-family: 'JetBrains Mono', monospace">cubic-bezier(.22,1,.36,1)</span></div><div style="height: 44px; position: relative"><div style="{{ballA}}"></div></div></div>
+<div style="background: #181818; border: 1px solid #2e2e2e; border-radius: 12px; padding: 14px"><div style="color: #ececec; font-weight: 600">Pop — a small overshoot</div><div style="font-size: 12px; color: #9a9a9a; margin-bottom: 12px">Switch knobs, a device appearing, a step turning green. <span style="font-family: 'JetBrains Mono', monospace">cubic-bezier(.34,1.56,.64,1)</span></div><div style="height: 44px; position: relative"><div style="{{ballB}}"></div></div></div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px">
+<sc-for list="{{rules}}" as="r" hint-placeholder-count="6"><div style="padding: 10px 12px; border-radius: 10px; background: #181818; border: 1px solid #2e2e2e"><div style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #7cafc2">{{r.t}}</div><div style="color: #ececec; font-weight: 600">{{r.a}}</div><div style="font-size: 12px; color: #9a9a9a">{{r.b}}</div></div></sc-for>
+</div>
+</section>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1320,"height":1240}}'>
+class Component extends DCLogic {
+renderVals() {
+const s = this.state || {};
+const on = s.on !== false, seg = s.seg || 0, go = !!s.go;
+const pair = (a, b) => ({ a, b });
+const kept = [pair('Base16 slots', 'the user picks a scheme; no hex in code'), pair('Mixed surface ladder', 'ground toward text at 6, 11 and 18 percent'), pair('Three faces', 'Bricolage for names, Figtree to read, mono for machine values'), pair('Per-computer disc hue', 'the same colour on phone, web and desk'), pair('Plain words when wrong', 'what is missing says why and what to do'), pair('Software encoding always shown', 'never dropped for lack of room')];
+const changed = [pair('Sidebar and toolbar', 'instead of bottom dock and sheets'), pair('32 px controls', 'instead of 48; a pointer is precise'), pair('Radius 9 and 14', 'instead of 16 and 22; tighter at density'), pair('Hairlines', 'cards get a 1 px line; phones used fill alone'), pair('Hover and focus rings', 'every control answers the pointer and Tab'), pair('Keyboard first', 'Command K runs anything; Escape Escape frees the pointer')];
+const sw = [['Ground', '#181818', 'window'], ['Sidebar', '#1d1d1d', 'ground + 3%'], ['Surface 1', '#222222', 'cards'], ['Surface 2', '#2e2e2e', 'buttons, tiles'], ['Surface 3', '#484848', 'tracks, off switch'], ['Line', '#2e2e2e', 'hairlines'], ['Bright', '#ececec', 'titles'], ['Dim', '#9a9a9a', 'secondary text'], ['Accent', '#7cafc2', 'one primary, on states'], ['Good', '#a1b56c', 'direct, working'], ['Caution', '#f7ca88', 'relayed, unsaved'], ['Warn', '#dc9656', 'needs you, software'], ['Bad', '#ab4642', 'refused, offline'], ['Mauve', '#ba8baf', 'second disc hue']].map(([name, c, use]) => ({ name, use, chip: 'height:44px;background:' + c }));
+const segs = ['Auto', 'Hardware', 'Software'].map((name, i) => ({ name, on: i === seg ? 'true' : 'false', pick: () => this.setState({ seg: i }), style: 'position:relative;width:84px;height:26px;border:0;border-radius:7px;background:transparent;cursor:pointer;font:600 12px Figtree,sans-serif;transition:color 220ms;color:' + (i === seg ? '#181818' : '#c8c8c8') }));
+const ball = (curve) => 'position:absolute;top:6px;left:0;width:32px;height:32px;border-radius:10px;background:#7cafc2;transition:transform 420ms ' + curve + ';transform:translateX(' + (go ? 220 : 0) + 'px)';
+const rules = [['120 ms', 'Quick', 'Hover, press, tooltip. Press scales to 0.97.'], ['220 ms', 'Standard', 'Switch, segmented knob, row select, status colour cross-fade.'], ['360 ms', 'Slow', 'Page change, panel in. Leaving takes 150.'], ['30 ms', 'Stagger', 'Rows arrive in order, six at most; the rest appear at once.'], ['never', 'The picture', 'Chrome moves; a streamed desktop is never animated or tinted.'], ['off', 'Reduce motion', 'Follows the system setting: fades only, no travel, no overshoot.']].map(([t, a, b]) => ({ t, a, b }));
+return { kept, changed, sw, segs, rules,
+swOn: on ? 'true' : 'false',
+toggle: () => this.setState({ on: !on }),
+swTrack: 'width:36px;height:22px;padding:2px;border:0;border-radius:999px;cursor:pointer;display:flex;transition:background 220ms;background:' + (on ? '#7cafc2' : '#484848'),
+swKnob: 'width:18px;height:18px;border-radius:999px;background:#181818;transition:transform 220ms cubic-bezier(.34,1.56,.64,1);transform:translateX(' + (on ? 14 : 0) + 'px)',
+segKnob: 'position:absolute;top:3px;left:3px;width:84px;height:26px;border-radius:7px;background:#7cafc2;transition:transform 220ms cubic-bezier(.22,1,.36,1);transform:translateX(' + seg * 84 + 'px)',
+play: () => this.setState({ go: !go }),
+ballA: ball('cubic-bezier(.22,1,.36,1)'), ballB: ball('cubic-bezier(.34,1.56,.64,1)') };
+}
+}
+</script>
+</body>
+</html>

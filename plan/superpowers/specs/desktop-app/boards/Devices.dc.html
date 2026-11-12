@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Devices and pairing</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#b4b4b4}a:hover{color:#ececec}
+</style>
+</helmet>
+<div style="min-height: 980px; display: flex; flex-wrap: wrap; background: #181818; color: #c8c8c8; font-family: Figtree, system-ui, sans-serif; font-size: 13px; line-height: 1.45">
+<nav aria-label="Sections" style="flex: 0 0 228px; box-sizing: border-box; background: #1d1d1d; border-right: 1px solid #2e2e2e; padding: 14px 10px; display: flex; flex-direction: column; gap: 3px">
+<div aria-hidden="true" style="display: flex; gap: 8px; padding: 2px 6px 14px"><span style="width: 12px; height: 12px; border-radius: 999px; background: #4a4a4a"></span><span style="width: 12px; height: 12px; border-radius: 999px; background: #4a4a4a"></span><span style="width: 12px; height: 12px; border-radius: 999px; background: #4a4a4a"></span></div>
+<div style="padding: 0 8px 12px; font-family: 'Bricolage Grotesque', Figtree, sans-serif; font-weight: 700; font-size: 24px; letter-spacing: -0.04em; color: #ececec">wado</div>
+<div style="padding: 8px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">This computer</div>
+<sc-for list="{{host}}" as="item" hint-placeholder-count="4">
+<a href="{{item.href}}" style="{{item.style}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="{{item.d}}"></path></svg><span style="flex-grow: 1">{{item.label}}</span><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #9a9a9a">{{item.badge}}</span></a>
+</sc-for>
+<div style="padding: 16px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">Computers</div>
+<sc-for list="{{comps}}" as="c" hint-placeholder-count="3">
+<a href="{{c.href}}" style="{{c.style}}"><span aria-hidden="true" style="{{c.disc}}"></span><span style="flex-grow: 1">{{c.name}}</span><span style="font-size: 11px; color: #9a9a9a">{{c.state}}</span></a>
+</sc-for>
+<a href="Computers.dc.html" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 9px; text-decoration: none; font-size: 13px; font-weight: 500"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>Add a computer</a>
+<div style="flex-grow: 1; min-height: 16px"></div>
+<div style="border-top: 1px solid #2e2e2e; padding: 12px 8px 2px; display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; align-items: center; gap: 8px; color: #e0e0e0; font-weight: 600"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 999px; background: #a1b56c"></span>Serving · 3 connected</div>
+<div style="font-size: 12px; color: #9a9a9a">Keeps running when this window closes</div>
+</div>
+</nav>
+<main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column">
+<header style="min-height: 52px; box-sizing: border-box; padding: 8px 20px; border-bottom: 1px solid #2e2e2e; display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+<h1 style="margin: 0; flex-grow: 1; font-family: 'Bricolage Grotesque', Figtree, sans-serif; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; color: #ececec">Devices</h1>
+<button type="button" style="height: 32px; width: 280px; max-width: 100%; padding: 0 10px; display: flex; align-items: center; gap: 8px; border: 1px solid #333333; border-radius: 9px; background: #181818; color: #9a9a9a; font: 400 13px Figtree, sans-serif; cursor: pointer"><span style="flex-grow: 1; text-align: left">Search or run a command</span><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; border: 1px solid #3a3a3a; border-radius: 5px; padding: 0 5px">⌘K</span></button>
+<button type="button" style="height: 32px; padding: 0 14px; border: 0; border-radius: 9px; background: #7cafc2; color: #181818; font: 600 13px Figtree, sans-serif; cursor: pointer">New pairing code</button>
+</header>
+<div style="padding: 20px; display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start">
+<div style="flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+<section style="background: #222222; border: 1px solid #2e2e2e; border-radius: 14px; padding: 14px">
+<div style="display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px"><h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">Trusted devices</h2><span style="font-size: 12px; color: #9a9a9a">A lit icon is something that device may do here — click to change</span></div>
+<div style="overflow-x: auto">
+<table style="width: 100%; min-width: 720px; border-collapse: collapse; font-size: 13px">
+<thead><tr>
+<th scope="col" style="text-align: left; padding: 6px 4px; font-size: 11px; font-weight: 600; color: #9a9a9a">Device</th>
+<sc-for list="{{grants}}" as="g" hint-placeholder-count="7"><th scope="col" style="padding: 6px 4px; font-size: 11px; font-weight: 600; color: #9a9a9a">{{g}}</th></sc-for>
+<th scope="col" style="padding: 6px 4px; font-size: 11px; font-weight: 600; color: #9a9a9a; text-align: right">Trust ends</th><th scope="col" style="width: 44px"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden">More</span></th>
+</tr></thead>
+<tbody>
+<sc-for list="{{devs}}" as="d" hint-placeholder-count="4">
+<tr style="border-top: 1px solid #2e2e2e">
+<th scope="row" style="text-align: left; padding: 10px 4px; font-weight: 400"><div style="display: flex; align-items: center; gap: 10px"><span aria-hidden="true" style="{{d.disc}}"></span><div style="min-width: 0"><div style="color: #ececec; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px">{{d.name}} <span style="{{d.own}}">Owner</span></div><div style="font-size: 12px; color: #9a9a9a">{{d.sub}}</div></div></div></th>
+<sc-for list="{{d.cells}}" as="cell" hint-placeholder-count="7"><td style="padding: 10px 4px; text-align: center"><button type="button" aria-pressed="{{cell.on}}" aria-label="{{cell.label}}" style="{{cell.style}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="{{cell.d}}"></path></svg></button></td></sc-for>
+<td style="padding: 10px 4px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 12px">{{d.ends}}</td>
+<td style="padding: 10px 0 10px 8px; text-align: right"><button type="button" aria-label="{{d.more}}" title="Rename, make owner, passkey, trust, remove" style="width: 28px; height: 28px; border: 0; border-radius: 8px; background: #2e2e2e; color: #e0e0e0; cursor: pointer; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M5 10.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM12 10.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM19 10.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z"></path></svg></button></td>
+</tr>
+</sc-for>
+</tbody>
+</table>
+</div>
+<div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #2e2e2e; display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12px; color: #9a9a9a"><span>Files has three steps: off, read only (outlined), read and write (filled).</span><span>The ⋯ menu holds rename, make owner, ask for its passkey again, lock now, trust until, and remove.</span><span>Join and take over a session appear here on Linux.</span></div>
+</section>
+<section style="background: #222222; border: 1px solid #2e2e2e; border-radius: 14px; padding: 14px; display: flex; flex-direction: column">
+<h2 style="margin: 0 0 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">On for everyone</h2>
+<sc-for list="{{sw}}" as="s" hint-placeholder-count="4">
+<div style="display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid #2e2e2e"><div style="flex-grow: 1"><div style="color: #ececec; font-weight: 600">{{s.name}}</div><div style="font-size: 12px; color: #9a9a9a">{{s.sub}}</div></div><button type="button" role="switch" aria-checked="{{s.on}}" aria-label="{{s.name}}" style="{{s.track}}"><span style="width: 18px; height: 18px; border-radius: 999px; background: #181818"></span></button></div>
+</sc-for>
+<div style="padding-top: 10px; border-top: 1px solid #2e2e2e; font-size: 12px; color: #9a9a9a">A switch that is off is off for every device, whatever its own grants say.</div>
+</section>
+</div>
+<aside style="flex: 1 1 290px; max-width: 360px; background: #222222; border: 1px solid #2e2e2e; border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 12px">
+<h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">Pair a device</h2>
+<div style="align-self: center; background: #ececec; border-radius: 12px; padding: 12px"><svg role="img" aria-label="Sample pairing QR code" viewBox="0 0 25 25" style="display: block; width: 196px; height: 196px"><path d="{{qr}}" fill="#181818"></path></svg></div>
+<div style="text-align: center"><div style="font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: 26px; letter-spacing: 0.12em; color: #ececec">KD7-M2Q</div><div style="font-size: 12px; color: #9a9a9a">Scan with the phone app, or type the code · <span style="font-family: 'JetBrains Mono', monospace; color: #c8c8c8">4:32</span> left</div></div>
+<div style="border: 1px solid #2e2e2e; border-radius: 12px; background: #1d1d1d; padding: 12px; display: flex; flex-direction: column; gap: 8px">
+<div style="color: #ececec; font-weight: 600">A new device starts with</div>
+<div style="display: flex; flex-wrap: wrap; gap: 6px">
+<sc-for list="{{perms}}" as="p" hint-placeholder-count="6"><button type="button" aria-pressed="{{p.on}}" style="{{p.style}}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="{{p.d}}"></path></svg>{{p.name}}</button></sc-for>
+</div>
+<div style="display: flex; gap: 8px; align-items: flex-start; font-size: 12px; color: #f0b98a"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 2px"><path d="M12 3l10 18H2zM12 10v5M12 18v.5"></path></svg><span>Whoever scans this code gets every permission lit here, switched on. Tap one to change it before sharing the code.</span></div>
+</div>
+<div style="display: flex; gap: 8px"><button type="button" style="flex: 1; height: 32px; border: 0; border-radius: 9px; background: #2e2e2e; color: #e0e0e0; font: 600 12px Figtree, sans-serif; cursor: pointer">Copy link</button><button type="button" style="flex: 1; height: 32px; border: 0; border-radius: 9px; background: #2e2e2e; color: #e0e0e0; font: 600 12px Figtree, sans-serif; cursor: pointer">Cancel code</button></div>
+<label style="display: flex; align-items: center; gap: 10px"><span style="flex-grow: 1; color: #ececec; font-weight: 600">Trusted for</span><select style="height: 30px; padding: 0 8px; border: 1px solid #333333; border-radius: 8px; background: #181818; color: #ececec; font: 400 13px Figtree, sans-serif"><option>Until removed</option><option>30 days</option><option>7 days</option><option>Today only</option></select></label>
+<div style="border-top: 1px solid #2e2e2e; padding-top: 12px; display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; gap: 10px; align-items: center"><span aria-hidden="true" style="width: 18px; height: 18px; border-radius: 999px; background: #a1b56c; color: #181818; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center">1</span><span>Code shown</span></div>
+<div style="display: flex; gap: 10px; align-items: center"><span aria-hidden="true" style="width: 18px; height: 18px; border-radius: 999px; background: #a1b56c; color: #181818; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center">2</span><span>Pixel 8a scanned it</span></div>
+<div style="border: 1px solid #5a4630; background: #2a2520; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; gap: 10px; align-items: center"><span aria-hidden="true" style="width: 18px; height: 18px; border-radius: 999px; background: #dc9656; color: #181818; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center">3</span><span style="color: #ffffff; font-weight: 600">Do these words match the phone?</span></div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 600; color: #ececec"><span style="padding: 6px 10px; border-radius: 8px; background: #181818">maple</span><span style="padding: 6px 10px; border-radius: 8px; background: #181818">river</span><span style="padding: 6px 10px; border-radius: 8px; background: #181818">stone</span><span style="padding: 6px 10px; border-radius: 8px; background: #181818">amber</span></div>
+<div style="display: flex; gap: 8px"><button type="button" style="flex: 1; height: 32px; border: 0; border-radius: 9px; background: #7cafc2; color: #181818; font: 600 13px Figtree, sans-serif; cursor: pointer">They match — allow</button><button type="button" style="flex: 1; height: 32px; border: 0; border-radius: 9px; background: #2e2e2e; color: #e08783; font: 600 13px Figtree, sans-serif; cursor: pointer">Deny</button></div>
+<div style="font-size: 12px; color: #e2d3c4">This question also appears in the menu bar and over any page, so it is never missed.</div>
+</div>
+</div>
+</aside>
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1320,"height":980}}'>
+class Component extends DCLogic {
+renderVals() {
+const I = { ov: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z', dev: 'M8 3h8a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM11 18h2', set: 'M4 7h10M18 7h2M4 17h2M10 17h10M16 5v4M8 15v4', hl: 'M12 3l8 3v6c0 4.5-3.2 7.6-8 9-4.8-1.4-8-4.5-8-9V6zM9 12l2 2 4-4' };
+const active = 'Devices';
+const row = 'display:flex;align-items:center;gap:10px;height:34px;padding:0 10px;border-radius:9px;text-decoration:none;font-size:13px;font-weight:500;';
+const st = (on) => row + (on ? 'background:#303030;color:#ececec' : '');
+const host = [['Overview', 'Main.dc.html', I.ov, ''], ['Devices', 'Devices.dc.html', I.dev, '4'], ['Settings', 'Settings.dc.html', I.set, ''], ['Health', 'Health.dc.html', I.hl, '1']].map(([label, href, d, badge]) => ({ label, href, d, badge, style: st(label === active) }));
+const comps = [['atlas', '#7cafc2', ''], ['studio-mac', '#ba8baf', ''], ['nuc-tv', '#5a5a5a', 'offline']].map(([name, c, state]) => ({ name, state, href: 'Computer.dc.html', disc: 'width:16px;height:16px;border-radius:999px;background:' + c, style: st(false) }));
+const track = (on) => 'width:36px;height:22px;padding:2px;border:0;border-radius:999px;cursor:pointer;display:inline-flex;justify-content:' + (on ? 'flex-end;background:#7cafc2' : 'flex-start;background:#484848');
+const grants = ['Files', 'Shells', 'Settings', 'Host', 'Input', 'Clipboard', 'Devices'];
+const gd = ['M3 6h6l2 3h10v10H3z', 'M4 5h16v14H4zM7 10l3 2-3 2M12 15h4', 'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1', I.set, 'M5 3l14 8-6 2-2 6z', 'M9 4h6v3H9zM7 5H5v16h14V5h-2', I.dev];
+const cellBase = 'width:32px;height:32px;border:0;border-radius:9px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:background 220ms,color 220ms;';
+const devs = [['Pixel 9', 'Phone app · seen now · passkey', '#a1b56c', '2111111', 'never', 1], ['iPad', 'Browser · seen now', '#f7ca88', '1000110', '28 days', 0], ['Chrome on work-laptop', 'Browser · seen 9 min ago · let in by Pixel 9', '#ba8baf', '2100110', '6 days', 0], ['Galaxy Tab', 'Phone app · seen 3 weeks ago', '#5a5a5a', '0001110', '2 days', 0]].map(([name, sub, c, bits, ends, owner]) => ({ name, sub, ends, more: 'More for ' + name, own: owner ? 'margin-left:6px;padding:1px 7px;border-radius:999px;background:#ba8baf;color:#181818;font-size:11px;font-weight:700' : 'display:none', disc: 'width:24px;height:24px;flex-shrink:0;border-radius:999px;background:' + c, cells: grants.map((g, i) => { const v = +bits[i]; const word = i === 0 ? ['no files', 'read only', 'read and write'][v] : (v ? 'allowed' : 'not allowed'); const st = v === 0 ? 'background:#2b2b2b;color:#8a8a8a' : (i === 0 && v === 1) ? 'background:#24323a;color:#7cafc2;box-shadow:inset 0 0 0 1.5px #7cafc2' : 'background:#7cafc2;color:#181818'; return { on: v ? 'true' : 'false', label: g + ' for ' + name + ': ' + word, d: gd[i], style: cellBase + st }; }) }));
+const sw = [['File manager', 'Browsing, moving and sending files', true], ['Shells', 'Terminals and Claude sessions', true], ['Trackpad, keys and gamepad', "Driving this computer's own screen", true]].map(([name, sub, on]) => ({ name, sub, on: on ? 'true' : 'false', track: track(on) }));
+let seed = 7, qr = '';
+const fin = (x, y) => (x < 7 && y < 7) || (x > 13 && y < 7) || (x < 7 && y > 13);
+const finOn = (x, y) => { const fx = x > 13 ? x - 14 : x, fy = y > 13 ? y - 14 : y; return fx === 0 || fx === 6 || fy === 0 || fy === 6 || (fx > 1 && fx < 5 && fy > 1 && fy < 5); };
+for (let y = 0; y < 21; y++) for (let x = 0; x < 21; x++) { seed = (seed * 1103515245 + 12345) % 2147483648; const on = fin(x, y) ? finOn(x, y) : (x === 7 || y === 7 || x === 13 && y < 7 || y === 13 && x < 7) ? false : seed % 5 < 2; if (on) qr += 'M' + (x + 2) + ' ' + (y + 2) + 'h1v1h-1z'; }
+const chip = 'height:28px;padding:0 10px;border:0;border-radius:999px;font:600 12px Figtree,sans-serif;cursor:pointer;display:inline-flex;align-items:center;gap:6px;';
+const perms = grants.map((name, i) => ({ name, d: gd[i], on: [3, 4, 5].includes(i) ? 'true' : 'false', style: chip + ([3, 4, 5].includes(i) ? 'background:#7cafc2;color:#181818' : 'background:#2e2e2e;color:#c8c8c8') }));
+return { host, comps, grants, devs, sw, qr, perms };
+}
+}
+</script>
+</body>
+</html>

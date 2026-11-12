@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Computers</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#b4b4b4}a:hover{color:#ececec}
+</style>
+</helmet>
+<div style="min-height: 980px; display: flex; flex-wrap: wrap; background: #181818; color: #c8c8c8; font-family: Figtree, system-ui, sans-serif; font-size: 13px; line-height: 1.45">
+<nav aria-label="Sections" style="flex: 0 0 228px; box-sizing: border-box; background: #1d1d1d; border-right: 1px solid #2e2e2e; padding: 14px 10px; display: flex; flex-direction: column; gap: 3px">
+<div aria-hidden="true" style="display: flex; gap: 8px; padding: 2px 6px 14px"><span style="width: 12px; height: 12px; border-radius: 999px; background: #4a4a4a"></span><span style="width: 12px; height: 12px; border-radius: 999px; background: #4a4a4a"></span><span style="width: 12px; height: 12px; border-radius: 999px; background: #4a4a4a"></span></div>
+<div style="padding: 0 8px 12px; font-family: 'Bricolage Grotesque', Figtree, sans-serif; font-weight: 700; font-size: 24px; letter-spacing: -0.04em; color: #ececec">wado</div>
+<div style="padding: 8px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">This computer</div>
+<sc-for list="{{host}}" as="item" hint-placeholder-count="4">
+<a href="{{item.href}}" style="{{item.style}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="{{item.d}}"></path></svg><span style="flex-grow: 1">{{item.label}}</span><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #9a9a9a">{{item.badge}}</span></a>
+</sc-for>
+<div style="padding: 16px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">Computers</div>
+<sc-for list="{{comps}}" as="c" hint-placeholder-count="3">
+<a href="{{c.href}}" style="{{c.style}}"><span aria-hidden="true" style="{{c.disc}}"></span><span style="flex-grow: 1">{{c.name}}</span><span style="font-size: 11px; color: #9a9a9a">{{c.state}}</span></a>
+</sc-for>
+<a href="Computers.dc.html" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 9px; text-decoration: none; font-size: 13px; font-weight: 500; background: #303030; color: #ececec"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>Add a computer</a>
+<div style="flex-grow: 1; min-height: 16px"></div>
+<div style="border-top: 1px solid #2e2e2e; padding: 12px 8px 2px; display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; align-items: center; gap: 8px; color: #e0e0e0; font-weight: 600"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 999px; background: #a1b56c"></span>Serving · 3 connected</div>
+<div style="font-size: 12px; color: #9a9a9a">Keeps running when this window closes</div>
+</div>
+</nav>
+<main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column">
+<header style="min-height: 52px; box-sizing: border-box; padding: 8px 20px; border-bottom: 1px solid #2e2e2e; display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+<h1 style="margin: 0; flex-grow: 1; font-family: 'Bricolage Grotesque', Figtree, sans-serif; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; color: #ececec">Computers</h1>
+<button type="button" style="height: 32px; width: 280px; max-width: 100%; padding: 0 10px; display: flex; align-items: center; gap: 8px; border: 1px solid #333333; border-radius: 9px; background: #181818; color: #9a9a9a; font: 400 13px Figtree, sans-serif; cursor: pointer"><span style="flex-grow: 1; text-align: left">Search or run a command</span><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; border: 1px solid #3a3a3a; border-radius: 5px; padding: 0 5px">⌘K</span></button>
+</header>
+<div style="padding: 20px; display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start">
+<div style="flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+<section style="display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">Continue</h2>
+<div style="display: flex; flex-wrap: wrap; gap: 10px">
+<a href="Computer.dc.html" style="flex: 1 1 220px; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; background: #222222; border: 1px solid #2e2e2e; text-decoration: none"><span aria-hidden="true" style="width: 10px; height: 10px; border-radius: 999px; background: #7cafc2"></span><span><span style="display: block; color: #ececec; font-weight: 600">Files on atlas</span><span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #9a9a9a">~/projects/wado</span></span></a>
+<a href="Computer.dc.html" style="flex: 1 1 220px; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; background: #222222; border: 1px solid #2e2e2e; text-decoration: none"><span aria-hidden="true" style="width: 10px; height: 10px; border-radius: 999px; background: #ba8baf"></span><span><span style="display: block; color: #ececec; font-weight: 600">Trackpad on studio-mac</span><span style="font-size: 12px; color: #9a9a9a">Yesterday, 22:10</span></span></a>
+<a href="Computer.dc.html" style="flex: 1 1 220px; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; background: #222222; border: 1px solid #2e2e2e; text-decoration: none"><span aria-hidden="true" style="width: 10px; height: 10px; border-radius: 999px; background: #7cafc2"></span><span><span style="display: block; color: #ececec; font-weight: 600">Shell on atlas</span><span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #9a9a9a">cargo build — still running</span></span></a>
+</div>
+</section>
+<section style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px">
+<sc-for list="{{cards}}" as="k" hint-placeholder-count="3">
+<a href="Computer.dc.html" aria-label="{{k.moreLabel}}" style="{{k.card}}">
+<div style="display: flex; align-items: center; gap: 12px"><span aria-hidden="true" style="{{k.disc}}">{{k.initial}}</span><div style="min-width: 0; flex-grow: 1"><div style="font-family: 'Bricolage Grotesque', Figtree, sans-serif; font-weight: 700; font-size: 20px; letter-spacing: -0.02em; color: #ececec; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{k.name}}</div><div style="font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis"><span style="{{k.linkStyle}}">{{k.link}}</span> <span style="color: #9a9a9a">· {{k.os}}</span></div></div></div>
+<div style="font-size: 12px; color: #b4b4b4; min-height: 36px">{{k.note}}</div>
+<div style="display: flex; flex-wrap: wrap; gap: 6px"><sc-for list="{{k.doors}}" as="d" hint-placeholder-count="5"><span style="{{d.style}}">{{d.name}}</span></sc-for></div>
+<span style="{{k.open}}">{{k.openLabel}}</span>
+</a>
+</sc-for>
+</section>
+</div>
+<aside style="flex: 1 1 290px; max-width: 360px; background: #222222; border: 1px solid #2e2e2e; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 12px">
+<h2 style="margin: 0; font-family: 'Bricolage Grotesque', Figtree, sans-serif; font-size: 17px; font-weight: 700; color: #ececec">Add a computer</h2>
+<div style="background: #1d1d1d; border: 1px solid #2e2e2e; border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 10px"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 999px; background: #a1b56c"></span><div style="flex-grow: 1"><div style="color: #ececec; font-weight: 600">living-room-pc</div><div style="font-size: 12px; color: #9a9a9a">Found on this network, running wado</div></div><button type="button" style="height: 28px; padding: 0 12px; border: 0; border-radius: 8px; background: #7cafc2; color: #181818; font: 600 12px Figtree, sans-serif; cursor: pointer">Ask to pair</button></div>
+<div style="font-size: 12px; color: #9a9a9a">Somewhere else? On that computer open wado and choose Pair a device. Paste its link, or type what it shows.</div>
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #b4b4b4">Pairing link<span style="display: flex; gap: 6px"><input type="url" placeholder="Paste the link from the other computer" style="flex-grow: 1; min-width: 0; height: 36px; padding: 0 12px; border: 1px solid #333333; border-radius: 9px; background: #181818; color: #ececec; font: 400 13px 'JetBrains Mono', monospace"><button type="button" style="height: 36px; padding: 0 14px; border: 0; border-radius: 9px; background: #2e2e2e; color: #e0e0e0; font: 600 13px Figtree, sans-serif; cursor: pointer">Paste</button></span></label>
+<div style="font-size: 12px; color: #9a9a9a">A link fills the two fields below by itself. A link copied before opening this page is offered here straight away.</div>
+<div style="display: flex; align-items: center; gap: 10px; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a"><span style="flex-grow: 1; height: 1px; background: #2e2e2e"></span>or type it<span style="flex-grow: 1; height: 1px; background: #2e2e2e"></span></div>
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #b4b4b4">Remote ID<input type="text" inputmode="numeric" placeholder="000 000 000" style="height: 36px; padding: 0 12px; border: 1px solid #333333; border-radius: 9px; background: #181818; color: #ececec; font: 600 15px 'JetBrains Mono', monospace; letter-spacing: 0.06em"></label>
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #b4b4b4">Pairing code<input type="text" placeholder="ABC-123" style="height: 36px; padding: 0 12px; border: 1px solid #333333; border-radius: 9px; background: #181818; color: #ececec; font: 600 15px 'JetBrains Mono', monospace; letter-spacing: 0.06em"></label>
+<button type="button" style="height: 36px; border: 0; border-radius: 9px; background: #2e2e2e; color: #e0e0e0; font: 600 13px Figtree, sans-serif; cursor: pointer">Pair</button>
+<div style="border-top: 1px solid #2e2e2e; padding-top: 12px; font-size: 12px; color: #9a9a9a">After Pair, four words appear here and on the other screen. If they match, the other side allows this computer.</div>
+
+</aside>
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1320,"height":980}}'>
+class Component extends DCLogic {
+renderVals() {
+const I = { ov: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z', dev: 'M8 3h8a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM11 18h2', set: 'M4 7h10M18 7h2M4 17h2M10 17h10M16 5v4M8 15v4', hl: 'M12 3l8 3v6c0 4.5-3.2 7.6-8 9-4.8-1.4-8-4.5-8-9V6zM9 12l2 2 4-4' };
+const row = 'display:flex;align-items:center;gap:10px;height:34px;padding:0 10px;border-radius:9px;text-decoration:none;font-size:13px;font-weight:500;';
+const host = [['Overview', 'Main.dc.html', I.ov, ''], ['Devices', 'Devices.dc.html', I.dev, '4'], ['Settings', 'Settings.dc.html', I.set, ''], ['Health', 'Health.dc.html', I.hl, '1']].map(([label, href, d, badge]) => ({ label, href, d, badge, style: row }));
+const comps = [['atlas', '#7cafc2', ''], ['studio-mac', '#ba8baf', ''], ['nuc-tv', '#5a5a5a', 'offline']].map(([name, c, state]) => ({ name, state, href: 'Computer.dc.html', disc: 'width:16px;height:16px;border-radius:999px;background:' + c, style: row }));
+const door = (on) => 'height:24px;padding:0 9px;border-radius:999px;font-size:12px;display:inline-flex;align-items:center;' + (on ? 'background:#2e2e2e;color:#d6d6d6' : 'background:transparent;border:1px dashed #4a4a4a;color:#8f8f8f');
+const mk = (name, hue, os, link, linkC, note, doors, online) => ({ name, os, link, note, initial: name[0].toUpperCase(), moreLabel: 'Open the page for ' + name,
+card: 'text-decoration:none;color:#c8c8c8;cursor:pointer;min-width:0;background:#222222;border:1px solid #2e2e2e;border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px' + (online ? '' : ';opacity:0.78'),
+disc: "width:44px;height:44px;flex-shrink:0;border-radius:999px;display:flex;align-items:center;justify-content:center;font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:20px;color:#181818;background:" + hue,
+linkStyle: 'font-weight:600;color:' + linkC,
+doors: doors.map(([n, on]) => ({ name: n, style: door(on) })),
+open: 'margin-top:2px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:600;text-decoration:none;' + (online ? 'background:#7cafc2;color:#181818' : 'background:#2e2e2e;color:#b4b4b4'),
+openLabel: online ? 'Open' : 'See what is kept from it' });
+const cards = [
+mk('atlas', '#7cafc2', 'Linux · wado 0.0.4', 'Direct · 6 ms', '#a1b56c', 'Firefox and Steam open. Music playing.', [['Session', true], ['Files', true], ['Shell', true], ['Input', true], ['Playing', true]], true),
+mk('studio-mac', '#ba8baf', 'macOS · wado 0.0.4', 'Relayed — limited', '#f7ca88', 'No direct path from this network, so it goes through the relay.', [['Files', true], ['Input', true], ['Playing', true], ['Apps', true], ['Session', false]], true),
+mk('nuc-tv', '#6f5a45', 'Linux · last seen 2 h ago', 'Offline', '#9a9a9a', 'Asleep or off since 21:40. Kept here from before: 12 clipboard items, 5 notifications — still readable.', [['Session', false], ['Files', false], ['Shell', false], ['Input', false]], false)];
+return { host, comps, cards };
+}
+}
+</script>
+</body>
+</html>

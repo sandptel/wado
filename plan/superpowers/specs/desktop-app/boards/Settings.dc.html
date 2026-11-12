@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#b4b4b4}a:hover{color:#ececec}
+</style>
+</helmet>
+<div style="min-height: 980px; display: flex; flex-wrap: wrap; background: #181818; color: #c8c8c8; font-family: Figtree, system-ui, sans-serif; font-size: 13px; line-height: 1.45">
+<nav aria-label="Sections" style="flex: 0 0 228px; box-sizing: border-box; background: #1d1d1d; border-right: 1px solid #2e2e2e; padding: 14px 10px; display: flex; flex-direction: column; gap: 3px">
+<div aria-hidden="true" style="display: flex; gap: 8px; padding: 2px 6px 14px"><span style="width: 12px; height: 12px; border-radius: 999px; background: #4a4a4a"></span><span style="width: 12px; height: 12px; border-radius: 999px; background: #4a4a4a"></span><span style="width: 12px; height: 12px; border-radius: 999px; background: #4a4a4a"></span></div>
+<div style="padding: 0 8px 12px; font-family: 'Bricolage Grotesque', Figtree, sans-serif; font-weight: 700; font-size: 24px; letter-spacing: -0.04em; color: #ececec">wado</div>
+<div style="padding: 8px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">This computer</div>
+<sc-for list="{{host}}" as="item" hint-placeholder-count="4">
+<a href="{{item.href}}" style="{{item.style}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="{{item.d}}"></path></svg><span style="flex-grow: 1">{{item.label}}</span><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #9a9a9a">{{item.badge}}</span></a>
+</sc-for>
+<div style="padding: 16px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">Computers</div>
+<sc-for list="{{comps}}" as="c" hint-placeholder-count="3">
+<a href="{{c.href}}" style="{{c.style}}"><span aria-hidden="true" style="{{c.disc}}"></span><span style="flex-grow: 1">{{c.name}}</span><span style="font-size: 11px; color: #9a9a9a">{{c.state}}</span></a>
+</sc-for>
+<a href="Computers.dc.html" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 9px; text-decoration: none; font-size: 13px; font-weight: 500"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>Add a computer</a>
+<div style="flex-grow: 1; min-height: 16px"></div>
+<div style="border-top: 1px solid #2e2e2e; padding: 12px 8px 2px; display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; align-items: center; gap: 8px; color: #e0e0e0; font-weight: 600"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 999px; background: #a1b56c"></span>Serving · 3 connected</div>
+<div style="font-size: 12px; color: #9a9a9a">Keeps running when this window closes</div>
+</div>
+</nav>
+<main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column">
+<header style="min-height: 52px; box-sizing: border-box; padding: 8px 20px; border-bottom: 1px solid #2e2e2e; display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+<h1 style="margin: 0; flex-grow: 1; font-family: 'Bricolage Grotesque', Figtree, sans-serif; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; color: #ececec">Settings</h1>
+<label style="height: 32px; width: 280px; max-width: 100%; box-sizing: border-box; padding: 0 10px; display: flex; align-items: center; gap: 8px; border: 1px solid #333333; border-radius: 9px; background: #181818; color: #9a9a9a"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden">Find a setting</span><input type="search" placeholder="Find a setting" style="flex-grow: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: #ececec; font: 400 13px Figtree, sans-serif"></label>
+<button type="button" style="height: 32px; padding: 0 12px; border: 0; border-radius: 9px; background: #2e2e2e; color: #e0e0e0; font: 600 12px Figtree, sans-serif; cursor: pointer">Open config.kdl</button>
+</header>
+<div style="flex-grow: 1; display: flex; flex-wrap: wrap">
+<div role="tablist" aria-label="Setting groups" style="flex: 0 0 188px; box-sizing: border-box; padding: 16px 10px; border-right: 1px solid #2e2e2e; display: flex; flex-direction: column; gap: 2px">
+<sc-for list="{{secs}}" as="s" hint-placeholder-count="11">
+<button type="button" role="tab" aria-selected="{{s.sel}}" style="{{s.style}}"><span style="flex-grow: 1; text-align: left">{{s.name}}</span><span style="{{s.markStyle}}">{{s.mark}}</span></button>
+</sc-for>
+</div>
+<div style="flex: 999 1 420px; min-width: 0; display: flex; flex-direction: column">
+<div style="flex-grow: 1; padding: 20px 24px; display: flex; flex-direction: column; gap: 18px; max-width: 760px">
+<div><h2 style="margin: 0; font-family: 'Bricolage Grotesque', Figtree, sans-serif; font-size: 17px; font-weight: 700; color: #ececec">Stream <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 400; border: 1px solid #4a4a4a; border-radius: 5px; padding: 0 5px; color: #a8a8a8; vertical-align: middle">LINUX</span></h2><div style="color: #9a9a9a">The most a device may ask for. A device picks its own size inside these.</div></div>
+<div style="background: #222222; border: 1px solid #2e2e2e; border-radius: 14px; padding: 0 14px">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 0"><label for="res" style="flex: 1 1 220px"><div style="color: #ececec; font-weight: 600">Largest picture</div><div style="font-size: 12px; color: #9a9a9a">Bigger requests are scaled down to this</div></label><select id="res" style="height: 32px; padding: 0 10px; border: 1px solid #333333; border-radius: 9px; background: #181818; color: #ececec; font: 400 13px 'JetBrains Mono', monospace"><option>3840×2160</option><option>2560×1440</option><option>1920×1080</option></select></div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid #2e2e2e"><div style="flex: 1 1 220px"><div style="color: #ececec; font-weight: 600">Frames per second, at most</div><div style="font-size: 12px; color: #9a9a9a">Frame rate is the biggest lever on bandwidth</div></div><div role="radiogroup" aria-label="Frames per second" style="display: flex; padding: 3px; border-radius: 10px; background: #181818; border: 1px solid #333333"><button type="button" role="radio" aria-checked="false" style="height: 26px; padding: 0 12px; border: 0; border-radius: 7px; background: transparent; color: #c8c8c8; font: 600 12px 'JetBrains Mono', monospace; cursor: pointer">60</button><button type="button" role="radio" aria-checked="false" style="height: 26px; padding: 0 12px; border: 0; border-radius: 7px; background: transparent; color: #c8c8c8; font: 600 12px 'JetBrains Mono', monospace; cursor: pointer">90</button><button type="button" role="radio" aria-checked="true" style="height: 26px; padding: 0 12px; border: 0; border-radius: 7px; background: #7cafc2; color: #181818; font: 600 12px 'JetBrains Mono', monospace; cursor: pointer">120</button></div></div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid #2e2e2e"><label for="rate" style="flex: 1 1 220px"><div style="color: #ececec; font-weight: 600">Bitrate ceiling <span style="display: inline-block; width: 7px; height: 7px; border-radius: 999px; background: #f7ca88; vertical-align: middle" title="Changed, not applied"></span></div><div style="font-size: 12px; color: #9a9a9a">Constant bitrate; fixed when a session starts · was 16, set in config.kdl · <button type="button" style="border: 0; padding: 0; background: transparent; color: #7cafc2; font: 600 12px Figtree, sans-serif; cursor: pointer; text-decoration: underline">Put back</button></div></label><input id="rate" type="range" min="2" max="80" value="24" style="width: 180px; accent-color: #7cafc2"><span style="font-family: 'JetBrains Mono', monospace; width: 64px; text-align: right; color: #ececec">24 Mb/s</span></div>
+</div>
+<div><h3 style="margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">Encoder</h3>
+<div style="background: #222222; border: 1px solid #2e2e2e; border-radius: 14px; padding: 0 14px">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 0"><div style="flex: 1 1 220px"><div style="color: #ececec; font-weight: 600">Encode with <span style="display: inline-block; width: 7px; height: 7px; border-radius: 999px; background: #f7ca88; vertical-align: middle" title="Changed, not applied"></span></div><div style="font-size: 12px; color: #9a9a9a">Auto tries the graphics card first and steps down if it fails</div></div><div role="radiogroup" aria-label="Encoder" style="display: flex; padding: 3px; border-radius: 10px; background: #181818; border: 1px solid #333333"><button type="button" role="radio" aria-checked="false" style="height: 26px; padding: 0 12px; border: 0; border-radius: 7px; background: transparent; color: #c8c8c8; font: 600 12px Figtree, sans-serif; cursor: pointer">Auto</button><button type="button" role="radio" aria-checked="false" style="height: 26px; padding: 0 12px; border: 0; border-radius: 7px; background: transparent; color: #c8c8c8; font: 600 12px Figtree, sans-serif; cursor: pointer">Hardware</button><button type="button" role="radio" aria-checked="true" style="height: 26px; padding: 0 12px; border: 0; border-radius: 7px; background: #7cafc2; color: #181818; font: 600 12px Figtree, sans-serif; cursor: pointer">Software</button></div></div>
+<div style="display: flex; gap: 10px; align-items: flex-start; padding: 12px 0; border-top: 1px solid #2e2e2e; color: #f0b98a"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 2px"><path d="M12 3l10 18H2zM12 10v5M12 18v.5"></path></svg><span>Software encoding uses the processor and costs frames. Every device will see a notice while it is on.</span></div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid #2e2e2e"><div style="flex: 1 1 220px"><div style="color: #ececec; font-weight: 600">Available here</div><div style="font-size: 12px; color: #9a9a9a">Found by opening each one, not by name</div></div><div style="display: flex; flex-wrap: wrap; gap: 6px; font-family: 'JetBrains Mono', monospace; font-size: 12px"><span style="padding: 2px 8px; border-radius: 6px; background: #2c3324; color: #b9cc86">vaapi-dmabuf</span><span style="padding: 2px 8px; border-radius: 6px; background: #2c3324; color: #b9cc86">vaapi-cpu</span><span style="padding: 2px 8px; border-radius: 6px; background: #2c3324; color: #b9cc86">x264-cpu</span></div></div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid #2e2e2e"><div style="flex: 1 1 220px"><div style="color: #ececec; font-weight: 600">Codec</div><div style="font-size: 12px; color: #9a9a9a">H.265 and AV1 only when every device can decode them in hardware</div></div><span style="font-family: 'JetBrains Mono', monospace; color: #ececec">H.264</span></div>
+</div></div>
+</div>
+<div style="position: sticky; bottom: 0; padding: 10px 24px; border-top: 1px solid #2e2e2e; background: #1d1d1d; display: flex; flex-wrap: wrap; align-items: center; gap: 10px">
+<span aria-hidden="true" style="width: 7px; height: 7px; border-radius: 999px; background: #f7ca88"></span><span style="flex-grow: 1; color: #ececec">2 changes not applied <span style="color: #9a9a9a">· take effect at the next session · saved to <span style="font-family: 'JetBrains Mono', monospace">ui.kdl</span>, which wins over <span style="font-family: 'JetBrains Mono', monospace">config.kdl</span></span></span>
+<button type="button" style="height: 32px; padding: 0 14px; border: 0; border-radius: 9px; background: #2e2e2e; color: #e0e0e0; font: 600 13px Figtree, sans-serif; cursor: pointer">Revert</button>
+<button type="button" style="height: 32px; padding: 0 14px; border: 0; border-radius: 9px; background: #7cafc2; color: #181818; font: 600 13px Figtree, sans-serif; cursor: pointer">Apply</button>
+</div>
+</div>
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1320,"height":980}}'>
+class Component extends DCLogic {
+renderVals() {
+const I = { ov: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z', dev: 'M8 3h8a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM11 18h2', set: 'M4 7h10M18 7h2M4 17h2M10 17h10M16 5v4M8 15v4', hl: 'M12 3l8 3v6c0 4.5-3.2 7.6-8 9-4.8-1.4-8-4.5-8-9V6zM9 12l2 2 4-4' };
+const active = 'Settings';
+const row = 'display:flex;align-items:center;gap:10px;height:34px;padding:0 10px;border-radius:9px;text-decoration:none;font-size:13px;font-weight:500;';
+const st = (on) => row + (on ? 'background:#303030;color:#ececec' : '');
+const host = [['Overview', 'Main.dc.html', I.ov, ''], ['Devices', 'Devices.dc.html', I.dev, '4'], ['Settings', 'Settings.dc.html', I.set, ''], ['Health', 'Health.dc.html', I.hl, '1']].map(([label, href, d, badge]) => ({ label, href, d, badge, style: st(label === active) }));
+const comps = [['atlas', '#7cafc2', ''], ['studio-mac', '#ba8baf', ''], ['nuc-tv', '#5a5a5a', 'offline']].map(([name, c, state]) => ({ name, state, href: 'Computer.dc.html', disc: 'width:16px;height:16px;border-radius:999px;background:' + c, style: st(false) }));
+const tab = 'display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;border:0;border-radius:8px;cursor:pointer;font:500 13px Figtree,sans-serif;';
+const tagS = "font-family:'JetBrains Mono',monospace;font-size:11px;color:#a8a8a8";
+const secs = [['General', ''], ['New devices', ''], ['Files', ''], ['Shells', ''], ['Clipboard and media', ''], ['Trackpad', ''], ['Gestures', ''], ['Keys', ''], ['Relay and network', ''], ['Appearance', ''], ['Stream', '2'], ['Sessions', 'LINUX'], ['Sound', 'LINUX'], ['Gamepad', 'LINUX'], ['Window rules', 'LINUX'], ['Advanced', '']].map(([name, mark]) => ({ name, mark, sel: name === 'Stream' ? 'true' : 'false', style: tab + (name === 'Stream' ? 'background:#303030;color:#ececec' : 'background:transparent;color:#b4b4b4'), markStyle: mark === '2' ? 'font-size:11px;font-weight:700;color:#181818;background:#f7ca88;border-radius:999px;padding:0 6px' : tagS }));
+return { host, comps, secs };
+}
+}
+</script>
+</body>
+</html>

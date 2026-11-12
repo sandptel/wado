@@ -3,9 +3,23 @@
 Working list for runs: open, blocked, awaiting the user. Newest concerns first. Keep it short —
 when an item is done, move it to `plan/archive/TODO-done.md` (history; not read during a run).
 
-Last updated: `2026-11-09`
+Last updated: `2026-11-12`
 
 ---
+
+## ▣ RUN — 2026-11-12, desktop app (`crates/desktop`, gpui) — branch `macos`
+
+Spec: `plan/superpowers/specs/2026-11-12-desktop-app-design.md` (boards beside it). Run:
+`cargo run -p wado-desktop`. Linux pick-up list: the spec's "Linux targets" (L1–L12).
+- [ ] Stage 0 — window, sidebar, tokens, Overview on a real daemon, join-or-start
+- [ ] Stage 1 — Devices and pairing
+- [ ] Stage 2 — menu bar, close keeps serving
+- [ ] Stage 3 — Settings and Health
+- [ ] Stage 4 — shared widgets
+- [ ] Stage 5 — client computer page
+- [ ] Stage 6 — session windows
+- [ ] Stage 7 — ship
+- [ ] (user) answer the spec's "Open" defaults; which key stays local under "Send every key"
 
 ## ▣ RUN — 2026-11-09, macOS host without the compositor (branch `macos`)
 

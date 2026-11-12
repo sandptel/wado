@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Files on atlas</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#b4b4b4}a:hover{color:#ececec}
+</style>
+</helmet>
+<div style="min-height: 980px; display: flex; flex-wrap: wrap; background: #181818; color: #c8c8c8; font-family: Figtree, system-ui, sans-serif; font-size: 13px; line-height: 1.45">
+<nav aria-label="Sections" style="flex: 0 0 228px; box-sizing: border-box; background: #1d1d1d; border-right: 1px solid #2e2e2e; padding: 14px 10px; display: flex; flex-direction: column; gap: 3px">
+<div aria-hidden="true" style="display: flex; gap: 8px; padding: 2px 6px 14px"><span style="width: 12px; height: 12px; border-radius: 999px; background: #4a4a4a"></span><span style="width: 12px; height: 12px; border-radius: 999px; background: #4a4a4a"></span><span style="width: 12px; height: 12px; border-radius: 999px; background: #4a4a4a"></span></div>
+<div style="padding: 0 8px 12px; font-family: 'Bricolage Grotesque', Figtree, sans-serif; font-weight: 700; font-size: 24px; letter-spacing: -0.04em; color: #ececec">wado</div>
+<div style="padding: 8px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">This computer</div>
+<sc-for list="{{host}}" as="item" hint-placeholder-count="4">
+<a href="{{item.href}}" style="{{item.style}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="{{item.d}}"></path></svg><span style="flex-grow: 1">{{item.label}}</span><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #9a9a9a">{{item.badge}}</span></a>
+</sc-for>
+<div style="padding: 16px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">Computers</div>
+<sc-for list="{{comps}}" as="c" hint-placeholder-count="3">
+<a href="{{c.href}}" style="{{c.style}}"><span aria-hidden="true" style="{{c.disc}}"></span><span style="flex-grow: 1">{{c.name}}</span><span style="font-size: 11px; color: #9a9a9a">{{c.state}}</span></a>
+</sc-for>
+<a href="Computers.dc.html" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 9px; text-decoration: none; font-size: 13px; font-weight: 500"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>Add a computer</a>
+<div style="flex-grow: 1; min-height: 16px"></div>
+<div style="border-top: 1px solid #2e2e2e; padding: 12px 8px 2px; display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; align-items: center; gap: 8px; color: #e0e0e0; font-weight: 600"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 999px; background: #a1b56c"></span>Serving · 3 connected</div>
+<div style="font-size: 12px; color: #9a9a9a">Keeps running when this window closes</div>
+</div>
+</nav>
+<main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column">
+<header style="min-height: 52px; box-sizing: border-box; padding: 8px 20px; border-bottom: 1px solid #2e2e2e; display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+<a href="Computer.dc.html" style="height: 32px; padding: 0 10px 0 6px; display: flex; align-items: center; gap: 6px; border-radius: 9px; background: #2e2e2e; color: #e0e0e0; font-weight: 600; font-size: 12px; text-decoration: none"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"></path></svg>atlas</a>
+<h1 style="margin: 0; font-family: 'Bricolage Grotesque', Figtree, sans-serif; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; color: #ececec">Files on atlas</h1>
+<span style="flex-grow: 1"></span>
+<label style="height: 32px; width: 240px; max-width: 100%; box-sizing: border-box; padding: 0 10px; display: flex; align-items: center; gap: 8px; border: 1px solid #333333; border-radius: 9px; background: #181818; color: #9a9a9a"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4"></path></svg><span style="position: absolute; width: 1px; height: 1px; overflow: hidden">Find in this folder</span><input type="search" placeholder="Find in this folder" style="flex-grow: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: #ececec; font: 400 13px Figtree, sans-serif"></label>
+<button type="button" style="height: 32px; padding: 0 12px; border: 0; border-radius: 9px; background: #2e2e2e; color: #e0e0e0; font: 600 12px Figtree, sans-serif; cursor: pointer">New folder</button>
+<button type="button" style="height: 32px; padding: 0 14px; border: 0; border-radius: 9px; background: #7cafc2; color: #181818; font: 600 13px Figtree, sans-serif; cursor: pointer">Send a file here</button>
+</header>
+<div style="flex-grow: 1; display: flex; flex-wrap: wrap">
+<div aria-label="Places" style="flex: 0 0 176px; box-sizing: border-box; padding: 16px 10px; border-right: 1px solid #2e2e2e; display: flex; flex-direction: column; gap: 2px">
+<sc-for list="{{places}}" as="p" hint-placeholder-count="9"><button type="button" aria-pressed="{{p.on}}" style="{{p.style}}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round"><path d="{{p.d}}"></path></svg>{{p.name}}</button></sc-for>
+<div style="margin-top: 14px; padding: 0 10px; font-size: 12px; color: #9a9a9a">412 of 953 GB used</div>
+<div aria-hidden="true" style="margin: 6px 10px 0; height: 4px; border-radius: 999px; background: #383838"><div style="width: 43%; height: 4px; border-radius: 999px; background: #7cafc2"></div></div>
+</div>
+<div style="flex: 999 1 420px; min-width: 0; display: flex; flex-direction: column">
+<div style="padding: 10px 16px; border-bottom: 1px solid #2e2e2e; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-family: 'JetBrains Mono', monospace; font-size: 12px">
+<sc-for list="{{crumbs}}" as="c" hint-placeholder-count="4"><button type="button" style="{{c.style}}">{{c.name}}</button><span aria-hidden="true" style="{{c.sep}}">/</span></sc-for>
+<span style="flex-grow: 1"></span>
+<span style="font-family: Figtree, sans-serif; color: #9a9a9a">1 selected · 6 KB</span>
+</div>
+<div style="overflow-x: auto; flex-grow: 1">
+<table style="width: 100%; min-width: 560px; border-collapse: collapse">
+<thead><tr><th scope="col" style="text-align: left; padding: 8px 16px; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">Name</th><th scope="col" style="text-align: right; padding: 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">Size</th><th scope="col" style="text-align: right; padding: 8px 16px; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">Changed</th></tr></thead>
+<tbody>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="10">
+<tr style="{{r.row}}"><td style="padding: 8px 16px"><span style="display: flex; align-items: center; gap: 10px"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" style="{{r.ic}}"><path d="{{r.d}}"></path></svg><span style="color: #ececec">{{r.name}}</span></span></td><td style="padding: 8px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 12px">{{r.size}}</td><td style="padding: 8px 16px; text-align: right; font-size: 12px; color: #9a9a9a">{{r.when}}</td></tr>
+</sc-for>
+</tbody>
+</table>
+</div>
+<div style="padding: 10px 16px; border-top: 1px solid #2e2e2e; background: #1d1d1d; display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+<div style="flex: 1 1 260px; min-width: 0"><div style="display: flex; gap: 8px"><span style="flex-grow: 1; color: #ececec; font-weight: 600">Bringing capture-2026-11-12.mp4 here</span><span style="font-family: 'JetBrains Mono', monospace; font-size: 12px">62%</span></div><div aria-hidden="true" style="margin-top: 6px; height: 4px; border-radius: 999px; background: #383838"><div style="width: 62%; height: 4px; border-radius: 999px; background: #7cafc2"></div></div></div>
+<span style="font-size: 12px; color: #9a9a9a">131 of 212 MB · to Downloads</span>
+<button type="button" style="height: 28px; padding: 0 10px; border: 0; border-radius: 8px; background: #2e2e2e; color: #e0e0e0; font: 600 12px Figtree, sans-serif; cursor: pointer">Stop</button>
+<span style="flex-basis: 100%; font-size: 12px; color: #9a9a9a">A transfer that fails stays here with Retry; a finished one offers Show in Finder.</span>
+</div>
+</div>
+<aside aria-label="Selected file" style="flex: 1 1 250px; max-width: 300px; box-sizing: border-box; padding: 16px; border-left: 1px solid #2e2e2e; display: flex; flex-direction: column; gap: 10px">
+<div role="img" aria-label="Preview of trackpad-notes.md" style="height: 150px; border-radius: 12px; background: #101010; border: 1px solid #2e2e2e; padding: 12px; box-sizing: border-box; font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.6; color: #b4b4b4; overflow: hidden"># Trackpad notes<br>- edge scroll: right side, 22 px<br>- stick springs home<br>- haptics say how they played</div>
+<div><div style="color: #ececec; font-weight: 600; overflow-wrap: anywhere">trackpad-notes.md</div><div style="font-size: 12px; color: #9a9a9a">Markdown · 6 KB · changed today, 14:02</div></div>
+<button type="button" style="height: 34px; border: 0; border-radius: 9px; background: #7cafc2; color: #181818; font: 600 13px Figtree, sans-serif; cursor: pointer">Bring here</button>
+<sc-for list="{{acts}}" as="a" hint-placeholder-count="5"><button type="button" style="{{a.style}}">{{a.name}}</button></sc-for>
+<div style="margin-top: auto; border: 1px dashed #4a4a4a; border-radius: 12px; padding: 12px; text-align: center; font-size: 12px; color: #b4b4b4">Drop files anywhere in the list to send them into this folder</div>
+</aside>
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1320,"height":980}}'>
+class Component extends DCLogic {
+renderVals() {
+const I = { ov: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z', dev: 'M8 3h8a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM11 18h2', set: 'M4 7h10M18 7h2M4 17h2M10 17h10M16 5v4M8 15v4', hl: 'M12 3l8 3v6c0 4.5-3.2 7.6-8 9-4.8-1.4-8-4.5-8-9V6zM9 12l2 2 4-4' };
+const row = 'display:flex;align-items:center;gap:10px;height:34px;padding:0 10px;border-radius:9px;text-decoration:none;font-size:13px;font-weight:500;';
+const st = (on) => row + (on ? 'background:#303030;color:#ececec' : '');
+const host = [['Overview', 'Main.dc.html', I.ov, ''], ['Devices', 'Devices.dc.html', I.dev, '4'], ['Settings', 'Settings.dc.html', I.set, ''], ['Health', 'Health.dc.html', I.hl, '1']].map(([label, href, d, badge]) => ({ label, href, d, badge, style: row }));
+const comps = [['atlas', '#7cafc2', '2 windows'], ['studio-mac', '#ba8baf', ''], ['nuc-tv', '#5a5a5a', 'offline']].map(([name, c, state]) => ({ name, state, href: 'Computer.dc.html', disc: 'width:16px;height:16px;border-radius:999px;background:' + c, style: st(name === 'atlas') }));
+const folder = 'M3 6h6l2 3h10v10H3z', file = 'M6 3h8l4 4v14H6zM14 3v4h4', trash = 'M5 7h14M9 7V4h6v3M7 7l1 13h8l1-13';
+const pl = 'display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;border:0;border-radius:8px;cursor:pointer;font:500 13px Figtree,sans-serif;text-align:left;';
+const places = [['Recent', file], ['Received', file], ['Home', folder], ['Desktop', folder], ['Downloads', folder], ['Documents', folder], ['projects', folder], ['Videos', folder], ['Trash', trash]].map(([name, d]) => ({ name, d, on: name === 'projects' ? 'true' : 'false', style: pl + (name === 'projects' ? 'background:#303030;color:#ececec' : 'background:transparent;color:#b4b4b4') }));
+const names = ['~', 'projects', 'wado', 'plan'];
+const crumbs = names.map((name, i) => ({ name, style: "height:24px;padding:0 6px;border:0;border-radius:6px;cursor:pointer;font:400 12px 'JetBrains Mono',monospace;background:transparent;color:" + (i === names.length - 1 ? '#ececec' : '#b4b4b4'), sep: i === names.length - 1 ? 'display:none' : 'color:#6f6f6f' }));
+const rows = [['design', '—', 'Yesterday', 1, 0], ['memory', '—', '9 Nov', 1, 0], ['superpowers', '—', 'Today, 13:40', 1, 0], ['archive', '—', '30 Oct', 1, 0], ['HANDOVER.md', '19 KB', '30 Oct', 0, 0], ['TODO.md', '51 KB', 'Today, 12:11', 0, 0], ['trackpad-notes.md', '6 KB', 'Today, 14:02', 0, 1], ['issues.md', '53 KB', '9 Nov', 0, 0], ['main.md', '4 KB', '4 Nov', 0, 0], ['commit.sh', '716 B', '9 Nov', 0, 0]].map(([name, size, when, dir, sel]) => ({ name, size, when, d: dir ? folder : file, ic: 'flex-shrink:0;color:' + (dir ? '#7cafc2' : '#9a9a9a'), row: 'border-top:1px solid #2e2e2e;cursor:pointer;' + (sel ? 'background:#24323a' : '') }));
+const b = 'height:30px;padding:0 12px;text-align:left;border:0;border-radius:8px;background:#2e2e2e;cursor:pointer;font:600 12px Figtree,sans-serif;color:';
+const acts = [['Open on atlas', '#e0e0e0'], ['Open in a session window', '#e0e0e0'], ['Copy path', '#e0e0e0'], ['Rename', '#e0e0e0'], ['Move to Trash', '#e08783']].map(([name, c]) => ({ name, style: b + c }));
+return { host, comps, places, crumbs, rows, acts };
+}
+}
+</script>
+</body>
+</html>

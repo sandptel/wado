@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Setup and health</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#b4b4b4}a:hover{color:#ececec}
+</style>
+</helmet>
+<div style="min-height: 980px; display: flex; flex-wrap: wrap; background: #181818; color: #c8c8c8; font-family: Figtree, system-ui, sans-serif; font-size: 13px; line-height: 1.45">
+<nav aria-label="Sections" style="flex: 0 0 228px; box-sizing: border-box; background: #1d1d1d; border-right: 1px solid #2e2e2e; padding: 14px 10px; display: flex; flex-direction: column; gap: 3px">
+<div aria-hidden="true" style="display: flex; gap: 8px; padding: 2px 6px 14px"><span style="width: 12px; height: 12px; border-radius: 999px; background: #4a4a4a"></span><span style="width: 12px; height: 12px; border-radius: 999px; background: #4a4a4a"></span><span style="width: 12px; height: 12px; border-radius: 999px; background: #4a4a4a"></span></div>
+<div style="padding: 0 8px 12px; font-family: 'Bricolage Grotesque', Figtree, sans-serif; font-weight: 700; font-size: 24px; letter-spacing: -0.04em; color: #ececec">wado</div>
+<div style="padding: 8px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">This computer</div>
+<sc-for list="{{host}}" as="item" hint-placeholder-count="4">
+<a href="{{item.href}}" style="{{item.style}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="{{item.d}}"></path></svg><span style="flex-grow: 1">{{item.label}}</span><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #9a9a9a">{{item.badge}}</span></a>
+</sc-for>
+<div style="padding: 16px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">Computers</div>
+<sc-for list="{{comps}}" as="c" hint-placeholder-count="3">
+<a href="{{c.href}}" style="{{c.style}}"><span aria-hidden="true" style="{{c.disc}}"></span><span style="flex-grow: 1">{{c.name}}</span><span style="font-size: 11px; color: #9a9a9a">{{c.state}}</span></a>
+</sc-for>
+<a href="Computers.dc.html" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 9px; text-decoration: none; font-size: 13px; font-weight: 500"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>Add a computer</a>
+<div style="flex-grow: 1; min-height: 16px"></div>
+<div style="border-top: 1px solid #2e2e2e; padding: 12px 8px 2px; display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; align-items: center; gap: 8px; color: #e0e0e0; font-weight: 600"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 999px; background: #a1b56c"></span>Serving · 3 connected</div>
+<div style="font-size: 12px; color: #9a9a9a">Keeps running when this window closes</div>
+</div>
+</nav>
+<main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column">
+<header style="min-height: 52px; box-sizing: border-box; padding: 8px 20px; border-bottom: 1px solid #2e2e2e; display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+<h1 style="margin: 0; flex-grow: 1; font-family: 'Bricolage Grotesque', Figtree, sans-serif; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; color: #ececec">Health</h1>
+<button type="button" style="height: 32px; padding: 0 12px; border: 0; border-radius: 9px; background: #2e2e2e; color: #e0e0e0; font: 600 12px Figtree, sans-serif; cursor: pointer">Copy diagnostics</button>
+<button type="button" style="height: 32px; padding: 0 14px; border: 0; border-radius: 9px; background: #2e2e2e; color: #e0e0e0; font: 600 13px Figtree, sans-serif; cursor: pointer">Check again</button>
+</header>
+<div style="padding: 20px; display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start">
+<div style="flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+<section style="background: #2a2520; border: 1px solid #5a4630; border-radius: 14px; padding: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+<div style="flex: 1 1 320px"><div style="color: #f3c79c; font-weight: 600; font-size: 14px">One thing needs you: Accessibility</div><div style="color: #d9c3ad">Without it, phones can see this Mac but cannot move the pointer or type. Turn wado on in System Settings, then come back — this page updates by itself.</div></div>
+<button type="button" style="height: 32px; padding: 0 14px; border: 0; border-radius: 9px; background: #dc9656; color: #181818; font: 600 13px Figtree, sans-serif; cursor: pointer">Open System Settings</button>
+</section>
+<section style="background: #222222; border: 1px solid #2e2e2e; border-radius: 14px; padding: 14px">
+<div style="display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px"><h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">What this computer can do</h2><span style="font-size: 12px; color: #9a9a9a">Each one was opened to check — nothing is assumed</span></div>
+<sc-for list="{{caps}}" as="k" hint-placeholder-count="16">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 7px 0; border-top: 1px solid #2e2e2e">
+<span aria-hidden="true" style="{{k.dot}}"></span>
+<div style="flex: 0 0 170px; color: #ececec; font-weight: 600">{{k.name}} <span style="{{k.tagStyle}}">{{k.tag}}</span></div>
+<div style="flex: 1 1 240px; min-width: 0; font-size: 12px; color: #b4b4b4">{{k.why}}</div>
+<span style="{{k.stStyle}}">{{k.st}}</span>
+</div>
+</sc-for>
+</section>
+</div>
+<div style="flex: 1 1 290px; max-width: 380px; display: flex; flex-direction: column; gap: 16px">
+<section style="background: #222222; border: 1px solid #2e2e2e; border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px">
+<h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">Setup</h2>
+<sc-for list="{{steps}}" as="s" hint-placeholder-count="5">
+<div style="display: flex; gap: 10px; align-items: center"><span aria-hidden="true" style="{{s.badge}}">{{s.n}}</span><span style="{{s.text}}">{{s.label}}</span></div>
+</sc-for>
+</section>
+<section style="background: #222222; border: 1px solid #2e2e2e; border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">Network</h2>
+<sc-for list="{{net}}" as="n" hint-placeholder-count="4">
+<div style="display: flex; gap: 10px"><span style="flex-grow: 1; color: #b4b4b4">{{n.k}}</span><span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #ececec">{{n.v}}</span></div>
+</sc-for>
+<button type="button" style="margin-top: 4px; height: 32px; border: 0; border-radius: 9px; background: #2e2e2e; color: #e0e0e0; font: 600 12px Figtree, sans-serif; cursor: pointer">Test link speed</button>
+</section>
+<section style="background: #222222; border: 1px solid #2e2e2e; border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">Daemon</h2>
+<div style="color: #ececec; font-weight: 600">Running inside this app</div>
+<div style="font-size: 12px; color: #9a9a9a">Quitting wado stops it. Had one been running already, this would read "Joined the daemon started at login".</div>
+<sc-for list="{{dmn}}" as="n" hint-placeholder-count="3">
+<div style="display: flex; gap: 10px"><span style="flex-grow: 1; color: #b4b4b4">{{n.k}}</span><span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #ececec">{{n.v}}</span></div>
+</sc-for>
+<div style="display: flex; gap: 8px; margin-top: 4px"><button type="button" style="flex: 1; height: 32px; border: 0; border-radius: 9px; background: #2e2e2e; color: #e0e0e0; font: 600 12px Figtree, sans-serif; cursor: pointer">Open the log</button><button type="button" style="flex: 1; height: 32px; border: 0; border-radius: 9px; background: #2e2e2e; color: #e08783; font: 600 12px Figtree, sans-serif; cursor: pointer">Restart daemon</button></div>
+</section>
+</div>
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1320,"height":980}}'>
+class Component extends DCLogic {
+renderVals() {
+const I = { ov: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z', dev: 'M8 3h8a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM11 18h2', set: 'M4 7h10M18 7h2M4 17h2M10 17h10M16 5v4M8 15v4', hl: 'M12 3l8 3v6c0 4.5-3.2 7.6-8 9-4.8-1.4-8-4.5-8-9V6zM9 12l2 2 4-4' };
+const active = 'Health';
+const row = 'display:flex;align-items:center;gap:10px;height:34px;padding:0 10px;border-radius:9px;text-decoration:none;font-size:13px;font-weight:500;';
+const st = (on) => row + (on ? 'background:#303030;color:#ececec' : '');
+const host = [['Overview', 'Main.dc.html', I.ov, ''], ['Devices', 'Devices.dc.html', I.dev, '4'], ['Settings', 'Settings.dc.html', I.set, ''], ['Health', 'Health.dc.html', I.hl, '1']].map(([label, href, d, badge]) => ({ label, href, d, badge, style: st(label === active) }));
+const comps = [['atlas', '#7cafc2', ''], ['studio-mac', '#ba8baf', ''], ['nuc-tv', '#5a5a5a', 'offline']].map(([name, c, state]) => ({ name, state, href: 'Computer.dc.html', disc: 'width:16px;height:16px;border-radius:999px;background:' + c, style: st(false) }));
+const col = { ok: '#a1b56c', need: '#dc9656', opt: '#9a9a9a', no: '#5a5a5a', later: '#5a5a5a' };
+const word = { ok: 'Working', need: 'Needs you', opt: 'Optional', no: 'Not here', later: 'Not built yet' };
+const tagS = "font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:400;border:1px solid #4a4a4a;border-radius:5px;padding:0 5px;color:#a8a8a8";
+const caps = [
+['Pointer and keys', 'need', 'Accessibility is off for wado — System Settings, Privacy and Security', ''],
+['Files', 'ok', 'Desktop, Documents and Downloads allowed', ''],
+['Trash', 'opt', 'Browsing the Trash needs Full Disk Access', ''],
+['Clipboard', 'ok', 'Text, images and files, both ways', ''],
+['Media remote', 'ok', 'Music and Spotify allowed under Automation', ''],
+['Volume and outputs', 'ok', 'MacBook speakers, AirPods', ''],
+['Brightness', 'ok', 'Built-in display', ''],
+['Lock and sleep', 'ok', 'Lock the screen, sleep, keep awake while someone is connected', ''],
+['Shells', 'ok', 'zsh; Claude sessions found in 3 folders', ''],
+['Screenshots', 'opt', 'Needs Screen Recording — only used for previews', ''],
+['Wi-Fi and Bluetooth', 'later', 'Switching networks from a phone works on Linux first', ''],
+['Gamepad', 'later', 'A phone as a controller works on Linux first', ''],
+['Apps and Dock', 'ok', 'Open, hide, quit; links open in a chosen app', ''],
+['Sound to a phone', 'later', 'Needs a virtual audio driver', ''],
+['Desktop sessions', 'no', 'wado runs its own desktop only on Linux', 'LINUX'],
+['Hardware video', 'no', 'Comes with desktop sessions', 'LINUX']
+].map(([name, s, why, tag]) => ({ name, why, tag, tagStyle: tag ? tagS : 'display:none', st: word[s], dot: 'width:8px;height:8px;flex-shrink:0;border-radius:999px;background:' + col[s], stStyle: 'width:76px;text-align:right;font-size:12px;font-weight:600;color:' + (s === 'no' || s === 'later' || s === 'opt' ? '#9a9a9a' : col[s]) }));
+const b = 'width:18px;height:18px;flex-shrink:0;border-radius:999px;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;';
+const steps = [['Daemon running', 1], ['Relay reached', 1], ['Allow pointer and keys', 0], ['Pair a first device', 1], ['Start at login', 1]].map(([label, done], i) => ({ label, n: i + 1, badge: b + (done ? 'background:#a1b56c;color:#181818' : 'background:#dc9656;color:#181818'), text: done ? 'color:#c8c8c8' : 'color:#ececec;font-weight:600' }));
+const net = [['Relay', 'reached · 38 ms'], ['Direct links', 'possible'], ['Address', '192.168.1.24'], ['Control port', 'localhost only']].map(([k, v]) => ({ k, v }));
+const dmn = [['Version', '0.0.4'], ['Up for', '3 h 12 min'], ['Config', '~/.config/wado/config.kdl']].map(([k, v]) => ({ k, v }));
+return { host, comps, caps, steps, net, dmn };
+}
+}
+</script>
+</body>
+</html>

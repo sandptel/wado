@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Session window</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#b4b4b4}a:hover{color:#ececec}
+</style>
+</helmet>
+<div style="min-height: 880px; display: flex; flex-direction: column; background: #181818; color: #c8c8c8; font-family: Figtree, system-ui, sans-serif; font-size: 13px; line-height: 1.45">
+<header style="min-height: 44px; box-sizing: border-box; padding: 6px 14px; background: #1d1d1d; border-bottom: 1px solid #2e2e2e; display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+<div aria-hidden="true" style="display: flex; gap: 8px"><span style="width: 12px; height: 12px; border-radius: 999px; background: #4a4a4a"></span><span style="width: 12px; height: 12px; border-radius: 999px; background: #4a4a4a"></span><span style="width: 12px; height: 12px; border-radius: 999px; background: #4a4a4a"></span></div>
+<span aria-hidden="true" style="width: 20px; height: 20px; border-radius: 999px; background: #7cafc2; color: #181818; display: flex; align-items: center; justify-content: center; font: 700 12px 'Bricolage Grotesque', sans-serif">A</span>
+<h1 style="margin: 0; font-family: 'Bricolage Grotesque', Figtree, sans-serif; font-size: 15px; font-weight: 700; color: #ececec">atlas <span style="font-family: Figtree, sans-serif; font-weight: 400; color: #9a9a9a">— Session 1</span></h1>
+<span style="display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 10px; border-radius: 999px; background: #222222; border: 1px solid #2e2e2e; font-size: 12px; color: #d6d6d6"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 999px; background: #a1b56c"></span>Direct</span>
+<span title="Turns amber and says Software encoding when the graphics card is not used — never hidden" style="display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 10px; border-radius: 999px; background: #2c3324; color: #b9cc86; font-size: 12px; font-weight: 600; white-space: nowrap">Hardware encoding</span>
+<span title="Who else is watching this session" style="display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 999px; background: #222222; border: 1px solid #2e2e2e; font-size: 12px; color: #d6d6d6; white-space: nowrap"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 999px; background: #a1b56c"></span>Pixel 9 is here too</span>
+<div style="margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 16px">
+<sc-for list="{{meters}}" as="m" hint-placeholder-count="3"><div style="display: flex; align-items: baseline; gap: 5px"><span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 600; font-size: 15px; color: #ececec">{{m.v}}</span><span style="font-size: 11px; color: #9a9a9a">{{m.k}}</span></div></sc-for>
+<a href="Computer.dc.html" style="height: 28px; padding: 0 10px; display: flex; align-items: center; border-radius: 8px; background: #2e2e2e; color: #e0e0e0; font-weight: 600; font-size: 12px; text-decoration: none">atlas's page</a>
+</div>
+</header>
+<div style="flex-grow: 1; display: flex; flex-wrap: wrap; min-height: 700px">
+<nav aria-label="Workspaces" style="flex: 0 0 52px; box-sizing: border-box; padding: 12px 8px; background: #1d1d1d; border-right: 1px solid #2e2e2e; display: flex; flex-direction: column; align-items: center; gap: 6px">
+<sc-for list="{{spaces}}" as="w" hint-placeholder-count="4"><button type="button" aria-label="{{w.label}}" aria-pressed="{{w.on}}" style="{{w.style}}">{{w.n}}</button></sc-for>
+<button type="button" aria-label="New workspace" style="width: 36px; height: 36px; border: 1px dashed #4a4a4a; border-radius: 10px; background: transparent; color: #b4b4b4; cursor: pointer; font: 600 16px Figtree, sans-serif">+</button>
+</nav>
+<div style="flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; background: #000000">
+<div role="img" aria-label="The streamed desktop of atlas, 1728 by 1080" style="flex-grow: 1; min-height: 520px; position: relative; display: flex; align-items: center; justify-content: center">
+<div aria-hidden="true" style="position: absolute; left: 6%; top: 8%; width: 56%; height: 70%; border: 1px solid #3a3a3a; border-radius: 8px; background: #0c0c0c"><div style="height: 26px; border-bottom: 1px solid #3a3a3a; display: flex; align-items: center; padding: 0 10px; font-size: 12px; color: #9a9a9a">Firefox</div></div>
+<div aria-hidden="true" style="position: absolute; right: 6%; bottom: 10%; width: 40%; height: 46%; border: 1px solid #3a3a3a; border-radius: 8px; background: #101010"><div style="height: 26px; border-bottom: 1px solid #3a3a3a; display: flex; align-items: center; padding: 0 10px; font-size: 12px; color: #9a9a9a">Steam</div></div>
+<div style="position: relative; text-align: center; color: #9a9a9a"><div style="color: #ececec; font-weight: 600; font-size: 14px">atlas's desktop, live</div><div style="font-family: 'JetBrains Mono', monospace; font-size: 12px">1728×1080 · sized to this window</div><div style="font-size: 12px">Black behind the picture, whatever the theme · drop a file on it to send it in</div></div>
+</div>
+<div style="background: #181818; border-top: 1px solid #2e2e2e; padding: 6px 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+<span style="flex: 1 1 200px; min-width: 0; color: #ececec; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Firefox <span style="font-weight: 400; color: #9a9a9a">— sandptel/wado: README</span></span>
+<button type="button" style="height: 28px; padding: 0 10px; border: 0; border-radius: 8px; background: #2e2e2e; color: #e0e0e0; font: 600 12px Figtree, sans-serif; cursor: pointer">Minimise</button>
+<button type="button" style="height: 28px; padding: 0 10px; border: 0; border-radius: 8px; background: #2e2e2e; color: #e0e0e0; font: 600 12px Figtree, sans-serif; cursor: pointer">Maximise</button>
+<button type="button" style="height: 28px; padding: 0 10px; border: 0; border-radius: 8px; background: #2e2e2e; color: #e08783; font: 600 12px Figtree, sans-serif; cursor: pointer">Close window</button>
+</div>
+</div>
+<aside aria-label="Quick access" style="flex: 1 1 260px; max-width: 300px; box-sizing: border-box; background: #1d1d1d; border-left: 1px solid #2e2e2e; padding: 12px; display: flex; flex-direction: column; gap: 12px">
+<label style="height: 32px; box-sizing: border-box; display: flex; align-items: center; padding: 0 10px; border: 1px solid #333333; border-radius: 9px; background: #181818"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden">Open an app or run a command on atlas</span><input type="text" placeholder="Open an app or run a command" style="flex-grow: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: #ececec; font: 400 13px Figtree, sans-serif"></label>
+<section style="display: flex; flex-direction: column; gap: 6px"><h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">Apps</h2>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px">
+<sc-for list="{{apps}}" as="a" hint-placeholder-count="8"><button type="button" aria-label="{{a.name}}" style="{{a.style}}">{{a.ch}}</button></sc-for>
+</div></section>
+<section style="background: #222222; border: 1px solid #2e2e2e; border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; align-items: center; gap: 8px"><h2 style="margin: 0; flex-grow: 1; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">Clipboard sync</h2><button type="button" role="switch" aria-checked="true" aria-label="Clipboard sync" style="width: 36px; height: 22px; padding: 2px; border: 0; border-radius: 999px; background: #7cafc2; cursor: pointer; display: flex; justify-content: flex-end"><span style="width: 18px; height: 18px; border-radius: 999px; background: #181818"></span></button></div>
+<div style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #d6d6d6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">cargo run -p wado -- daemon</div>
+<div style="font-size: 12px; color: #9a9a9a">Copy here, paste there — and back</div>
+</section>
+<button type="button" style="height: 64px; border: 1px dashed #4a4a4a; border-radius: 12px; background: transparent; color: #b4b4b4; font: 600 12px Figtree, sans-serif; cursor: pointer">Drop a file to send it into this session</button>
+<section style="display: flex; flex-direction: column; gap: 6px"><h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">Recent files there</h2>
+<sc-for list="{{files}}" as="f" hint-placeholder-count="2"><div style="display: flex; align-items: center; gap: 8px"><span style="flex-grow: 1; min-width: 0; color: #d6d6d6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{f}}</span><button type="button" style="height: 24px; padding: 0 8px; border: 0; border-radius: 7px; background: #2e2e2e; color: #e0e0e0; font: 600 11px Figtree, sans-serif; cursor: pointer">Bring here</button></div></sc-for></section>
+<div role="radiogroup" aria-label="Where the sound plays" style="margin-top: auto; display: flex; padding: 3px; border-radius: 10px; background: #181818; border: 1px solid #333333"><button type="button" role="radio" aria-checked="true" style="flex: 1; height: 24px; border: 0; border-radius: 7px; background: #7cafc2; color: #181818; font: 600 12px Figtree, sans-serif; cursor: pointer">Sound here</button><button type="button" role="radio" aria-checked="false" style="flex: 1; height: 24px; border: 0; border-radius: 7px; background: transparent; color: #c8c8c8; font: 600 12px Figtree, sans-serif; cursor: pointer">Sound on atlas</button></div>
+<label style="display: flex; align-items: center; gap: 10px"><span style="color: #ececec; font-weight: 600">Sound</span><input type="range" min="0" max="100" value="38" style="flex-grow: 1; min-width: 60px; accent-color: #7cafc2"></label>
+</aside>
+</div>
+<footer style="background: #1d1d1d; border-top: 1px solid #2e2e2e; padding: 8px 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+<div style="display: flex; gap: 4px; padding: 4px; border-radius: 999px; background: #222222; border: 1px solid #2e2e2e">
+<sc-for list="{{dock}}" as="d" hint-placeholder-count="4"><button type="button" style="height: 30px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; color: #e0e0e0; font: 600 12px Figtree, sans-serif; cursor: pointer">{{d}}</button></sc-for>
+</div>
+<div style="display: flex; gap: 4px; padding: 4px; border-radius: 999px; background: #222222; border: 1px solid #2e2e2e">
+<sc-for list="{{keys}}" as="k" hint-placeholder-count="3"><button type="button" style="height: 30px; padding: 0 12px; border: 0; border-radius: 999px; background: transparent; color: #e0e0e0; font: 600 12px 'JetBrains Mono', monospace; cursor: pointer">{{k}}</button></sc-for>
+</div>
+<div style="display: flex; align-items: center; gap: 8px; margin-left: 4px"><button type="button" role="switch" aria-checked="true" aria-label="Send every key to atlas" style="width: 36px; height: 22px; padding: 2px; border: 0; border-radius: 999px; background: #7cafc2; cursor: pointer; display: flex; justify-content: flex-end"><span style="width: 18px; height: 18px; border-radius: 999px; background: #181818"></span></button><span>Send every key to atlas <span style="color: #9a9a9a">— shortcuts too</span></span></div>
+<span style="flex-grow: 1"></span>
+<button type="button" style="height: 30px; padding: 0 12px; border: 0; border-radius: 8px; background: #2e2e2e; color: #e0e0e0; font: 600 12px Figtree, sans-serif; cursor: pointer" title="The panel floats over the picture, so hiding it never changes the picture size">Hide quick access</button>
+<button type="button" style="height: 30px; padding: 0 12px; border: 0; border-radius: 8px; background: #2e2e2e; color: #e08783; font: 600 12px Figtree, sans-serif; cursor: pointer" title="Closing the window only leaves; the session keeps running on atlas">End session…</button>
+</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1320,"height":880}}'>
+class Component extends DCLogic {
+renderVals() {
+const meters = [{ v: '120', k: 'fps' }, { v: '6', k: 'ms' }, { v: '18', k: 'Mb/s' }];
+const ws = "width:36px;height:36px;border:0;border-radius:10px;cursor:pointer;font:600 13px 'JetBrains Mono',monospace;";
+const spaces = [1, 2, 3, 4].map((n) => ({ n, label: 'Workspace ' + n, on: n === 1 ? 'true' : 'false', style: ws + (n === 1 ? 'background:#7cafc2;color:#181818' : 'background:#2b2b2b;color:#c8c8c8') }));
+const hues = ['#dc9656', '#7cafc2', '#f7ca88', '#a1b56c', '#ba8baf', '#86c1b9', '#b8b8b8', '#ab4642'];
+const apps = ['Firefox', 'Steam', 'Terminal', 'Files', 'Code', 'Blender', 'Settings', 'Krita'].map((name, i) => ({ name, ch: name[0], style: "height:44px;border:0;border-radius:11px;cursor:pointer;font:700 16px 'Bricolage Grotesque',sans-serif;color:#181818;background:" + hues[i] }));
+return { meters, spaces, apps, files: ['wado-0.4.0-release.apk', 'trackpad-notes.md'], dock: ['Full screen', 'All apps', 'Overview', 'Screenshot'], keys: ['Super', 'Ctrl Alt Del', 'Print'] };
+}
+}
+</script>
+</body>
+</html>

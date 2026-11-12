@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>States</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="min-height: 1240px; box-sizing: border-box; padding: 36px 40px; background: #181818; color: #c8c8c8; font-family: Figtree, system-ui, sans-serif; font-size: 13px; line-height: 1.5">
+<div style="max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px">
+<div>
+<div style="font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">wado desktop · states</div>
+<h1 style="margin: 4px 0 6px; font-family: 'Bricolage Grotesque', Figtree, sans-serif; font-weight: 700; font-size: 40px; letter-spacing: -0.035em; line-height: 1.05; color: #ececec">When it is not the happy path</h1>
+<p style="margin: 0; max-width: 780px; font-size: 14px">The screens show everything working. These are the other states each widget and page must have. The rule from the phone app holds: a widget never disappears for a missing permission or a lost link — it stays, and says what is missing and what to do.</p>
+</div>
+<sc-for list="{{groups}}" as="g" hint-placeholder-count="3">
+<section style="display: flex; flex-direction: column; gap: 10px">
+<h2 style="margin: 0; font-family: 'Bricolage Grotesque', Figtree, sans-serif; font-size: 17px; font-weight: 700; color: #ececec">{{g.name}} <span style="font-family: Figtree, sans-serif; font-size: 13px; font-weight: 400; color: #9a9a9a">— {{g.sub}}</span></h2>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px">
+<sc-for list="{{g.cards}}" as="k" hint-placeholder-count="5">
+<article style="min-width: 0; display: flex; flex-direction: column; gap: 8px">
+<div style="font-size: 12px; color: #9a9a9a"><span style="color: #ececec; font-weight: 600">{{k.state}}</span> · {{k.where}}</div>
+<div style="{{k.box}}">
+<div style="display: flex; align-items: center; gap: 8px"><span style="flex-grow: 1; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">{{k.head}}</span><span style="{{k.chip}}">{{k.chipText}}</span></div>
+<div style="{{k.skel}}"><span style="height: 12px; width: 70%; border-radius: 6px; background: #2e2e2e"></span><span style="height: 12px; width: 90%; border-radius: 6px; background: #2e2e2e"></span><span style="height: 12px; width: 55%; border-radius: 6px; background: #2e2e2e"></span></div>
+<div style="{{k.msg}}"><div style="{{k.titleStyle}}">{{k.title}}</div><div style="font-size: 12px; color: #b4b4b4">{{k.body}}</div></div>
+<div style="{{k.actions}}"><button type="button" style="{{k.b1}}">{{k.a1}}</button><button type="button" style="{{k.b2}}">{{k.a2}}</button></div>
+</div>
+</article>
+</sc-for>
+</div>
+</section>
+</sc-for>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1320,"height":1240}}'>
+class Component extends DCLogic {
+renderVals() {
+const tone = { plain: ['#222222', '#2e2e2e', '#ececec'], warn: ['#2a2520', '#5a4630', '#f3c79c'], bad: ['#2a2020', '#5a3532', '#e8a09c'], off: ['#1d1d1d', '#2e2e2e', '#b4b4b4'] };
+const btn = (kind) => kind === 0 ? 'display:none' : 'height:28px;padding:0 10px;border:0;border-radius:8px;cursor:pointer;font:600 12px Figtree,sans-serif;' + (kind === 2 ? 'background:#7cafc2;color:#181818' : 'background:#2e2e2e;color:#e0e0e0');
+const mk = ([state, where, head, t, title, body, a1, a2, chipText, skel]) => ({ state, where, head, title, body, a1: a1 || '', a2: a2 || '', chipText: chipText || '',
+box: 'flex-grow:1;min-height:150px;border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px;background:' + tone[t][0] + ';border:1px ' + (t === 'off' ? 'dashed' : 'solid') + ' ' + tone[t][1],
+titleStyle: 'font-weight:600;color:' + tone[t][2],
+msg: skel ? 'display:none' : 'display:flex;flex-direction:column;gap:2px',
+skel: skel ? 'display:flex;flex-direction:column;gap:10px;padding:4px 0' : 'display:none',
+chip: chipText ? 'padding:1px 8px;border-radius:999px;font-size:11px;font-weight:600;background:#181818;color:' + tone[t][2] : 'display:none',
+actions: a1 ? 'margin-top:auto;display:flex;flex-wrap:wrap;gap:8px' : 'display:none', b1: btn(a1 ? 2 : 0), b2: btn(a2 ? 1 : 0) });
+const groups = [
+{ name: 'A computer you connect to', sub: 'its page, widgets, session window', cards: [
+['Offline', 'every widget on Home', 'Clipboard', 'off', 'atlas is offline — last seen 2 h ago', 'What arrived before is still here: 12 clipboard items, 5 notifications. Apps, files and controls wait until it is back.', 'Try again', '', 'Kept here'],
+['Permission not given', 'the widget stays in place', 'Files', 'warn', 'atlas has not given this Mac Files', 'Its owner switches it on under Devices on atlas. You can ask from here.', 'Ask for it', 'Why'],
+['Relayed link', 'header strip, above the widgets', 'Link', 'warn', 'Relayed — limited', 'No direct path from this network. Clipboard, controls and shells work. Large files go slowly and sessions wait for a direct path.', 'Test the link', '', 'Relayed'],
+['A Mac on the other side', 'where Sessions would be', 'Sessions', 'off', 'studio-mac cannot run sessions', 'Only Linux computers run their own desktop. Files, clipboard, apps, playing and Input all work here.', '', '', 'Mac'],
+['Loading', 'first open, before anything arrives', 'Notifications', 'plain', '', '', '', '', '', 1],
+['Empty', 'nothing has arrived yet', 'Notifications', 'plain', 'Nothing yet', 'Notifications from atlas collect here and stay readable when it is offline.', '', ''],
+['Nothing playing', 'the widget shrinks to one line', 'Playing and sound', 'plain', 'Nothing is playing on atlas', 'Sound and output stay available below.', '', ''],
+['Transfer failed', 'Files, and the transfer bar', 'Files moving', 'bad', 'capture.mp4 stopped at 62%', 'The link dropped. The part that arrived is kept.', 'Retry', 'Remove'],
+['Session reconnecting', 'over the picture, never a blank window', 'Session 1', 'warn', 'Reconnecting to atlas…', 'The session is still running there. Your keys are not being sent.', 'Leave', '', '8 s'],
+['Session ended elsewhere', 'the window stays, with the reason', 'Session 1', 'off', 'Ended from Pixel 9', 'Apps that were open have closed.', 'Start a new one', 'Close window']
+].map(mk) },
+{ name: 'This computer', sub: 'the control room', cards: [
+['Not serving', 'replaces Overview', 'This Mac', 'bad', 'wado is not serving this computer', 'The daemon stopped 2 min ago. Paired devices cannot connect until it starts.', 'Start', 'Open the log'],
+['Joined a running daemon', 'line under the name, and in Health', 'Daemon', 'plain', 'Joined the daemon started at login', 'Quitting this app leaves it running. Restart it from Health.', '', '', 'Joined'],
+['Relay lost', 'chip turns amber; one line of words', 'Network', 'warn', 'Relay lost 3 min ago — not your computer', 'Devices on this network still connect. Others wait until it is back.', 'Test the link', ''],
+['Nobody connected', 'Connected now keeps its place', 'Connected now', 'plain', 'No one is connected', '4 devices are trusted. Open wado on one, or pair another.', 'Pair a device', ''],
+['A device is asking', 'over any page, and in the menu bar', 'Pairing', 'warn', 'Pixel 8a wants in', 'Check that its four words match: maple · river · stone · amber', 'They match — allow', 'Deny'],
+['No devices yet', 'first run', 'Trusted devices', 'plain', 'Nobody yet', 'Scan the code with the phone app, or type it in a browser.', 'Show the code', ''],
+['Setting refused', 'under the row that was changed', 'Stream', 'bad', 'That value was not saved', 'Bitrate ceiling must be between 2 and 80. The old value is back.', '', ''],
+['Locked by config.kdl', 'the row is read-only', 'Stream', 'off', 'Set in config.kdl', 'This key is fixed by the hand-written file. Edit it there.', 'Open config.kdl', '']
+].map(mk) },
+{ name: 'Linux only', sub: 'marked now, built on the Linux machine', cards: [
+['Software encoding', 'session window and Overview — never hidden', 'Encoder', 'warn', 'Software encoding', 'The graphics card could not be used, so the processor is encoding. Expect fewer frames.', 'Why', '', 'x264-cpu'],
+['Stepped down mid-session', 'toast plus the chip', 'Encoder', 'warn', 'Dropped to software to keep the picture', 'Hardware encoding failed. Nothing was lost.', '', ''],
+['No input device', 'Health and the Input tab', 'Pointer and keys', 'bad', 'Cannot open /dev/uinput', 'Add this user to the input group, then check again.', 'Show how', 'Check again'],
+['All sessions in use', 'when starting one', 'Sessions', 'warn', 'atlas is running as many sessions as it allows', 'End one, or join one that is running.', 'Join Session 2', '']
+].map(mk) }];
+return { groups };
+}
+}
+</script>
+</body>
+</html>

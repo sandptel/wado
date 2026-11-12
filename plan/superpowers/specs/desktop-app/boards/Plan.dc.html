@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Implementation plan</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="min-height: 1240px; box-sizing: border-box; padding: 36px 40px; background: #181818; color: #c8c8c8; font-family: Figtree, system-ui, sans-serif; font-size: 13px; line-height: 1.5">
+<div style="max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: 26px">
+<div>
+<div style="font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">wado desktop · implementation plan · draft for comment</div>
+<h1 style="margin: 4px 0 6px; font-family: 'Bricolage Grotesque', Figtree, sans-serif; font-weight: 700; font-size: 40px; letter-spacing: -0.035em; line-height: 1.05; color: #ececec">One app: the daemon's control room and a client</h1>
+<p style="margin: 0; max-width: 780px; font-size: 14px">A new crate, <span style="font-family: 'JetBrains Mono', monospace">crates/desktop</span>, in Rust on gpui with gpui-component. Built and checked on this Mac first; every Linux-only piece is marked so the Linux machine picks it up from the plan branch.</p>
+</div>
+<section>
+<h2 style="margin: 0 0 10px; font-family: 'Bricolage Grotesque', Figtree, sans-serif; font-size: 20px; font-weight: 700; color: #ececec">How it is put together</h2>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px">
+<sc-for list="{{ui}}" as="b" hint-placeholder-count="3"><div style="padding: 12px 14px; border-radius: 12px; background: #24323a; border: 1px solid #3d5a66"><div style="font-family: 'JetBrains Mono', monospace; color: #a9d3e2">{{b.n}}</div><div style="color: #ececec; font-weight: 600">{{b.a}}</div><div style="font-size: 12px; color: #b9c6cc">{{b.b}}</div></div></sc-for>
+</div>
+<div style="text-align: center; color: #9a9a9a; font-size: 12px">views read published state and send typed commands — no view calls the daemon directly</div>
+<div style="padding: 12px 14px; border-radius: 12px; background: #222222; border: 1px solid #2e2e2e"><div style="font-family: 'JetBrains Mono', monospace; color: #c8c8c8">desktop::caps</div><div style="color: #ececec; font-weight: 600">The one door to wado's libraries</div><div style="font-size: 12px; color: #9a9a9a">Taken from the Slint experiment. Runs the daemon's async runtime on its own thread; hands the window latest-state channels. A stuck daemon call can never freeze the window.</div></div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px">
+<sc-for list="{{libs}}" as="b" hint-placeholder-count="5"><div style="padding: 10px 12px; border-radius: 12px; background: #1d1d1d; border: 1px solid #2e2e2e"><div style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #c8c8c8">{{b.n}}</div><div style="font-size: 12px; color: #9a9a9a">{{b.b}}</div></div></sc-for>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px">
+<div style="padding: 10px 12px; border-radius: 12px; background: #262b1f; border: 1px solid #47553a"><div style="color: #ececec; font-weight: 600">macOS providers — now</div><div style="font-size: 12px; color: #b9c2a8">Pointer, keys, files, clipboard, media, sound, brightness, power, apps. Already built on this branch.</div></div>
+<div style="padding: 10px 12px; border-radius: 12px; background: #1d1d1d; border: 1px dashed #4a4a4a"><div style="color: #ececec; font-weight: 600">Linux providers and compositor <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 400; border: 1px solid #4a4a4a; border-radius: 5px; padding: 0 5px; color: #a8a8a8">LINUX</span></div><div style="font-size: 12px; color: #9a9a9a">Sessions, screens, encoder ladder, uinput. Same seams; the app shows them when opening them works.</div></div>
+</div>
+</div>
+</section>
+<section>
+<h2 style="margin: 0 0 10px; font-family: 'Bricolage Grotesque', Figtree, sans-serif; font-size: 20px; font-weight: 700; color: #ececec">Stages — each ends with something you can run</h2>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px">
+<sc-for list="{{stages}}" as="s" hint-placeholder-count="7"><div style="{{s.card}}"><div style="display: flex; align-items: center; gap: 10px"><span aria-hidden="true" style="{{s.num}}">{{s.n}}</span><span style="color: #ececec; font-weight: 600; font-size: 14px">{{s.title}}</span></div><div style="font-size: 12px; color: #b4b4b4">{{s.body}}</div><div style="font-size: 12px; color: #9a9a9a"><span style="color: #a1b56c; font-weight: 600">Done when</span> {{s.done}}</div></div></sc-for>
+</div>
+</section>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px">
+<section style="background: #222222; border: 1px solid #2e2e2e; border-radius: 14px; padding: 16px"><h2 style="margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">Marked for the Linux machine</h2>
+<sc-for list="{{linux}}" as="k" hint-placeholder-count="6"><div style="padding: 6px 0; border-top: 1px solid #2e2e2e"><span style="color: #ececec; font-weight: 600">{{k.a}}</span> — {{k.b}}</div></sc-for>
+<div style="margin-top: 8px; font-size: 12px; color: #9a9a9a">Each is a <span style="font-family: 'JetBrains Mono', monospace">TODO(linux)</span> at its seam in code, plus one list in <span style="font-family: 'JetBrains Mono', monospace">plan/TODO.md</span> and this design in <span style="font-family: 'JetBrains Mono', monospace">plan/design/</span>, committed to the plan branch every turn.</div></section>
+<section style="background: #222222; border: 1px solid #2e2e2e; border-radius: 14px; padding: 16px"><h2 style="margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">Decided</h2>
+<sc-for list="{{decided}}" as="k" hint-placeholder-count="6"><div style="padding: 6px 0; border-top: 1px solid #2e2e2e"><span style="color: #ececec; font-weight: 600">{{k.a}}</span> — {{k.b}}</div></sc-for></section>
+<section style="background: #2a2520; border: 1px solid #5a4630; border-radius: 14px; padding: 16px"><h2 style="margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #f3c79c">Your call — comment on these</h2>
+<sc-for list="{{open}}" as="k" hint-placeholder-count="6"><div style="padding: 6px 0; border-top: 1px solid #5a4630; color: #e2d3c4"><span style="color: #ffffff; font-weight: 600">{{k.a}}</span> — {{k.b}}</div></sc-for></section>
+<section style="background: #222222; border: 1px solid #2e2e2e; border-radius: 14px; padding: 16px"><h2 style="margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a">Risks, checked in stage 0</h2>
+<sc-for list="{{risks}}" as="k" hint-placeholder-count="5"><div style="padding: 6px 0; border-top: 1px solid #2e2e2e"><span style="color: #ececec; font-weight: 600">{{k.a}}</span> — {{k.b}}</div></sc-for></section>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1320,"height":1240}}'>
+class Component extends DCLogic {
+renderVals() {
+const p = (a, b) => ({ a, b });
+const ui = [{ n: 'desktop::shell', a: 'Window, sidebar, toolbar', b: 'Command K, menu bar or tray, theme, close-keeps-serving' }, { n: 'desktop::host', a: 'This computer', b: 'Overview, Devices, Settings, Health' }, { n: 'desktop::client', a: 'Other computers', b: 'List, pairing, a computer page; the picture in stage 6' }];
+const libs = [['wado (server lib)', 'the daemon: join a running one, else start it here'], ['wado-client-core', 'relay link, pairing, feeds — as the phone uses'], ['wado-config', 'config.kdl schema, tiers, writing ui.kdl'], ['wado-platform', 'what this computer can do, and why not'], ['wado-ux', 'check words, QR, trust wording, Continue']].map(([n, b]) => ({ n, b }));
+const card = 'min-width:0;background:#222222;border:1px solid #2e2e2e;border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px';
+const num = (c) => "width:26px;height:26px;flex-shrink:0;border-radius:999px;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-weight:600;color:#181818;background:" + c;
+const stages = [
+['0', 'Barebones demo', 'gpui window with the sidebar, the tokens and one live page: Overview reading a real daemon, joined or started.', 'you open it on this Mac and see your Remote ID and who is connected.', '#7cafc2'],
+['1', 'Devices and pairing', 'Grant matrix, pairing code with QR and check words, the Who gets in switches. Everything the TUI does.', 'a phone pairs from the app and its grants change live.', '#7cafc2'],
+['2', 'Stay in the menu bar', 'Close keeps serving; menu bar panel with status, devices, Pair, Quit. Start at login.', 'the window is closed and the phone still works.', '#7cafc2'],
+['3', 'Settings and Health', 'Forms over config.kdl with unsaved marks and Apply; capability list with reasons and fix buttons; setup steps.', 'a change made here is the same one the phone sees.', '#7cafc2'],
+['4', 'Shared right now', 'Now playing, clipboard feed, files moving, activity; pick which widgets show.', 'copying on the phone shows up here within a second.', '#7cafc2'],
+['5', 'Client: a computer page', 'Computers list, add a computer, then the page: apps, files and controls at hand, clipboard sync on and off, send a file. Trackpad is a tab, not the front.', 'this Mac opens an app and moves a file on another wado computer.', '#ba8baf'],
+['6', 'Client: session windows', 'Start a session in its own window, several at once. Receive the stream, decode H.264, draw it; input on its own channel; in-session controls and quick access. The largest unknown.', 'two sessions run side by side in two windows.', '#ba8baf'],
+['7', 'Ship it', 'Wado.app with the app inside, signed; on Linux a package and desktop entry.', 'someone installs it without a terminal.', '#a1b56c']
+].map(([n, title, body, done, c]) => ({ n, title, body, done, card, num: num(c) }));
+const linux = [p('Sessions and screens', 'Connected now rows for sessions, each drawn at its real shape; how many of the allowed sessions are in use'), p('Encoder tier', 'chip on Overview and in each session; the software-encoding notice that is never dropped'), p('Join and take over', 'two more grant columns on Devices'), p('Stream, Sessions, Sound, Gamepad, Window rules', 'Settings sections that exist as forms; Linux turns them on'), p('Health rows', '/dev/uinput, VA-API, render node, Wi-Fi and Bluetooth, gamepad — offered only when opening works'), p('Workspaces and window controls', 'in the session window: rail, focused-window strip, app menus'), p('Per-app volume and sound to this computer', 'in Playing and sound'), p('Game mode', 'on an app in All apps, and in the session window'), p('Apps on its own screen', 'open, hide, quit without a session — the desk apps work still open for Linux'), p('Tray', 'StatusNotifierItem instead of the macOS menu bar'), p('Client decode', 'VA-API decode for session windows')];
+const decided = [p('Daemon', 'join a running one, else start it inside the app'), p('Client order', 'apps, files and controls first; session windows after; trackpad a side tab'), p('Sessions', 'each in its own window, several at once'), p('Review round', 'two designer reviews checked against the code: grants now match the daemon (Files off, read, write; Input added; one owner), pairing shows the check-words question, sizes unified, and a States board covers what is not the happy path'), p('Home is widgets', 'a computer\'s Home is a 12-column grid of widgets the person can move, resize, hide and add; the layout is kept per computer'), p('Kept on the device', 'clipboard items and notifications that arrive stay in a small local store, readable when the computer is offline — written once in wado-client-core, so the phone app gets it too'), p('Toolkit', 'gpui with gpui-component, restyled with wado tokens'), p('Closing the window', 'keeps serving from the menu bar or tray'), p('Slint experiment', 'mined for structure, then retired'), p('Look', 'wado system merged toward a native desk feel — the Design language board')];
+const open = [p('Sidebar', 'four host pages; sessions live inside Overview rather than their own page. Right?'), p('Default widgets', 'Now playing, Clipboard, Files moving, Activity. Add or drop?'), p('Light scheme', 'ship dark only first, or a light base16 at launch?'), p('Sessions sooner?', 'session windows need the picture, the riskiest piece. Keep it after the computer page, or pull it ahead of the host pages?'), p('Session keys', 'a switch sends every key to the other computer. Which key always stays with this one?'), p('Clipboard on screen', 'clipboard history can hold passwords. Show contents as now, or blur until hovered?'), p('How much to keep', 'my guess: the last 200 clipboard items and 200 notifications per computer, dropped after 7 days, text and small images only. Your numbers?'), p('Stage order', 'menu bar before Settings; client after the whole host. Swap anything?')];
+const risks = [p('gpui moves fast', 'pin one revision with gpui-component; time a clean build'), p('Two runtimes', 'gpui executor beside the daemon runtime — bridge only through channels'), p('Menu bar on gpui', 'if gpui lacks a status item, a small native one sits beside it'), p('Licences', 'gpui and gpui-component against AGPL-3.0 — read before the first commit'), p('Session picture size', 'a new size is a fresh output, so the quick-access panel floats over the picture and window resizes are settled before a new size is asked for'), p('Second daemon', 'app and login item both starting one — the join check must win'), p('Notifications source', 'a Mac host does not send its notifications yet (listed as later work); the card says why when a computer has none'), p('Kept items are private', 'the local store holds clipboard text — encrypted at rest, and cleared by Forget')];
+return { ui, libs, stages, linux, decided, open, risks };
+}
+}
+</script>
+</body>
+</html>
