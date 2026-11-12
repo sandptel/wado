@@ -26,6 +26,7 @@ Write new specs and plans to `plan/superpowers/{specs,plans,research}/`.
 |---|---|
 | `plan/main.md` | Compass for runs. "Start a run" → `plan/RUNS.md` |
 | `plan/TODO.md` | The live list — open, blocked, awaiting the user |
+| `plan/archive/` | Closed TODO items and finished handoffs/plans. History — never read by default |
 | `plan/HANDOVER.md` | State at v0.0.4 + the Flutter port; pick work up one item at a time |
 | `plan/issues.md` | Observed, attributed, unfixed. Leaves when the fix is seen working |
 | `plan/memory/` | What runs learned, by lane. `shared/environment.md` first, every run |

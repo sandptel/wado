@@ -33,7 +33,7 @@ A run needs the infrastructure up. Check and restart what is missing:
 
 - `wado-relay` — the rendezvous.
 - `cloudflared` — the public tunnel fronting the relay.
-- `wado` daemon — **release build, always** (see memory 00; this is the single most
+- `wado` daemon — **release build, always** (see `memory/shared/environment.md`; this is the single most
   expensive mistake available).
 - A `Monitor` on the daemon log, filtered to anomalies only.
 
@@ -62,7 +62,7 @@ Non-negotiable, and the rule most often violated under time pressure.
 - A fix justified by reasoning alone is labelled as such and never reported as verified.
 - **Check the instrument before trusting the number.** A threshold-triggered log censors its
   own sample; an exit code from a pipeline is the last stage's. Both have lied in this
-  project (memory 07).
+  project (`memory/shared/verification.md`).
 - When the number contradicts the hypothesis, report the number.
 
 ### 5. Fix
