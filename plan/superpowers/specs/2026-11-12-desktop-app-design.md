@@ -63,6 +63,21 @@ wado (server lib) · wado-config · wado-client-core · wado-platform · wado-ux
 - Rule from the phone app: a widget never disappears for a missing permission or a lost link — it
   stays and says what is missing and what to do (`States.dc.html`, 24 states).
 
+## Build facts (found `2026-11-12`, stage 0)
+
+- Run: `cd crates/desktop && cargo run` (data path only, no window: `cargo run -- --check`).
+- `crates/desktop` is **its own workspace** (root `Cargo.toml` excludes it): `gpui-kit` pins
+  `wasm-bindgen =0.2.127`, the web client pins `=0.2.126`.
+- `crates/desktop/rust-toolchain.toml` pins Rust **1.99.1**; `gpui-kit` 0.9.1 does not build on 1.97.1.
+  It applies only when cargo runs from inside `crates/desktop`.
+- `gpui-kit` 0.9.1 = `gpui-pre` 0.3.12 (a snapshot of Zed's gpui at `d2a4fb6`, newer than crates.io
+  `gpui` 0.2.2) + `gpui-base` (unstyled behaviour) + `gpui-component` (styled) + Lucide icons
+  (106 by default; `AllAssets` for the rest).
+- Its `test-support` feature does not resolve here (drags in `gpui-fast`, clashing `taffy` pins),
+  so there is no offscreen screenshot. Look at the window.
+- The daemon is started as a child process (`wado daemon`, own process group), not in-process.
+- `caps::daemon::read` reuses `wado::tui::data::Snapshot` (made `pub` for this).
+
 ## Stages
 
 | # | Stage | Done when |
@@ -91,7 +106,7 @@ Each is drawn on the boards with a `LINUX` tag. Build against the same tokens an
 - [ ] **L9 Apps on their own screen** — open, hide, quit without a session.
 - [ ] **L10 Tray** — StatusNotifierItem in place of the macOS menu bar item.
 - [ ] **L11 Client decode** — VA-API decode for session windows.
-- [ ] **L12 Build check** — `cargo run -p wado-desktop` on Linux (gpui Wayland/X11); `caps::daemon::hostname` and start path there.
+- [ ] **L12 Build check** — `cd crates/desktop && cargo run` on Linux (gpui Wayland/X11); `caps::daemon::hostname` and start path there.
 
 ## Open, taken as defaults until the user says otherwise (my calls, not theirs)
 

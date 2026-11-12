@@ -10,8 +10,8 @@ Last updated: `2026-11-12`
 ## ▣ RUN — 2026-11-12, desktop app (`crates/desktop`, gpui) — branch `macos`
 
 Spec: `plan/superpowers/specs/2026-11-12-desktop-app-design.md` (boards beside it). Run:
-`cargo run -p wado-desktop`. Linux pick-up list: the spec's "Linux targets" (L1–L12).
-- [ ] Stage 0 — window, sidebar, tokens, Overview on a real daemon, join-or-start
+`cd crates/desktop && cargo run`. Linux pick-up list: the spec's "Linux targets" (L1–L12).
+- [x] Stage 0 — window, sidebar, tokens, Overview on a real daemon, join-or-start (built, runs, `--check` reads the live daemon; **look not yet seen by anyone** — screen capture is blocked for the agent; uncommitted on `macos`)
 - [ ] Stage 1 — Devices and pairing
 - [ ] Stage 2 — menu bar, close keeps serving
 - [ ] Stage 3 — Settings and Health
