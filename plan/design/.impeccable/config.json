@@ -1,0 +1,35 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "tiny-text",
+        "value": "*",
+        "files": [
+          ".superpowers/brainstorm/51651-1793293505/content/controller-layout.html"
+        ],
+        "createdAt": "2026-10-29T17:05:52.261Z",
+        "reason": "Claude: text sits inside scaled-down phone wireframes in a throwaway brainstorm mockup"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          ".superpowers/brainstorm/51651-1793293505/content/controller-layout.html"
+        ],
+        "createdAt": "2026-10-29T17:06:01.406Z",
+        "reason": "Claude: scaled-down phone wireframes in a throwaway brainstorm mockup"
+      },
+      {
+        "rule": "undersized-ui-text",
+        "value": "*",
+        "files": [
+          ".superpowers/brainstorm/51651-1793293505/content/controller-layout.html"
+        ],
+        "createdAt": "2026-10-29T17:06:01.416Z",
+        "reason": "Claude: scaled-down phone wireframes in a throwaway brainstorm mockup"
+      }
+    ]
+  }
+}

@@ -9,6 +9,8 @@ git rev-parse -q --verify refs/heads/plan >/dev/null || git branch --track plan 
 [ -d plan ] || git restore --source=plan --worktree -- plan
 ln -sfn plan/CLAUDE.md CLAUDE.md
 ln -sfn plan/CLAUDE.md AGENTS.md
+ln -sfn plan/WADO_PLAN.md WADO_PLAN.md
+ln -sfn plan/CHALLENGES.md CHALLENGES.md
 ln -sfn plan/design/DESIGN.md DESIGN.md
 ln -sfn plan/design/PRODUCT.md PRODUCT.md
 ln -sfn plan/design/.impeccable .impeccable
